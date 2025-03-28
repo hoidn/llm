@@ -41,7 +41,7 @@ class GitRepositoryIndexer:
         """
         self.repo_path = repo_path
         self.max_file_size = 1_000_000  # Default 1MB max file size
-        self.include_patterns = ["**/*"]  # Default include all files
+        self.include_patterns = ["**/*.py"]  # Only include Python files
         self.exclude_patterns = []  # Default exclude none
     
     def index_repository(self, memory_system) -> Dict[str, str]:

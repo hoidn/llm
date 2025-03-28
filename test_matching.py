@@ -22,7 +22,8 @@ def test_associative_matching(query, repo_path="."):
     # Index git repository
     print(f"Indexing repository: {repo_path}")
     indexer = GitRepositoryIndexer(repo_path)
-    # Configure indexer to exclude some common directories
+    # Configure indexer to only include Python files and exclude some common directories
+    indexer.include_patterns = ["**/*.py"]  # Only include Python files
     indexer.exclude_patterns = ["**/__pycache__/**", "**/node_modules/**", "**/.git/**"]
     file_metadata = indexer.index_repository(memory_system)
     

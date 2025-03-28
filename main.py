@@ -68,6 +68,7 @@ class Application:
             indexer = GitRepositoryIndexer(repo_path)
             
             # Configure indexer to exclude some common directories
+            # Note: include_patterns is already set to ["**/*.py"] in the GitRepositoryIndexer constructor
             indexer.exclude_patterns = ["**/__pycache__/**", "**/node_modules/**", "**/.git/**"]
             
             # Index repository
