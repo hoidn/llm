@@ -22,14 +22,11 @@ def repl_instance(mock_application):
     return Repl(application=mock_application)
 
 @pytest.fixture
-def capture_stdout():
+def capture_stdout(monkeypatch):
     """Fixture to capture stdout."""
     captured_output = StringIO()
-    original_stdout = sys.stdout
-    sys.stdout = captured_output
-    yield captured_output
-    # Make sure we restore the original stdout
-    sys.stdout = original_stdout
+    monkeypatch.setattr(sys, 'stdout', captured_output)
+    return captured_output
 
 class TestRepl:
     """Tests for the REPL class."""

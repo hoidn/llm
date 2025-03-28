@@ -75,9 +75,8 @@ class TestMemorySystemIndexing:
                 "inheritedContext": ""
             }
             
-            # Mock any internal methods that might be used instead of the module function
-            with patch.object(memory_system, '_get_relevant_files', return_value=["/path/to/file1.py", "/path/to/file2.md"]):
-                result = memory_system.get_relevant_context_for(context_input)
+            # Call directly without trying to mock internal methods
+            result = memory_system.get_relevant_context_for(context_input)
             
             # Verify result structure
             assert hasattr(result, 'context')
