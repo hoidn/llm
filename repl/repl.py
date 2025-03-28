@@ -96,20 +96,39 @@ class Repl:
             return
         
         if self.mode == "passthrough":
+            # Show thinking indicator
+            print("\nThinking...", end="", flush=True, file=self.output)
+            
+            # Handle query in passthrough mode
             result = self.application.handle_query(query)
-            print("\nResponse:", file=self.output)
+            
+            # Clear thinking indicator
+            print("\r" + " " * 12 + "\r", end="", flush=True, file=self.output)
+            
+            # Display files in context
+            if "metadata" in result and "relevant_files" in result["metadata"] and result["metadata"]["relevant_files"]:
+                print("\nFiles in context:", file=self.output)
+                for i, file_path in enumerate(result["metadata"]["relevant_files"], 1):
+                    print(f"  {i}. {file_path}", file=self.output)
+                print("", file=self.output)
+            else:
+                print("\nNo specific files were found relevant to your query.\n", file=self.output)
+            
+            # Display response
+            print("Response:", file=self.output)
             print(result.get("content", "No response"), file=self.output)
             
             # Display metadata if verbose mode is on
             if self.verbose and "metadata" in result:
                 print("\nMetadata:", file=self.output)
                 for key, value in result["metadata"].items():
-                    if isinstance(value, list) and len(value) > 0:
-                        print(f"  {key}:", file=self.output)
-                        for item in value:
-                            print(f"    - {item}", file=self.output)
-                    else:
-                        print(f"  {key}: {value}", file=self.output)
+                    if key != "relevant_files":  # Skip files as we already displayed them
+                        if isinstance(value, list) and len(value) > 0:
+                            print(f"  {key}:", file=self.output)
+                            for item in value:
+                                print(f"    - {item}", file=self.output)
+                        else:
+                            print(f"  {key}: {value}", file=self.output)
         else:
             print("Standard mode not implemented yet", file=self.output)
     

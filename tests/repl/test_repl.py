@@ -77,13 +77,26 @@ class TestRepl:
 
     def test_handle_query_passthrough(self, repl_instance, capture_stdout):
         """Test handling a query in passthrough mode."""
+        # Set up mock response with relevant files
+        repl_instance.application.handle_query.return_value = {
+            "content": "This is a sample response.",
+            "metadata": {
+                "relevant_files": ["/path/to/file1.py", "/path/to/file2.md"]
+            }
+        }
+        
         repl_instance._handle_query("test query")
         
         # Verify application.handle_query was called
         repl_instance.application.handle_query.assert_called_once_with("test query")
         
-        # Verify response was displayed
+        # Verify files in context were displayed
         output = capture_stdout.getvalue()
+        assert "Files in context:" in output
+        assert "1. /path/to/file1.py" in output
+        assert "2. /path/to/file2.md" in output
+        
+        # Verify response was displayed
         assert "Response:" in output
         assert "This is a sample response." in output
 
@@ -116,6 +129,29 @@ class TestRepl:
         assert "This is a sample response." in output
         assert "Metadata:" in output
         assert "key: value" in output
+        
+    def test_handle_query_no_relevant_files(self, repl_instance, capture_stdout):
+        """Test handling a query when no relevant files are found."""
+        # Set up mock response with no relevant files
+        repl_instance.application.handle_query.return_value = {
+            "content": "This is a sample response.",
+            "metadata": {
+                "relevant_files": []
+            }
+        }
+        
+        repl_instance._handle_query("test query")
+        
+        # Verify application.handle_query was called
+        repl_instance.application.handle_query.assert_called_once_with("test query")
+        
+        # Verify no files message was displayed
+        output = capture_stdout.getvalue()
+        assert "No specific files were found relevant to your query." in output
+        
+        # Verify response was displayed
+        assert "Response:" in output
+        assert "This is a sample response." in output
 
     def test_cmd_help(self, repl_instance, capture_stdout):
         """Test the help command."""
