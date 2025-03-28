@@ -25,9 +25,11 @@ def repl_instance(mock_application):
 def capture_stdout():
     """Fixture to capture stdout."""
     captured_output = StringIO()
+    original_stdout = sys.stdout
     sys.stdout = captured_output
     yield captured_output
-    sys.stdout = sys.__stdout__
+    # Make sure we restore the original stdout
+    sys.stdout = original_stdout
 
 class TestRepl:
     """Tests for the REPL class."""
