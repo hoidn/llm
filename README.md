@@ -1,6 +1,6 @@
 # Passthrough Mode with Git Repository Context
 
-A system for querying Git repositories with natural language using the power of Claude AI.
+A tiny demo of automatic context management for LLMs. This is also a construction site for a new [domain specific language for LLMs](./docs/)
 
 ## Features
 
