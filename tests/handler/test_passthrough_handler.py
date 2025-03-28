@@ -10,10 +10,14 @@ class TestPassthroughHandler:
 
     def test_init(self, mock_task_system, mock_memory_system):
         """Test PassthroughHandler initialization."""
-        # Mock the ClaudeProvider to avoid API key requirement in tests
-        with patch('handler.passthrough_handler.ClaudeProvider') as mock_provider_class:
+        # Mock the ClaudeProvider and FileAccessManager to avoid API key requirement in tests
+        with patch('handler.passthrough_handler.ClaudeProvider') as mock_provider_class, \
+             patch('handler.passthrough_handler.FileAccessManager') as mock_file_manager_class:
             mock_provider = MagicMock()
             mock_provider_class.return_value = mock_provider
+            
+            mock_file_manager = MagicMock()
+            mock_file_manager_class.return_value = mock_file_manager
             
             handler = PassthroughHandler(mock_task_system, mock_memory_system)
             
@@ -22,7 +26,7 @@ class TestPassthroughHandler:
             assert handler.active_subtask_id is None
             assert handler.conversation_history == []
             assert handler.model_provider == mock_provider
-            assert isinstance(handler.file_manager, FileAccessManager)
+            assert handler.file_manager == mock_file_manager
 
     def test_handle_query_new_subtask(self, mock_task_system, mock_memory_system):
         """Test handle_query when no active subtask exists."""
