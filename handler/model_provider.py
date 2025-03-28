@@ -10,13 +10,13 @@ class ClaudeProvider:
     """
     Claude API integration for LLM interactions.
     """
-    def __init__(self, api_key: Optional[str] = None, model: str = "claude-3-sonnet-20240229"):
+    def __init__(self, api_key: Optional[str] = None, model: str = "claude-3-7-sonnet-20250219"):
         """
         Initialize Claude provider with API key and model.
         
         Args:
             api_key: Anthropic API key, defaults to ANTHROPIC_API_KEY environment variable
-            model: Claude model to use, defaults to claude-3-sonnet
+            model: Claude model to use, defaults to claude-3-7-sonnet
         """
         self.api_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
         self.model = model
