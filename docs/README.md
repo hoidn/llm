@@ -4,83 +4,83 @@
 ```
 docs/
 ├── system/                         # System-level documentation
-│   ├── README.md                   # System overview
+│   ├── [README.md](./system/README.md)                   # System overview
 │   ├── architecture/               # Core architecture
-│   │   ├── overview.md             # High-level design
+│   │   ├── [overview.md](./system/architecture/overview.md)             # High-level design
 │   │   ├── decisions/              # Architecture Decision Records (ADRs)
-│   │   │   ├── index.md            # ADR index
+│   │   │   ├── [index.md](./system/architecture/decisions/index.md)            # ADR index
 │   │   │   ├── completed/          # Implemented ADRs
 │   │   │   ├── needs_update/       # ADRs requiring updates
 │   │   │   └── specs/              # ADR specifications
 │   │   ├── patterns/               # Core patterns & principles
-│   │   │   ├── index.md            # Pattern index
-│   │   │   ├── context-frames.md   # Context frame pattern
-│   │   │   ├── director-evaluator.md # Director-Evaluator pattern
-│   │   │   ├── error-resources.md  # Error handling pattern
-│   │   │   └── tool-interface.md   # Tool interface pattern
+│   │   │   ├── [index.md](./system/architecture/patterns/index.md)            # Pattern index
+│   │   │   ├── [context-frames.md](./system/architecture/patterns/context-frames.md)   # Context frame pattern
+│   │   │   ├── [director-evaluator.md](./system/architecture/patterns/director-evaluator.md) # Director-Evaluator pattern
+│   │   │   ├── [error-resources.md](./system/architecture/patterns/error-resources.md)  # Error handling pattern
+│   │   │   └── [tool-interface.md](./system/architecture/patterns/tool-interface.md)   # Tool interface pattern
 │   │   └── qa/                     # Architecture Q&A
 │   ├── contracts/                  # System-wide contracts
-│   │   ├── protocols.md            # Protocol definitions
-│   │   ├── resources.md            # Resource management
-│   │   └── types.md                # Type definitions
+│   │   ├── [protocols.md](./system/contracts/protocols.md)            # Protocol definitions
+│   │   ├── [resources.md](./system/contracts/resources.md)            # Resource management
+│   │   └── [types.md](./system/contracts/types.md)                # Type definitions
 │   ├── integration/                # Integration documentation
-│   │   └── cross-component.md      # Cross-component integration
+│   │   └── [cross-component.md](./system/integration/cross-component.md)      # Cross-component integration
 │   ├── planning/                   # System planning
-│   │   └── implementation-plan.md  # Implementation roadmap
+│   │   └── [implementation-plan.md](./system/planning/implementation-plan.md)  # Implementation roadmap
 │   └── qa/                         # System Q&A
-│       ├── index.md                # Q&A index
-│       ├── architecture-questions.md # Architecture questions
-│       └── component-faq.md        # Component FAQ
+│       ├── [index.md](./system/qa/index.md)                # Q&A index
+│       ├── [architecture-questions.md](./system/qa/architecture-questions.md) # Architecture questions
+│       └── [component-faq.md](./system/qa/component-faq.md)        # Component FAQ
 │
 ├── components/                     # Component documentation
-│   ├── index.md                    # Component index
+│   ├── [index.md](./components/index.md)                    # Component index
 │   ├── compiler/                   # Compiler component
-│   │   ├── README.md               # Compiler overview
+│   │   ├── [README.md](./components/compiler/README.md)               # Compiler overview
 │   │   └── spec/                   # Compiler specifications
-│   │       └── requirements.md     # Compiler requirements
+│   │       └── [requirements.md](./components/compiler/spec/requirements.md)     # Compiler requirements
 │   ├── evaluator/                  # Evaluator component
-│   │   ├── README.md               # Evaluator overview
+│   │   ├── [README.md](./components/evaluator/README.md)               # Evaluator overview
 │   │   ├── api/                    # Evaluator API
-│   │   │   └── interfaces.md       # Evaluator interfaces
+│   │   │   └── [interfaces.md](./components/evaluator/api/interfaces.md)       # Evaluator interfaces
 │   │   ├── spec/                   # Evaluator specifications
-│   │       └── types.md            # Evaluator types
+│   │       └── [types.md](./components/evaluator/spec/types.md)            # Evaluator types
 │   │   └── impl/                   # Evaluator implementation
-│   │       └── design.md           # Evaluator design
+│   │       └── [design.md](./components/evaluator/impl/design.md)           # Evaluator design
 │   ├── handler/                    # Handler component
 │   │   ├── spec/                   # Handler specifications
-│   │   │   ├── behaviors.md        # Handler behaviors
-│   │   │   ├── interfaces.md       # Handler interfaces
-│   │   │   └── types.md            # Handler types
+│   │   │   ├── [behaviors.md](./components/handler/spec/behaviors.md)        # Handler behaviors
+│   │   │   ├── [interfaces.md](./components/handler/spec/interfaces.md)       # Handler interfaces
+│   │   │   └── [types.md](./components/handler/spec/types.md)            # Handler types
 │   │   └── impl/                   # Handler implementation
-│   │       ├── provider-integration.md # Provider integration
-│   │       └── resource-tracking.md # Resource tracking
+│   │       ├── [provider-integration.md](./components/handler/impl/provider-integration.md) # Provider integration
+│   │       └── [resource-tracking.md](./components/handler/impl/resource-tracking.md) # Resource tracking
 │   ├── memory/                     # Memory component
 │   │   └── api/                    # Memory API
-│   │       └── interfaces.md       # Memory interfaces
+│   │       └── [interfaces.md](./components/memory/api/interfaces.md)       # Memory interfaces
 │   └── task-system/                # Task System component
-│       ├── README.md               # Task System overview
+│       ├── [README.md](./components/task-system/README.md)               # Task System overview
 │       ├── spec/                   # Task System specifications
-│       │   ├── interfaces.md       # Task System interfaces
-│       │   ├── qa.md               # Task System Q&A
-│       │   ├── requirements.md     # Task System requirements
-│       │   └── types.md            # Task System types
+│       │   ├── [interfaces.md](./components/task-system/spec/interfaces.md)       # Task System interfaces
+│       │   ├── [qa.md](./components/task-system/spec/qa.md)               # Task System Q&A
+│       │   ├── [requirements.md](./components/task-system/spec/requirements.md)     # Task System requirements
+│       │   └── [types.md](./components/task-system/spec/types.md)            # Task System types
 │       └── impl/                   # Task System implementation
-│           ├── index.md            # Implementation index
-│           ├── design.md           # Task System design
-│           ├── examples.md         # Implementation examples
+│           ├── [index.md](./components/task-system/impl/index.md)            # Implementation index
+│           ├── [design.md](./components/task-system/impl/design.md)           # Task System design
+│           ├── [examples.md](./components/task-system/impl/examples.md)         # Implementation examples
 │           └── examples/           # Implementation examples
-│               ├── context-management.md # Context management
-│               ├── function-templates.md # Function templates
-│               └── subtask-spawning.md # Subtask spawning
+│               ├── [context-management.md](./components/task-system/impl/examples/context-management.md) # Context management
+│               ├── [function-templates.md](./components/task-system/impl/examples/function-templates.md) # Function templates
+│               └── [subtask-spawning.md](./components/task-system/impl/examples/subtask-spawning.md) # Subtask spawning
 │
-├── index.md                        # Documentation home
-├── inconsistencies.md              # Known inconsistencies
+├── [index.md](./index.md)                        # Documentation home
+├── [inconsistencies.md](./inconsistencies.md)              # Known inconsistencies
 ├── misc/                           # Miscellaneous documentation
-│   └── errorspec.md                # Error specifications
+│   └── [errorspec.md](./misc/errorspec.md)                # Error specifications
 ├── plans/                          # Planning documentation
-│   └── general_improvements.md     # General improvement plans
-├── process.md                      # Development process
-└── spec_prompt_guide.xml           # Specification prompt guide
+│   └── [general_improvements.md](./plans/general_improvements.md)     # General improvement plans
+├── [process.md](./process.md)                      # Development process
+└── [spec_prompt_guide.xml](./spec_prompt_guide.xml)           # Specification prompt guide
 ```
 
 ## Document Standards
