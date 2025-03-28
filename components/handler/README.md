@@ -26,7 +26,7 @@ The Handler manages LLM interactions, resource tracking, and tool execution. It 
    - Maintain conversation state within subtasks
    - Apply standard context management to non-AST queries
 
-4. **Session Management**
+5. **Session Management**
    - Maintain isolated execution environments for tasks
    - Track conversation state and history
    - Ensure clean resource release after execution
@@ -37,6 +37,7 @@ The Handler manages LLM interactions, resource tracking, and tool execution. It 
 - **registerDirectTool**: Register synchronous tools for direct execution
 - **registerSubtaskTool**: Register tools implemented via subtask continuation
 - **addToolResponse**: Add tool responses to conversation history
+- **handlePassthroughQuery**: Process raw text queries without AST compilation
 
 For detailed specifications, see:
 - [Interface:Handler:1.0] in `/components/handler/spec/interfaces.md`
