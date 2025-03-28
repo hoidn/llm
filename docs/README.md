@@ -4,77 +4,92 @@
 ```
 docs/
 ├── system/                         # System-level documentation
-│   ├── README.md                   # System overview & development sequence
-│   ├── docs-guide.md               # Documentation standards, map & navigation
+│   ├── README.md                   # System overview
 │   ├── architecture/               # Core architecture
-│   │   ├── overview.md            # High-level design
-│   │   ├── decisions/             # Architecture Decision Records (ADRs)
-│   │   └── patterns/              # Core patterns & principles
-│   ├── protocols/                  # System-wide protocols
-│   │   └── resources.md            # Protocol-level resource definitions
-│   └── contracts/                  # System-wide contracts
-│       ├── interfaces.md          # External interfaces
-│       └── resources.md           # Resource management
+│   │   ├── overview.md             # High-level design
+│   │   ├── decisions/              # Architecture Decision Records (ADRs)
+│   │   │   ├── index.md            # ADR index
+│   │   │   ├── completed/          # Implemented ADRs
+│   │   │   ├── needs_update/       # ADRs requiring updates
+│   │   │   └── specs/              # ADR specifications
+│   │   ├── patterns/               # Core patterns & principles
+│   │   │   ├── index.md            # Pattern index
+│   │   │   ├── context-frames.md   # Context frame pattern
+│   │   │   ├── director-evaluator.md # Director-Evaluator pattern
+│   │   │   ├── error-resources.md  # Error handling pattern
+│   │   │   └── tool-interface.md   # Tool interface pattern
+│   │   └── qa/                     # Architecture Q&A
+│   ├── contracts/                  # System-wide contracts
+│   │   ├── protocols.md            # Protocol definitions
+│   │   ├── resources.md            # Resource management
+│   │   └── types.md                # Type definitions
+│   ├── integration/                # Integration documentation
+│   │   └── cross-component.md      # Cross-component integration
+│   ├── planning/                   # System planning
+│   │   └── implementation-plan.md  # Implementation roadmap
+│   └── qa/                         # System Q&A
+│       ├── index.md                # Q&A index
+│       ├── architecture-questions.md # Architecture questions
+│       └── component-faq.md        # Component FAQ
 │
-└── components/                     # Component documentation
-    └── [component]/               # Per component (can be nested)
-        ├── README.md              # Component overview
-        ├── api/                   # Public API documentation
-        │   └── interfaces.md      # Public interface definitions
-        ├── spec/                  # Formal specifications
-        │   ├── requirements.md    # Component requirements
-        │   ├── interfaces.md      # Internal interface definitions
-        │   ├── types.md          # Type definitions
-        │   └── behaviors.md       # Expected behaviors
-        └── impl/                  # Implementation details
-            ├── design.md         # Design decisions
-            ├── protocols.md      # Protocol implementations
-            └── examples.md       # Implementation examples
+├── components/                     # Component documentation
+│   ├── index.md                    # Component index
+│   ├── compiler/                   # Compiler component
+│   │   ├── README.md               # Compiler overview
+│   │   └── spec/                   # Compiler specifications
+│   │       └── requirements.md     # Compiler requirements
+│   ├── evaluator/                  # Evaluator component
+│   │   ├── README.md               # Evaluator overview
+│   │   ├── api/                    # Evaluator API
+│   │   │   └── interfaces.md       # Evaluator interfaces
+│   │   ├── spec/                   # Evaluator specifications
+│   │       └── types.md            # Evaluator types
+│   │   └── impl/                   # Evaluator implementation
+│   │       └── design.md           # Evaluator design
+│   ├── handler/                    # Handler component
+│   │   ├── spec/                   # Handler specifications
+│   │   │   ├── behaviors.md        # Handler behaviors
+│   │   │   ├── interfaces.md       # Handler interfaces
+│   │   │   └── types.md            # Handler types
+│   │   └── impl/                   # Handler implementation
+│   │       ├── provider-integration.md # Provider integration
+│   │       └── resource-tracking.md # Resource tracking
+│   ├── memory/                     # Memory component
+│   │   └── api/                    # Memory API
+│   │       └── interfaces.md       # Memory interfaces
+│   └── task-system/                # Task System component
+│       ├── README.md               # Task System overview
+│       ├── spec/                   # Task System specifications
+│       │   ├── interfaces.md       # Task System interfaces
+│       │   ├── qa.md               # Task System Q&A
+│       │   ├── requirements.md     # Task System requirements
+│       │   └── types.md            # Task System types
+│       └── impl/                   # Task System implementation
+│           ├── index.md            # Implementation index
+│           ├── design.md           # Task System design
+│           ├── examples.md         # Implementation examples
+│           └── examples/           # Implementation examples
+│               ├── context-management.md # Context management
+│               ├── function-templates.md # Function templates
+│               └── subtask-spawning.md # Subtask spawning
+│
+├── index.md                        # Documentation home
+├── inconsistencies.md              # Known inconsistencies
+├── misc/                           # Miscellaneous documentation
+│   └── errorspec.md                # Error specifications
+├── plans/                          # Planning documentation
+│   └── general_improvements.md     # General improvement plans
+├── process.md                      # Development process
+└── spec_prompt_guide.xml           # Specification prompt guide
 ```
-
-## Common Types
-[Rest of common types section remains unchanged]
-
-## Cross-Reference Updates
-Ensure that all components referencing the Director-Evaluator pattern mention both the dynamic and static variants. In particular, update references to [Pattern:DirectorEvaluator:1.1] to include the static variant with script execution support.
 
 ## Document Standards
 
-### System Level Documents
-
-#### README.md
-[README.md template remains unchanged]
-
-#### docs-guide.md
-```markdown
-# Documentation Guide
-
-## Documentation Map
-Required:
-- Core system specifications
-- Component contracts & integration
-- Core patterns & protocols
-- Key data structures
-- Documentation status
-- Cross-reference guide
-
-## Standards
-Required:
-- Writing style guidelines
-- Document templates
-- Cross-reference syntax
-- Version control practices
-
-## Documentation Principles
-Required:
+### Documentation Principles
 1. Single Responsibility
    - Each document covers one concern
    - Clear boundaries between concerns
    - Explicit dependencies
-2. Template Consistency
-   - All new task templates must use the unified template substitution mechanism.
-   - Evaluator's lexically scoped variables are referenced using the `{{variable_name}}` syntax.
-   - Input bindings can be explicitly declared using the optional `from` attribute on `<input>` elements.
 
 2. Contract Completeness
    - All requirements stated
@@ -86,48 +101,18 @@ Required:
    - Lifecycle documented
    - Cleanup requirements specified
 
-## Writing Style
-Required:
+### Writing Style
 1. Active voice
 2. One sentence per line
 3. Explicit section numbering
 4. Consistent terminology
 
-## Documentation Map
-Required:
-- Core system specifications
-- Component contracts & integration
-- Core patterns & protocols
-- Key data structures
-- Documentation status
-
-## Version Management
-Required:
+### Version Management
 1. Version Format: MAJOR.MINOR.PATCH
 2. Update Rules:
    - MAJOR: Breaking changes
    - MINOR: New features, backward compatible
    - PATCH: Bug fixes, backward compatible
 
-## Navigation
-Required:
-1. Documentation Map Usage
-   - Primary navigation aid
-   - Definitive specification locations
-   - Cross-reference resolution
-   - Documentation status tracking
-
-2. Map Maintenance
-   - Regular updates with changes
-   - Validation of references
-   - Status accuracy verification
-   - Gap identification
-
-Note: The Documentation Map in this guide serves as the primary navigation aid
-for finding specifications and understanding document relationships.
-
-## Templates
-[See individual document templates in this guide]
-```
-
-[Rest of document remains unchanged]
+### Cross-Reference Updates
+Ensure that all components referencing the Director-Evaluator pattern mention both the dynamic and static variants. In particular, update references to [Pattern:DirectorEvaluator:1.1] to include the static variant with script execution support.
