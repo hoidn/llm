@@ -1,6 +1,7 @@
 """Utility functions for text extraction and processing."""
-from typing import List, Dict, Set, Tuple
+from typing import List, Dict, Set, Tuple, Optional
 import re
+import os
 
 def extract_identifiers_by_language(content: str, file_ext: str) -> List[str]:
     """Extract code identifiers based on the file extension/language.
@@ -12,10 +13,14 @@ def extract_identifiers_by_language(content: str, file_ext: str) -> List[str]:
     Returns:
         List of extracted identifiers
     """
+    # Normalize file extension
+    if file_ext.startswith('.'):
+        file_ext = file_ext[1:]
+    
     identifiers = []
     
     # Python
-    if file_ext == '.py':
+    if file_ext == 'py':
         # Extract function and class definitions
         func_matches = re.findall(r'def\s+([a-zA-Z0-9_]+)\s*\(', content)
         class_matches = re.findall(r'class\s+([a-zA-Z0-9_]+)\s*[\(:]', content)
@@ -27,7 +32,7 @@ def extract_identifiers_by_language(content: str, file_ext: str) -> List[str]:
         identifiers.extend(var_matches)
     
     # JavaScript
-    elif file_ext in ['.js', '.jsx', '.ts', '.tsx']:
+    elif file_ext in ['js', 'jsx', 'ts', 'tsx']:
         # Functions and methods
         func_matches = re.findall(r'function\s+([a-zA-Z0-9_$]+)|([a-zA-Z0-9_$]+)\s*\([^)]*\)\s*{|\b([a-zA-Z0-9_$]+):\s*function', content)
         # Classes
@@ -43,7 +48,7 @@ def extract_identifiers_by_language(content: str, file_ext: str) -> List[str]:
         identifiers.extend([m[1] for m in var_matches if len(m) > 1])
     
     # C/C++
-    elif file_ext in ['.c', '.cpp', '.h', '.hpp']:
+    elif file_ext in ['c', 'cpp', 'h', 'hpp']:
         # Functions
         func_matches = re.findall(r'([a-zA-Z0-9_]+)\s*\([^)]*\)\s*{', content)
         # Classes/structs
@@ -57,7 +62,7 @@ def extract_identifiers_by_language(content: str, file_ext: str) -> List[str]:
         identifiers.extend(typedef_matches)
     
     # Java/C#
-    elif file_ext in ['.java', '.cs']:
+    elif file_ext in ['java', 'cs']:
         # Methods
         method_matches = re.findall(r'(public|private|protected|static|\s) +[\w\<\>\[\]]+\s+([a-zA-Z0-9_]+) *\([^\)]*\)', content)
         # Classes
@@ -71,7 +76,7 @@ def extract_identifiers_by_language(content: str, file_ext: str) -> List[str]:
         identifiers.extend(interface_matches)
     
     # Go
-    elif file_ext == '.go':
+    elif file_ext == 'go':
         # Functions
         func_matches = re.findall(r'func\s+([a-zA-Z0-9_]+)', content)
         # Structs
@@ -84,7 +89,7 @@ def extract_identifiers_by_language(content: str, file_ext: str) -> List[str]:
         identifiers.extend(interface_matches)
     
     # Ruby
-    elif file_ext == '.rb':
+    elif file_ext == 'rb':
         # Methods
         method_matches = re.findall(r'def\s+([a-zA-Z0-9_?!]+)', content)
         # Classes
@@ -97,7 +102,7 @@ def extract_identifiers_by_language(content: str, file_ext: str) -> List[str]:
         identifiers.extend(module_matches)
     
     # PHP
-    elif file_ext in ['.php']:
+    elif file_ext == 'php':
         # Functions
         func_matches = re.findall(r'function\s+([a-zA-Z0-9_]+)', content)
         # Classes
@@ -141,17 +146,21 @@ def extract_document_summary(content: str, file_ext: str) -> str:
     Returns:
         Document summary
     """
+    # Normalize file extension
+    if file_ext.startswith('.'):
+        file_ext = file_ext[1:]
+    
     # Initialize summary
     summary = ""
     
     # For Markdown files
-    if file_ext in ['.md', '.markdown']:
+    if file_ext in ['md', 'markdown']:
         headings = extract_markdown_headings(content)
         if headings:
             summary += "Headings: " + ", ".join(headings) + "\n"
     
     # For code files, extract file-level comments
-    elif file_ext in ['.py', '.js', '.java', '.c', '.cpp', '.h', '.cs', '.go', '.rb', '.php']:
+    elif file_ext in ['py', 'js', 'java', 'c', 'cpp', 'h', 'cs', 'go', 'rb', 'php']:
         # Try to extract docstrings or file-level comments
         doc_comment_patterns = [
             # Python docstrings
@@ -183,3 +192,60 @@ def extract_document_summary(content: str, file_ext: str) -> str:
         summary += "Preview: " + preview[:200] + "\n"
     
     return summary
+
+def extract_text_content(file_path: str, max_size: int = 100 * 1024) -> Optional[str]:
+    """Extract text content from a file.
+    
+    Args:
+        file_path: Path to file
+        max_size: Maximum file size in bytes
+        
+    Returns:
+        Extracted text content or None if extraction failed
+    """
+    try:
+        # Check if file exists
+        if not os.path.isfile(file_path):
+            print(f"File not found: {file_path}")
+            return None
+        
+        # Check file size
+        file_size = os.path.getsize(file_path)
+        if file_size > max_size:
+            print(f"File too large: {file_path} ({file_size} bytes)")
+            return None
+        
+        # Get file extension
+        _, ext = os.path.splitext(file_path)
+        ext = ext.lower()
+        
+        # Text files
+        text_extensions = {
+            ".txt", ".md", ".py", ".js", ".java", ".c", ".cpp", ".h", ".hpp",
+            ".html", ".css", ".json", ".xml", ".yaml", ".yml", ".ini", ".conf",
+            ".sh", ".rb", ".properties", ".gitignore", ".env"
+        }
+        
+        if ext in text_extensions:
+            with open(file_path, "r", encoding="utf-8", errors="replace") as f:
+                return f.read()
+        
+        # Binary files (not supported)
+        binary_extensions = {
+            ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".pdf", ".doc", ".docx",
+            ".xls", ".xlsx", ".ppt", ".pptx", ".zip", ".tar", ".gz", ".exe",
+            ".dll", ".so", ".class", ".jar", ".war", ".ear"
+        }
+        
+        if ext in binary_extensions:
+            return f"[Binary file: {ext} format]"
+        
+        # Unknown file type, try as text
+        try:
+            with open(file_path, "r", encoding="utf-8", errors="replace") as f:
+                return f.read()
+        except Exception:
+            return f"[Unrecognized file format: {ext}]"
+    except Exception as e:
+        print(f"Error extracting text from {file_path}: {str(e)}")
+        return None

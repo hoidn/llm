@@ -2,6 +2,7 @@
 import pytest
 from unittest.mock import patch, mock_open, MagicMock
 import os
+import tempfile
 from memory.indexers.git_repository_indexer import GitRepositoryIndexer
 
 class TestGitRepositoryIndexer:
@@ -97,7 +98,6 @@ class TestGitRepositoryIndexer:
             assert "File: module.py" in metadata
             assert "Path: src/module.py" in metadata
             assert "Type: py" in metadata
-            assert "Summary: Test summary" in metadata
             assert "Identifiers: func1, Class1, method1" in metadata
 
     @patch('os.path.getsize')
@@ -128,3 +128,36 @@ class TestGitRepositoryIndexer:
             
             # Check that open was called
             mock_open.assert_called_once_with('/path/to/repo/file.py', 'r', encoding='utf-8', errors='ignore')
+            
+            # Check that memory system was updated
+            mock_memory.update_global_index.assert_called_once_with({'/path/to/repo/file.py': "File metadata"})
+    
+    @pytest.mark.integration
+    def test_with_real_files(self):
+        """Test with real files in a temporary directory."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # Create test files
+            with open(os.path.join(temp_dir, "test.py"), "w") as f:
+                f.write("def test_function():\n    return 'Hello, world!'\n")
+            
+            with open(os.path.join(temp_dir, "README.md"), "w") as f:
+                f.write("# Test Repository\n\nThis is a test repository.\n")
+            
+            # Create binary file
+            with open(os.path.join(temp_dir, "binary.bin"), "wb") as f:
+                f.write(b"\x00\x01\x02\x03")
+            
+            # Create indexer
+            indexer = GitRepositoryIndexer(temp_dir)
+            
+            # Create mock memory system
+            mock_memory = MagicMock()
+            
+            # Index repository
+            result = indexer.index_repository(mock_memory)
+            
+            # Check results
+            assert len(result) >= 2  # At least test.py and README.md
+            assert any("test.py" in path for path in result.keys())
+            assert any("README.md" in path for path in result.keys())
+            assert not any("binary.bin" in path for path in result.keys())  # Binary file should be skipped

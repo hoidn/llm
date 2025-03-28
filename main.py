@@ -2,31 +2,116 @@
 import sys
 import os
 import json
+from typing import Dict, List, Optional, Any
+
+class Application:
+    """
+    Main application class that coordinates all components.
+    """
+    def __init__(self, config: Optional[Dict[str, Any]] = None):
+        """
+        Initialize application with optional configuration.
+        
+        Args:
+            config: Optional configuration dictionary
+        """
+        self.config = config or {}
+        
+        # Import components
+        from memory.memory_system import MemorySystem
+        from task_system.task_system import TaskSystem
+        from handler.passthrough_handler import PassthroughHandler
+        from task_system.templates.associative_matching import register_template
+        
+        # Initialize components
+        self.memory_system = MemorySystem()
+        self.task_system = TaskSystem()
+        
+        # Register templates
+        register_template(self.task_system)
+        
+        # Initialize handler
+        self.passthrough_handler = PassthroughHandler(
+            task_system=self.task_system,
+            memory_system=self.memory_system
+        )
+        
+        # Track indexed repositories
+        self.indexed_repositories = []
+    
+    def index_repository(self, repo_path: str) -> bool:
+        """
+        Index a git repository.
+        
+        Args:
+            repo_path: Path to git repository
+            
+        Returns:
+            True if indexing successful, False otherwise
+        """
+        try:
+            # Normalize path
+            repo_path = os.path.abspath(repo_path)
+            
+            # Check if repository exists
+            if not os.path.isdir(repo_path):
+                print(f"Repository path does not exist: {repo_path}")
+                return False
+            
+            # Check if .git directory exists
+            if not os.path.isdir(os.path.join(repo_path, ".git")):
+                print(f"Not a git repository: {repo_path}")
+                return False
+            
+            # Initialize indexer
+            from memory.indexers.git_repository_indexer import GitRepositoryIndexer
+            indexer = GitRepositoryIndexer(repo_path)
+            
+            # Configure indexer to exclude some common directories
+            indexer.exclude_patterns = ["**/__pycache__/**", "**/node_modules/**", "**/.git/**"]
+            
+            # Index repository
+            print(f"Indexing repository: {repo_path}")
+            file_metadata = indexer.index_repository(self.memory_system)
+            
+            # Track indexed repository
+            self.indexed_repositories.append(repo_path)
+            
+            print(f"Repository indexed: {repo_path} ({len(file_metadata)} files)")
+            return True
+        except Exception as e:
+            print(f"Error indexing repository: {str(e)}")
+            return False
+    
+    def handle_query(self, query: str) -> Dict[str, Any]:
+        """
+        Handle a user query.
+        
+        Args:
+            query: User query
+            
+        Returns:
+            Response dictionary
+        """
+        try:
+            return self.passthrough_handler.handle_query(query)
+        except Exception as e:
+            print(f"Error handling query: {str(e)}")
+            return {
+                "content": f"Error handling query: {str(e)}",
+                "metadata": {"error": str(e)}
+            }
+    
+    def reset_conversation(self):
+        """
+        Reset the conversation state.
+        """
+        self.passthrough_handler.reset_conversation()
 
 def main():
     """Main entry point."""
-    # Import components
-    from memory.memory_system import MemorySystem
-    from task_system.task_system import TaskSystem
-    from repl.repl import Repl
-    from memory.indexers.git_repository_indexer import GitRepositoryIndexer
-    from task_system.templates.associative_matching import register_template
-    
-    # Initialize components
-    memory_system = MemorySystem()
-    task_system = TaskSystem()
-    
-    # Register templates
-    register_template(task_system)
-    
-    # Index git repository
-    repo_path = os.path.abspath(".")  # Current directory
-    
-    print("Indexing repository...")
-    indexer = GitRepositoryIndexer(repo_path)
-    # Configure indexer to exclude some common directories
-    indexer.exclude_patterns = ["**/__pycache__/**", "**/node_modules/**", "**/.git/**"]
-    file_metadata = indexer.index_repository(memory_system)
+    # Create application
+    app = Application()
     
     # Test associative matching
     if len(sys.argv) > 1 and sys.argv[1] == "--test-matching":
@@ -35,7 +120,7 @@ def main():
         
         # Import and execute the template directly
         from task_system.templates.associative_matching import execute_template
-        matching_files = execute_template(test_query, memory_system)
+        matching_files = execute_template(test_query, app.memory_system)
         
         print(f"Found {len(matching_files)} relevant files:")
         for i, file_path in enumerate(matching_files):
@@ -45,7 +130,8 @@ def main():
     
     # Start REPL
     print("\nStarting REPL...")
-    repl = Repl(task_system, memory_system)
+    from repl.repl import Repl
+    repl = Repl(app)
     repl.start()
 
 if __name__ == "__main__":

@@ -1,9 +1,12 @@
 """Git repository indexer for Memory System."""
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Set, Tuple, Any
 import os
 import glob
+import subprocess
 from pathlib import Path
 import re
+
+from memory.indexers.text_extraction import extract_document_summary, extract_identifiers_by_language
 
 class GitRepositoryIndexer:
     """Indexes a Git repository for use with Memory System.
@@ -86,6 +89,10 @@ class GitRepositoryIndexer:
                 print(f"Error processing file {file_path}: {e}")
                 skipped_files += 1
         
+        # Update memory system with file metadata
+        if file_metadata:
+            memory_system.update_global_index(file_metadata)
+        
         print(f"Indexed {len(file_metadata)} files, skipped {skipped_files} files")
         return file_metadata
     
@@ -150,3 +157,58 @@ class GitRepositoryIndexer:
         except Exception:
             # If there's any error, assume it's not a text file
             return False
+    
+    def create_metadata(self, file_path: str, content: str) -> str:
+        """Create metadata for a file.
+        
+        Args:
+            file_path: Path to the file
+            content: File content
+            
+        Returns:
+            Metadata string
+        """
+        # Get relative path from repo root
+        rel_path = os.path.relpath(file_path, self.repo_path)
+        
+        # Get file name and extension
+        file_name = os.path.basename(file_path)
+        _, file_ext = os.path.splitext(file_name)
+        file_ext = file_ext.lstrip('.')
+        
+        # Build metadata
+        metadata = []
+        metadata.append(f"File: {file_name}")
+        metadata.append(f"Path: {rel_path}")
+        metadata.append(f"Type: {file_ext}")
+        
+        # Get file size
+        file_size = os.path.getsize(file_path)
+        metadata.append(f"Size: {file_size} bytes")
+        
+        # Extract document summary
+        summary = extract_document_summary(content, file_ext)
+        if summary:
+            metadata.append(summary)
+        
+        # Extract identifiers
+        identifiers = extract_identifiers_by_language(content, file_ext)
+        if identifiers:
+            metadata.append(f"Identifiers: {', '.join(identifiers)}")
+        
+        # Try to get git metadata
+        try:
+            # Get last commit info
+            git_info = subprocess.check_output(
+                ["git", "log", "-1", "--format=%h %an %ad", "--", file_path],
+                cwd=self.repo_path,
+                text=True
+            ).strip()
+            
+            if git_info:
+                metadata.append(f"Last commit: {git_info}")
+        except Exception:
+            # Git info is optional, continue without it
+            pass
+        
+        return "\n".join(metadata)
