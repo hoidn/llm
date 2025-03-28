@@ -1,5 +1,5 @@
 """Memory System implementation."""
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Tuple
 
 class MemorySystem:
     """Memory System for metadata management and associative matching.
@@ -26,22 +26,41 @@ class MemorySystem:
         Args:
             index: New index to set
         """
-        self.global_index = index
+        self.global_index.update(index)  # Update instead of replace
     
-    def get_relevant_context_for(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
+    def get_relevant_context_for(self, input_data: Dict[str, Any]) -> Any:
         """Get relevant context for a task.
         
         Args:
             input_data: The input data containing task context
             
         Returns:
-            Dict containing context and file matches
+            Object containing context and file matches
         """
-        # This will be implemented in Phase 1
-        return {
-            "context": "",
-            "matches": []
-        }
+        task_text = input_data.get("taskText", "")
+        
+        # Simple keyword matching for now
+        matches = []
+        for path, metadata in self.global_index.items():
+            # Check if any keywords from the query appear in the metadata
+            if any(keyword.lower() in metadata.lower() for keyword in task_text.lower().split()):
+                matches.append((path, metadata))
+        
+        # Limit to most relevant matches (top 5)
+        matches = matches[:5]
+        
+        # Create result object with matches
+        class Result:
+            def __init__(self, context, matches):
+                self.context = context
+                self.matches = matches
+        
+        if matches:
+            context = f"Found {len(matches)} relevant files for '{task_text}'."
+        else:
+            context = f"No relevant files found for '{task_text}'."
+            
+        return Result(context=context, matches=matches)
     
     def index_git_repository(self, repo_path: str, options: Optional[Dict[str, Any]] = None) -> None:
         """Index a git repository and update the global index.
