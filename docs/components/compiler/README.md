@@ -21,6 +21,48 @@ The Compiler handles AST generation and transformation for task execution. It pr
    - Handle operator dependencies
    - Provide operator documentation
 
+## Compiler Visualization
+
+### Compilation Pipeline
+The following diagram shows the compilation process:
+
+```mermaid
+flowchart LR
+    A[Natural Language] --> B[Parse]
+    B --> C[Validate]
+    C --> D[Transform]
+    D --> E[AST Generation]
+    
+    style A fill:#f9f,stroke:#333
+    style E fill:#bfb,stroke:#333
+```
+
+The Compiler translates natural language inputs into structured Abstract Syntax Trees (ASTs) that can be executed by the system.
+
+### AST Structure
+This diagram illustrates the relationship between different node types:
+
+```mermaid
+graph TD
+    AN[ASTNode] --> TN[TaskNode]
+    AN --> FCN[FunctionCallNode]
+    AN --> TPN[TemplateNode]
+    TN --> ATN[AtomicTaskNode]
+    TN --> STN[SequentialTaskNode]
+    TN --> RTN[ReduceTaskNode]
+    FCN --> ARN[ArgumentNode]
+    
+    classDef base fill:#f96,stroke:#333
+    classDef derived fill:#bbf,stroke:#333
+    classDef leaf fill:#bfb,stroke:#333
+    
+    class AN base
+    class TN,FCN,TPN derived
+    class ATN,STN,RTN,ARN leaf
+```
+
+The AST provides a structured representation of tasks that can be processed and executed by the Evaluator component.
+
 ## Key Interfaces
 
 For detailed interface specifications, see:

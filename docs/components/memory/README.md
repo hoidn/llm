@@ -26,6 +26,59 @@ The Memory System provides metadata management and associative matching services
    - Follow read-only context model
    - Delegate file operations to Handler tools
 
+## Memory System Visualization
+
+### Context Retrieval Flow
+The following diagram shows how context flows through the system:
+
+```mermaid
+sequenceDiagram
+    participant TS as Task System
+    participant MS as Memory System
+    participant HD as Handler
+    
+    TS->>MS: getRelevantContextFor(input)
+    Note right of MS: Performs associative matching<br>on metadata only
+    MS-->>TS: Return context & file matches
+    TS->>HD: Use file paths with tools
+    HD-->>TS: Return file contents
+```
+
+The Memory System provides context and file metadata but never performs file I/O operations - those are handled exclusively by the Handler tools.
+
+### Component Boundaries
+This diagram illustrates the clear separation of responsibilities:
+
+```mermaid
+graph TD
+    subgraph Memory System
+        MI[Metadata Index]
+        AM[Associative Matching]
+        CI[Context Integration]
+    end
+    
+    subgraph Handler
+        FO[File Operations]
+        TR[Tool Registry]
+        RM[Resource Monitoring]
+    end
+    
+    MI --> AM
+    AM --> CI
+    CI --> TS[Task System]
+    TS --> FO
+    
+    classDef memorySystem fill:#bbf,stroke:#333
+    classDef handler fill:#fbb,stroke:#333
+    classDef taskSystem fill:#bfb,stroke:#333
+    
+    class MI,AM,CI memorySystem
+    class FO,TR,RM handler
+    class TS taskSystem
+```
+
+This visualization emphasizes that the Memory System (v3.0) follows a read-only context model, managing only metadata while delegating all file operations to the Handler.
+
 ## Key Interfaces
 
 For detailed interface specifications, see:

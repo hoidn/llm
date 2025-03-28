@@ -21,6 +21,59 @@ The Evaluator is the unified task-execution component of the system. It orchestr
    - Manage context inheritance between tasks
    - Handle explicit file inclusion
 
+## Evaluator Visualization
+
+### Template Substitution Process
+The following diagram illustrates how variable substitution works:
+
+```mermaid
+flowchart TD
+    A[Task with Variables] --> B{Template Type?}
+    B -->|Function Template| C[Create Isolated Environment]
+    B -->|Standard Template| D[Use Full Environment]
+    C --> E[Resolve Declared Parameters Only]
+    D --> F[Resolve All Variables in Environment]
+    E & F --> G[Execute with Resolved Content]
+    G --> H[Handler]
+    
+    classDef decision fill:#f9f,stroke:#333
+    classDef process fill:#bbf,stroke:#333
+    classDef external fill:#bfb,stroke:#333
+    
+    class B decision
+    class C,D,E,F,G process
+    class H external
+```
+
+The Evaluator is solely responsible for all template variable substitution, resolving all `{{variable_name}}` placeholders before passing tasks to the Handler.
+
+### Lexical Environment Hierarchy
+The environment model for variable scoping:
+
+```mermaid
+graph TD
+    GE[Global Environment]
+    FE1[Function Environment 1]
+    FE2[Function Environment 2]
+    LE1[Local Environment 1]
+    LE2[Local Environment 2]
+    
+    GE --> FE1
+    GE --> FE2
+    FE1 --> LE1
+    FE2 --> LE2
+    
+    classDef global fill:#f96,stroke:#333
+    classDef function fill:#bbf,stroke:#333
+    classDef local fill:#bfb,stroke:#333
+    
+    class GE global
+    class FE1,FE2 function
+    class LE1,LE2 local
+```
+
+This hierarchical structure ensures proper variable scoping, with function templates having explicit parameters and isolated environments to prevent unintended variable access.
+
 ## Key Interfaces
 
 For detailed interface specifications, see:

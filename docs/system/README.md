@@ -10,6 +10,42 @@ This system implements a modular architecture for AI-assisted task execution wit
 - **Evaluator**: Evaluates task results and provides feedback
 - **Compiler**: Handles AST generation and transformation
 
+## System Architecture Visualization
+
+### Component Relationship Diagram
+The following diagram illustrates the high-level architecture and interaction between the key components:
+
+```mermaid
+graph TD
+    User((User)) --> TaskSystem
+    TaskSystem --> Evaluator
+    TaskSystem --> Memory
+    TaskSystem --> Handler
+    TaskSystem --> Compiler
+    Evaluator --> Handler
+    Memory <--> TaskSystem
+    Compiler --> TaskSystem
+    
+    classDef primary fill:#f96,stroke:#333,stroke-width:2px;
+    classDef component fill:#bbf,stroke:#333,stroke-width:1px;
+    class TaskSystem primary;
+    class Evaluator,Memory,Handler,Compiler component;
+```
+
+This visualization shows how the Task System acts as the central orchestrator, coordinating between the other components: the Evaluator for template processing, the Memory System for context management, the Handler for LLM interactions, and the Compiler for task parsing.
+
+### Component Responsibility Matrix
+
+| Component   | Primary Responsibility        | Resource Ownership          | Key Integration Points       |
+|-------------|------------------------------|----------------------------|------------------------------|
+| Task System | Task orchestration           | Template management        | All other components         |
+| Evaluator   | Template variable resolution | Variable scoping           | Handler, Memory System       |
+| Memory      | Context and metadata         | Global index               | Task System                  |
+| Handler     | LLM interaction              | Turns, context window      | Evaluator                    |
+| Compiler    | Natural language to XML      | AST generation             | Task System                  |
+
+Each component has distinct responsibilities and ownership boundaries, ensuring clean separation of concerns while enabling effective coordination through well-defined interfaces.
+
 ## Documentation Map
 
 ### Authoritative Sources

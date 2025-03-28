@@ -21,6 +21,50 @@ The Task System orchestrates LLM task execution through structured XML templates
    - Manage subtask spawning and nesting
    - Handle context management across tasks
 
+## Process Visualization
+
+### Task Execution Workflow
+The following diagram illustrates the typical task execution flow:
+
+```mermaid
+flowchart LR
+    A[Task Request] --> B[Template Selection]
+    B --> C[Resource Allocation]
+    C --> D[Context Resolution]
+    D --> E[Handler Creation]
+    E --> F[Task Execution]
+    F --> G[Result Processing]
+    
+    style A fill:#f9f,stroke:#333
+    style F fill:#bbf,stroke:#333
+    style G fill:#bfb,stroke:#333
+```
+
+The Task System manages the complete lifecycle from initial request through template selection, resource allocation, and execution via the Handler.
+
+### Component Integration
+The Task System interacts with other components during execution:
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant TS as Task System
+    participant MS as Memory System
+    participant EV as Evaluator
+    participant HD as Handler
+    
+    User->>TS: Execute Task
+    TS->>MS: Get Relevant Context
+    MS-->>TS: Return Context
+    TS->>EV: Process Template
+    EV->>HD: Execute with LLM
+    HD-->>EV: Return Result
+    EV-->>TS: Return Processed Result
+    TS-->>User: Return Task Result
+```
+
+This sequence shows how the Task System coordinates between components to fulfill execution requests while maintaining clear responsibility boundaries.
+
 ## Key Interfaces
 
 For detailed interface specifications, see:
