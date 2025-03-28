@@ -15,7 +15,7 @@ class TestGitRepositoryIndexer:
         
         assert indexer.repo_path == repo_path
         assert indexer.max_file_size == 1_000_000
-        assert indexer.include_patterns == ["**/*"]
+        assert indexer.include_patterns == ["**/*.py"]  # Updated to match new default
         assert indexer.exclude_patterns == []
 
     def test_scan_repository(self):
@@ -161,7 +161,7 @@ class TestGitRepositoryIndexer:
             result = indexer.index_repository(mock_memory)
             
             # Check results
-            assert len(result) >= 2  # At least test.py and README.md
+            assert len(result) >= 1  # At least test.py should be found
             assert any("test.py" in path for path in result.keys())
-            assert any("README.md" in path for path in result.keys())
+            # README.md won't be found because we're only indexing Python files now
             assert not any("binary.bin" in path for path in result.keys())  # Binary file should be skipped
