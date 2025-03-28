@@ -10,15 +10,17 @@ class Repl:
     interact with the system in passthrough or standard mode.
     """
     
-    def __init__(self, application):
+    def __init__(self, application, output_stream=None):
         """Initialize the REPL interface.
         
         Args:
             application: The Application instance
+            output_stream: Optional output stream (defaults to sys.stdout)
         """
         self.application = application
         self.mode = "passthrough"  # Default mode
         self.verbose = False  # Verbose mode off by default
+        self.output = output_stream or sys.stdout
         self.commands = {
             "/help": self._cmd_help,
             "/mode": self._cmd_mode,
@@ -34,15 +36,15 @@ class Repl:
         Begins the interactive session, accepting user input and
         providing system responses.
         """
-        print(f"REPL started in {self.mode} mode")
-        print("Type your queries or commands (/help for help)")
+        print(f"REPL started in {self.mode} mode", file=self.output)
+        print("Type your queries or commands (/help for help)", file=self.output)
         
         while True:
             try:
                 user_input = input(f"({self.mode}) > ")
                 self._process_input(user_input)
             except (KeyboardInterrupt, EOFError):
-                print("\nExiting...")
+                print("\nExiting...", file=self.output)
                 break
     
     def _process_input(self, user_input: str) -> None:
@@ -78,8 +80,8 @@ class Repl:
         if cmd in self.commands:
             self.commands[cmd](args)
         else:
-            print(f"Unknown command: {cmd}")
-            print("Type /help for available commands")
+            print(f"Unknown command: {cmd}", file=self.output)
+            print("Type /help for available commands", file=self.output)
     
     def _handle_query(self, query: str) -> None:
         """Handle a query input.
@@ -89,27 +91,27 @@ class Repl:
         """
         # Check if any repositories are indexed
         if not self.application.indexed_repositories:
-            print("No repositories indexed. Please index a repository first.")
-            print("Usage: /index REPO_PATH")
+            print("No repositories indexed. Please index a repository first.", file=self.output)
+            print("Usage: /index REPO_PATH", file=self.output)
             return
         
         if self.mode == "passthrough":
             result = self.application.handle_query(query)
-            print("\nResponse:")
-            print(result.get("content", "No response"))
+            print("\nResponse:", file=self.output)
+            print(result.get("content", "No response"), file=self.output)
             
             # Display metadata if verbose mode is on
             if self.verbose and "metadata" in result:
-                print("\nMetadata:")
+                print("\nMetadata:", file=self.output)
                 for key, value in result["metadata"].items():
                     if isinstance(value, list) and len(value) > 0:
-                        print(f"  {key}:")
+                        print(f"  {key}:", file=self.output)
                         for item in value:
-                            print(f"    - {item}")
+                            print(f"    - {item}", file=self.output)
                     else:
-                        print(f"  {key}: {value}")
+                        print(f"  {key}: {value}", file=self.output)
         else:
-            print("Standard mode not implemented yet")
+            print("Standard mode not implemented yet", file=self.output)
     
     def _cmd_help(self, args: str) -> None:
         """Handle the help command.
@@ -117,13 +119,13 @@ class Repl:
         Args:
             args: Command arguments
         """
-        print("Available commands:")
-        print("  /help - Show this help")
-        print("  /mode [passthrough|standard] - Set or show current mode")
-        print("  /index REPO_PATH - Index a git repository")
-        print("  /reset - Reset conversation state")
-        print("  /verbose [on|off] - Toggle verbose mode")
-        print("  /exit - Exit the REPL")
+        print("Available commands:", file=self.output)
+        print("  /help - Show this help", file=self.output)
+        print("  /mode [passthrough|standard] - Set or show current mode", file=self.output)
+        print("  /index REPO_PATH - Index a git repository", file=self.output)
+        print("  /reset - Reset conversation state", file=self.output)
+        print("  /verbose [on|off] - Toggle verbose mode", file=self.output)
+        print("  /exit - Exit the REPL", file=self.output)
     
     def _cmd_mode(self, args: str) -> None:
         """Handle the mode command.
@@ -134,12 +136,12 @@ class Repl:
         if args:
             if args in ["passthrough", "standard"]:
                 self.mode = args
-                print(f"Mode set to: {self.mode}")
+                print(f"Mode set to: {self.mode}", file=self.output)
             else:
-                print(f"Invalid mode: {args}")
-                print("Available modes: passthrough, standard")
+                print(f"Invalid mode: {args}", file=self.output)
+                print("Available modes: passthrough, standard", file=self.output)
         else:
-            print(f"Current mode: {self.mode}")
+            print(f"Current mode: {self.mode}", file=self.output)
     
     def _cmd_reset(self, args: str) -> None:
         """Handle the reset command.
@@ -148,7 +150,7 @@ class Repl:
             args: Command arguments
         """
         self.application.reset_conversation()
-        print("Conversation reset")
+        print("Conversation reset", file=self.output)
     
     def _cmd_verbose(self, args: str) -> None:
         """Handle the verbose command.
@@ -164,11 +166,11 @@ class Repl:
         elif args.lower() in ["off", "false", "no", "0"]:
             self.verbose = False
         else:
-            print(f"Invalid option: {args}")
-            print("Usage: /verbose [on|off]")
+            print(f"Invalid option: {args}", file=self.output)
+            print("Usage: /verbose [on|off]", file=self.output)
             return
         
-        print(f"Verbose mode: {'on' if self.verbose else 'off'}")
+        print(f"Verbose mode: {'on' if self.verbose else 'off'}", file=self.output)
     
     def _cmd_index(self, args: str) -> None:
         """Handle the index command.
@@ -177,8 +179,8 @@ class Repl:
             args: Command arguments
         """
         if not args:
-            print("Error: Repository path required")
-            print("Usage: /index REPO_PATH")
+            print("Error: Repository path required", file=self.output)
+            print("Usage: /index REPO_PATH", file=self.output)
             return
         
         # Expand user directory if needed
@@ -188,7 +190,7 @@ class Repl:
         success = self.application.index_repository(repo_path)
         
         if not success:
-            print(f"Failed to index repository: {repo_path}")
+            print(f"Failed to index repository: {repo_path}", file=self.output)
     
     def _cmd_exit(self, args: str) -> None:
         """Handle the exit command.
@@ -196,5 +198,5 @@ class Repl:
         Args:
             args: Command arguments
         """
-        print("Exiting...")
+        print("Exiting...", file=self.output)
         sys.exit(0)

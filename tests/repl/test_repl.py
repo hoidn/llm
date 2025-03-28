@@ -17,9 +17,9 @@ def mock_application():
     return app
 
 @pytest.fixture
-def repl_instance(mock_application):
+def repl_instance(mock_application, capture_stdout):
     """Fixture for REPL instance with mock application."""
-    return Repl(application=mock_application)
+    return Repl(application=mock_application, output_stream=capture_stdout)
 
 @pytest.fixture
 def capture_stdout():
