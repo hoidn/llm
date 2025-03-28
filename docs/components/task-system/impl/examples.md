@@ -2,7 +2,7 @@
 
 > **Important Note:** The examples in this document demonstrate that templates and function-based templates can define any task type (atomic, sequential, reduce, etc.). While all task types can be defined as templates, only atomic task templates participate in the template matching process used for task selection based on natural language descriptions. This distinction is important for understanding how tasks, templates, and functions interact in the system.
 
-> **Note:** For a detailed description of the Director‑Evaluator pattern, refer to [system/architecture/patterns/director-evaluator.md](../system/architecture/patterns/director-evaluator.md).
+> **Note:** For a detailed description of the Director‑Evaluator pattern, refer to [system/architecture/patterns/director-evaluator.md](./docs/system/architecture/patterns/director-evaluator.md).
 
 ## Basic Task Execution
 ```typescript
