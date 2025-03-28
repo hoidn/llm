@@ -68,8 +68,18 @@ class MemorySystem:
                 indexer.max_file_size = options["max_file_size"]
         
         # Index repository
-        index_data = indexer.index_repository(self)
+        file_metadata = indexer.index_repository(self)
         
-        # Update global index if index_data is not None
-        if index_data:
-            self.update_global_index(index_data)
+        # Update global index
+        if hasattr(self, 'global_index'):
+            # If the memory system already has a global index, update it
+            self.global_index.update(file_metadata)
+        else:
+            # Otherwise, create a new global index
+            self.global_index = file_metadata
+        
+        # Ensure the update_global_index method is called if it exists
+        if hasattr(self, 'update_global_index'):
+            self.update_global_index(file_metadata)
+        
+        print(f"Updated global index with {len(file_metadata)} files from repository")
