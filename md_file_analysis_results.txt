@@ -1,0 +1,20 @@
+Markdown File Analysis Results
+Directory: claude/docs
+All files in current directory (including untracked):    14477   59161  501511
+Untracked markdown files:
+IDL.md
+process.md
+system/architecture/decisions/15-notes.md
+===============================
+
+Commit: 1494ce1 - I'll generate a concise commit message for these changes: (2025-03-22 04:09:30 -0700)
+
+Commit: 64901de - docs: Remove duplicated Evaluator concept explanations and standardize references (2025-03-22 04:04:57 -0700)
+
+Commit: 605983e - fix: Update Evaluator README with new documentation structure (2025-03-22 04:01:30 -0700)
+
+Commit: 5ed076e - I'll generate a commit message for these changes: (2025-03-22 04:00:50 -0700)
+
+Commit: 4cfe80e - feat: Standardize Handler component documentation structure (2025-03-22 03:46:05 -0700)
+
+Commit: 7424194 - add update rules (2025-03-22 00:41:29 -0700)

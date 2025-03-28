@@ -1,0 +1,70 @@
+diff --git a/components/task-system/impl/design.md b/components/task-system/impl/design.md
+index 3f9e2b1..a73d4c2 100644
+--- a/components/task-system/impl/design.md
++++ b/components/task-system/impl/design.md
+@@
+-# Implementation Design
++# Implementation Design
++
++## Terminology and References
++
++ - **Handler** and **Evaluator** definitions are standardized in [spec/types.md](../spec/types.md).
++ - XML schema definitions are available in [system/contracts/protocols.md](../system/contracts/protocols.md).
++ - For detailed resource tracking implementation (including turn counter and context window monitoring), see [resource-management.md](./resource-management.md).
++ - For XML processing details (parsing, validation, and fallback behavior), refer to [xml-processing.md](./xml-processing.md).
++
+@@ Resource Management Section (example context)
+-### Resource Management
+-Detailed code examples:
+-
+-```typescript
+-// Using canonical ResourceMetrics definition...
+-class TurnCounter {
+-  private metrics: ResourceMetrics['turns'];
+-  
+-  increment(): void {
+-    if (this.metrics.used >= this.metrics.limit) {
+-      throw new ResourceExhaustionError('turns');
+-    }
+-    this.metrics.used++;
+-    this.metrics.lastTurnAt = new Date();
+-  }
+-}
+-```
+-
+-Additional low-level discussion on context window management...
+-
+-// More detailed implementation text...
++### Resource Management
++
++The Task System enforces resource limits via a per‑Handler turn counter and context window monitoring. For the complete low‑level implementation (including code examples and configuration details), please refer to [resource-management.md](./resource-management.md).
+@@ XML Processing Discussion Section
+-... [extended discussion of XML parsing and validation steps] ...
++... For XML processing implementation details (including parsing, validation, and fallback behavior), please refer to [xml-processing.md](./xml-processing.md).
+diff --git a/components/task-system/impl/xml-processing.md b/components/task-system/impl/xml-processing.md
+index b7d8e3a..6e2f5c4 100644
+--- a/components/task-system/impl/xml-processing.md
++++ b/components/task-system/impl/xml-processing.md
+@@
++> **Overview and References:** This document focuses on the Task System’s XML processing implementation. For the complete XML schema definition and template guidelines, please refer to [system/contracts/protocols.md](../system/contracts/protocols.md).
++
+@@
+-... [duplicate explanations of template requirements] ...
++// [Redundant template requirement details removed; please refer to system/contracts/protocols.md for complete definitions.]
+diff --git a/components/task-system/impl/resource-management.md b/components/task-system/impl/resource-management.md
+index 6f2d8e9..af4c3b7 100644
+--- a/components/task-system/impl/resource-management.md
++++ b/components/task-system/impl/resource-management.md
+@@
+-// (The file’s content remains focused on implementation details.)
++// (The file’s content remains focused on implementation details.)
+@@ at end of file
++
++> **Further Reading:** For an architectural overview of resource management principles, see [system/architecture/patterns/resource-management.md](../system/architecture/patterns/resource-management.md).
+diff --git a/components/task-system/impl/examples.md b/components/task-system/impl/examples.md
+index 5e3b2d4..c0a8f7e 100644
+--- a/components/task-system/impl/examples.md
++++ b/components/task-system/impl/examples.md
+@@
++> **Note:** For a detailed description of the Director‑Evaluator pattern, refer to [system/architecture/patterns/director-evaluator.md](../system/architecture/patterns/director-evaluator.md).
++
