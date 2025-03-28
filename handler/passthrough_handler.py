@@ -46,7 +46,12 @@ class PassthroughHandler:
             Task result from the subtask
         """
         # This will be implemented in Phase 2
-        pass
+        # Return a placeholder response for now
+        self.active_subtask_id = "temp-subtask-id"
+        return {
+            "status": "success",
+            "content": f"[Placeholder] New subtask created for: {query}"
+        }
     
     def _continue_subtask(self, query: str) -> Dict[str, Any]:
         """Continue an existing subtask with a follow-up query.
@@ -58,4 +63,8 @@ class PassthroughHandler:
             Task result from the continued subtask
         """
         # This will be implemented in Phase 2
-        pass
+        # Return a placeholder response for now
+        return {
+            "status": "success",
+            "content": f"[Placeholder] Continuing subtask with: {query}"
+        }

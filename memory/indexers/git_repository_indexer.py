@@ -35,7 +35,8 @@ class GitRepositoryIndexer:
             Dict mapping file paths to their metadata
         """
         # This will be implemented in Phase 1
-        pass
+        # Return an empty dict for now
+        return {}
     
     def scan_repository(self) -> List[str]:
         """Scan the repository for files matching patterns.

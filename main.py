@@ -21,6 +21,7 @@ def main():
     # Index git repository
     repo_path = os.path.abspath(".")  # Current directory
     indexer = GitRepositoryIndexer(repo_path)
+    # Note: index_repository will update the memory_system directly
     indexer.index_repository(memory_system)
     
     # Start REPL
