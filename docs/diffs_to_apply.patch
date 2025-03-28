@@ -1,0 +1,194 @@
+diff --git a/misc/errorspec.md b/misc/errorspec.md
+index 1a2b3c4..2b3c4d5 100644
+--- a/misc/errorspec.md
+@@ Missing Argument Handling
+-When a task attempts to resolve an input and no binding is found in the entire environment frame chain, the evaluator returns a standard `TASK_FAILURE` error. The error message will indicate which required argument is missing.
++When a task attempts to resolve an input, the evaluator first performs template substitution on any placeholders in the form `{{variable_name}}` within the task definition—using values from its current lexical environment. Additionally, if an `<input>` element specifies a `from` attribute, the evaluator binds that input using the value associated with that environment variable. If a required binding is missing, the evaluator returns a standard `TASK_FAILURE` error with a message such as “Missing required input: variable_name.”
+diff --git a/misc/operators.md b/misc/operators.md
+index 3c4d5e6..4d5e6f7 100644
+--- a/misc/operators.md
+@@ ### Sequential Operator Example:
+-```xml
+-<task type="sequential">
+-    <description>Overall sequence description</description>
+-    <context_management>
+-        <inherit_context>none</inherit_context>
+-        <accumulate_data>true</accumulate_data>
+-        <accumulation_format>notes_only</accumulation_format>
+-    </context_management>
+-    <steps>
+-        <task>
+-            <description>First step task</description>
+-            <inputs>
+-                <input name="data">
+-                    <task>
+-                        <description>Load initial data</description>
+-                    </task>
+-                </input>
+-            </inputs>
+-        </task>
+-        <task>
+-            <description>Second step task</description>
+-            <inputs>
+-                <input name="config">
+-                    <task>
+-                        <description>Load configuration</description>
+-                    </task>
+-                </input>
+-            </inputs>
+-        </task>
+-    </steps>
+-</task>
+-```
++```xml
++<task type="sequential">
++    <description>Analyze {{dataset_name}} using provided configuration</description>
++    <context_management>
++        <inherit_context>none</inherit_context>
++        <accumulate_data>true</accumulate_data>
++        <accumulation_format>notes_only</accumulation_format>
++    </context_management>
++    <steps>
++        <task>
++            <description>Load initial data</description>
++            <inputs>
++                <input name="data" from="raw_data"/>
++            </inputs>
++        </task>
++        <task>
++            <description>Apply configuration from {{config_profile}}</description>
++            <inputs>
++                <input name="config" from="default_config"/>
++            </inputs>
++        </task>
++    </steps>
++</task>
++```
+diff --git a/system/contracts/protocols.md b/system/contracts/protocols.md
+index 5d6e7f8..6e7f8a9 100644
+--- a/system/contracts/protocols.md
+@@ XML Schema Definition
+-<xs:element name="input" maxOccurs="unbounded">
+-  <xs:complexType>
+-    <xs:simpleContent>
+-      <xs:extension base="xs:string">
+-        <xs:attribute name="name" type="xs:string" use="required"/>
+-      </xs:extension>
+-    </xs:simpleContent>
+-  </xs:complexType>
+-</xs:element>
++<xs:element name="input" maxOccurs="unbounded">
++  <xs:complexType>
++    <xs:simpleContent>
++      <xs:extension base="xs:string">
++        <xs:attribute name="name" type="xs:string" use="required"/>
++        <xs:attribute name="from" type="xs:string" use="optional"/>
++      </xs:extension>
++    </xs:simpleContent>
++  </xs:complexType>
++</xs:element>
+@@
+-<!-- The task template schema defines the structure for task template XML files and maps to the TaskTemplate interface: -->
++<!-- The task template schema defines the structure for task template XML files and maps to the TaskTemplate interface.
++Task inputs can be provided either as direct text content or via a reference using the optional "from" attribute.
++Additionally, any occurrence of {{variable_name}} within text nodes is replaced by the corresponding value from the evaluator's environment. -->
+diff --git a/docstructure.md b/docstructure.md
+index 7e8f9a0..8f9a0b1 100644
+--- a/docstructure.md
+@@ ## Documentation Principles
+-Required:
+-1. Single Responsibility
+-   - Each document covers one concern
+-   - Clear boundaries between concerns
+-   - Explicit dependencies
+-...
++Required:
++1. Single Responsibility
++   - Each document covers one concern
++   - Clear boundaries between concerns
++   - Explicit dependencies
++2. Template Consistency
++   - All new task templates must use the unified template substitution mechanism.
++   - Evaluator’s lexically scoped variables are referenced using the `{{variable_name}}` syntax.
++   - Input bindings can be explicitly declared using the optional `from` attribute on `<input>` elements.
++...
+diff --git a/plans/atomic_task_subtypes.md b/plans/atomic_task_subtypes.md
+index 9a0b1c2..a0b1c2d 100644
+--- a/plans/atomic_task_subtypes.md
+@@ XML Implementation Strategy
+-<!-- As atomic subtypes -->
+-<task type="atomic" subtype="director">
+-    <continuation_policy>latest-only</continuation_policy>
+-    <output_slot>last_eval_input</output_slot>
+-</task>
+-
+-<task type="atomic" subtype="evaluator">
+-    <input_source>last_eval_input</input_source>
+-    <validation_rules>strict</validation_rules>
+-</task>
++<!-- As atomic subtypes -->
++<task type="atomic" subtype="director">
++    <continuation_policy>latest-only</continuation_policy>
++    <output_slot>last_eval_input</output_slot>
++</task>
++
++<task type="atomic" subtype="evaluator">
++    <input_source>last_eval_input</input_source>
++    <validation_rules>strict</validation_rules>
++</task>
+diff --git a/plans/atomic_task_subtypes.md b/plans/atomic_task_subtypes.md
+index a0b1c2d..b1c2d3e 100644
+--- a/plans/atomic_task_subtypes.md
++++ b/plans/atomic_task_subtypes.md
+@@ XML Implementation Strategy (continued)
+- 
+-<!-- Example using explicit subtask input binding -->
+-<task type="atomic">
+-    <description>Process task input</description>
+-    <inputs>
+-        <!-- Old style: nested task generating the value -->
+-        <input name="data">
+-            <task>
+-                <description>Generate data</description>
+-            </task>
+-        </input>
+-    </inputs>
+-</task>
++<!-- Example using template substitution for input binding -->
++<task type="atomic">
++    <description>Process {{input_data}} with parameters from {{config}}</description>
++    <inputs>
++        <input name="data" from="input_data"/>
++        <input name="settings" from="config"/>
++    </inputs>
++</task>
+diff --git a/system/README.md b/system/README.md
+index d3e4f5a..e4f5a6b 100644
+--- a/system/README.md
+@@ Overview
+-### Core Purpose and Goals
++### Core Purpose and Goals
++The system automates task decomposition and execution. Notably, task inputs are now resolved via a template substitution mechanism that uses the `{{...}}` syntax to bridge the Evaluator’s lexically scoped variables with task XML definitions. Inputs can also be explicitly bound using the optional `from` attribute.
+diff --git a/system/architecture/overview.md b/system/architecture/overview.md
+index f5a6b7c..a6b7c8d 100644
+--- a/system/architecture/overview.md
+@@ Core Patterns
+-The system now follows a unified context management model.
++The system now follows a unified context management model. In addition, task input values are dynamically substituted using the `{{...}}` syntax, allowing the Evaluator to inject lexically scoped variables into task descriptions and input declarations. This explicit binding mechanism (augmented by the optional `from` attribute) improves clarity and flexibility in task execution.
+diff --git a/components/task-system/impl/examples.md b/components/task-system/impl/examples.md
+index 1234567..2345678 100644
+--- a/components/task-system/impl/examples.md
+@@ Sequential Task with Data Accumulation Example:
+-                <input name="data_file">
+-                    <task>
+-                        <description>Read input CSV file</description>
+-                    </task>
+-                </input>
++                <input name="data_file" from="csv_file_path"/>
+@@ Static Director-Evaluator with Script Execution Example:
+-                <input name="director_output">
+-                    <task>
+-                        <description>Pass director output to script</description>
+-                    </task>
+-                </input>
++                <input name="director_output" from="last_director_output"/>

@@ -1,0 +1,17 @@
+Loose ends:
+- need to specify how bash commands will be called in between the director and evaluation steps of the director-evaluator pattern.
+- output of the evaluation bash script needs to go to evaluator
+- let llm design more speculatively. then feedback in the form of correctinng arch decisions i don't like.
+- have reasoning model address list of underspecified parts, let it take initiative on decisions and then feed back on that
+- try the goat workflow
+- distill the director-evaluator .py into an arch component. check how it manages context over multiple  turns
+- might want to remove the stuff about anthropic computer use, since we're taking a more model agnostic approach instead
+- clarify when director-evaluator involves running bash and when not, and how to handle the not case
+
+- How does the evaluator output go back to the director? (when the director is running in continuation mode)
+- need to impl function calling in the DSL.
+- need 'define' or 'let'
+- do we want to add 'cond' as a primitive? in that case we need a bridge between task outputs and python types. Look into imposing json formatting for task outputs.
+- what data structure should we use to represent the task library in-memory? should that be part of the Evaluator Environment, or should it be separate?
+- how will tasks be loaded from file? will they be in-lined in the AST or bound to references? former might be simpler for mvp, but eventually both tasks and composite procedures should be abstracted as first-class functions
+
