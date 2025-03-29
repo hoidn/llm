@@ -80,8 +80,8 @@ def execute_template(query: str, memory_system) -> List[str]:
     # Score files
     scored_files = score_files(file_metadata, query_terms)
     
-    # Get top 10 most relevant files
-    top_files = [path for path, score in scored_files[:10]]
+    # Get all relevant files with non-zero scores
+    top_files = [path for path, score in scored_files]
     
     return top_files
 

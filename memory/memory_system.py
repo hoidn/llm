@@ -46,8 +46,8 @@ class MemorySystem:
             if any(keyword.lower() in metadata.lower() for keyword in task_text.lower().split()):
                 matches.append((path, metadata))
         
-        # Limit to most relevant matches (top 5)
-        matches = matches[:5]
+        # No limit on number of matches
+        # matches = matches[:5]  # Previous limit of 5 files
         
         # Create result object with matches
         class Result:
