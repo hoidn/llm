@@ -237,6 +237,93 @@ class Handler implements IHandler {
 
 This standardized approach allows LLMs to consistently request user input across different providers while maintaining proper conversation tracking and resource management.
 
+## Aider Integration
+
+The system provides specialized integration with Aider (AI pair programming tool) through two distinct modes that follow the unified tool interface pattern:
+
+### Interactive Mode
+
+Interactive mode follows the Direct Tool pattern, providing a PassthroughHandler-like experience:
+
+```typescript
+/**
+ * Interface for Aider Interactive mode integration
+ * [Interface:AiderInteractive:1.0]
+ */
+interface AiderInteractiveHandler {
+    /**
+     * Start an interactive Aider session with context
+     * 
+     * @param query - Initial query to provide context
+     * @param fileContext - Optional explicit file paths to include
+     * @returns Promise resolving to session result summary
+     */
+    startInteractiveSession(query: string, fileContext?: string[]): Promise<SessionResult>;
+    
+    /**
+     * Terminate an active Aider session
+     * 
+     * @returns Promise resolving when session is terminated
+     */
+    terminateSession(): Promise<void>;
+}
+```
+
+In interactive mode:
+- The system uses associative matching to identify relevant files
+- Terminal control transfers to Aider's REPL
+- The user interacts directly with Aider
+- Context is maintained across the session
+- Control returns to the system when the session ends
+
+### Automatic Mode
+
+Automatic mode follows the Subtask Tool pattern, using the CONTINUATION mechanism:
+
+```typescript
+/**
+ * Interface for Aider Automatic mode integration
+ * [Interface:AiderAutomatic:1.0]
+ */
+interface AiderAutomaticHandler {
+    /**
+     * Execute a single Aider task with auto-confirmation
+     * 
+     * @param prompt - The instruction for code changes
+     * @param fileContext - Optional explicit file paths to include
+     * @returns Promise resolving to TaskResult
+     */
+    executeTask(prompt: string, fileContext?: string[]): Promise<TaskResult>;
+}
+```
+
+In automatic mode:
+- The system uses associative matching to identify relevant files
+- Aider executes non-interactively with auto-confirmation
+- Results are formatted as a standard TaskResult
+- The operation completes in a single step
+
+### Aider Tool Registration
+
+Aider tools are registered with the Handler using the standard tool registration methods:
+
+```typescript
+// Register interactive mode as a Direct Tool
+handler.registerDirectTool("aiderInteractive", 
+  (query: string, fileContext?: string[]) => {
+    return aiderBridge.startInteractiveSession(query, fileContext);
+  });
+
+// Register automatic mode as a Subtask Tool
+handler.registerSubtaskTool("aiderAutomatic", 
+  ["code_editing", "programming"]);
+```
+
+The registration process follows the same pattern as other tools in the system:
+- Direct tools are executed synchronously by the Handler
+- Subtask tools return CONTINUATION status with a subtask_request
+- Tool names should be descriptive and follow camelCase convention
+
 ## Implementation Guidance
 
 1. Register direct tools during Handler initialization

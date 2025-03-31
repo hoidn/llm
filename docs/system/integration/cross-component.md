@@ -1,6 +1,102 @@
 # Cross-Component Integration
     
 This document describes how system components interact with each other.
+
+## External Tool Integration
+
+### Aider Integration
+
+The system integrates with Aider (AI pair programming tool) through a bridge component:
+
+```mermaid
+flowchart TD
+    TS[Task System] --> MM[Memory System]
+    TS --> AID[AiderBridge]
+    MM --> |"Context"| AID
+    AID --> |"Results"| TS
+```
+
+#### Integration Points
+
+- **Memory System ↔ Aider**
+  - Memory System provides relevant file context
+  - Associative matching identifies important files
+  - File paths are passed explicitly to Aider
+
+- **Task System ↔ Aider**
+  - Task System delegates appropriate tasks to Aider
+  - Results flow back as standard TaskResult objects
+
+- **Handler ↔ Aider**
+  - Interactive mode uses PassthroughHandler-like functionality
+  - Terminal control transfers for interactive sessions
+  - Tool registration for both modes
+
+#### TaskResult Formatting
+
+Results from Aider follow the standard TaskResult structure:
+
+```typescript
+// Interactive mode result
+{
+  content: "Interactive Aider session completed",
+  status: "COMPLETE",
+  notes: {
+    files_modified: ["file1.py", "file2.py"],
+    session_summary: "Summary of changes made"
+  }
+}
+
+// Automatic mode result
+{
+  content: "Code changes applied successfully",
+  status: "COMPLETE",
+  notes: {
+    files_modified: ["file1.py"],
+    changes: [
+      {
+        file: "file1.py",
+        description: "Added new function"
+      }
+    ]
+  }
+}
+```
+
+### Component Placement
+
+The AiderBridge component fits within the existing architecture as follows:
+
+```
+handler/
+  ├── __init__.py
+  ├── handler.py
+  ├── passthrough_handler.py
+  └── aider_bridge.py  # Aider integration component
+```
+
+The AiderBridge component:
+- Acts as a bridge between the Handler and Aider
+- Depends on the Memory System for context retrieval
+- Is referenced by Handler for tool execution
+- Follows the same dependency injection pattern as other components
+
+### Testing Strategy
+
+Testing for the Aider integration follows the project's standard patterns:
+
+```
+tests/
+  └── handler/
+      └── test_aider_bridge.py  # Tests for AiderBridge component
+```
+
+Testing considerations:
+- Mock Aider's functionality for unit tests
+- Test the bridge component in isolation from actual Aider
+- Verify correct context flow between components
+- Test both interactive and automatic modes
+- Include integration tests for the complete flow
     
 ## Task System ↔ Evaluator
     

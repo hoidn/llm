@@ -221,6 +221,73 @@ This `EnvironmentFrame` is created at the start of each task execution (using th
 - Clear task isolation boundaries
 - Minimal required context principle
 
+## External Tool Context Integration
+
+### Context Flow with External Tools
+
+When integrating with external tools like Aider, context flows according to these principles:
+
+1. **Context Identification**: The Memory System uses associative matching to identify relevant files for a given task.
+2. **Context Transfer**: Relevant files are passed to the external tool using the `file_paths` mechanism.
+3. **Context Persistence**: For interactive sessions, context persists across multiple interactions within the session.
+
+```mermaid
+flowchart LR
+    A[Task Description] --> B[Memory System]
+    B --> |Associative Matching| C[Relevant File Paths]
+    C --> D[External Tool]
+    D --> |Results| E[System]
+```
+
+### Aider Context Integration
+
+For Aider integration specifically:
+
+```typescript
+interface AiderContextFlow {
+    // File context provided to Aider
+    fileContext: string[];  // Array of absolute file paths
+    
+    // Context source
+    contextSource: 'associative_matching' | 'explicit_specification';
+    
+    // Context scope
+    contextScope: 'session_wide' | 'single_operation';
+}
+```
+
+In interactive mode:
+- Context is initialized at session start
+- Files remain in context throughout the session
+- The user can add/remove files using Aider's commands
+- Context changes within Aider do not propagate back to the system
+
+In automatic mode:
+- Context is provided for a single operation
+- File paths are explicitly included in the subtask request
+- Changes are reported back to the parent task in the TaskResult
+
+### Context Transfer Mechanism
+
+The `file_paths` element serves as the primary mechanism for context transfer:
+
+```xml
+<file_paths>
+  <path>/absolute/path/to/file1.py</path>
+  <path>/absolute/path/to/file2.py</path>
+</file_paths>
+```
+
+These paths are generated through:
+1. Associative matching using the task description
+2. Explicit specification in the task definition
+3. A combination of both (explicit paths augmented by matching)
+
+For external tools, the system prioritizes:
+1. Explicitly specified paths
+2. Associatively matched paths
+3. Paths derived from previous context (interactive mode only)
+
 ### Memory System Integration
 - Associative memory system mediates between long-term and working memory
 - Working memory instantiated from long-term storage using associative retrieval
