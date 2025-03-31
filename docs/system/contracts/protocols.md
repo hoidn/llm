@@ -192,6 +192,56 @@ The task template schema defines the structure for XML task template files and m
       </xs:sequence>
     </xs:complexType>
   </xs:element>
+
+### Aider Integration Templates
+
+#### Interactive Mode Template
+```xml
+<task type="atomic" subtype="aider_interactive">
+  <description>Start interactive Aider session for {{task_description}}</description>
+  <context_management>
+    <inherit_context>subset</inherit_context>
+    <accumulate_data>true</accumulate_data>
+    <accumulation_format>notes_only</accumulation_format>
+    <fresh_context>enabled</fresh_context>
+  </context_management>
+  <inputs>
+    <input name="initial_query" from="user_query"/>
+  </inputs>
+  <file_paths>
+    <!-- Populated by associative matching or explicit specification -->
+    <path>/path/to/file1.py</path>
+    <path>/path/to/file2.py</path>
+  </file_paths>
+</task>
+```
+
+#### Automatic Mode Template
+```xml
+<task type="atomic" subtype="aider_automatic">
+  <description>Execute Aider code editing for {{task_description}}</description>
+  <context_management>
+    <inherit_context>subset</inherit_context>
+    <accumulate_data>false</accumulate_data>
+    <accumulation_format>notes_only</accumulation_format>
+    <fresh_context>enabled</fresh_context>
+  </context_management>
+  <inputs>
+    <input name="prompt" from="user_query"/>
+  </inputs>
+  <file_paths>
+    <!-- Populated by associative matching or explicit specification -->
+    <path>/path/to/file1.py</path>
+    <path>/path/to/file2.py</path>
+  </file_paths>
+</task>
+```
+
+In both templates:
+- The `file_paths` element is populated either by associative matching or explicit specification
+- The `subtype` attribute determines whether Aider runs in interactive or automatic mode
+- Context management settings control how context flows between tasks
+
 <!-- Director-Evaluator Loop Task Definition -->
 <xs:element name="director_evaluator_loop">
   <xs:complexType>
