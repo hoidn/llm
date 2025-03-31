@@ -240,5 +240,6 @@ I also have aider-rag for searching docs (including markdown and javadocs/pydocs
 - formalize a plan - execute - review cycle
 - inboxes
 - some kind of file persistet inntetion or high level plan at the top level
-- other tools are getting better at context management. how to stay ahead? maybe by indexing?
+- other tools are getting better at context management. how to stay ahead? maybe by indexing? pairing cheap big context for retrieval with expensive small context for the rest? 
 - reintroduce non file based context retrievall
+- how're we handling modificatio of in context files?
