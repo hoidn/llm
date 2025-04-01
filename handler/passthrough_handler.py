@@ -1,5 +1,5 @@
 """Passthrough handler for processing raw text queries."""
-from typing import Dict, Any, Optional, List, Union, Callable
+from typing import Dict, Any, Optional, List, Union, Callable, Tuple
 import re
 import json
 
