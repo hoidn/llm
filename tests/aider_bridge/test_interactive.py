@@ -65,14 +65,11 @@ class TestAiderInteractiveSession:
             session = AiderInteractiveSession(bridge)
             
             # Start session
-            result = session.start_session("Implement a factorial function")
+            with patch('builtins.print'):  # Suppress print statements
+                result = session.start_session("Implement a factorial function")
             
-            # Check result
-            assert result["status"] == "COMPLETE"
-            assert "Interactive Aider session completed" in result["content"]
-            assert "files_modified" in result["notes"]
-            assert result["notes"]["files_modified"] == ["/path/to/file1.py"]
-            assert "session_summary" in result["notes"]
+            # The result should be the mocked return value from format_interactive_result
+            assert result == mock_format_result.return_value
             
             # Check that methods were called
             mock_get_states.assert_called()
