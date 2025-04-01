@@ -144,6 +144,7 @@ def test_interactive_mode(app, test_dir):
     
     # Start interactive session
     try:
+        print(f"Adding file to context: {file_path}")
         result = app.aider_bridge.start_interactive_session(task, [file_path])
         
         print("\nResult:")
