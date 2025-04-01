@@ -36,6 +36,12 @@ class Application:
             memory_system=self.memory_system
         )
         
+        # Initialize Aider bridge
+        self.aider_bridge = None
+        
+        # Initialize Aider if available
+        self.initialize_aider()
+        
         # Track indexed repositories
         self.indexed_repositories = []
     
@@ -108,6 +114,30 @@ class Application:
         Reset the conversation state.
         """
         self.passthrough_handler.reset_conversation()
+        
+    def initialize_aider(self) -> None:
+        """
+        Initialize AiderBridge and register tools with handler.
+        
+        Creates an AiderBridge instance and registers Aider tools with
+        the passthrough handler if Aider is available.
+        """
+        try:
+            from aider_bridge.bridge import AiderBridge
+            from aider_bridge.tools import register_aider_tools
+            
+            if not self.aider_bridge:
+                self.aider_bridge = AiderBridge(self.memory_system)
+                # Register tools with handler
+                registration_results = register_aider_tools(self.passthrough_handler, self.aider_bridge)
+                
+                # Log registration results
+                if all(result.get("status") == "success" for result in registration_results.values()):
+                    print("Aider tools registered successfully")
+                else:
+                    print("Some Aider tools failed to register")
+        except ImportError:
+            print("Aider bridge not available - skipping tool registration")
 
 def main():
     """Main entry point."""

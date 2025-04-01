@@ -163,6 +163,9 @@ class AiderBridge:
         """
         Get relevant file context for a query using associative matching.
         
+        Uses the memory system to find files relevant to the given query
+        and updates the internal file context state.
+        
         Args:
             query: The query to find relevant files for
             
@@ -179,7 +182,9 @@ class AiderBridge:
             context_result = self.memory_system.get_relevant_context_for(context_input)
             
             # Extract file paths from matches
-            relevant_files = [match[0] for match in context_result.matches]
+            relevant_files = []
+            if hasattr(context_result, 'matches') and context_result.matches:
+                relevant_files = [match[0] for match in context_result.matches]
             
             # Update file context - use absolute paths to avoid file not found warnings in tests
             if relevant_files:
