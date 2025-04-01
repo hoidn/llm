@@ -54,7 +54,7 @@ class TestAiderInteractiveSession:
              patch.object(AiderInteractiveSession, '_get_modified_files', return_value=["/path/to/file1.py"]) as mock_get_modified, \
              patch.object(AiderInteractiveSession, '_cleanup_session'), \
              patch('builtins.__import__', return_value=MagicMock()), \
-             patch('aider_bridge.interactive.format_interactive_result', return_value=expected_result) as mock_format_result:
+             patch('aider_bridge.result_formatter.format_interactive_result', return_value=expected_result) as mock_format_result:
             
             # Set up mocks
             mock_get_states.side_effect = [{"/path/to/file1.py": {"size": 100, "mtime": 123456789, "hash": 12345}},
