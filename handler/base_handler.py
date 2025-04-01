@@ -170,6 +170,38 @@ class BaseHandler:
         self.debug_mode = enabled
         self.log_debug(f"Debug mode {'enabled' if enabled else 'disabled'}")
         
+    def _build_system_prompt(self, template=None, file_context=None) -> str:
+        """Build the complete system prompt by combining base, template, and file context.
+        
+        Implements the Hierarchical System Prompt Pattern by combining:
+        1. Base system prompt (universal behaviors)
+        2. Template-specific system prompt (task-specific instructions)
+        3. File context (relevant files for the current query)
+        
+        Args:
+            template: Optional template with system_prompt
+            file_context: Optional file context string
+            
+        Returns:
+            Complete system prompt
+        """
+        # Start with base system prompt
+        system_prompt = self.base_system_prompt
+        
+        # Add template-specific system prompt if available
+        if template and "system_prompt" in template:
+            template_prompt = template["system_prompt"]
+            system_prompt = f"{system_prompt}\n\n===\n\n{template_prompt}"
+            self.log_debug("Added template-specific system prompt")
+        
+        # Add file context if available
+        if file_context:
+            system_prompt = f"{system_prompt}\n\n===\n\nRelevant files:\n{file_context}"
+            self.log_debug(f"Added file context with {file_context.count('File:')}")
+        
+        self.log_debug(f"Built system prompt with {len(system_prompt)} characters")
+        return system_prompt
+        
     def determine_relevant_files(self, query: str, file_metadata: Dict[str, str]) -> List[Tuple[str, str]]:
         """Determine relevant files for a query using LLM.
         

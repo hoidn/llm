@@ -221,6 +221,100 @@ class TestPassthroughHandler:
             # Verify state was reset
             assert handler.conversation_history == []
             assert handler.active_subtask_id is None
+            
+    def test_find_matching_template(self, mock_task_system, mock_memory_system):
+        """Test finding matching templates for queries."""
+        # Mock task_system.find_matching_tasks
+        mock_task_system.find_matching_tasks = MagicMock()
+        
+        # Create test templates
+        test_templates = [
+            {
+                "task": {
+                    "type": "atomic",
+                    "subtype": "associative_matching",
+                    "description": "Find relevant files"
+                },
+                "score": 0.8,
+                "taskType": "atomic",
+                "subtype": "associative_matching"
+            },
+            {
+                "task": {
+                    "type": "atomic",
+                    "subtype": "standard",
+                    "description": "Process data"
+                },
+                "score": 0.5,
+                "taskType": "atomic",
+                "subtype": "standard"
+            }
+        ]
+        
+        # Set up mock to return test templates
+        mock_task_system.find_matching_tasks.return_value = test_templates
+        
+        # Create handler
+        with patch('handler.model_provider.ClaudeProvider'):
+            handler = PassthroughHandler(mock_task_system, mock_memory_system)
+            
+            # Test template finding
+            template = handler._find_matching_template("find files for my project")
+            
+            # Verify template selection
+            assert template is not None
+            assert template["type"] == "atomic"
+            assert template["subtype"] == "associative_matching"
+            
+            # Test with no matching templates
+            mock_task_system.find_matching_tasks.return_value = []
+            template = handler._find_matching_template("unrelated query")
+            assert template is None
+            
+            # Test with exception
+            mock_task_system.find_matching_tasks.side_effect = Exception("Test error")
+            template = handler._find_matching_template("error query")
+            assert template is None
+    
+    def test_send_to_model_with_template(self, mock_task_system, mock_memory_system):
+        """Test sending query to model with template system prompt."""
+        # Mock provider
+        with patch('handler.model_provider.ClaudeProvider') as mock_provider_class:
+            mock_provider = MagicMock()
+            mock_provider.send_message.return_value = "Model response"
+            mock_provider.extract_tool_calls.return_value = {
+                "content": "Model response",
+                "tool_calls": [],
+                "awaiting_tool_response": False
+            }
+            mock_provider_class.return_value = mock_provider
+            
+            # Create test template with system_prompt
+            test_template = {
+                "type": "atomic",
+                "subtype": "test",
+                "description": "Test template",
+                "system_prompt": "Template-specific instructions"
+            }
+            
+            # Create handler
+            handler = PassthroughHandler(mock_task_system, mock_memory_system)
+            handler.model_provider = mock_provider
+            
+            # Mock _build_system_prompt to verify it's called with the template
+            with patch.object(handler, '_build_system_prompt') as mock_build_prompt:
+                mock_build_prompt.return_value = "Combined system prompt"
+                
+                # Test sending query to model
+                handler._send_to_model("test query", "file context", test_template)
+                
+                # Verify that _build_system_prompt was called with the template
+                mock_build_prompt.assert_called_once_with(test_template, "file context")
+                
+                # Verify that model receives combined prompt
+                mock_provider.send_message.assert_called_once()
+                call_args = mock_provider.send_message.call_args[1]
+                assert call_args["system_prompt"] == "Combined system prompt"
     # Add test for tool extraction with provider adapter
     def test_send_to_model_with_tool_extraction(self, mock_task_system, mock_memory_system):
         """Test _send_to_model with tool extraction using provider adapter."""

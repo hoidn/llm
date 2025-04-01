@@ -86,6 +86,35 @@ class PassthroughHandler(BaseHandler):
         self.log_debug(f"Query processing complete. Status: {result.get('status', 'unknown')}")
         return result
     
+    def _find_matching_template(self, query: str):
+        """Find a matching template for the query.
+        
+        Args:
+            query: User query
+            
+        Returns:
+            Matching template or None
+        """
+        try:
+            if not hasattr(self.task_system, 'find_matching_tasks'):
+                self.log_debug("Task system does not support template matching")
+                return None
+                
+            # Get matching tasks from task system
+            matching_tasks = self.task_system.find_matching_tasks(query, self.memory_system)
+            
+            if not matching_tasks:
+                self.log_debug("No matching templates found")
+                return None
+                
+            # Get highest scoring template
+            best_match = matching_tasks[0]
+            self.log_debug(f"Found matching template: {best_match['taskType']}:{best_match['subtype']} (score: {best_match['score']:.2f})")
+            return best_match["task"]
+        except Exception as e:
+            self.log_debug(f"Error finding matching template: {str(e)}")
+            return None
+    
     def _create_new_subtask(self, query: str, relevant_files: List[str]) -> Dict[str, Any]:
         """Create a new subtask for the initial query.
         
@@ -99,19 +128,33 @@ class PassthroughHandler(BaseHandler):
         # Create a unique subtask ID
         self.active_subtask_id = f"subtask_{len(self.conversation_history)}"
         
+        # Find matching template
+        template = self._find_matching_template(query)
+        
         # Create file context
         file_context = self._create_file_context(relevant_files)
         
         # Send to model and get response
-        response_text = self._send_to_model(query, file_context)
+        response_text = self._send_to_model(query, file_context, template)
+        
+        # Prepare metadata
+        metadata = {
+            "subtask_id": self.active_subtask_id,
+            "relevant_files": relevant_files
+        }
+        
+        # Add template info if available
+        if template:
+            metadata["template"] = {
+                "type": template.get("type"),
+                "subtype": template.get("subtype"),
+                "description": template.get("description")
+            }
         
         return {
             "status": "success",
             "content": response_text,
-            "metadata": {
-                "subtask_id": self.active_subtask_id,
-                "relevant_files": relevant_files
-            }
+            "metadata": metadata
         }
     
     def _continue_subtask(self, query: str, relevant_files: List[str]) -> Dict[str, Any]:
@@ -124,11 +167,14 @@ class PassthroughHandler(BaseHandler):
         Returns:
             Task result from the continued subtask
         """
+        # Find matching template
+        template = self._find_matching_template(query)
+        
         # Create file context
         file_context = self._create_file_context(relevant_files)
         
         # Send to model and get response
-        response_text = self._send_to_model(query, file_context)
+        response_text = self._send_to_model(query, file_context, template)
         
         return {
             "status": "success",
@@ -139,12 +185,13 @@ class PassthroughHandler(BaseHandler):
             }
         }
     
-    def _send_to_model(self, query: str, file_context: str) -> str:
+    def _send_to_model(self, query: str, file_context: str, template=None) -> str:
         """Send query to model and get response.
         
         Args:
             query: User's query
             file_context: Context string with file information
+            template: Optional template with system_prompt
             
         Returns:
             Model response text
@@ -159,11 +206,8 @@ class PassthroughHandler(BaseHandler):
             for msg in self.conversation_history
         ]
         
-        # Add file context to system prompt if available
-        if file_context:
-            system_prompt = f"{self.base_system_prompt}\n\nRelevant files:\n{file_context}"
-        else:
-            system_prompt = self.base_system_prompt
+        # Build system prompt using hierarchical pattern
+        system_prompt = self._build_system_prompt(template, file_context)
         
         # Prepare tools if available
         tools = list(self.registered_tools.values()) if self.registered_tools else None

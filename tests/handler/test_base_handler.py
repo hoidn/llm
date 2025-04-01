@@ -172,3 +172,36 @@ class TestBaseHandler:
         handler.log_debug("Debug message")
         captured = capsys.readouterr()
         assert captured.out == ""
+        
+    def test_build_system_prompt(self, mock_task_system, mock_memory_system):
+        """Test building hierarchical system prompts."""
+        # Create handler
+        handler = BaseHandler(mock_task_system, mock_memory_system)
+        handler.base_system_prompt = "Base system prompt"
+        
+        # Test with base prompt only
+        prompt1 = handler._build_system_prompt()
+        assert prompt1 == "Base system prompt"
+        
+        # Test with template with system_prompt
+        template = {"system_prompt": "Template-specific instructions"}
+        prompt2 = handler._build_system_prompt(template)
+        assert "Base system prompt" in prompt2
+        assert "Template-specific instructions" in prompt2
+        assert "===" in prompt2
+        
+        # Test with file context
+        file_context = "File: test.py\nContent of test.py"
+        prompt3 = handler._build_system_prompt(file_context=file_context)
+        assert "Base system prompt" in prompt3
+        assert "Relevant files:" in prompt3
+        assert "File: test.py" in prompt3
+        assert "===" in prompt3
+        
+        # Test with both template and file context
+        prompt4 = handler._build_system_prompt(template, file_context)
+        assert "Base system prompt" in prompt4
+        assert "Template-specific instructions" in prompt4
+        assert "Relevant files:" in prompt4
+        assert "File: test.py" in prompt4
+        assert prompt4.count("===") == 2

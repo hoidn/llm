@@ -10,6 +10,77 @@ class TaskSystem:
     def __init__(self):
         """Initialize the Task System."""
         self.templates = {}  # Task templates
+        
+    def find_matching_tasks(self, input_text: str, memory_system) -> List[Dict[str, Any]]:
+        """Find matching templates based on a provided input string.
+        
+        Args:
+            input_text: Natural language task description
+            memory_system: MemorySystem instance providing context
+            
+        Returns:
+            List of matching templates with scores
+        """
+        matches = []
+        
+        # Filter for atomic templates only
+        for key, template in self.templates.items():
+            if template.get("type") == "atomic":
+                # Calculate similarity score
+                description = template.get("description", "")
+                score = self._calculate_similarity_score(input_text, description)
+                
+                # Add to matches if score is above threshold
+                if score > 0.1:  # Low threshold to ensure we get some matches
+                    task_type, subtype = key.split(":", 1)
+                    matches.append({
+                        "task": template,
+                        "score": score,
+                        "taskType": task_type,
+                        "subtype": subtype
+                    })
+        
+        # Sort by score (descending)
+        matches.sort(key=lambda x: x["score"], reverse=True)
+        return matches
+    
+    def _calculate_similarity_score(self, input_text: str, template_description: str) -> float:
+        """Calculate similarity score between input text and template description.
+        
+        This is a simple heuristic approach using word overlap.
+        
+        Args:
+            input_text: User's input text
+            template_description: Template description
+            
+        Returns:
+            Similarity score (0-1)
+        """
+        # Normalize texts
+        input_text = input_text.lower()
+        template_description = template_description.lower()
+        
+        # Remove punctuation
+        for char in ".,;:!?()[]{}\"'":
+            input_text = input_text.replace(char, " ")
+            template_description = template_description.replace(char, " ")
+        
+        # Split into words
+        input_words = set(input_text.split())
+        template_words = set(template_description.split())
+        
+        # Calculate overlap
+        if not template_words:
+            return 0.0
+            
+        # Jaccard similarity
+        intersection = len(input_words.intersection(template_words))
+        union = len(input_words.union(template_words))
+        
+        if union == 0:
+            return 0.0
+            
+        return intersection / union
     
     def register_template(self, template: Dict[str, Any]) -> None:
         """Register a task template.

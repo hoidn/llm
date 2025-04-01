@@ -20,7 +20,14 @@ ASSOCIATIVE_MATCHING_TEMPLATE = {
     "output_format": {
         "type": "json",
         "schema": "string[]"
-    }
+    },
+    "system_prompt": """When finding relevant files, consider:
+- Direct keyword matches in file names and content
+- Semantically similar terms to the query
+- Related programming concepts
+- File types appropriate for the task
+
+Return a comprehensive list of relevant files that would be helpful for addressing the user's query."""
 }
 
 def register_template(task_system) -> None:
