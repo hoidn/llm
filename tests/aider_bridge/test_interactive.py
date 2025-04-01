@@ -30,13 +30,10 @@ class TestAiderInteractiveSession:
         assert session.temp_dir is None
         assert session.last_query is None
         
-    @patch('aider_bridge.interactive.AiderInteractiveSession._run_aider_in_process')
-    @patch('tempfile.TemporaryDirectory')
-    @patch('aider_bridge.result_formatter.format_interactive_result')
-    def test_start_session(self, mock_format_result, mock_temp_dir, mock_run_aider, mock_memory_system):
+    def test_start_session(self, mock_memory_system):
         """Test starting an interactive session."""
-        # Set up the mock format_interactive_result to return a proper result
-        mock_format_result.return_value = {
+        # Create a custom mock for format_interactive_result
+        expected_result = {
             "status": "COMPLETE",
             "content": "Interactive Aider session completed. Modified 1 files.",
             "notes": {
@@ -45,20 +42,19 @@ class TestAiderInteractiveSession:
             }
         }
         
-        # Debug: Print information about the mock
-        print(f"\nDEBUG - Mock format_interactive_result: {mock_format_result}")
-        print(f"DEBUG - Mock return value: {mock_format_result.return_value}")
-        
         # Create mock objects
         bridge = MagicMock()
         bridge.aider_available = True
         bridge.file_context = {"/path/to/file1.py", "/path/to/file2.py"}
         
-        # Mock file state methods
-        with patch.object(AiderInteractiveSession, '_get_file_states') as mock_get_states, \
-             patch.object(AiderInteractiveSession, '_get_modified_files') as mock_get_modified, \
-             patch.object(AiderInteractiveSession, '_cleanup_session') as mock_cleanup, \
-             patch('builtins.__import__', return_value=MagicMock()):
+        # Use a more targeted patching approach
+        with patch('aider_bridge.interactive.AiderInteractiveSession._run_aider_in_process'), \
+             patch('tempfile.TemporaryDirectory'), \
+             patch.object(AiderInteractiveSession, '_get_file_states'), \
+             patch.object(AiderInteractiveSession, '_get_modified_files', return_value=["/path/to/file1.py"]), \
+             patch.object(AiderInteractiveSession, '_cleanup_session'), \
+             patch('builtins.__import__', return_value=MagicMock()), \
+             patch('aider_bridge.interactive.format_interactive_result', return_value=expected_result):
             
             # Set up mocks
             mock_get_states.side_effect = [{"/path/to/file1.py": {"size": 100, "mtime": 123456789, "hash": 12345}},
