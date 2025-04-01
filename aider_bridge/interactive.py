@@ -7,6 +7,8 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+from aider_bridge.result_formatter import format_interactive_result
+
 class AiderInteractiveSession:
     """
     Manages an interactive Aider session.
@@ -129,10 +131,7 @@ class AiderInteractiveSession:
             # Clean up session
             self._cleanup_session()
             
-            # Format and return result
-            from aider_bridge.result_formatter import format_interactive_result
-            
-            # Create the result
+            # Create and return the result
             return format_interactive_result(
                 status="COMPLETE",
                 content=f"Interactive Aider session completed. Modified {len(self.modified_files)} files.",
