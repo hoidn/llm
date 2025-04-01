@@ -135,9 +135,14 @@ class Application:
                 if all(result.get("status") == "success" for result in registration_results.values()):
                     print("Aider tools registered successfully")
                 else:
-                    print("Some Aider tools failed to register")
+                    print("Some Aider tools failed to register:")
+                    for tool_type, result in registration_results.items():
+                        if result.get("status") != "success":
+                            print(f"  - {tool_type}: {result.get('message', 'Unknown error')}")
         except ImportError:
             print("Aider bridge not available - skipping tool registration")
+        except Exception as e:
+            print(f"Error initializing Aider: {str(e)}")
 
 def main():
     """Main entry point."""

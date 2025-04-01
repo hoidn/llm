@@ -232,3 +232,43 @@ class PassthroughHandler:
         """
         self.debug_mode = enabled
         self.log_debug(f"Debug mode {'enabled' if enabled else 'disabled'}")
+        
+    def registerDirectTool(self, name: str, func: Any) -> bool:
+        """Register a direct tool.
+        
+        This method is called by the tool registration system to register
+        direct tools that can be invoked by the handler.
+        
+        Args:
+            name: Name of the tool
+            func: Function to call when the tool is invoked
+            
+        Returns:
+            True if registration successful, False otherwise
+        """
+        self.log_debug(f"Registering direct tool: {name}")
+        # Store the tool in a dictionary if not already present
+        if not hasattr(self, "direct_tools"):
+            self.direct_tools = {}
+        self.direct_tools[name] = func
+        return True
+    
+    def registerSubtaskTool(self, name: str, func: Any) -> bool:
+        """Register a subtask tool.
+        
+        This method is called by the tool registration system to register
+        subtask tools that can be invoked by the handler.
+        
+        Args:
+            name: Name of the tool
+            func: Function to call when the tool is invoked
+            
+        Returns:
+            True if registration successful, False otherwise
+        """
+        self.log_debug(f"Registering subtask tool: {name}")
+        # Store the tool in a dictionary if not already present
+        if not hasattr(self, "subtask_tools"):
+            self.subtask_tools = {}
+        self.subtask_tools[name] = func
+        return True
