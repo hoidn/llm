@@ -175,6 +175,15 @@ class AiderInteractiveSession:
                 content="Aider session terminated successfully.",
                 files_modified=self.modified_files
             )
+        except Exception as e:
+            # Ensure session is marked as inactive even on error
+            self.active = False
+            
+            return format_interactive_result(
+                status="PARTIAL",
+                content=f"Error terminating Aider session: {str(e)}",
+                error=str(e)
+            )
     
     def _run_aider_subprocess(self, query: str, files: List[str]):
         """
