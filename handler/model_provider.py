@@ -1,12 +1,57 @@
 """
-Model provider module for Anthropic Claude API integration.
+Model provider module for LLM API integrations.
 """
 import os
 from typing import Dict, List, Optional, Union, Any
 
 import anthropic
 
-class ClaudeProvider:
+class ProviderAdapter:
+    """Base adapter interface for model providers.
+    
+    This interface defines methods that all provider adapters should implement.
+    Specific providers will have their own adapter implementations.
+    """
+    
+    def send_message(self, 
+                     messages: List[Dict[str, str]], 
+                     system_prompt: str = "", 
+                     tools: Optional[List[Dict[str, Any]]] = None) -> Union[str, Dict[str, Any]]:
+        """Send a message to the model provider.
+        
+        Args:
+            messages: List of message dictionaries with 'role' and 'content'
+            system_prompt: System prompt to provide instructions to the model
+            tools: Optional list of tool specifications
+            
+        Returns:
+            Model's response (format depends on provider)
+        """
+        raise NotImplementedError("Subclasses must implement send_message")
+    
+    def extract_tool_calls(self, response: Union[str, Dict[str, Any]]) -> Dict[str, Any]:
+        """Extract tool calls from a response into a standardized format.
+        
+        Args:
+            response: Raw response from the provider API
+            
+        Returns:
+            Dict with standardized tool call information:
+            {
+                "content": str,  # Text content from the response
+                "tool_calls": [  # List of tool calls (empty if none)
+                    {
+                        "name": str,      # Tool name
+                        "parameters": {},  # Tool parameters
+                    },
+                    ...
+                ],
+                "awaiting_tool_response": bool  # Whether the model is waiting for a tool response
+            }
+        """
+        raise NotImplementedError("Subclasses must implement extract_tool_calls")
+
+class ClaudeProvider(ProviderAdapter):
     """
     Claude API integration for LLM interactions.
     """
@@ -92,3 +137,68 @@ class ClaudeProvider:
             error_msg = f"Error calling Claude API: {str(e)}"
             print(error_msg)  # Log the error
             return error_msg
+            
+    def extract_tool_calls(self, response: Union[str, Dict[str, Any]]) -> Dict[str, Any]:
+        """Extract tool calls from a response into a standardized format.
+        
+        Args:
+            response: Raw response from the Claude API
+            
+        Returns:
+            Dict with standardized tool call information:
+            {
+                "content": str,  # Text content from the response
+                "tool_calls": [  # List of tool calls (empty if none)
+                    {
+                        "name": str,      # Tool name
+                        "parameters": {},  # Tool parameters
+                    },
+                    ...
+                ],
+                "awaiting_tool_response": bool  # Whether the model is waiting for a tool response
+            }
+        """
+        # Initialize the standardized response format
+        result = {
+            "content": "",
+            "tool_calls": [],
+            "awaiting_tool_response": False
+        }
+        
+        # Handle string responses (no tool calls)
+        if isinstance(response, str):
+            result["content"] = response
+            return result
+            
+        # Handle Claude's structured response format
+        if isinstance(response, dict):
+            # Extract content text
+            if "text" in response:
+                result["content"] = response["text"]
+            elif "content" in response and isinstance(response["content"], list):
+                # Extract text from content array
+                for item in response["content"]:
+                    if isinstance(item, dict) and item.get("type") == "text":
+                        result["content"] = item.get("text", "")
+                        break
+            
+            # Extract tool calls
+            if "tool_calls" in response:
+                for tool_call in response["tool_calls"]:
+                    if isinstance(tool_call, dict):
+                        # Handle Anthropic's format
+                        name = tool_call.get("name", "")
+                        parameters = tool_call.get("input", {})
+                        
+                        if name:
+                            result["tool_calls"].append({
+                                "name": name,
+                                "parameters": parameters
+                            })
+            
+            # Check if model is awaiting tool response
+            # Claude indicates this with stop_reason="tool_use"
+            if response.get("stop_reason") == "tool_use":
+                result["awaiting_tool_response"] = True
+        
+        return result
