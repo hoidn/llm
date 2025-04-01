@@ -1,0 +1,267 @@
+"""AiderBridge for integration with Aider."""
+from typing import Dict, List, Optional, Any, Set, Tuple
+
+import os
+import sys
+import tempfile
+from pathlib import Path
+
+class AiderBridge:
+    """
+    Bridge component for integrating with Aider.
+    
+    This class provides a clean interface for using Aider's code editing
+    capabilities with the existing Memory System and Task System components.
+    """
+    
+    def __init__(self, memory_system, file_access_manager=None):
+        """
+        Initialize the AiderBridge with required components.
+        
+        Args:
+            memory_system: The Memory System instance for context retrieval
+            file_access_manager: Optional FileAccessManager for file operations,
+                               defaults to creating a new instance
+        """
+        self.memory_system = memory_system
+        
+        from handler.file_access import FileAccessManager
+        self.file_manager = file_access_manager or FileAccessManager()
+        
+        # Lazy-loaded Aider components
+        self._aider_io = None
+        self._aider_model = None
+        
+        # Initialize file context tracking
+        self.file_context = set()
+        self.context_source = None  # 'associative_matching' or 'explicit_specification'
+        
+        # Check if Aider is available
+        try:
+            import aider
+            self.aider_available = True
+        except ImportError:
+            self.aider_available = False
+            print("Warning: Aider is not installed. AiderBridge functionality will be limited.")
+    
+    def _initialize_aider_components(self):
+        """
+        Initialize Aider components lazily.
+        
+        Returns:
+            True if initialization successful, False otherwise
+        """
+        if not self.aider_available:
+            return False
+            
+        try:
+            # Import Aider components
+            from aider.io import InputOutput
+            from aider.models import Model as AiderModel
+            
+            # Initialize InputOutput with auto-confirmation
+            self._aider_io = InputOutput(yes=True, pretty=False)
+            
+            # Initialize Model (using GPT-4 by default)
+            self._aider_model = AiderModel("gpt-4")
+            
+            return True
+        except Exception as e:
+            print(f"Error initializing Aider components: {str(e)}")
+            return False
+    
+    def _get_coder(self, file_paths: List[str]):
+        """
+        Get an Aider Coder instance configured with the given file paths.
+        
+        Args:
+            file_paths: List of file paths to include in the Aider context
+            
+        Returns:
+            Aider Coder instance or None if initialization fails
+        """
+        if not self._aider_io or not self._aider_model:
+            if not self._initialize_aider_components():
+                return None
+                
+        try:
+            # Import Aider Coder
+            from aider.coders.base_coder import Coder
+            
+            # Create a Coder instance
+            coder = Coder.create(
+                main_model=self._aider_model,
+                io=self._aider_io,
+                edit_format="diff",  # Use diff format for code editing
+                fnames=file_paths,   # Files to include
+                auto_commits=False,  # Don't auto-commit changes
+                dirty_commits=True,  # Allow editing dirty files
+                auto_lint=False,     # Don't run linters automatically
+            )
+            
+            return coder
+        except Exception as e:
+            print(f"Error creating Aider Coder: {str(e)}")
+            return None
+    
+    def set_file_context(self, file_paths: List[str], source: str = "explicit_specification"):
+        """
+        Set the file context for Aider operations.
+        
+        Args:
+            file_paths: List of file paths to include in the Aider context
+            source: Context source, 'associative_matching' or 'explicit_specification'
+            
+        Returns:
+            Dict containing status and context information
+        """
+        try:
+            # Validate file paths
+            valid_paths = []
+            for path in file_paths:
+                if os.path.isfile(path):
+                    valid_paths.append(path)
+                else:
+                    print(f"Warning: File not found: {path}")
+            
+            # Update file context
+            self.file_context = set(valid_paths)
+            self.context_source = source
+            
+            return {
+                "status": "success",
+                "file_count": len(self.file_context),
+                "context_source": source
+            }
+        except Exception as e:
+            return {
+                "status": "error",
+                "message": f"Error setting file context: {str(e)}"
+            }
+    
+    def get_file_context(self) -> Dict[str, Any]:
+        """
+        Get the current file context.
+        
+        Returns:
+            Dict containing file context information
+        """
+        return {
+            "file_paths": list(self.file_context),
+            "file_count": len(self.file_context),
+            "context_source": self.context_source
+        }
+    
+    def get_context_for_query(self, query: str) -> List[str]:
+        """
+        Get relevant file context for a query using associative matching.
+        
+        Args:
+            query: The query to find relevant files for
+            
+        Returns:
+            List of relevant file paths
+        """
+        try:
+            # Use memory system to find relevant context
+            context_input = {
+                "taskText": query,
+                "inheritedContext": "",
+            }
+            
+            context_result = self.memory_system.get_relevant_context_for(context_input)
+            
+            # Extract file paths from matches
+            relevant_files = [match[0] for match in context_result.matches]
+            
+            # Update file context
+            if relevant_files:
+                self.set_file_context(relevant_files, source="associative_matching")
+            
+            return relevant_files
+        except Exception as e:
+            print(f"Error getting context for query: {str(e)}")
+            return []
+    
+    def execute_code_edit(self, prompt: str, file_context: Optional[List[str]] = None) -> Dict[str, Any]:
+        """
+        Execute a code editing operation using Aider.
+        
+        Args:
+            prompt: The instruction for code changes
+            file_context: Optional explicit file paths to include in context,
+                         if None, uses the current file_context
+                         
+        Returns:
+            Dict containing the execution result
+        """
+        if not self.aider_available:
+            return {
+                "status": "error",
+                "content": "Aider is not available. Please install Aider to use this feature.",
+                "notes": {
+                    "error": "Aider dependency not installed"
+                }
+            }
+            
+        try:
+            # Use provided file context or current context
+            context_files = file_context or list(self.file_context)
+            
+            # If no context files, try to find relevant files
+            if not context_files:
+                context_files = self.get_context_for_query(prompt)
+                
+                # If still no context files, return error
+                if not context_files:
+                    return {
+                        "status": "error",
+                        "content": "No relevant files found for the given prompt.",
+                        "notes": {
+                            "error": "No file context available"
+                        }
+                    }
+            
+            # Get Aider Coder
+            coder = self._get_coder(context_files)
+            if not coder:
+                return {
+                    "status": "error",
+                    "content": "Failed to initialize Aider Coder.",
+                    "notes": {
+                        "error": "Coder initialization failed"
+                    }
+                }
+            
+            # Execute the code editing operation
+            response = coder.run(with_message=prompt, preproc=True)
+            
+            # Get edited files
+            edited_files = getattr(coder, "aider_edited_files", [])
+            
+            # Create standardized result
+            result = {
+                "status": "COMPLETE",
+                "content": "Code changes applied successfully" if edited_files else "No changes needed",
+                "notes": {
+                    "files_modified": edited_files,
+                    "changes": []
+                }
+            }
+            
+            # Include file changes in the result
+            for file_path in edited_files:
+                result["notes"]["changes"].append({
+                    "file": file_path,
+                    "description": f"Modified {os.path.basename(file_path)}"
+                })
+            
+            return result
+        except Exception as e:
+            return {
+                "status": "error",
+                "content": f"Error executing code edit: {str(e)}",
+                "notes": {
+                    "error": str(e)
+                }
+            }

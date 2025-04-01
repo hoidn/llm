@@ -25,3 +25,25 @@ def mock_task_system():
     }
     task_system.register_template.return_value = None
     return task_system
+
+@pytest.fixture
+def mock_aider_model():
+    """Create a mock Aider model."""
+    model = MagicMock()
+    model.send_completion.return_value = {"content": "Mock response"}
+    return model
+
+@pytest.fixture
+def mock_aider_io():
+    """Create a mock Aider IO."""
+    io = MagicMock()
+    io.yes = True
+    return io
+
+@pytest.fixture
+def mock_aider_coder():
+    """Create a mock Aider coder."""
+    coder = MagicMock()
+    coder.run.return_value = "Mock coder response"
+    coder.aider_edited_files = ["/path/to/mock_file.py"]
+    return coder
