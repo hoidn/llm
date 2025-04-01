@@ -68,6 +68,9 @@ def execute_template(query: str, memory_system) -> List[str]:
     Returns:
         List of relevant file paths, sorted by relevance
     """
+    # Print the query for debugging
+    print(f"\nAssociative matching prompt: '{query}'")
+    
     # Normalize query
     query_terms = normalize_text(query)
     
