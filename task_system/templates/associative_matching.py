@@ -57,22 +57,17 @@ def create_xml_template() -> str:
 def execute_template(query: str, memory_system) -> List[str]:
     """Execute the associative matching template logic.
     
-    This function implements the actual template execution logic when invoked
-    by the task system. It finds files relevant to the given query using
-    a simple scoring algorithm.
+    This function passes the file metadata to memory_system, which then determines
+    which files are most relevant to the given query (delegated to the handler's LLM).
     
     Args:
         query: The user query or task
         memory_system: The Memory System instance
         
     Returns:
-        List of relevant file paths, sorted by relevance
+        List of relevant file paths selected by the LLM via the handler
     """
-    # Print the query for debugging
-    print(f"\nAssociative matching prompt: '{query}'")
-    
-    # Normalize query
-    query_terms = normalize_text(query)
+    print(f"Executing associative matching for query: '{query}'")
     
     # Get global index from memory system
     file_metadata = get_global_index(memory_system)
@@ -80,102 +75,31 @@ def execute_template(query: str, memory_system) -> List[str]:
         print("No indexed files found. Run index_git_repository first.")
         return []
     
-    # Score files
-    scored_files = score_files(file_metadata, query_terms)
+    print(f"Found {len(file_metadata)} indexed files")
     
-    # Get all relevant files with non-zero scores
-    top_files = [path for path, score in scored_files]
+    # The actual file relevance determination is now handled by the memory_system,
+    # which delegates to its handler (using LLM) when available.
+    # Here we just need to call the right method and extract the paths.
     
-    return top_files
-
-def normalize_text(text: str) -> List[str]:
-    """Normalize text for scoring.
-    
-    Args:
-        text: Text to normalize
-        
-    Returns:
-        List of normalized terms
-    """
-    # Convert to lowercase
-    text = text.lower()
-    
-    # Remove punctuation and split into words
-    words = re.findall(r'\w+', text)
-    
-    # Remove common stop words (simplified list)
-    stop_words = {
-        'a', 'an', 'the', 'and', 'or', 'but', 'is', 'are', 'was', 'were',
-        'in', 'on', 'at', 'to', 'for', 'with', 'by', 'about', 'of'
+    # Use memory_system's existing API to get relevant files
+    context_input = {
+        "taskText": query,
+        "inheritedContext": ""
     }
     
-    # Filter out stop words and words less than 3 characters
-    filtered_words = [word for word in words if word not in stop_words and len(word) >= 3]
+    context_result = memory_system.get_relevant_context_for(context_input)
     
-    return filtered_words
+    # Extract file paths from matches
+    relevant_files = [match[0] for match in context_result.matches]
+    
+    print(f"Selected {len(relevant_files)} relevant files")
+    for i, path in enumerate(relevant_files[:5], 1):
+        print(f"  {i}. {path}")
+    if len(relevant_files) > 5:
+        print(f"  ... and {len(relevant_files) - 5} more")
+    
+    return relevant_files
 
-def score_files(file_metadata: Dict[str, str], query_terms: List[str]) -> List[Tuple[str, float]]:
-    """Score files based on relevance to query terms.
-    
-    Args:
-        file_metadata: Dictionary mapping file paths to metadata
-        query_terms: List of normalized query terms
-        
-    Returns:
-        List of (file_path, score) tuples, sorted by score descending
-    """
-    scores = []
-    
-    # Extract IDF (inverse document frequency) for each term
-    term_doc_count = {}
-    for term in query_terms:
-        term_doc_count[term] = 0
-    
-    # Count documents containing each term
-    for path, metadata in file_metadata.items():
-        metadata_terms = normalize_text(metadata)
-        for term in query_terms:
-            if term in metadata_terms:
-                term_doc_count[term] += 1
-    
-    # Calculate IDF for each term
-    num_docs = len(file_metadata)
-    term_idf = {}
-    for term, count in term_doc_count.items():
-        # Add 1 to avoid division by zero
-        term_idf[term] = math.log((num_docs + 1) / (count + 1)) + 1
-    
-    # Score each file
-    for path, metadata in file_metadata.items():
-        metadata_terms = normalize_text(metadata)
-        
-        # Calculate term frequency
-        term_freq = {}
-        for term in metadata_terms:
-            term_freq[term] = term_freq.get(term, 0) + 1
-        
-        # Calculate TF-IDF score
-        score = 0
-        for term in query_terms:
-            # Term frequency in this document
-            tf = term_freq.get(term, 0)
-            # Get IDF value
-            idf = term_idf.get(term, 1)
-            # Add to score
-            score += tf * idf
-        
-        # Boost score for matches in file name or path
-        file_name = os.path.basename(path).lower()
-        for term in query_terms:
-            if term in file_name:
-                score *= 1.5  # 50% boost for terms in filename
-        
-        # Add to scores if non-zero
-        if score > 0:
-            scores.append((path, score))
-    
-    # Sort by score descending
-    return sorted(scores, key=lambda x: x[1], reverse=True)
 
 def get_global_index(memory_system) -> Dict[str, str]:
     """Get the global index from the memory system.

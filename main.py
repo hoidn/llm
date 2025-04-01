@@ -23,18 +23,24 @@ class Application:
         from handler.passthrough_handler import PassthroughHandler
         from task_system.templates.associative_matching import register_template
         
-        # Initialize components
-        self.memory_system = MemorySystem()
+        # Initialize handler first (since memory system now depends on it)
+        self.passthrough_handler = PassthroughHandler(
+            task_system=None,  # Will set this after TaskSystem is initialized
+            memory_system=None  # Will set this after MemorySystem is initialized
+        )
+        
+        # Initialize memory system with handler reference
+        self.memory_system = MemorySystem(handler=self.passthrough_handler)
+        
+        # Initialize task system
         self.task_system = TaskSystem()
+        
+        # Complete handler initialization with references
+        self.passthrough_handler.task_system = self.task_system
+        self.passthrough_handler.memory_system = self.memory_system
         
         # Register templates
         register_template(self.task_system)
-        
-        # Initialize handler
-        self.passthrough_handler = PassthroughHandler(
-            task_system=self.task_system,
-            memory_system=self.memory_system
-        )
         
         # Initialize Aider bridge
         self.aider_bridge = None

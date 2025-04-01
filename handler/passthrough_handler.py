@@ -444,6 +444,90 @@ class PassthroughHandler:
         self.conversation_history = []
         self.active_subtask_id = None
         
+    def determine_relevant_files(self, query: str, file_metadata: Dict[str, str]) -> List[Tuple[str, str]]:
+        """Determine relevant files for a query using LLM.
+        
+        Args:
+            query: The user query or task
+            file_metadata: Dictionary mapping file paths to their metadata
+            
+        Returns:
+            List of tuples containing (file_path, relevance_context)
+        """
+        self.log_debug(f"Determining relevant files for query: '{query}'")
+        self.log_debug(f"Number of files to evaluate: {len(file_metadata)}")
+        
+        file_context = "Available files:\n\n"
+        for i, (path, metadata) in enumerate(file_metadata.items(), 1):
+            file_context += f"File {i}: {path}\n"
+            file_context += f"Metadata: {metadata}\n\n"
+        
+        system_prompt = """You are a file relevance assistant. Your task is to select files that are relevant to a user's query.
+        Examine the metadata of each file and determine which files would be most useful to address the query.
+        
+        Return ONLY a JSON array of objects with the following format:
+        [{"path": "path/to/file1.py", "relevance": "Reason this file is relevant"}, ...]
+        
+        Include only files that are truly relevant to the query. 
+        The "relevance" field should briefly explain why the file is relevant to the query.
+        
+        Do not include explanations or other text in your response, just the JSON array.
+        """
+        
+        user_message = f"Query: {query}\n\n{file_context}\n\nSelect the files most relevant to this query."
+        
+        try:
+            messages = [{"role": "user", "content": user_message}]
+            response = self.model_provider.send_message(
+                messages=messages,
+                system_prompt=system_prompt
+            )
+            
+            self.log_debug(f"LLM response for file relevance: {response[:100]}...")
+            
+            # Response parsing
+            import json
+            import re
+            
+            # Parse JSON response
+            if isinstance(response, str):
+                json_pattern = r'\[\s*\{.*?\}\s*\]'
+                match = re.search(json_pattern, response, re.DOTALL)
+                if match:
+                    json_str = match.group(0)
+                    try:
+                        json_str = json_str.replace("'", '"')  # Fix single quotes
+                        file_selections = json.loads(json_str)
+                        
+                        if isinstance(file_selections, list):
+                            result = []
+                            for item in file_selections:
+                                if isinstance(item, dict) and "path" in item:
+                                    path = item["path"]
+                                    relevance = item.get("relevance", "Relevant to query")
+                                    if path in file_metadata:
+                                        result.append((path, relevance))
+                            
+                            self.log_debug(f"Selected {len(result)} relevant files")
+                            return result
+                
+                # Fallback to regex path extraction
+                path_pattern = r'(?:"|\')?([\/\w\.-]+\.[\w]+)(?:"|\')?' 
+                matches = re.findall(path_pattern, response)
+                if matches:
+                    valid_paths = [path for path in matches if path in file_metadata]
+                    result = [(path, "Relevant to query") for path in valid_paths]
+                    self.log_debug(f"Extracted {len(result)} file paths from response")
+                    return result
+        except Exception as e:
+            self.log_debug(f"Error determining relevant files: {str(e)}")
+        
+        self.log_debug("Using fallback selection strategy")
+        # Return top 5 files rather than all files to avoid context overload
+        result = [(path, "Included in fallback selection") 
+                 for path in list(file_metadata.keys())[:5]]
+        return result
+        
     def log_debug(self, message: str) -> None:
         """Log debug information if debug mode is enabled.
         

@@ -8,9 +8,15 @@ class MemorySystem:
     while delegating actual file operations to Handler tools.
     """
     
-    def __init__(self):
-        """Initialize the Memory System."""
+    def __init__(self, handler=None):
+        """
+        Initialize the Memory System.
+        
+        Args:
+            handler: Optional handler component for LLM operations
+        """
         self.global_index = {}  # Global file metadata index
+        self.handler = handler  # Reference to the handler for LLM operations
     
     def get_global_index(self) -> Dict[str, str]:
         """Get the global file metadata index.
@@ -29,7 +35,8 @@ class MemorySystem:
         self.global_index.update(index)  # Update instead of replace
     
     def get_relevant_context_for(self, input_data: Dict[str, Any]) -> Any:
-        """Get relevant context for a task.
+        """
+        Get relevant context for a task.
         
         Args:
             input_data: The input data containing task context
@@ -39,21 +46,34 @@ class MemorySystem:
         """
         task_text = input_data.get("taskText", "")
         
-        # Simple keyword matching for now
+        # Create result class - keep this for API compatibility
+        class Result:
+            def __init__(self, context, matches):
+                self.context = context
+                self.matches = matches
+        
+        # If the handler is available, use it to determine relevant files
+        if self.handler and hasattr(self.handler, 'determine_relevant_files'):
+            try:
+                # Get file metadata
+                file_metadata = self.get_global_index()
+                
+                # Use the handler to determine relevant files
+                relevant_matches = self.handler.determine_relevant_files(task_text, file_metadata)
+                
+                if relevant_matches:
+                    context = f"Found {len(relevant_matches)} relevant files for '{task_text}'."
+                    return Result(context=context, matches=relevant_matches)
+            except Exception as e:
+                print(f"Error using handler for file relevance: {e}")
+                # Fall back to basic matching
+        
+        # Fallback to basic keyword matching if handler is not available or failed
         matches = []
         for path, metadata in self.global_index.items():
             # Check if any keywords from the query appear in the metadata
             if any(keyword.lower() in metadata.lower() for keyword in task_text.lower().split()):
                 matches.append((path, metadata))
-        
-        # No limit on number of matches
-        # matches = matches[:5]  # Previous limit of 5 files
-        
-        # Create result object with matches
-        class Result:
-            def __init__(self, context, matches):
-                self.context = context
-                self.matches = matches
         
         if matches:
             context = f"Found {len(matches)} relevant files for '{task_text}'."
