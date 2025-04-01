@@ -33,7 +33,8 @@ class TestAiderInteractiveSession:
     @patch('aider_bridge.interactive.AiderInteractiveSession._run_aider_in_process')
     @patch('tempfile.TemporaryDirectory')
     @patch('aider_bridge.result_formatter.format_interactive_result')
-    def test_start_session(self, mock_format_result, mock_temp_dir, mock_run_aider, mock_memory_system):
+    @patch('builtins.__import__', return_value=MagicMock())
+    def test_start_session(self, mock_import, mock_format_result, mock_temp_dir, mock_run_aider, mock_memory_system):
         """Test starting an interactive session."""
         # Create mock objects
         bridge = MagicMock()
