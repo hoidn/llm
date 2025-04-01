@@ -68,6 +68,7 @@ class TestAiderInteractiveSession:
             result = session.start_session("Implement a factorial function")
             
             # Check result
+            assert result == expected_result
             assert result["status"] == "COMPLETE"
             assert "Interactive Aider session completed" in result["content"]
             assert "files_modified" in result["notes"]

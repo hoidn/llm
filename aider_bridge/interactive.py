@@ -132,7 +132,7 @@ class AiderInteractiveSession:
             # Format and return result
             from aider_bridge.result_formatter import format_interactive_result
             
-            # Create the result directly
+            # Create the result
             return format_interactive_result(
                 status="COMPLETE",
                 content=f"Interactive Aider session completed. Modified {len(self.modified_files)} files.",
