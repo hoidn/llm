@@ -50,6 +50,30 @@ function evaluateFunctionCall(call: FunctionCallNode, env: Environment): Promise
   // 4. Evaluate the template body in the new environment
   return evaluateTask(template.body, funcEnv);
 }
+
+// Task execution with hierarchical system prompt support
+async function executeTask(task: Task, environment: Environment): Promise<TaskResult> {
+  try {
+    // Process and resolve all template variables
+    const resolvedTask = resolveTemplateVariables(task, environment);
+    
+    // Execute task using Handler with fully resolved content
+    // The Handler will combine base and template system prompts internally
+    const result = await handler.executeTask(resolvedTask);
+    
+    // Process and return results
+    return processResult(result, task);
+  } catch (error) {
+    if (error.message.includes('Variable resolution error')) {
+      return createTaskFailure(
+        'template_resolution_failure',
+        error.message,
+        { task: task.description }
+      );
+    }
+    throw error;
+  }
+}
 ```
 
 This ensures proper variable scoping where templates can only access their explicitly declared parameters, not the caller's entire environment.
