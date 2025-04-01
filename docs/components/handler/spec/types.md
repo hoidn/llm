@@ -8,14 +8,14 @@ export interface HandlerConfig {
     maxTurns: number;             // Maximum turns allowed for this Handler
     maxContextWindowFraction: number; // Fraction of model's context window to use
     defaultModel?: string;        // Default LLM model to use
-    systemPrompt: string;         // Default system prompt
+    baseSystemPrompt: string;     // Base system prompt for universal behaviors
 }
 
 /**
  * Payload sent to LLM provider
  */
 export interface HandlerPayload {
-    systemPrompt: string;         // System-level instructions
+    systemPrompt: string;         // Combined system-level instructions (base + template-specific)
     messages: Array<{             // Conversation history
         role: "user" | "assistant" | "system";
         content: string;

@@ -14,6 +14,13 @@
    - Complete conversation history maintained
    - Messages tracked with roles and timestamps
    - Clear session lifecycle (init → execute → cleanup)
+   
+3. **System Prompt Management**
+   - System prompts follow a hierarchical model:
+     * The base system prompt (from Handler configuration) provides universal behaviors
+     * Template-specific system prompts (if present) extend the base prompt
+     * The Handler combines these prompts during payload construction
+     * See [Pattern:SystemPrompt:1.0] for details on the hierarchical system prompt pattern
 
 ### Resource Management
 

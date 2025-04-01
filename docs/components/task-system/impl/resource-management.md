@@ -147,8 +147,13 @@ class HandlerSession {
    */
   constructPayload(task: TaskTemplate): HandlerPayload {
     // Note: All template variables should already be resolved by the Evaluator
+    // Combine base and template-specific system prompts
+    const combinedSystemPrompt = task.systemPrompt 
+      ? `${this.baseSystemPrompt}\n\n===\n\n${task.systemPrompt}`
+      : this.baseSystemPrompt;
+      
     return {
-      systemPrompt: this.systemPrompt,
+      systemPrompt: combinedSystemPrompt,  // Combined system prompt
       messages: [...this.messages, { 
         role: "user", 
         content: task.taskPrompt, // Already fully resolved

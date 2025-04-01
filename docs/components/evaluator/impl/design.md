@@ -72,9 +72,15 @@ function resolveTemplateVariables(task: Task, env: Environment): Task {
       funcEnv.bindings[param] = env.find(param);
     }
     resolvedTask.taskPrompt = substituteVariables(task.taskPrompt, funcEnv);
+    if (resolvedTask.systemPrompt) {
+      resolvedTask.systemPrompt = substituteVariables(task.systemPrompt, funcEnv);
+    }
   } else {
     // For standard templates, use the full environment
     resolvedTask.taskPrompt = substituteVariables(task.taskPrompt, env);
+    if (resolvedTask.systemPrompt) {
+      resolvedTask.systemPrompt = substituteVariables(task.systemPrompt, env);
+    }
   }
   
   return resolvedTask;

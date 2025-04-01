@@ -6,16 +6,25 @@
  */
 export interface Handler {
     /**
+     * Execute a task with the LLM
+     * Note: All template variables should be resolved before calling
+     * 
+     * @param task - The resolved TaskTemplate containing system prompt and task prompt
+     * @returns Promise resolving to TaskResult
+     */
+    executeTask(task: TaskTemplate): Promise<TaskResult>;
+    
+    /**
      * Execute a prompt with the LLM
      * Note: All template variables should be resolved before calling
      * 
-     * @param systemPrompt - System-level instructions (fully resolved)
      * @param taskPrompt - Task-specific input (fully resolved)
+     * @param templateSystemPrompt - Optional template-specific system prompt to combine with base
      * @returns Promise resolving to TaskResult
      */
     executePrompt(
-        systemPrompt: string,
-        taskPrompt: string
+        taskPrompt: string,
+        templateSystemPrompt?: string
     ): Promise<TaskResult>;
     
     /**
@@ -98,9 +107,10 @@ export interface HandlerSession {
     /**
      * Construct payload for LLM request
      * 
+     * @param task - Optional TaskTemplate to provide template-specific system prompt
      * @returns HandlerPayload object
      */
-    constructPayload(): HandlerPayload;
+    constructPayload(task?: TaskTemplate): HandlerPayload;
     
     /**
      * Get current resource metrics

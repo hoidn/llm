@@ -78,7 +78,7 @@ interface BaseTaskDefinition {
  */
 interface TaskTemplate {
     readonly taskPrompt: string;      // Maps to <instructions> in schema
-    readonly systemPrompt: string;    // Maps to <system> in schema
+    readonly systemPrompt?: string;   // Maps to <system> in schema; extends base system prompt
     readonly provider?: string;       // Maps to <provider> in schema
     readonly model?: string;          // Maps to <model> in schema
     readonly inputs?: Record<string, string>;
