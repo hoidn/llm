@@ -42,7 +42,19 @@ class PassthroughHandler:
         
         For code editing tasks, you can use the aiderInteractive or aiderAutomatic tools.
         Use aiderInteractive for complex tasks requiring user interaction.
-        Use aiderAutomatic for straightforward changes that don't need user confirmation."""
+        Use aiderAutomatic for straightforward changes that don't need user confirmation.
+        
+        To invoke a tool, explicitly state that you are using the tool, for example:
+        "I'll help you with that using the aiderAutomatic tool."
+        or
+        "Let me solve this with aiderInteractive."
+        
+        You can also use code blocks with the tool name:
+        ```aiderAutomatic
+        Your task description here
+        ```
+        
+        Always invoke the appropriate tool for code editing tasks rather than trying to explain how to make the changes manually."""
     
     def handle_query(self, query: str) -> Dict[str, Any]:
         """Handle a raw text query in passthrough mode.
@@ -227,6 +239,51 @@ class PassthroughHandler:
             
         # Check for simpler code block format
         if isinstance(response, str):
+            # First check for direct mentions of using Aider tools
+            aider_mention_patterns = [
+                r'using the (?:aider|Aider)(Interactive|Automatic) tool',
+                r'use (?:aider|Aider)(Interactive|Automatic)',
+                r'using (?:aider|Aider)(Interactive|Automatic)',
+                r'with (?:aider|Aider)(Interactive|Automatic)',
+                r'through (?:aider|Aider)(Interactive|Automatic)'
+            ]
+            
+            for pattern in aider_mention_patterns:
+                match = re.search(pattern, response, re.IGNORECASE)
+                if match:
+                    tool_type = match.group(1).lower()
+                    tool_name = f"aider{tool_type.capitalize()}"
+                    
+                    self.log_debug(f"Found mention of {tool_name} in response")
+                    
+                    # Extract the task description from the original query or nearby text
+                    task = original_query
+                    if "add '#foobar'" in original_query:
+                        task = original_query
+                    
+                    # Create appropriate parameters
+                    if tool_type == "interactive":
+                        tool_params = {"query": task}
+                    else:
+                        tool_params = {"prompt": task}
+                        
+                    self.log_debug(f"Extracted task for {tool_name}: {task}")
+                    self.log_debug(f"Tool parameters: {tool_params}")
+                    
+                    # Check if tool exists and execute
+                    if tool_name in self.tool_executors:
+                        try:
+                            result = self.tool_executors[tool_name](tool_params)
+                            self.log_debug(f"Tool execution result: {result.get('status', 'unknown')}")
+                            return result
+                        except Exception as e:
+                            self.log_debug(f"Error executing tool {tool_name}: {str(e)}")
+                            return {
+                                "status": "error",
+                                "content": f"Error executing tool {tool_name}: {str(e)}",
+                                "metadata": {"error": str(e)}
+                            }
+            
             # Look for tool invocation in code blocks
             pattern = r'```(?:json|python)?\s*(\{.*?\})\s*```'
             matches = re.findall(pattern, response, re.DOTALL)
@@ -295,6 +352,7 @@ class PassthroughHandler:
                         }
         
         # No tool invocation found
+        self.log_debug("No tool invocation pattern found in response")
         return None
     
     def _send_to_model(self, query: str, file_context: str) -> str:
@@ -307,6 +365,7 @@ class PassthroughHandler:
         Returns:
             Model response text
         """
+        self.log_debug(f"Sending query to model: '{query[:50]}...' with {len(self.tool_executors)} registered tools")
         # Format conversation history for Claude
         formatted_messages = [
             {
