@@ -45,6 +45,10 @@ class TestAiderInteractiveSession:
             }
         }
         
+        # Debug: Print information about the mock
+        print(f"\nDEBUG - Mock format_interactive_result: {mock_format_result}")
+        print(f"DEBUG - Mock return value: {mock_format_result.return_value}")
+        
         # Create mock objects
         bridge = MagicMock()
         bridge.aider_available = True

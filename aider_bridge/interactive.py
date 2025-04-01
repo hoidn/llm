@@ -130,14 +130,21 @@ class AiderInteractiveSession:
             self._cleanup_session()
             
             # Format and return result
-            from aider_bridge.result_formatter import format_interactive_result
             print(f"\nDEBUG - About to call format_interactive_result")
-            return format_interactive_result(
+            # Debug: Print the module where format_interactive_result is coming from
+            import sys
+            from aider_bridge.result_formatter import format_interactive_result
+            print(f"DEBUG - format_interactive_result module: {format_interactive_result.__module__}")
+            print(f"DEBUG - format_interactive_result function: {format_interactive_result}")
+            
+            result = format_interactive_result(
                 status="COMPLETE",
                 content=f"Interactive Aider session completed. Modified {len(self.modified_files)} files.",
                 files_modified=self.modified_files,
                 session_summary=f"Session initiated with query: {query}"
             )
+            print(f"DEBUG - Result from format_interactive_result: {result}")
+            return result
         except Exception as e:
             # Ensure session is marked as inactive even on error
             self.active = False
