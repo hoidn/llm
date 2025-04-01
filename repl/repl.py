@@ -27,7 +27,9 @@ class Repl:
             "/exit": self._cmd_exit,
             "/reset": self._cmd_reset,
             "/verbose": self._cmd_verbose,
-            "/index": self._cmd_index
+            "/index": self._cmd_index,
+            "/test-aider": self._cmd_test_aider,
+            "/debug": self._cmd_debug
         }
     
     def start(self) -> None:
@@ -144,6 +146,8 @@ class Repl:
         print("  /index REPO_PATH - Index a git repository", file=self.output)
         print("  /reset - Reset conversation state", file=self.output)
         print("  /verbose [on|off] - Toggle verbose mode", file=self.output)
+        print("  /debug [on|off] - Toggle debug mode for tool selection", file=self.output)
+        print("  /test-aider [interactive|automatic] - Test Aider tool integration", file=self.output)
         print("  /exit - Exit the REPL", file=self.output)
     
     def _cmd_mode(self, args: str) -> None:
@@ -190,6 +194,33 @@ class Repl:
             return
         
         print(f"Verbose mode: {'on' if self.verbose else 'off'}", file=self.output)
+        
+    def _cmd_debug(self, args: str) -> None:
+        """Toggle debug mode for tool selection.
+        
+        Args:
+            args: Command arguments - 'on' or 'off'
+        """
+        # Check if handler has set_debug_mode method
+        if not hasattr(self.application.passthrough_handler, 'set_debug_mode'):
+            print("Error: Handler does not support debug mode", file=self.output)
+            return
+            
+        if not args:
+            # Toggle debug mode
+            current_mode = getattr(self.application.passthrough_handler, 'debug_mode', False)
+            self.application.passthrough_handler.set_debug_mode(not current_mode)
+        elif args.lower() in ["on", "true", "yes", "1"]:
+            self.application.passthrough_handler.set_debug_mode(True)
+        elif args.lower() in ["off", "false", "no", "0"]:
+            self.application.passthrough_handler.set_debug_mode(False)
+        else:
+            print(f"Invalid option: {args}", file=self.output)
+            print("Usage: /debug [on|off]", file=self.output)
+            return
+        
+        current_mode = getattr(self.application.passthrough_handler, 'debug_mode', False)
+        print(f"Debug mode: {'on' if current_mode else 'off'}", file=self.output)
     
     def _cmd_index(self, args: str) -> None:
         """Handle the index command.
@@ -219,3 +250,70 @@ class Repl:
         """
         print("Exiting...", file=self.output)
         sys.exit(0)
+        
+    def _cmd_test_aider(self, args: str) -> None:
+        """Test Aider tool integration.
+        
+        Args:
+            args: Command arguments - 'interactive' or 'automatic'
+        """
+        # Check if Aider bridge is available
+        if not hasattr(self.application, 'aider_bridge') or not self.application.aider_bridge:
+            print("Error: Aider bridge not initialized", file=self.output)
+            return
+            
+        # Parse mode from args
+        mode = args.strip().lower() if args.strip() else 'interactive'
+        if mode not in ['interactive', 'automatic']:
+            print(f"Invalid mode: {mode}", file=self.output)
+            print("Available modes: interactive, automatic", file=self.output)
+            return
+            
+        print(f"\nTesting Aider in {mode} mode...", file=self.output)
+        
+        # Get test query based on mode
+        if mode == 'interactive':
+            test_query = "Add a docstring to this function"
+        else:
+            test_query = "Add type hints to this function"
+            
+        # Get file context
+        test_files = self.application.aider_bridge.get_context_for_query(test_query)
+        if not test_files:
+            print("Warning: No relevant files found for test query", file=self.output)
+            print("Using a sample file for testing...", file=self.output)
+            # Use a sample file from the current directory
+            import glob
+            py_files = glob.glob("*.py")
+            if py_files:
+                test_files = [py_files[0]]
+            else:
+                print("Error: No Python files found for testing", file=self.output)
+                return
+                
+        print(f"Using file context: {test_files}", file=self.output)
+        
+        # Execute test based on mode
+        try:
+            if mode == 'interactive':
+                print("\nStarting interactive Aider session...", file=self.output)
+                result = self.application.aider_bridge.start_interactive_session(test_query, test_files)
+            else:
+                print("\nExecuting automatic Aider task...", file=self.output)
+                result = self.application.aider_bridge.execute_automatic_task(test_query, test_files)
+                
+            # Display result
+            print("\nTest result:", file=self.output)
+            print(f"Status: {result.get('status', 'unknown')}", file=self.output)
+            print(f"Content: {result.get('content', 'No content')}", file=self.output)
+            
+            # Display additional details if available
+            if 'notes' in result:
+                print("\nDetails:", file=self.output)
+                for key, value in result['notes'].items():
+                    print(f"  {key}: {value}", file=self.output)
+                    
+        except Exception as e:
+            print(f"\nError testing Aider: {str(e)}", file=self.output)
+            import traceback
+            print(traceback.format_exc(), file=self.output)

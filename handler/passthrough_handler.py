@@ -24,6 +24,9 @@ class PassthroughHandler:
         self.model_provider = model_provider or ClaudeProvider()
         self.file_manager = FileAccessManager()
         
+        # Debug mode
+        self.debug_mode = False
+        
         # Conversation state
         self.conversation_history = []
         self.active_subtask_id = None
@@ -43,20 +46,31 @@ class PassthroughHandler:
         Returns:
             Task result containing the response
         """
+        self.log_debug(f"Processing query: {query}")
+        
         # Add user message to conversation history
         self.conversation_history.append({"role": "user", "content": query})
         
         # Get relevant files from memory system based on query
         relevant_files = self._get_relevant_files(query)
+        self.log_debug(f"Found relevant files: {relevant_files}")
+        
+        # Check if query is an Aider command
+        is_aider_command = query.startswith("/aider")
+        if is_aider_command:
+            self.log_debug("Detected Aider command")
         
         if not self.active_subtask_id:
+            self.log_debug("Creating new subtask")
             result = self._create_new_subtask(query, relevant_files)
         else:
+            self.log_debug(f"Continuing subtask: {self.active_subtask_id}")
             result = self._continue_subtask(query, relevant_files)
             
         # Add assistant response to conversation history
         self.conversation_history.append({"role": "assistant", "content": result["content"]})
         
+        self.log_debug(f"Query processing complete. Status: {result.get('status', 'unknown')}")
         return result
     
     def _get_relevant_files(self, query: str) -> List[str]:
@@ -200,3 +214,21 @@ class PassthroughHandler:
         """Reset the conversation state."""
         self.conversation_history = []
         self.active_subtask_id = None
+        
+    def log_debug(self, message: str) -> None:
+        """Log debug information if debug mode is enabled.
+        
+        Args:
+            message: Debug message to log
+        """
+        if self.debug_mode:
+            print(f"[DEBUG] {message}")
+            
+    def set_debug_mode(self, enabled: bool) -> None:
+        """Set debug mode.
+        
+        Args:
+            enabled: Whether debug mode should be enabled
+        """
+        self.debug_mode = enabled
+        self.log_debug(f"Debug mode {'enabled' if enabled else 'disabled'}")
