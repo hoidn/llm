@@ -20,7 +20,8 @@ class TestPassthroughHandler:
             mock_file_manager = MagicMock()
             mock_file_manager_class.return_value = mock_file_manager
             
-            handler = PassthroughHandler(mock_task_system, mock_memory_system)
+            # Create handler with explicit model_provider to ensure we use our mock
+            handler = PassthroughHandler(mock_task_system, mock_memory_system, model_provider=mock_provider)
             
             # Check inheritance
             assert isinstance(handler, BaseHandler)
@@ -36,8 +37,8 @@ class TestPassthroughHandler:
     def test_handle_query_new_subtask(self, mock_task_system, mock_memory_system):
         """Test handle_query when no active subtask exists."""
         # Mock the ClaudeProvider and FileAccessManager
-        with patch('handler.passthrough_handler.ClaudeProvider') as mock_provider_class, \
-             patch('handler.passthrough_handler.FileAccessManager') as mock_file_manager_class:
+        with patch('handler.model_provider.ClaudeProvider') as mock_provider_class, \
+             patch('handler.file_access.FileAccessManager') as mock_file_manager_class:
             # Setup mocks
             mock_provider = MagicMock()
             mock_provider.send_message.return_value = "This is a model response"
@@ -77,8 +78,8 @@ class TestPassthroughHandler:
     def test_handle_query_continue_subtask(self, mock_task_system, mock_memory_system):
         """Test handle_query when an active subtask exists."""
         # Mock the ClaudeProvider and FileAccessManager
-        with patch('handler.passthrough_handler.ClaudeProvider') as mock_provider_class, \
-             patch('handler.passthrough_handler.FileAccessManager') as mock_file_manager_class:
+        with patch('handler.model_provider.ClaudeProvider') as mock_provider_class, \
+             patch('handler.file_access.FileAccessManager') as mock_file_manager_class:
             # Setup mocks
             mock_provider = MagicMock()
             mock_provider.send_message.side_effect = ["First response", "Second response"]
@@ -123,7 +124,7 @@ class TestPassthroughHandler:
     def test_get_relevant_files(self, mock_task_system, mock_memory_system):
         """Test _get_relevant_files method."""
         # Mock the ClaudeProvider
-        with patch('handler.passthrough_handler.ClaudeProvider'):
+        with patch('handler.model_provider.ClaudeProvider'):
             # Setup memory system mock to return relevant files
             mock_memory_system.get_relevant_context_for.return_value = MagicMock(
                 matches=[("file1.py", "metadata1"), ("file2.py", "metadata2")]
@@ -147,8 +148,8 @@ class TestPassthroughHandler:
     def test_create_file_context(self, mock_task_system, mock_memory_system):
         """Test _create_file_context method."""
         # Mock the ClaudeProvider and FileAccessManager
-        with patch('handler.passthrough_handler.ClaudeProvider'), \
-             patch('handler.passthrough_handler.FileAccessManager') as mock_file_manager_class:
+        with patch('handler.model_provider.ClaudeProvider'), \
+             patch('handler.file_access.FileAccessManager') as mock_file_manager_class:
             # Setup file manager mock
             mock_file_manager = MagicMock()
             mock_file_manager.read_file.side_effect = lambda path: f"Content of {path}" if path == "file1.py" else None
@@ -170,7 +171,7 @@ class TestPassthroughHandler:
     def test_reset_conversation(self, mock_task_system, mock_memory_system):
         """Test reset_conversation method."""
         # Mock the ClaudeProvider
-        with patch('handler.passthrough_handler.ClaudeProvider'):
+        with patch('handler.model_provider.ClaudeProvider'):
             # Create handler and setup conversation state
             handler = PassthroughHandler(mock_task_system, mock_memory_system)
             handler.conversation_history = [

@@ -8,10 +8,13 @@ def mock_memory_system():
     memory = MagicMock()
     memory.get_global_index.return_value = {}
     memory.update_global_index.return_value = None
-    memory.get_relevant_context_for.return_value = {
-        "context": "mock context",
-        "matches": [("file1.py", "mock metadata")]
-    }
+    # Create a mock result object with matches attribute
+    class MockResult:
+        def __init__(self):
+            self.context = "mock context"
+            self.matches = [("file1.py", "mock metadata")]
+    
+    memory.get_relevant_context_for.return_value = MockResult()
     return memory
 
 @pytest.fixture

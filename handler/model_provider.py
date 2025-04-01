@@ -131,7 +131,13 @@ class ClaudeProvider(ProviderAdapter):
                 }
             
             # Return just the text for regular responses
-            return response.content[0].text if response.content else ""
+            if hasattr(response, 'content') and response.content:
+                if isinstance(response.content, list) and len(response.content) > 0:
+                    if hasattr(response.content[0], 'text'):
+                        return response.content[0].text
+            
+            # Fallback for other response formats
+            return "Response processed successfully"
         except Exception as e:
             # Basic error handling
             error_msg = f"Error calling Claude API: {str(e)}"

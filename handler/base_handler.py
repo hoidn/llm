@@ -114,7 +114,12 @@ class BaseHandler:
         context_result = self.memory_system.get_relevant_context_for(context_input)
         
         # Extract file paths from matches
-        relevant_files = [match[0] for match in context_result.matches]
+        if hasattr(context_result, 'matches'):
+            # Object-style result
+            relevant_files = [match[0] for match in context_result.matches]
+        else:
+            # Dict-style result
+            relevant_files = [match[0] for match in context_result.get('matches', [])]
         return relevant_files
     
     def _create_file_context(self, file_paths: List[str]) -> str:
