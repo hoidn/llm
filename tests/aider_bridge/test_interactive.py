@@ -29,6 +29,53 @@ class TestAiderInteractiveSession:
         assert session.modified_files == []
         assert session.temp_dir is None
         assert session.last_query is None
+        
+    @patch('aider_bridge.interactive.AiderInteractiveSession._run_aider_in_process')
+    @patch('tempfile.TemporaryDirectory')
+    @patch('aider_bridge.result_formatter.format_interactive_result')
+    def test_start_session(self, mock_format_result, mock_temp_dir, mock_run_aider, mock_memory_system):
+        """Test starting an interactive session."""
+        # Set up the mock format_interactive_result to return a proper result
+        mock_format_result.return_value = {
+            "status": "COMPLETE",
+            "content": "Interactive Aider session completed. Modified 1 files.",
+            "notes": {
+                "files_modified": ["/path/to/file1.py"],
+                "session_summary": "Session initiated with query: Implement a factorial function"
+            }
+        }
+        
+        # Create mock objects
+        bridge = MagicMock()
+        bridge.aider_available = True
+        bridge.file_context = {"/path/to/file1.py", "/path/to/file2.py"}
+        
+        # Mock file state methods
+        with patch.object(AiderInteractiveSession, '_get_file_states') as mock_get_states, \
+             patch.object(AiderInteractiveSession, '_get_modified_files') as mock_get_modified, \
+             patch.object(AiderInteractiveSession, '_cleanup_session') as mock_cleanup, \
+             patch('builtins.__import__', return_value=MagicMock()):
+            
+            # Set up mocks
+            mock_get_states.side_effect = [{"/path/to/file1.py": {"size": 100, "mtime": 123456789, "hash": 12345}},
+                                        {"/path/to/file1.py": {"size": 120, "mtime": 123456790, "hash": 67890}}]
+            mock_get_modified.return_value = ["/path/to/file1.py"]
+            
+            # Create session
+            session = AiderInteractiveSession(bridge)
+            
+            # Start session
+            result = session.start_session("Implement a factorial function")
+            
+            # Check result
+            assert result["status"] == "COMPLETE"
+            assert "Interactive Aider session completed" in result["content"]
+            assert "files_modified" in result["notes"]
+            assert result["notes"]["files_modified"] == ["/path/to/file1.py"]
+            assert "session_summary" in result["notes"]
+            
+            # Verify our mock was called
+            mock_format_result.assert_called()
     
     @pytest.mark.integration
     def test_start_session_integration(self, mock_memory_system, tmp_path):
@@ -51,9 +98,11 @@ class TestAiderInteractiveSession:
         bridge.file_context = {str(file1), str(file2)}
         
         # Only mock the methods that would actually run Aider
-        with patch.object(AiderInteractiveSession, '_run_aider_in_process'), \
+        with patch.object(AiderInteractiveSession, '_run_aider_in_process') as mock_run_aider, \
              patch.object(AiderInteractiveSession, '_run_aider_subprocess'), \
-             patch.object(AiderInteractiveSession, '_cleanup_session'):
+             patch.object(AiderInteractiveSession, '_get_file_states') as mock_get_states, \
+             patch.object(AiderInteractiveSession, '_get_modified_files') as mock_get_modified, \
+             patch.object(AiderInteractiveSession, '_cleanup_session') as mock_cleanup:
             
             # Create session
             session = AiderInteractiveSession(bridge)
