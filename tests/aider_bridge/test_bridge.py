@@ -11,8 +11,8 @@ class TestAiderBridge:
     def test_init(self, mock_memory_system):
         """Test initialization of AiderBridge."""
         # Test with Aider not available
-        with patch('aider_bridge.bridge.AiderBridge._initialize_aider_components') as mock_init, \
-             patch('aider_bridge.bridge.AiderBridge.aider_available', False):
+        with patch('aider_bridge.bridge.AiderBridge.aider_available', False, create=True), \
+             patch('aider_bridge.bridge.AiderBridge._initialize_aider_components') as mock_init:
             bridge = AiderBridge(mock_memory_system)
             
             assert bridge.memory_system == mock_memory_system
@@ -94,8 +94,9 @@ class TestAiderBridge:
     def test_execute_code_edit_aider_not_available(self, mock_memory_system):
         """Test execute_code_edit when Aider is not available."""
         # Create AiderBridge instance with Aider not available
-        with patch('aider_bridge.bridge.AiderBridge.aider_available', False):
+        with patch.object(AiderBridge, 'aider_available', False, create=True):
             bridge = AiderBridge(mock_memory_system)
+            bridge.aider_available = False  # Explicitly set instance attribute
             
             # Execute code edit
             result = bridge.execute_code_edit("Implement a function to calculate factorial")
@@ -107,7 +108,7 @@ class TestAiderBridge:
             assert "Aider dependency not installed" in result["notes"]["error"]
     
     @patch('aider_bridge.bridge.AiderBridge._get_coder')
-    @patch('aider_bridge.bridge.AiderBridge.aider_available', True)
+    @patch.object(AiderBridge, 'aider_available', True, create=True)
     @patch('aider_bridge.bridge.AiderBridge._initialize_aider_components', return_value=True)
     def test_execute_code_edit_success(self, mock_init, mock_get_coder, mock_memory_system):
         """Test execute_code_edit with successful execution."""
@@ -143,7 +144,7 @@ class TestAiderBridge:
         )
     
     @patch('aider_bridge.bridge.AiderBridge._get_coder')
-    @patch('aider_bridge.bridge.AiderBridge.aider_available', True)
+    @patch.object(AiderBridge, 'aider_available', True, create=True)
     @patch('aider_bridge.bridge.AiderBridge._initialize_aider_components', return_value=True)
     def test_execute_code_edit_no_changes(self, mock_init, mock_get_coder, mock_memory_system):
         """Test execute_code_edit with no changes made."""
@@ -171,7 +172,7 @@ class TestAiderBridge:
         assert len(result["notes"]["changes"]) == 0
     
     @patch('aider_bridge.bridge.AiderBridge._get_coder', return_value=None)
-    @patch('aider_bridge.bridge.AiderBridge.aider_available', True)
+    @patch.object(AiderBridge, 'aider_available', True, create=True)
     @patch('aider_bridge.bridge.AiderBridge._initialize_aider_components', return_value=True)
     def test_execute_code_edit_coder_initialization_failed(self, mock_init, mock_get_coder, mock_memory_system):
         """Test execute_code_edit when coder initialization fails."""
@@ -194,7 +195,7 @@ class TestAiderBridge:
         mock_get_coder.assert_called_once_with(["/path/to/file1.py", "/path/to/file2.py"])
     
     @patch('aider_bridge.bridge.AiderBridge.get_context_for_query')
-    @patch('aider_bridge.bridge.AiderBridge.aider_available', True)
+    @patch.object(AiderBridge, 'aider_available', True, create=True)
     def test_execute_code_edit_with_no_context(self, mock_get_context, mock_memory_system):
         """Test execute_code_edit when no file context is available."""
         # Setup mock to return no files
