@@ -57,6 +57,16 @@ class TestAiderInteractiveSession:
             # Start session
             result = session.start_session("Implement a factorial function")
             
+            # Add debug logging
+            print(f"\nDEBUG - Result type: {type(result)}")
+            print(f"DEBUG - Result content: {result}")
+            
+            # Check if format_interactive_result is being mocked
+            with patch('aider_bridge.interactive.format_interactive_result', wraps=lambda **kwargs: {'status': 'COMPLETE', 'content': 'Test', 'notes': {}}) as mock_format:
+                # Call start_session again to see if format_interactive_result is called
+                session.start_session("Another test")
+                print(f"DEBUG - format_interactive_result called: {mock_format.called}")
+            
             # Check result
             assert result["status"] == "COMPLETE"
             assert "Interactive Aider session completed" in result["content"]
