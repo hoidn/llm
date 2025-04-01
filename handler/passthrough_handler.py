@@ -1,5 +1,7 @@
 """Passthrough handler for processing raw text queries."""
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Union, Callable
+import re
+import json
 
 from handler.model_provider import ClaudeProvider
 from handler.file_access import FileAccessManager
@@ -27,12 +29,20 @@ class PassthroughHandler:
         # Debug mode
         self.debug_mode = False
         
+        # Tool registration
+        self.registered_tools = {}  # Tool specifications
+        self.tool_executors = {}    # Tool executor functions
+        
         # Conversation state
         self.conversation_history = []
         self.active_subtask_id = None
         self.system_prompt = """You are a helpful assistant that responds to user queries.
         When referring to code or files, cite the relevant file paths.
-        Be precise and helpful, focusing on the user's specific question."""
+        Be precise and helpful, focusing on the user's specific question.
+        
+        For code editing tasks, you can use the aiderInteractive or aiderAutomatic tools.
+        Use aiderInteractive for complex tasks requiring user interaction.
+        Use aiderAutomatic for straightforward changes that don't need user confirmation."""
     
     def handle_query(self, query: str) -> Dict[str, Any]:
         """Handle a raw text query in passthrough mode.
@@ -147,6 +157,146 @@ class PassthroughHandler:
             }
         }
         
+    def register_tool(self, tool_spec: Dict[str, Any], executor_func: Callable) -> bool:
+        """
+        Register a tool following Anthropic's tool use format.
+        
+        Args:
+            tool_spec: Tool specification following Anthropic format
+            executor_func: Function to execute when tool is called
+            
+        Returns:
+            True if registration successful, False otherwise
+        """
+        try:
+            tool_name = tool_spec.get('name')
+            if not tool_name:
+                self.log_debug(f"Error registering tool: Missing tool name")
+                return False
+                
+            self.log_debug(f"Registering tool in Anthropic format: {tool_name}")
+            self.registered_tools[tool_name] = tool_spec
+            self.tool_executors[tool_name] = executor_func
+            return True
+        except Exception as e:
+            self.log_debug(f"Error registering tool: {str(e)}")
+            return False
+            
+    def _check_for_tool_invocation(self, response: Union[str, Dict[str, Any]], original_query: str) -> Optional[Dict[str, Any]]:
+        """
+        Check if response contains tool invocation and execute if found.
+        
+        Supports both official Anthropic tool call format and simpler code block format.
+        
+        Args:
+            response: Response from the model (text or dict with tool calls)
+            original_query: Original query from the user
+            
+        Returns:
+            Tool execution result if a tool was invoked, None otherwise
+        """
+        # Check if response is already in tool call format (dict with tool_calls)
+        if isinstance(response, dict) and 'tool_calls' in response:
+            self.log_debug("Found official tool call format")
+            tool_calls = response['tool_calls']
+            
+            if tool_calls and len(tool_calls) > 0:
+                # Get the first tool call
+                tool_call = tool_calls[0]
+                tool_name = tool_call.name
+                tool_params = tool_call.input
+                
+                self.log_debug(f"Executing tool {tool_name} with params: {tool_params}")
+                
+                # Check if tool exists
+                if tool_name in self.tool_executors:
+                    try:
+                        # Execute tool
+                        result = self.tool_executors[tool_name](tool_params)
+                        self.log_debug(f"Tool execution result: {result.get('status', 'unknown')}")
+                        return result
+                    except Exception as e:
+                        self.log_debug(f"Error executing tool {tool_name}: {str(e)}")
+                        return {
+                            "status": "error",
+                            "content": f"Error executing tool {tool_name}: {str(e)}",
+                            "metadata": {"error": str(e)}
+                        }
+                else:
+                    self.log_debug(f"Tool {tool_name} not found")
+            
+        # Check for simpler code block format
+        if isinstance(response, str):
+            # Look for tool invocation in code blocks
+            pattern = r'```(?:json|python)?\s*(\{.*?\})\s*```'
+            matches = re.findall(pattern, response, re.DOTALL)
+            
+            for match in matches:
+                try:
+                    # Try to parse as JSON
+                    data = json.loads(match)
+                    
+                    # Check if it looks like a tool call
+                    if 'tool' in data and 'input' in data:
+                        tool_name = data['tool']
+                        tool_params = data['input']
+                        
+                        self.log_debug(f"Found code block tool invocation: {tool_name}")
+                        self.log_debug(f"Tool parameters: {tool_params}")
+                        
+                        # Check if tool exists
+                        if tool_name in self.tool_executors:
+                            try:
+                                # Execute tool
+                                result = self.tool_executors[tool_name](tool_params)
+                                self.log_debug(f"Tool execution result: {result.get('status', 'unknown')}")
+                                return result
+                            except Exception as e:
+                                self.log_debug(f"Error executing tool {tool_name}: {str(e)}")
+                                return {
+                                    "status": "error",
+                                    "content": f"Error executing tool {tool_name}: {str(e)}",
+                                    "metadata": {"error": str(e)}
+                                }
+                except json.JSONDecodeError:
+                    # Not valid JSON, continue to next match
+                    continue
+                    
+            # Also check for direct tool name invocation
+            for tool_name in self.tool_executors.keys():
+                # Simple pattern: tool name followed by some text in a code block
+                pattern = f'```{tool_name}\n(.*?)```'
+                match = re.search(pattern, response, re.DOTALL)
+                
+                if match:
+                    self.log_debug(f"Found direct tool invocation: {tool_name}")
+                    tool_params_text = match.group(1).strip()
+                    
+                    try:
+                        # Try to parse as JSON if it looks like JSON
+                        if tool_params_text.startswith('{') and tool_params_text.endswith('}'):
+                            tool_params = json.loads(tool_params_text)
+                        else:
+                            # Otherwise use as a simple string parameter
+                            tool_params = {"query": tool_params_text} if tool_name == "aiderInteractive" else {"prompt": tool_params_text}
+                            
+                        self.log_debug(f"Tool parameters: {tool_params}")
+                        
+                        # Execute tool
+                        result = self.tool_executors[tool_name](tool_params)
+                        self.log_debug(f"Tool execution result: {result.get('status', 'unknown')}")
+                        return result
+                    except Exception as e:
+                        self.log_debug(f"Error executing tool {tool_name}: {str(e)}")
+                        return {
+                            "status": "error",
+                            "content": f"Error executing tool {tool_name}: {str(e)}",
+                            "metadata": {"error": str(e)}
+                        }
+        
+        # No tool invocation found
+        return None
+    
     def _send_to_model(self, query: str, file_context: str) -> str:
         """Send query to model and get response.
         
@@ -172,13 +322,33 @@ class PassthroughHandler:
         else:
             system_prompt = self.system_prompt
         
+        # Prepare tools if available
+        tools = list(self.registered_tools.values()) if self.registered_tools else None
+        
+        if tools:
+            self.log_debug(f"Available tools: {[t['name'] for t in tools]}")
+        
         try:
             # Send to model
             response = self.model_provider.send_message(
                 messages=formatted_messages,
-                system_prompt=system_prompt
+                system_prompt=system_prompt,
+                tools=tools
             )
-            return response if response else f"Processed query: {query}"
+            
+            # Check for tool invocation
+            tool_result = self._check_for_tool_invocation(response, query)
+            
+            if tool_result:
+                self.log_debug("Tool was executed, returning tool result")
+                # Return the tool result content as the response
+                return tool_result.get("content", f"Tool execution completed: {tool_result.get('status', 'unknown')}")
+            
+            # Return the regular response if no tool was executed
+            if isinstance(response, dict) and 'text' in response:
+                return response['text'] if response['text'] else f"Processed query: {query}"
+            else:
+                return response if response else f"Processed query: {query}"
         except Exception as e:
             # Fallback for tests or when API is unavailable
             print(f"Error sending to model: {str(e)}")
@@ -247,10 +417,25 @@ class PassthroughHandler:
             True if registration successful, False otherwise
         """
         self.log_debug(f"Registering direct tool: {name}")
-        # Store the tool in a dictionary if not already present
+        
+        # Create a wrapper function that adapts to the Anthropic tool format
+        def tool_wrapper(input_data: Dict[str, Any]) -> Any:
+            # If input is a dict with a query key, extract it
+            if isinstance(input_data, dict) and "query" in input_data:
+                query = input_data["query"]
+                file_context = input_data.get("file_context")
+                return func(query, file_context)
+            # Otherwise pass the input directly
+            return func(input_data)
+        
+        # Store the tool in both dictionaries
         if not hasattr(self, "direct_tools"):
             self.direct_tools = {}
         self.direct_tools[name] = func
+        
+        # Also register as a regular tool for the Anthropic format
+        self.tool_executors[name] = tool_wrapper
+        
         return True
     
     def registerSubtaskTool(self, name: str, func: Any) -> bool:
@@ -267,8 +452,23 @@ class PassthroughHandler:
             True if registration successful, False otherwise
         """
         self.log_debug(f"Registering subtask tool: {name}")
-        # Store the tool in a dictionary if not already present
+        
+        # Create a wrapper function that adapts to the Anthropic tool format
+        def tool_wrapper(input_data: Dict[str, Any]) -> Any:
+            # If input is a dict with a prompt key, extract it
+            if isinstance(input_data, dict) and "prompt" in input_data:
+                prompt = input_data["prompt"]
+                file_context = input_data.get("file_context")
+                return func(prompt, file_context)
+            # Otherwise pass the input directly
+            return func(input_data)
+        
+        # Store the tool in both dictionaries
         if not hasattr(self, "subtask_tools"):
             self.subtask_tools = {}
         self.subtask_tools[name] = func
+        
+        # Also register as a regular tool for the Anthropic format
+        self.tool_executors[name] = tool_wrapper
+        
         return True
