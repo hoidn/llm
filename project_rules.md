@@ -80,6 +80,13 @@ project_root/
      3. Local application/library specific imports
    - Use absolute imports for clarity
 
+4. **Import Placement**:
+   - Place imports at the module level, not inside functions or methods
+   - Exception: Only use local imports when absolutely necessary to avoid circular imports or 
+     to defer importing optional dependencies that might be unavailable
+   - Document any local imports with a comment explaining the rationale
+   - For optional dependencies, provide a fallback mechanism and clear error messages
+
 ### Type Hints
 
 1. **Usage**:
@@ -124,6 +131,21 @@ project_root/
    - `test_[module].py` for module tests
    - Place test files in directories mirroring the module structure
 
+### Test Design Patterns
+
+1. **Arrange-Act-Assert**:
+   - Structure tests with clear arrangement, action, and assertion phases
+   - Keep test setup code minimal and focused on what's being tested
+   - Use descriptive variable names that clarify test intent
+
+2. **Test Doubles**:
+   - Use the appropriate test double for each situation:
+     * Stubs: For providing indirect inputs
+     * Mocks: For verifying indirect outputs
+     * Spies: For verifying indirect outputs without breaking tests
+     * Fakes: For simulating complex components
+   - Create reusable test doubles for commonly used dependencies
+
 ### Test Implementation
 
 1. **pytest as Testing Framework**:
@@ -145,6 +167,19 @@ project_root/
    - Aim for high test coverage of business logic
    - Test both success and failure paths
    - Include edge cases in tests
+
+5. **Testing with External Dependencies**:
+   - Create dedicated mock objects for external libraries
+   - Use feature detection pattern in code rather than try/except for imports in tests
+   - For optional dependencies, test both presence and absence code paths
+   - Consider using pytest skipif markers for tests that require specific dependencies
+   - Use side_effect in mocks to return appropriate values for different inputs
+
+6. **Mock Verification**:
+   - Always verify that mocked methods were called as expected
+   - Check both call count and arguments passed to mocks
+   - Use assert_called_once(), assert_called_with() and similar methods
+   - For complex interactions, use mock.call_args_list to verify call sequence
 
 ### Integration Testing
 
