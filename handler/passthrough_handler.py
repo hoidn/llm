@@ -498,7 +498,7 @@ class PassthroughHandler:
                     try:
                         json_str = json_str.replace("'", '"')  # Fix single quotes
                         file_selections = json.loads(json_str)
-                        
+                            
                         if isinstance(file_selections, list):
                             result = []
                             for item in file_selections:
@@ -507,18 +507,21 @@ class PassthroughHandler:
                                     relevance = item.get("relevance", "Relevant to query")
                                     if path in file_metadata:
                                         result.append((path, relevance))
-                            
+                                
                             self.log_debug(f"Selected {len(result)} relevant files")
                             return result
+                    except Exception:
+                        # Continue to fallback if JSON parsing fails
+                        pass
                 
-                # Fallback to regex path extraction
-                path_pattern = r'(?:"|\')?([\/\w\.-]+\.[\w]+)(?:"|\')?' 
-                matches = re.findall(path_pattern, response)
-                if matches:
-                    valid_paths = [path for path in matches if path in file_metadata]
-                    result = [(path, "Relevant to query") for path in valid_paths]
-                    self.log_debug(f"Extracted {len(result)} file paths from response")
-                    return result
+            # Fallback to regex path extraction
+            path_pattern = r'(?:"|\')?([\/\w\.-]+\.[\w]+)(?:"|\')?' 
+            matches = re.findall(path_pattern, response)
+            if matches:
+                valid_paths = [path for path in matches if path in file_metadata]
+                result = [(path, "Relevant to query") for path in valid_paths]
+                self.log_debug(f"Extracted {len(result)} file paths from response")
+                return result
         except Exception as e:
             self.log_debug(f"Error determining relevant files: {str(e)}")
         
