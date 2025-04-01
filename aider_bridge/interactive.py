@@ -105,23 +105,16 @@ class AiderInteractiveSession:
             print(f"\nStarting interactive Aider session...")
             print(f"Files in context: {', '.join(os.path.basename(f) for f in files)}")
             print(f"Initial query: {query}")
-            print(f"\nType 'exit' or press Ctrl+D to end the session.")
+            print(f"\nType 'exit' or press Ctrl+D to end the session")
+            print(f"Use /add <file-path> to add files to context")
+            print(f"Use /model <model-alias> to select a model (e.g., 'sonnet', 'o3-mini')")
             print("="*60)
             
             # Set active flag before starting
             self.active = True
-            
-            # Try to launch Aider in the same process first
-            try:
-                # Only try to run in-process if aider is available
-                if self.bridge.aider_available:
-                    self._run_aider_in_process(query, files)
-                else:
-                    raise ImportError("Aider not available")
-            except Exception as e:
-                print(f"Error running Aider in-process: {str(e)}")
-                print("Falling back to subprocess mode...")
-                self._run_aider_subprocess(query, files)
+           
+            # Run Aider directly as a subprocess - this is the reliable way to run interactive sessions
+            self._run_aider_subprocess(query, files)
             
             # Check which files were modified
             self.files_after = self._get_file_states(files)
