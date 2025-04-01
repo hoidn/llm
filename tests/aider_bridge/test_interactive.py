@@ -32,29 +32,19 @@ class TestAiderInteractiveSession:
     
     @patch('aider_bridge.interactive.AiderInteractiveSession._run_aider_in_process')
     @patch('tempfile.TemporaryDirectory')
-    @patch('aider_bridge.result_formatter.format_interactive_result')
-    @patch('builtins.__import__', return_value=MagicMock())
-    def test_start_session(self, mock_import, mock_format_result, mock_temp_dir, mock_run_aider, mock_memory_system):
+    def test_start_session(self, mock_temp_dir, mock_run_aider, mock_memory_system):
         """Test starting an interactive session."""
         # Create mock objects
         bridge = MagicMock()
         bridge.aider_available = True
         bridge.file_context = {"/path/to/file1.py", "/path/to/file2.py"}
         
-        # Set up format_interactive_result mock to return a successful result
-        mock_format_result.return_value = {
-            "status": "COMPLETE",
-            "content": "Interactive Aider session completed. Modified 1 files.",
-            "notes": {
-                "files_modified": ["/path/to/file1.py"],
-                "session_summary": "Session initiated with query: Implement a factorial function"
-            }
-        }
-        
         # Mock file state methods
         with patch.object(AiderInteractiveSession, '_get_file_states') as mock_get_states, \
              patch.object(AiderInteractiveSession, '_get_modified_files') as mock_get_modified, \
-             patch.object(AiderInteractiveSession, '_cleanup_session') as mock_cleanup:
+             patch.object(AiderInteractiveSession, '_cleanup_session') as mock_cleanup, \
+             patch('builtins.print'), \
+             patch('builtins.__import__', return_value=MagicMock()):
             
             # Set up mocks
             mock_get_states.side_effect = [{"/path/to/file1.py": {"size": 100, "mtime": 123456789, "hash": 12345}},
@@ -65,11 +55,14 @@ class TestAiderInteractiveSession:
             session = AiderInteractiveSession(bridge)
             
             # Start session
-            with patch('builtins.print'):  # Suppress print statements
-                result = session.start_session("Implement a factorial function")
+            result = session.start_session("Implement a factorial function")
             
-            # The result should be the mocked return value from format_interactive_result
-            assert result == mock_format_result.return_value
+            # Check result
+            assert result["status"] == "COMPLETE"
+            assert "Interactive Aider session completed" in result["content"]
+            assert "files_modified" in result["notes"]
+            assert result["notes"]["files_modified"] == ["/path/to/file1.py"]
+            assert "session_summary" in result["notes"]
             
             # Check that methods were called
             mock_get_states.assert_called()
