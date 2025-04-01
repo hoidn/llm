@@ -216,7 +216,7 @@ class AiderBridge:
             
         try:
             # Use provided file context or current context
-            context_files = file_context or list(self.file_context)
+            context_files = file_context or sorted(list(self.file_context))
             
             # If no context files, try to find relevant files
             if not context_files:
