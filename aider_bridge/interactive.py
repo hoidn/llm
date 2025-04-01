@@ -132,15 +132,12 @@ class AiderInteractiveSession:
             # Format and return result
             from aider_bridge.result_formatter import format_interactive_result
             print(f"\nDEBUG - About to call format_interactive_result")
-            result = format_interactive_result(
+            return format_interactive_result(
                 status="COMPLETE",
                 content=f"Interactive Aider session completed. Modified {len(self.modified_files)} files.",
                 files_modified=self.modified_files,
                 session_summary=f"Session initiated with query: {query}"
             )
-            print(f"DEBUG - format_interactive_result returned: {type(result)}")
-            print(f"DEBUG - Result content: {result}")
-            return result
         except Exception as e:
             # Ensure session is marked as inactive even on error
             self.active = False
