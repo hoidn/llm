@@ -30,40 +30,30 @@ class TestAiderInteractiveSession:
         assert session.temp_dir is None
         assert session.last_query is None
     
-    @patch('aider_bridge.interactive.AiderInteractiveSession._run_aider_in_process')
-    @patch('tempfile.TemporaryDirectory')
-    @patch('aider_bridge.result_formatter.format_interactive_result')
-    def test_start_session(self, mock_format_result, mock_temp_dir, mock_run_aider, mock_memory_system):
-        """Test starting an interactive session."""
+    @pytest.mark.integration
+    def test_start_session_integration(self, mock_memory_system, tmp_path):
+        """Integration test for starting an interactive session without mocking the formatter."""
         import sys
         
-        # Set up the mock format_interactive_result to return a proper result
-        mock_format_result.return_value = {
-            "status": "COMPLETE",
-            "content": "Interactive Aider session completed. Modified 1 files.",
-            "notes": {
-                "files_modified": ["/path/to/file1.py"],
-                "session_summary": "Session initiated with query: Implement a factorial function"
-            }
-        }
-        
-        sys.stderr.write(f"\nDEBUG - Mock format_interactive_result set up: {mock_format_result}\n")
-        
-        # Create mock objects
-        bridge = MagicMock()
+        # Create a real bridge
+        from aider_bridge.bridge import AiderBridge
+        bridge = AiderBridge(mock_memory_system)
         bridge.aider_available = True
-        bridge.file_context = {"/path/to/file1.py", "/path/to/file2.py"}
         
-        # Mock file state methods
-        with patch.object(AiderInteractiveSession, '_get_file_states') as mock_get_states, \
-             patch.object(AiderInteractiveSession, '_get_modified_files') as mock_get_modified, \
-             patch.object(AiderInteractiveSession, '_cleanup_session') as mock_cleanup, \
-             patch('builtins.__import__', return_value=MagicMock()):
-            
-            # Set up mocks
-            mock_get_states.side_effect = [{"/path/to/file1.py": {"size": 100, "mtime": 123456789, "hash": 12345}},
-                                        {"/path/to/file1.py": {"size": 120, "mtime": 123456790, "hash": 67890}}]
-            mock_get_modified.return_value = ["/path/to/file1.py"]
+        # Create test files
+        file1 = tmp_path / "test_file1.py"
+        file1.write_text("print('Hello, world!')")
+        
+        file2 = tmp_path / "test_file2.py"
+        file2.write_text("def sample():\n    return 42")
+        
+        # Set file context
+        bridge.file_context = {str(file1), str(file2)}
+        
+        # Only mock the methods that would actually run Aider
+        with patch.object(AiderInteractiveSession, '_run_aider_in_process'), \
+             patch.object(AiderInteractiveSession, '_run_aider_subprocess'), \
+             patch.object(AiderInteractiveSession, '_cleanup_session'):
             
             # Create session
             session = AiderInteractiveSession(bridge)
@@ -74,15 +64,18 @@ class TestAiderInteractiveSession:
             sys.stderr.write(f"\nDEBUG - Result type: {type(result)}\n")
             sys.stderr.write(f"DEBUG - Result content: {result}\n")
             
-            # Check result - now we know result is from our mock
+            # Check result structure
+            assert isinstance(result, dict)
+            assert "status" in result
+            assert "content" in result
+            assert "notes" in result
+            
+            # Check specific values
             assert result["status"] == "COMPLETE"
             assert "Interactive Aider session completed" in result["content"]
             assert "files_modified" in result["notes"]
-            assert result["notes"]["files_modified"] == ["/path/to/file1.py"]
             assert "session_summary" in result["notes"]
-            
-            # Verify our mock was called
-            mock_format_result.assert_called()
+            assert "Session initiated with query: Implement a factorial function" in result["notes"]["session_summary"]
             
             # Check that methods were called
             mock_get_states.assert_called()
