@@ -62,8 +62,9 @@ class TestPassthroughHandler:
             
             # Create handler and test
             handler = PassthroughHandler(mock_task_system, mock_memory_system)
-            # Replace the file_manager that was created in __init__
+            # Replace the file_manager and model_provider that were created in __init__
             handler.file_manager = mock_file_manager
+            handler.model_provider = mock_provider
             result = handler.handle_query("test query")
             
             # Verify the result
@@ -118,8 +119,9 @@ class TestPassthroughHandler:
             
             # Create handler and test
             handler = PassthroughHandler(mock_task_system, mock_memory_system)
-            # Replace the file_manager that was created in __init__
+            # Replace the file_manager and model_provider that were created in __init__
             handler.file_manager = mock_file_manager
+            handler.model_provider = mock_provider
             
             # First query to establish conversation
             handler.handle_query("first query")
