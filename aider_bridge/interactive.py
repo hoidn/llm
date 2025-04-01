@@ -86,20 +86,15 @@ class AiderInteractiveSession:
             # Store the current file state for later comparison
             self.files_before = self._get_file_states(files)
             
-            # Import Aider components
-            try:
-                # Only try to import if aider_available is True
-                if self.bridge.aider_available:
-                    import aider
-                    from aider.commands import get_default_args
-                else:
-                    raise ImportError("Aider not available")
-            except ImportError:
+            # Check if Aider is available
+            if not self.bridge.aider_available:
                 return format_interactive_result(
                     status="FAILED",
-                    content="Failed to import Aider modules.",
-                    error="Aider import error"
+                    content="Aider is not available. Please install Aider to use interactive mode.",
+                    error="Aider dependency not installed"
                 )
+                
+            # No need to import Aider modules here since we're using subprocess
             
             # Start the interactive session
             print(f"\nStarting interactive Aider session...")
@@ -209,6 +204,8 @@ class AiderInteractiveSession:
         # Add other necessary flags
         cmd.extend(["--no-auto-commits"])  # Don't auto-commit changes
         
+        print(f"\nExecuting: {' '.join(cmd)}")
+        
         # Run Aider as subprocess
         try:
             self.process = subprocess.Popen(
@@ -218,6 +215,23 @@ class AiderInteractiveSession:
                 stderr=sys.stderr
             )
             self.process.wait()
+        except Exception as e:
+            print(f"Error running Aider subprocess: {str(e)}")
+            # If there's an error, try to run with just the basic command
+            try:
+                print("\nRetrying with basic command...")
+                basic_cmd = ["aider"]
+                if files:
+                    basic_cmd.extend(files)
+                self.process = subprocess.Popen(
+                    basic_cmd,
+                    stdin=sys.stdin,
+                    stdout=sys.stdout,
+                    stderr=sys.stderr
+                )
+                self.process.wait()
+            except Exception as e2:
+                print(f"Error in fallback execution: {str(e2)}")
         finally:
             # Ensure session is marked as inactive
             self.active = False
@@ -256,9 +270,15 @@ class AiderInteractiveSession:
             try:
                 import aider
                 aider_module_path = os.path.dirname(aider.__file__)
-                return os.path.join(aider_module_path, "../bin/aider")
-            except:
+                possible_path = os.path.join(aider_module_path, "../bin/aider")
+                if os.path.isfile(possible_path) and os.access(possible_path, os.X_OK):
+                    return possible_path
+            except ImportError:
                 pass
+            
+        # If we get here, we couldn't find aider
+        print("Warning: Could not find aider executable. Using 'aider' and hoping it's in PATH")
+        return "aider"
 
     # Remove the _run_aider_in_process method since we're going directly to subprocess
     def _run_aider_in_process(self, query: str, files: List[str]):

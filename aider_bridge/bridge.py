@@ -40,9 +40,11 @@ class AiderBridge:
         self.file_context = set()
         self.context_source = None  # 'associative_matching' or 'explicit_specification'
         
-        # Check if Aider is available as a command-line tool
+        # Check if Aider is available as a command-line tool or Python module
+        self.aider_available = False
+        
+        # First try to check if the command is available
         try:
-            # We'll check if the 'aider' command is available
             result = subprocess.run(
                 ["which", "aider"], 
                 stdout=subprocess.PIPE, 
@@ -54,12 +56,18 @@ class AiderBridge:
                 # 'aider' command found
                 self.aider_available = True
                 AiderBridge.aider_available = True
-            else:
-                raise FileNotFoundError("Aider command not found")
         except (FileNotFoundError, subprocess.SubprocessError):
-            # Instance attribute remains False
-            self.aider_available = False
-            print("Warning: Aider is not installed. AiderBridge functionality will be limited.")
+            pass
+            
+        # If command not found, try to import the module
+        if not self.aider_available:
+            try:
+                import aider
+                self.aider_available = True
+                AiderBridge.aider_available = True
+            except ImportError:
+                # Instance attribute remains False
+                print("Warning: Aider is not installed. AiderBridge functionality will be limited.")
     
     def _initialize_aider_components(self):
         """
