@@ -203,6 +203,32 @@ class AiderBridge:
         from aider_bridge.interactive import AiderInteractiveSession
         return AiderInteractiveSession(self)
     
+    def create_automatic_handler(self) -> Any:
+        """
+        Create an automatic mode handler.
+        
+        Returns:
+            AiderAutomaticHandler instance
+        """
+        from aider_bridge.automatic import AiderAutomaticHandler
+        return AiderAutomaticHandler(self)
+    
+    def execute_automatic_task(self, prompt: str, file_context: Optional[List[str]] = None) -> Dict[str, Any]:
+        """
+        Execute a single Aider task with auto-confirmation.
+        
+        This is a convenience method that creates an automatic handler and executes the task.
+        
+        Args:
+            prompt: The instruction for code changes
+            file_context: Optional explicit file paths to include
+                        
+        Returns:
+            Dict containing the task result
+        """
+        handler = self.create_automatic_handler()
+        return handler.execute_task(prompt, file_context)
+    
     def start_interactive_session(self, query: str, file_context: Optional[List[str]] = None) -> Dict[str, Any]:
         """
         Start an interactive Aider session.

@@ -66,3 +66,19 @@ def mock_aider_session():
         "notes": {}
     }
     return session
+
+@pytest.fixture
+def mock_aider_automatic_handler():
+    """Create a mock Aider automatic handler."""
+    handler = MagicMock()
+    handler.execute_task.return_value = {
+        "status": "COMPLETE",
+        "content": "Automatic task executed",
+        "notes": {
+            "files_modified": ["/path/to/mock_file.py"],
+            "changes": [
+                {"file": "/path/to/mock_file.py", "description": "Modified file"}
+            ]
+        }
+    }
+    return handler
