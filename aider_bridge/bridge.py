@@ -4,6 +4,7 @@ from typing import Dict, List, Optional, Any, Set, Tuple
 import os
 import sys
 import tempfile
+import subprocess
 from pathlib import Path
 
 class AiderBridge:
@@ -39,14 +40,23 @@ class AiderBridge:
         self.file_context = set()
         self.context_source = None  # 'associative_matching' or 'explicit_specification'
         
-        # Check if Aider is available
+        # Check if Aider is available as a command-line tool
         try:
-            import aider
-            # Set instance attribute
-            self.aider_available = True
-            # Update class attribute for consistency
-            AiderBridge.aider_available = True
-        except ImportError:
+            # We'll check if the 'aider' command is available
+            result = subprocess.run(
+                ["which", "aider"], 
+                stdout=subprocess.PIPE, 
+                stderr=subprocess.PIPE,
+                text=True,
+                check=False
+            )
+            if result.returncode == 0:
+                # 'aider' command found
+                self.aider_available = True
+                AiderBridge.aider_available = True
+            else:
+                raise FileNotFoundError("Aider command not found")
+        except (FileNotFoundError, subprocess.SubprocessError):
             # Instance attribute remains False
             self.aider_available = False
             print("Warning: Aider is not installed. AiderBridge functionality will be limited.")

@@ -182,43 +182,6 @@ class AiderInteractiveSession:
                 content="Aider session terminated successfully.",
                 files_modified=self.modified_files
             )
-        except Exception as e:
-            # Ensure session is marked as inactive even on error
-            self.active = False
-            
-            return format_interactive_result(
-                status="PARTIAL",
-                content=f"Error terminating Aider session: {str(e)}",
-                error=str(e)
-            )
-    
-    def _run_aider_in_process(self, query: str, files: List[str]):
-        """
-        Run Aider in the same process using its programmatic API.
-        
-        Args:
-            query: Initial query for the session
-            files: List of file paths to include in the session
-        """
-        from aider.main import run_main
-        
-        # Create argv for Aider
-        argv = ["aider"]
-        argv.extend(files)
-        
-        # Add initial message if provided
-        if query:
-            argv.extend(["--message", query])
-        
-        # Add other necessary flags
-        argv.extend(["--no-auto-commits"])  # Don't auto-commit changes
-        
-        # Run Aider
-        try:
-            run_main(argv)
-        finally:
-            # Ensure session is marked as inactive
-            self.active = False
     
     def _run_aider_subprocess(self, query: str, files: List[str]):
         """
@@ -239,7 +202,7 @@ class AiderInteractiveSession:
         
         # Add initial message if provided
         if query:
-            cmd.extend(["--message", shlex.quote(query)])
+            cmd.extend(["--message", query])
         
         # Add other necessary flags
         cmd.extend(["--no-auto-commits"])  # Don't auto-commit changes
@@ -261,7 +224,8 @@ class AiderInteractiveSession:
     def _find_aider_executable(self) -> str:
         """
         Find the Aider executable.
-        
+
+        Looks for the 'aider' command in PATH or common installation locations.
         Returns:
             Path to the Aider executable
         """
@@ -293,6 +257,16 @@ class AiderInteractiveSession:
                 return os.path.join(aider_module_path, "../bin/aider")
             except:
                 pass
+
+    # Remove the _run_aider_in_process method since we're going directly to subprocess
+    def _run_aider_in_process(self, query: str, files: List[str]):
+        """
+        Not implemented - we use subprocess for all interactive sessions.
+        This stub is kept for backward compatibility.
+        """
+        raise NotImplementedError(
+            "In-process Aider execution is not supported. Using subprocess instead."
+        )
         
         # Default to "aider" and hope it's in PATH
         return "aider"
