@@ -193,6 +193,32 @@ class AiderBridge:
             print(f"Error getting context for query: {str(e)}")
             return []
     
+    def create_interactive_session(self) -> Any:
+        """
+        Create an interactive session manager.
+        
+        Returns:
+            AiderInteractiveSession instance
+        """
+        from aider_bridge.interactive import AiderInteractiveSession
+        return AiderInteractiveSession(self)
+    
+    def start_interactive_session(self, query: str, file_context: Optional[List[str]] = None) -> Dict[str, Any]:
+        """
+        Start an interactive Aider session.
+        
+        This is a convenience method that creates a session manager and starts the session.
+        
+        Args:
+            query: Initial query to provide context for the session
+            file_context: Optional explicit file paths to include
+                        
+        Returns:
+            Dict containing the session result
+        """
+        session = self.create_interactive_session()
+        return session.start_session(query, file_context)
+    
     def execute_code_edit(self, prompt: str, file_context: Optional[List[str]] = None) -> Dict[str, Any]:
         """
         Execute a code editing operation using Aider.

@@ -47,3 +47,22 @@ def mock_aider_coder():
     coder.run.return_value = "Mock coder response"
     coder.aider_edited_files = ["/path/to/mock_file.py"]
     return coder
+
+@pytest.fixture
+def mock_aider_session():
+    """Create a mock Aider session."""
+    session = MagicMock()
+    session.active = False
+    session.start_session.return_value = {
+        "status": "COMPLETE",
+        "content": "Interactive session completed",
+        "notes": {
+            "files_modified": ["/path/to/mock_file.py"]
+        }
+    }
+    session.terminate_session.return_value = {
+        "status": "COMPLETE",
+        "content": "Session terminated",
+        "notes": {}
+    }
+    return session
