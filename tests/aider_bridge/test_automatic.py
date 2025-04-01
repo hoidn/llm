@@ -287,7 +287,7 @@ class TestAutomaticToolRegistration:
     def test_register_automatic_tool(self):
         """Test registering the automatic tool."""
         # Create mock objects
-        handler = MagicMock()
+        handler = MagicMock(spec=["registerSubtaskTool"])
         handler.registerSubtaskTool = MagicMock()
         
         aider_bridge = MagicMock()
@@ -310,10 +310,11 @@ class TestAutomaticToolRegistration:
     def test_register_automatic_tool_snake_case(self):
         """Test registering with snake_case method name."""
         # Create mock objects
-        handler = MagicMock()
+        handler = MagicMock(spec=["register_subtask_tool"])
         handler.register_subtask_tool = MagicMock()
         # Make sure the camelCase version doesn't exist
-        del handler.registerSubtaskTool
+        if hasattr(handler, "registerSubtaskTool"):
+            del handler.registerSubtaskTool
         
         aider_bridge = MagicMock()
         
@@ -348,7 +349,7 @@ class TestAutomaticToolRegistration:
     def test_automatic_tool_function(self):
         """Test the tool function created during registration."""
         # Create mock objects
-        handler = MagicMock()
+        handler = MagicMock(spec=["registerSubtaskTool"])
         handler.registerSubtaskTool = MagicMock()
         
         aider_bridge = MagicMock()
@@ -358,6 +359,7 @@ class TestAutomaticToolRegistration:
         register_automatic_tool(handler, aider_bridge)
         
         # Get tool function
+        assert handler.registerSubtaskTool.called, "registerSubtaskTool was not called"
         tool_func = handler.registerSubtaskTool.call_args[0][1]
         
         # Call tool function
@@ -372,7 +374,7 @@ class TestAutomaticToolRegistration:
     def test_register_aider_tools_includes_automatic(self):
         """Test that register_aider_tools includes automatic tool."""
         # Create mock objects
-        handler = MagicMock()
+        handler = MagicMock(spec=["registerDirectTool", "registerSubtaskTool"])
         aider_bridge = MagicMock()
         
         # Register tools
@@ -387,10 +389,10 @@ class TestAutomaticToolRegistration:
             results = register_aider_tools(handler, aider_bridge)
             
             # Check results
-            assert "interactive" in results
-            assert "automatic" in results
-            assert results["interactive"]["status"] == "success"
-            assert results["automatic"]["status"] == "success"
+            assert "interactive" in results, "Interactive tool registration result missing"
+            assert "automatic" in results, "Automatic tool registration result missing"
+            assert results["interactive"]["status"] == "success", "Interactive tool registration failed"
+            assert results["automatic"]["status"] == "success", "Automatic tool registration failed"
             
             # Verify both registration functions were called
             mock_register_interactive.assert_called_once_with(handler, aider_bridge)
