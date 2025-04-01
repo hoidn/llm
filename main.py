@@ -160,6 +160,12 @@ def main():
         test_query = " ".join(sys.argv[2:]) if len(sys.argv) > 2 else "passthrough handler"
         print(f"\nTesting associative matching with query: '{test_query}'")
         
+        # First, make sure we have indexed the current repository
+        current_dir = os.getcwd()
+        if not app.indexed_repositories:
+            print(f"Indexing current repository: {current_dir}")
+            app.index_repository(current_dir)
+        
         # Import and execute the template directly
         from task_system.templates.associative_matching import execute_template
         matching_files = execute_template(test_query, app.memory_system)
