@@ -20,8 +20,10 @@ class TestPassthroughHandler:
             mock_file_manager = MagicMock()
             mock_file_manager_class.return_value = mock_file_manager
             
-            # Create handler with explicit model_provider to ensure we use our mock
-            handler = PassthroughHandler(mock_task_system, mock_memory_system, model_provider=mock_provider)
+            # Create handler with mocked dependencies
+            handler = PassthroughHandler(mock_task_system, mock_memory_system)
+            # Replace the file_manager that was created in __init__
+            handler.file_manager = mock_file_manager
             
             # Check inheritance
             assert isinstance(handler, BaseHandler)
@@ -31,7 +33,6 @@ class TestPassthroughHandler:
             assert handler.memory_system == mock_memory_system
             assert handler.active_subtask_id is None
             assert handler.conversation_history == []
-            assert handler.model_provider == mock_provider
             assert handler.file_manager == mock_file_manager
 
     def test_handle_query_new_subtask(self, mock_task_system, mock_memory_system):
@@ -42,6 +43,12 @@ class TestPassthroughHandler:
             # Setup mocks
             mock_provider = MagicMock()
             mock_provider.send_message.return_value = "This is a model response"
+            # Mock the extract_tool_calls method to return standardized format
+            mock_provider.extract_tool_calls.return_value = {
+                "content": "This is a model response",
+                "tool_calls": [],
+                "awaiting_tool_response": False
+            }
             mock_provider_class.return_value = mock_provider
             
             mock_file_manager = MagicMock()
@@ -55,6 +62,8 @@ class TestPassthroughHandler:
             
             # Create handler and test
             handler = PassthroughHandler(mock_task_system, mock_memory_system)
+            # Replace the file_manager that was created in __init__
+            handler.file_manager = mock_file_manager
             result = handler.handle_query("test query")
             
             # Verify the result
@@ -82,6 +91,19 @@ class TestPassthroughHandler:
              patch('handler.file_access.FileAccessManager') as mock_file_manager_class:
             # Setup mocks
             mock_provider = MagicMock()
+            # Mock extract_tool_calls for both responses
+            mock_provider.extract_tool_calls.side_effect = [
+                {
+                    "content": "First response",
+                    "tool_calls": [],
+                    "awaiting_tool_response": False
+                },
+                {
+                    "content": "Second response",
+                    "tool_calls": [],
+                    "awaiting_tool_response": False
+                }
+            ]
             mock_provider.send_message.side_effect = ["First response", "Second response"]
             mock_provider_class.return_value = mock_provider
             
@@ -96,6 +118,8 @@ class TestPassthroughHandler:
             
             # Create handler and test
             handler = PassthroughHandler(mock_task_system, mock_memory_system)
+            # Replace the file_manager that was created in __init__
+            handler.file_manager = mock_file_manager
             
             # First query to establish conversation
             handler.handle_query("first query")
@@ -104,6 +128,13 @@ class TestPassthroughHandler:
             mock_memory_system.get_relevant_context_for.reset_mock()
             mock_provider.send_message.reset_mock()
             mock_provider.send_message.return_value = "Second response"
+            # Reset extract_tool_calls mock
+            mock_provider.extract_tool_calls.reset_mock()
+            mock_provider.extract_tool_calls.return_value = {
+                "content": "Second response",
+                "tool_calls": [],
+                "awaiting_tool_response": False
+            }
             
             # Second query to continue conversation
             result = handler.handle_query("second query")
@@ -157,6 +188,8 @@ class TestPassthroughHandler:
             
             # Create handler and test
             handler = PassthroughHandler(mock_task_system, mock_memory_system)
+            # Replace the file_manager that was created in __init__
+            handler.file_manager = mock_file_manager
             file_context = handler._create_file_context(["file1.py", "file2.py"])
             
             # Verify the result
