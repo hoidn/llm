@@ -32,12 +32,23 @@ class TestAiderInteractiveSession:
     
     @patch('aider_bridge.interactive.AiderInteractiveSession._run_aider_in_process')
     @patch('tempfile.TemporaryDirectory')
-    def test_start_session(self, mock_temp_dir, mock_run_aider, mock_memory_system):
+    @patch('aider_bridge.result_formatter.format_interactive_result')
+    def test_start_session(self, mock_format_result, mock_temp_dir, mock_run_aider, mock_memory_system):
         """Test starting an interactive session."""
         # Create mock objects
         bridge = MagicMock()
         bridge.aider_available = True
         bridge.file_context = {"/path/to/file1.py", "/path/to/file2.py"}
+        
+        # Set up format_interactive_result mock to return a successful result
+        mock_format_result.return_value = {
+            "status": "COMPLETE",
+            "content": "Interactive Aider session completed. Modified 1 files.",
+            "notes": {
+                "files_modified": ["/path/to/file1.py"],
+                "session_summary": "Session initiated with query: Implement a factorial function"
+            }
+        }
         
         # Mock file state methods
         with patch.object(AiderInteractiveSession, '_get_file_states') as mock_get_states, \
@@ -108,12 +119,20 @@ class TestAiderInteractiveSession:
     @patch('aider_bridge.interactive.AiderInteractiveSession._run_aider_in_process', 
            side_effect=Exception("Test error"))
     @patch('aider_bridge.interactive.AiderInteractiveSession._run_aider_subprocess')
-    def test_start_session_fallback(self, mock_run_subprocess, mock_run_in_process, mock_memory_system):
+    @patch('aider_bridge.result_formatter.format_interactive_result')
+    def test_start_session_fallback(self, mock_format_result, mock_run_subprocess, mock_run_in_process, mock_memory_system):
         """Test fallback to subprocess when in-process fails."""
         # Create mock bridge
         bridge = MagicMock()
         bridge.aider_available = True
         bridge.file_context = {"/path/to/file1.py"}
+        
+        # Set up format_interactive_result mock to return a successful result
+        mock_format_result.return_value = {
+            "status": "COMPLETE",
+            "content": "Interactive Aider session completed.",
+            "notes": {}
+        }
         
         # Mock methods
         with patch.object(AiderInteractiveSession, '_get_file_states'), \
@@ -123,8 +142,10 @@ class TestAiderInteractiveSession:
             # Create session
             session = AiderInteractiveSession(bridge)
             
-            # Start session
-            session.start_session("Implement a factorial function")
+            # Patch the import aider part to avoid ImportError
+            with patch('builtins.__import__', return_value=MagicMock()):
+                # Start session
+                session.start_session("Implement a factorial function")
             
             # Check that fallback was used
             mock_run_in_process.assert_called_once()
@@ -197,11 +218,16 @@ class TestAiderInteractiveSession:
             assert result == "/usr/local/bin/aider"
             mock_check_output.assert_called_with(["which", "aider"], text=True)
             
+            # Reset mock for the second test case
+            mock_check_output.reset_mock()
+            
             # Second case: which fails, found in common paths
             mock_check_output.side_effect = Exception("Command not found")
             mock_isfile.side_effect = lambda path: path == "/usr/bin/aider"
             mock_access.return_value = True
             
+            # Create a new session to avoid state from previous test
+            session = AiderInteractiveSession(bridge)
             result = session._find_aider_executable()
             
             assert result == "/usr/bin/aider"

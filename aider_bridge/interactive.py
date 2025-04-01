@@ -87,8 +87,12 @@ class AiderInteractiveSession:
             
             # Import Aider components
             try:
-                import aider
-                from aider.commands import get_default_args
+                # Only try to import if aider_available is True
+                if self.bridge.aider_available:
+                    import aider
+                    from aider.commands import get_default_args
+                else:
+                    raise ImportError("Aider not available")
             except ImportError:
                 return format_interactive_result(
                     status="FAILED",
@@ -259,8 +263,11 @@ class AiderInteractiveSession:
         """
         # Check if aider is in PATH
         try:
-            return subprocess.check_output(["which", "aider"], text=True).strip()
-        except (subprocess.SubprocessError, FileNotFoundError):
+            result = subprocess.check_output(["which", "aider"], text=True).strip()
+            if result:
+                return result
+        except Exception:
+            # Handle any exception during subprocess execution
             pass
         
         # Check common locations
