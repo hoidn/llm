@@ -45,7 +45,6 @@ class AiderInteractiveSession:
         Returns:
             Dict containing the session result
         """
-        from aider_bridge.result_formatter import format_interactive_result
         
         if not self.bridge.aider_available:
             return format_interactive_result(
@@ -158,7 +157,6 @@ class AiderInteractiveSession:
         Returns:
             Dict containing the termination result
         """
-        from aider_bridge.result_formatter import format_interactive_result
         
         if not self.active:
             return format_interactive_result(

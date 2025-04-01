@@ -97,8 +97,9 @@ class TestAiderInteractiveSession:
         # Set file context
         bridge.file_context = {str(file1)}
         
-        # Only mock the methods that would actually run Aider
-        with patch.object(AiderInteractiveSession, '_run_aider_in_process'), \
+        # Mock the import check to avoid actual import attempts
+        with patch('builtins.__import__', return_value=MagicMock()), \
+             patch.object(AiderInteractiveSession, '_run_aider_in_process'), \
              patch.object(AiderInteractiveSession, '_get_file_states') as mock_get_states, \
              patch.object(AiderInteractiveSession, '_get_modified_files', return_value=[str(file1)]), \
              patch.object(AiderInteractiveSession, '_cleanup_session'):
@@ -148,11 +149,12 @@ class TestAiderInteractiveSession:
         # Set file context
         bridge.file_context = {str(file1), str(file2)}
         
-        # Only mock the methods that would actually run Aider
-        with patch.object(AiderInteractiveSession, '_run_aider_in_process') as mock_run_aider, \
+        # Mock the import check to avoid actual import attempts
+        with patch('builtins.__import__', return_value=MagicMock()), \
+             patch.object(AiderInteractiveSession, '_run_aider_in_process') as mock_run_aider, \
              patch.object(AiderInteractiveSession, '_run_aider_subprocess'), \
              patch.object(AiderInteractiveSession, '_get_file_states') as mock_get_states, \
-             patch.object(AiderInteractiveSession, '_get_modified_files') as mock_get_modified, \
+             patch.object(AiderInteractiveSession, '_get_modified_files', return_value=[str(file1)]) as mock_get_modified, \
              patch.object(AiderInteractiveSession, '_cleanup_session') as mock_cleanup:
             
             # Create session
