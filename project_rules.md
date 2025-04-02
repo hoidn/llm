@@ -43,16 +43,16 @@ project_root/
 │   │       ├── __init__.py
 │   │       └── associative_matching.py
 │   │
-│   ├── tests/               # Test directory (mirrors main structure)
-│   │   ├── __init__.py
-│   │   ├── conftest.py      # Common test fixtures
-│   │   ├── handler/         # Handler tests
-│   │   │   └── test_handler_passthrough.py
-│   │   ├── memory/          # Memory system tests
-│   │   │   └── test_memory_system_indexing.py
-│   │   └── test_tool_invocation.py
-│   │
 │   └── main.py              # Application entry point
+│
+├── tests/                   # Test directory (mirrors src structure)
+│   ├── __init__.py
+│   ├── conftest.py          # Common test fixtures
+│   ├── handler/             # Handler tests
+│   │   └── test_handler_passthrough.py
+│   ├── memory/              # Memory system tests
+│   │   └── test_memory_system_indexing.py
+│   └── test_tool_invocation.py
 │
 ├── devdocs/                 # Development documentation
 │   └── examples/
