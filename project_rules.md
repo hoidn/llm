@@ -4,38 +4,62 @@
 
 ```
 project_root/
-├── memory/                  # Memory system components
-│   ├── __init__.py
-│   ├── memory_system.py     # Main Memory System implementation
-│   └── indexers/            # File indexing modules
-│       ├── __init__.py
-│       └── git_repository_indexer.py
+├── src/                     # Main source code
+│   ├── aider_bridge/        # Aider integration components
+│   │   ├── __init__.py
+│   │   ├── automatic.py     # Automatic Aider handler
+│   │   ├── bridge.py        # Bridge component for Aider integration
+│   │   ├── interactive.py   # Interactive Aider session manager
+│   │   ├── result_formatter.py # Formats Aider operation results
+│   │   └── tools.py         # Aider tool specifications
+│   │
+│   ├── handler/             # Handler components
+│   │   ├── __init__.py
+│   │   ├── base_handler.py  # Base handler implementation
+│   │   ├── file_access.py   # File access manager
+│   │   ├── model_provider.py # Model provider adapters
+│   │   └── passthrough_handler.py # Passthrough mode handler
+│   │
+│   ├── memory/              # Memory system components
+│   │   ├── __init__.py
+│   │   ├── memory_system.py # Main Memory System implementation
+│   │   └── indexers/        # File indexing modules
+│   │       ├── __init__.py
+│   │       ├── git_repository_indexer.py
+│   │       └── text_extraction.py
+│   │
+│   ├── repl/                # REPL interface
+│   │   ├── __init__.py
+│   │   └── repl.py
+│   │
+│   ├── scripts/             # Utility scripts
+│   │   ├── test_aider_flow.py
+│   │   └── test_handler_manual.py
+│   │
+│   ├── task_system/         # Task system components
+│   │   ├── __init__.py
+│   │   ├── task_system.py   # Main Task System implementation
+│   │   └── templates/       # Task templates
+│   │       ├── __init__.py
+│   │       └── associative_matching.py
+│   │
+│   ├── tests/               # Test directory (mirrors main structure)
+│   │   ├── __init__.py
+│   │   ├── conftest.py      # Common test fixtures
+│   │   ├── handler/         # Handler tests
+│   │   │   └── test_handler_passthrough.py
+│   │   ├── memory/          # Memory system tests
+│   │   │   └── test_memory_system_indexing.py
+│   │   └── test_tool_invocation.py
+│   │
+│   └── main.py              # Application entry point
 │
-├── handler/                 # Handler components
-│   ├── __init__.py
-│   ├── handler.py           # Main Handler implementation
-│   └── passthrough_handler.py  # Passthrough mode extension
+├── devdocs/                 # Development documentation
+│   └── examples/
+│       └── sysprompt.py
 │
-├── task_system/             # Task system components
-│   ├── __init__.py
-│   ├── task_system.py       # Main Task System implementation
-│   └── templates/           # Task templates
-│       ├── __init__.py
-│       └── associative_matching.py
-│
-├── repl/                    # REPL interface
-│   ├── __init__.py
-│   └── repl.py
-│
-├── tests/                   # Test directory (mirrors main structure)
-│   ├── __init__.py
-│   ├── conftest.py          # Common test fixtures
-│   ├── memory/              # Memory system tests
-│   ├── handler/             # Handler tests
-│   ├── task_system/         # Task system tests
-│   └── repl/                # REPL tests
-│
-├── main.py                  # Application entry point
+├── test_aider_integration.py # Aider integration tests
+├── test_matching.py         # Associative matching tests
 ├── pytest.ini               # pytest configuration
 └── README.md                # Project documentation
 ```
