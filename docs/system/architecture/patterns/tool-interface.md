@@ -84,6 +84,40 @@ When a tool is invoked:
 2. For direct tools: executes immediately and returns result
 3. For subtask tools: creates CONTINUATION with SubtaskRequest and yields
 
+## Registration Interface
+
+```typescript
+interface ToolRegistry {
+  // Register a direct tool for synchronous execution
+  registerDirectTool(name: string, handler: Function): void;
+  
+  // Register a subtask tool implemented via CONTINUATION
+  registerSubtaskTool(name: string, templateHints: string[]): void;
+  
+  // Modern unified registration method (for Anthropic-style tools)
+  register_tool(tool_spec: ToolDefinition, executor_func: Function): boolean;
+}
+```
+
+### Direct Tool Registration
+When registering direct tools:
+1. A synchronous executor function is provided directly
+2. The function is wrapped to handle parameter normalization
+3. No context management or continuation is involved
+
+### Subtask Tool Registration
+When registering subtask tools:
+1. Template hints are provided for subtask selection
+2. The tool returns a CONTINUATION status with subtask_request
+3. Tool calls appear identical to LLM but use different execution paths
+
+### Unified Tool Registration
+The modern `register_tool` method:
+1. Accepts a standardized tool specification with schema
+2. Works with both direct and subtask tools
+3. Handles provider-specific tool formatting internally
+4. Returns success/failure status for error handling
+
 ## Subtask Results as Tool Responses
 
 When a subtask tool is called, the system implements a streamlined approach that preserves session continuity:

@@ -89,6 +89,22 @@ Evaluator:
 - Direct execution without continuation mechanism
 - Track resource usage for tool operations
 
+Handler standardizes tool call formats across providers:
+```typescript
+interface StandardizedToolCall {
+  name: string;        // Tool name
+  parameters: Record<string, any>;  // Tool parameters
+}
+
+interface StandardizedToolCallResponse {
+  content: string;     // Text content from response
+  tool_calls: StandardizedToolCall[];   // Tool calls (empty if none)
+  awaiting_tool_response: boolean;  // Whether model is waiting for tool response
+}
+```
+
+This standardization ensures provider-independent handling of tool calls and responses.
+
 #### Memory System Responsibilities
 - Provide context for subtask execution
 - Support context inheritance for LLM-to-LLM interaction

@@ -58,6 +58,39 @@
    - Uses callback pattern for integration
    - Results added to conversation history
 
+### Tool Registration Behavior
+
+1. **Direct Tool Registration**
+   ```typescript
+   registerDirectTool(name: string, executor: Function): void;
+   ```
+   - Executor function called synchronously when tool is invoked
+   - Results returned directly to LLM conversation
+   - No context switching or continuation mechanism
+   - Suitable for simple operations (file I/O, API calls)
+
+2. **Subtask Tool Registration**
+   ```typescript
+   registerSubtaskTool(name: string, templateHints: string[]): void;
+   ```
+   - When invoked, returns CONTINUATION status with subtask_request
+   - Template hints used for associative matching
+   - Execution delegated to Task System
+   - Suitable for complex operations requiring LLM reasoning
+
+3. **Unified Tool Registration**
+   ```typescript
+   register_tool(tool_spec: ToolDefinition, executor_func: Function): boolean;
+   ```
+   - Modern registration method supporting standardized tool specifications
+   - Works with provider-specific tool formats (Anthropic, OpenAI)
+   - Returns success/failure status for error handling
+   - Preferred method for new tool implementations
+
+Both direct and subtask tools appear identical to the LLM but follow different execution paths:
+- Direct tools: Handler → Executor → Response
+- Subtask tools: Handler → CONTINUATION → Task System → Subtask → Response
+
 ### Passthrough Mode
 
 1. **Query Processing**

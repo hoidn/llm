@@ -31,6 +31,56 @@ The Handler manages LLM interactions, resource tracking, and tool execution. It 
    - Track conversation state and history
    - Ensure clean resource release after execution
 
+## Component Structure
+
+The Handler component follows an inheritance-based architecture to promote code reuse and separation of concerns:
+
+```mermaid
+classDiagram
+    BaseHandler <|-- PassthroughHandler
+    BaseHandler <|-- CompilerHandler
+    BaseHandler <|-- SpecializedHandler
+    class BaseHandler {
+        +register_tool()
+        +log_debug()
+        +set_debug_mode()
+        +reset_conversation()
+        #_build_system_prompt()
+        #_get_relevant_files()
+        #_create_file_context()
+        #_execute_tool()
+    }
+    class PassthroughHandler {
+        +handle_query()
+        #_find_matching_template()
+        #_create_new_subtask()
+        #_continue_subtask()
+    }
+    class CompilerHandler {
+        +handle_ast_query()
+        #_compile_ast()
+        #_execute_compiled_task()
+    }
+    class SpecializedHandler {
+        +handle_specialized_query()
+        #_process_specialized_input()
+    }
+```
+
+### BaseHandler Responsibilities
+- Common functionality shared across all handler types
+- Tool registration and execution framework
+- Debug logging and conversation management
+- System prompt construction and file context creation
+- Resource tracking and limit enforcement
+
+### Specialized Handler Responsibilities
+- **PassthroughHandler**: Raw text query processing without AST compilation
+- **CompilerHandler**: AST-based query processing with compilation
+- **SpecializedHandler**: Domain-specific handlers for particular use cases
+
+This inheritance structure ensures that core functionality is implemented once in the BaseHandler while allowing specialized handlers to focus on their unique responsibilities.
+
 ## Handler Visualization
 
 ### Resource Tracking

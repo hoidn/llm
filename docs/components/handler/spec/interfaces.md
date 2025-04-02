@@ -2,9 +2,71 @@
 
 ```typescript
 /**
- * Primary Handler interface
+ * Base handler interface with common functionality
+ * [Interface:BaseHandler:1.0]
  */
-export interface Handler {
+export interface BaseHandler {
+    /**
+     * Register a tool for use by the handler
+     * @param tool_spec - Tool specification with name, description, and schema
+     * @param executor_func - Function that implements the tool
+     * @returns Boolean indicating success
+     */
+    register_tool(tool_spec: ToolDefinition, executor_func: Function): boolean;
+    
+    /**
+     * Log debug information if debug mode is enabled
+     * @param message - Debug message to log
+     */
+    log_debug(message: string): void;
+    
+    /**
+     * Set debug mode
+     * @param enabled - Whether debug mode should be enabled
+     */
+    set_debug_mode(enabled: boolean): void;
+    
+    /**
+     * Reset conversation state
+     */
+    reset_conversation(): void;
+    
+    /**
+     * Build system prompt from template and file context
+     * @param template - Optional template to use
+     * @param file_context - Optional file context to include
+     * @returns Constructed system prompt
+     */
+    _build_system_prompt(template?: string, file_context?: string): string;
+    
+    /**
+     * Get relevant files for a query
+     * @param query - The query to find relevant files for
+     * @returns List of relevant file paths
+     */
+    _get_relevant_files(query: string): string[];
+    
+    /**
+     * Create file context from file paths
+     * @param file_paths - List of file paths to include in context
+     * @returns Formatted file context string
+     */
+    _create_file_context(file_paths: string[]): string;
+    
+    /**
+     * Execute a tool by name with parameters
+     * @param tool_name - Name of the tool to execute
+     * @param tool_params - Parameters to pass to the tool
+     * @returns Tool execution result or null if tool not found
+     */
+    _execute_tool(tool_name: string, tool_params: any): any;
+}
+
+/**
+ * Primary Handler interface
+ * Extends BaseHandler with provider-specific capabilities
+ */
+export interface Handler extends BaseHandler {
     /**
      * Execute a task with the LLM
      * Note: All template variables should be resolved before calling
