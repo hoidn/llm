@@ -1,1 +1,0 @@
-"""Task system templates tests."""

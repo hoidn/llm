@@ -1,1 +1,0 @@
-"""Git repository indexing components."""
