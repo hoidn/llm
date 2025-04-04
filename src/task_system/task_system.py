@@ -185,7 +185,7 @@ class TaskSystem:
         
         # Handle specific task types
         if task_type == "atomic":
-            if task_subtype == "associative_matching" or task_subtype == "test_matching":
+            if task_subtype == "associative_matching" or task_subtype == "test_matching" or task_subtype == "var_test":
                 result = self._execute_associative_matching(resolved_template, resolved_inputs, memory_system)
                 
                 # Add model info if selected
