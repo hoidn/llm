@@ -1,12 +1,18 @@
 """Tests for template utility functions."""
 import pytest
+from unittest.mock import MagicMock
 from task_system.template_utils import (
     resolve_parameters,
     ensure_template_compatibility,
     get_preferred_model,
     Environment,
     substitute_variables,
-    resolve_template_variables
+    resolve_template_variables,
+    detect_function_calls,
+    parse_function_call,
+    evaluate_arguments,
+    bind_arguments_to_parameters,
+    resolve_function_calls
 )
 
 class TestResolveParameters:
