@@ -1,5 +1,15 @@
 """Task System implementation."""
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
+import os
+import sys
+
+# Add parent directory to path to find template_utils
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(current_dir)
+if parent_dir not in sys.path:
+    sys.path.insert(0, parent_dir)
+
+from task_system.template_utils import resolve_parameters, ensure_template_compatibility, get_preferred_model
 
 class TaskSystem:
     """Task System for task execution and management.
@@ -9,7 +19,8 @@ class TaskSystem:
     
     def __init__(self):
         """Initialize the Task System."""
-        self.templates = {}  # Task templates
+        self.templates = {}  # Templates by name
+        self.template_index = {}  # Maps type:subtype to template name
         
     def find_matching_tasks(self, input_text: str, memory_system) -> List[Dict[str, Any]]:
         """Find matching templates based on a provided input string.
@@ -24,7 +35,7 @@ class TaskSystem:
         matches = []
         
         # Filter for atomic templates only
-        for key, template in self.templates.items():
+        for name, template in self.templates.items():
             if template.get("type") == "atomic":
                 # Calculate similarity score
                 description = template.get("description", "")
@@ -32,7 +43,8 @@ class TaskSystem:
                 
                 # Add to matches if score is above threshold
                 if score > 0.1:  # Low threshold to ensure we get some matches
-                    task_type, subtype = key.split(":", 1)
+                    task_type = template.get("type", "")
+                    subtype = template.get("subtype", "")
                     matches.append({
                         "task": template,
                         "score": score,
@@ -83,33 +95,66 @@ class TaskSystem:
         return intersection / union
     
     def register_template(self, template: Dict[str, Any]) -> None:
-        """Register a task template.
+        """Register a task template with enhanced structure.
         
         Args:
             template: Template definition
         """
-        template_type = template.get("type")
-        template_subtype = template.get("subtype")
+        # Ensure template is compatible with enhanced structure
+        enhanced_template = ensure_template_compatibility(template)
         
+        # Get template name, type and subtype
+        template_name = enhanced_template.get("name")
+        template_type = enhanced_template.get("type")
+        template_subtype = enhanced_template.get("subtype")
+        
+        # Register by name (primary key)
+        self.templates[template_name] = enhanced_template
+        
+        # Also index by type and subtype
         if template_type and template_subtype:
             key = f"{template_type}:{template_subtype}"
-            self.templates[key] = template
+            self.template_index[key] = template_name
     
-    def execute_task(self, task_type: str, task_subtype: str, inputs: Dict[str, Any], memory_system=None) -> Dict[str, Any]:
-        """Execute a task.
+    def find_template(self, identifier: str) -> Optional[Dict[str, Any]]:
+        """Find template by name or type:subtype combination.
+        
+        Args:
+            identifier: Template name or 'type:subtype' string
+            
+        Returns:
+            Template dictionary or None if not found
+        """
+        # Try direct name lookup first
+        if identifier in self.templates:
+            return self.templates[identifier]
+        
+        # Try type:subtype lookup via index
+        if identifier in self.template_index:
+            name = self.template_index[identifier]
+            return self.templates.get(name)
+        
+        return None
+    
+    def execute_task(self, task_type: str, task_subtype: str, inputs: Dict[str, Any], 
+                     memory_system=None, available_models: Optional[List[str]] = None) -> Dict[str, Any]:
+        """Execute a task with parameter validation and model selection.
         
         Args:
             task_type: Type of task
             task_subtype: Subtype of task
             inputs: Task inputs
             memory_system: Optional Memory System instance
+            available_models: Optional list of available model names
             
         Returns:
             Task result
         """
         # Check if task type and subtype are registered
         task_key = f"{task_type}:{task_subtype}"
-        if task_key not in self.templates:
+        template_name = self.template_index.get(task_key)
+        
+        if not template_name or template_name not in self.templates:
             return {
                 "status": "FAILED",
                 "content": f"Unknown task type: {task_key}",
@@ -118,9 +163,37 @@ class TaskSystem:
                 }
             }
         
+        # Get the template
+        template = self.templates[template_name]
+        
+        # Resolve parameters
+        try:
+            resolved_inputs = resolve_parameters(template, inputs)
+        except ValueError as e:
+            return {
+                "status": "FAILED",
+                "content": str(e),
+                "notes": {
+                    "error": "PARAMETER_ERROR"
+                }
+            }
+        
+        # Select model if available_models provided
+        selected_model = None
+        if available_models:
+            selected_model = get_preferred_model(template, available_models)
+        
         # Handle specific task types
         if task_type == "atomic" and task_subtype == "associative_matching":
-            return self._execute_associative_matching(self.templates[task_key], inputs, memory_system)
+            result = self._execute_associative_matching(template, resolved_inputs, memory_system)
+            
+            # Add model info if selected
+            if selected_model:
+                if "notes" not in result:
+                    result["notes"] = {}
+                result["notes"]["selected_model"] = selected_model
+                
+            return result
         
         # Default fallback for unimplemented task types
         return {

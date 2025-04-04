@@ -8,9 +8,28 @@ import math
 ASSOCIATIVE_MATCHING_TEMPLATE = {
     "type": "atomic",
     "subtype": "associative_matching",
+    "name": "find_relevant_files",  # Unique template name
     "description": "Find relevant files for the given query",
-    "inputs": {
-        "query": "The user query or task to find relevant files for"
+    "parameters": {  # Structured parameters
+        "query": {
+            "type": "string",
+            "description": "The user query or task to find relevant files for",
+            "required": True
+        },
+        "max_results": {
+            "type": "integer",
+            "description": "Maximum number of files to return",
+            "default": 20
+        }
+    },
+    "model": {  # Model preferences
+        "preferred": "claude-3-5-sonnet",
+        "fallback": ["gpt-4", "claude-3-haiku"]
+    },
+    "returns": {  # Return type definition
+        "type": "array",
+        "items": {"type": "string"},
+        "description": "List of relevant file paths"
     },
     "context_management": {
         "inherit_context": "none",
@@ -46,11 +65,14 @@ def create_xml_template() -> str:
     """
     # This is a helper to generate the actual XML when needed
     xml = """
-    <task type="atomic" subtype="associative_matching">
+    <task type="atomic" subtype="associative_matching" name="find_relevant_files">
       <description>Find relevant files for the given query</description>
-      <inputs>
-        <input name="query">The user query or task to find relevant files for</input>
-      </inputs>
+      <parameters>
+        <parameter name="query" type="string" required="true">The user query or task to find relevant files for</parameter>
+        <parameter name="max_results" type="integer" default="20">Maximum number of files to return</parameter>
+      </parameters>
+      <returns type="array" items="string">List of relevant file paths</returns>
+      <model preferred="claude-3-5-sonnet" fallback="gpt-4,claude-3-haiku" />
       <context_management>
         <inherit_context>none</inherit_context>
         <accumulate_data>false</accumulate_data>
@@ -61,7 +83,7 @@ def create_xml_template() -> str:
     """
     return xml
 
-def execute_template(query: str, memory_system) -> List[str]:
+def execute_template(query: str, memory_system, max_results: int = 20) -> List[str]:
     """Execute the associative matching template logic.
     
     This function passes the file metadata to memory_system, which then determines
@@ -70,6 +92,7 @@ def execute_template(query: str, memory_system) -> List[str]:
     Args:
         query: The user query or task
         memory_system: The Memory System instance
+        max_results: Maximum number of files to return
         
     Returns:
         List of relevant file paths selected by the LLM via the handler
@@ -98,6 +121,9 @@ def execute_template(query: str, memory_system) -> List[str]:
     
     # Extract file paths from matches
     relevant_files = [match[0] for match in context_result.matches]
+    
+    # Limit to max_results
+    relevant_files = relevant_files[:max_results]
     
     print(f"Selected {len(relevant_files)} relevant files")
     for i, path in enumerate(relevant_files[:5], 1):
