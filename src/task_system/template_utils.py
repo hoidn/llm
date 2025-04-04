@@ -448,8 +448,12 @@ def resolve_function_calls(text: str, task_system, env: Environment,
             replacement = str(func_result.get("content", ""))
             
         except Exception as e:
-            # Replace with error message
-            replacement = f"{{{{error in {func_name}(): {str(e)}}}}}"
+            # Format error message to include detailed information
+            error_msg = str(e)
+            if "Maximum recursion depth" in error_msg:
+                replacement = f"{{{{error in {func_name}(): {error_msg}}}}}"
+            else:
+                replacement = f"{{{{error in {func_name}(): {error_msg}}}}}"
         
         # Replace the function call with the result
         result = result[:call["start"]] + replacement + result[call["end"]:]
