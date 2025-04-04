@@ -177,16 +177,17 @@ class TaskSystem:
             selected_model = get_preferred_model(template, available_models)
         
         # Handle specific task types
-        if task_type == "atomic" and task_subtype == "associative_matching":
-            result = self._execute_associative_matching(template, resolved_inputs, memory_system)
-            
-            # Add model info if selected
-            if selected_model:
-                if "notes" not in result:
-                    result["notes"] = {}
-                result["notes"]["selected_model"] = selected_model
+        if task_type == "atomic":
+            if task_subtype == "associative_matching" or task_subtype == "test_matching":
+                result = self._execute_associative_matching(template, resolved_inputs, memory_system)
                 
-            return result
+                # Add model info if selected
+                if selected_model:
+                    if "notes" not in result:
+                        result["notes"] = {}
+                    result["notes"]["selected_model"] = selected_model
+                    
+                return result
         
         # Default fallback for unimplemented task types
         return {

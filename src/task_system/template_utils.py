@@ -89,6 +89,10 @@ def ensure_template_compatibility(template: Dict[str, Any]) -> Dict[str, Any]:
             }
         enhanced["parameters"] = parameters
     
+    # Add parameters field if missing
+    if "parameters" not in enhanced:
+        enhanced["parameters"] = {}
+    
     # Add model field if missing
     if "model" not in enhanced:
         # Use a sensible default
