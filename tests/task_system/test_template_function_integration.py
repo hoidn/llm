@@ -156,7 +156,7 @@ class TestTemplateFunctionIntegration:
             "parameters": {
                 "depth": {"type": "integer", "default": 0}
             },
-            "system_prompt": "Depth {{depth}}. {{depth < 10 ? recursive(depth=depth+1) : 'Max depth reached'}}"
+            "system_prompt": "Depth {{depth}}. {{recursive(depth=depth+1)}}"
         }
         task_system.register_template(recursive_template)
         
@@ -167,6 +167,10 @@ class TestTemplateFunctionIntegration:
             template = args[0]
             inputs = args[1]
             depth = inputs.get("depth", 0)
+            
+            print(f"MOCK CALLED AT DEPTH: {depth}")
+            print(f"SYSTEM PROMPT: {template.get('system_prompt', '')}")
+            
             calls.append(depth)
             
             # Check if this is a template with an error message in system_prompt
