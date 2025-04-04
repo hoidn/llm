@@ -128,6 +128,39 @@ Function calls use direct parameter passing with lexical isolation:
 
 This process maintains clean scope boundaries, preventing unintended variable access.
 
+### Template-Level Function Calls
+
+In addition to AST-based function calls, the system supports a template-level function call syntax using the familiar `{{...}}` notation:
+
+```typescript
+// Example template with embedded function call
+const template = {
+  "system_prompt": "Analyze the following data: {{analyze_data(dataset, 'detailed')}}"
+};
+```
+
+These template-level function calls are processed during variable substitution but are translated to standard FunctionCallNode AST nodes for execution:
+
+```typescript
+function resolveTemplateFunctionCalls(text: string, env: Environment): string {
+  // 1. Detect function calls in text with pattern {{function_name(args)}}
+  // 2. For each function call:
+  //    a. Parse function name and arguments
+  //    b. Create a temporary FunctionCallNode
+  //    c. Execute using the standard evaluateFunctionCall function
+  //    d. Replace the function call in text with result
+  // 3. Return updated text
+}
+```
+
+This approach:
+- Provides a user-friendly syntax for simple function calls in template fields
+- Maintains architectural consistency by using the same execution logic
+- Preserves the lexical scoping model for variable resolution
+- Allows function calls to be embedded naturally within text content
+
+The underlying execution flow remains identical to AST-based function calls, ensuring consistent behavior regardless of syntax.
+
 ### Argument Resolution Strategy
 
 For string arguments, a two-step resolution occurs:

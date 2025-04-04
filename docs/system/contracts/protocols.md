@@ -538,6 +538,39 @@ And function calls with positional arguments:
 
 This enforces strict scope boundaries - templates can only access explicitly passed parameters.
 
+### Template-Level Function Call Syntax
+
+In addition to the structured XML syntax, the system supports an inline function call syntax within template fields that use variable substitution:
+
+```
+{{function_name(arg1, arg2, named_arg=value)}}
+```
+
+This syntax can be used in fields like `description`, `taskPrompt` (instructions), and `systemPrompt`:
+
+```xml
+<description>Analysis results: {{calculate_metrics(data, method="advanced")}}</description>
+```
+
+Both syntaxes are internally processed using the same execution flow. The template-level syntax is parsed and translated into the standard FunctionCallNode structure before execution.
+
+#### Function Call Argument Types
+
+Both XML and template-level function calls support the same argument types:
+- String literals: `"value"` or `'value'`
+- Numbers: `123` or `45.67`
+- Boolean literals: `true` or `false`
+- Null values: `null`
+- Variables: `variable_name` or `{{variable_name}}`
+- Named arguments: `name="value"` or `name=variable_name`
+
+#### Usage Guidance
+
+- **XML Syntax**: Preferred for standalone function calls or when the result needs to be used as a structured value
+- **Template Syntax**: Preferred for embedding function calls within text fields or for simple function invocations
+
+Both syntaxes are supported and maintained, with the same execution semantics and environment handling.
+
 #### Parameter Resolution
 
 - Parameter names are declared in the comma-separated `params` attribute

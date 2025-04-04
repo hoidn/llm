@@ -36,6 +36,27 @@ Implement a function-based template model with explicit parameter declarations:
    </call>
    ```
 
+### Function Call Syntax Options
+
+The system supports two equivalent syntaxes for function calls:
+
+1. **XML-based syntax**:
+   ```xml
+   <call template="analyze_data">
+     <arg>weather_data</arg>
+     <arg>standard_config</arg>
+   </call>
+   ```
+
+2. **Template-level syntax** (within variable substitution fields):
+   ```
+   {{analyze_data(weather_data, standard_config)}}
+   ```
+
+Both syntaxes are translated to the same internal representation (FunctionCallNode) and follow identical execution semantics, parameter binding, and environment handling. The template-level syntax provides a more natural way to embed function calls within text content, while the XML syntax offers more explicit structure for standalone function calls.
+
+This dual-syntax approach balances architectural purity with practical usability. By translating template-level function calls to the standard AST structure, we maintain a single execution path while offering a more user-friendly syntax for common use cases.
+
 ## Consequences
 - **Positive**
   - Clear data dependencies between components

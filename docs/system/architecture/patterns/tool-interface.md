@@ -223,6 +223,39 @@ This pattern complements:
 3. **Error Propagation**: Error handling must be consistent across both mechanisms
 4. **Resource Tracking**: Both mechanisms must track resource usage appropriately
 
+### Function Call Syntax Options
+
+The system supports multiple syntaxes for invoking functions and tools:
+
+1. **Direct Tool Invocation** (in LLM):
+   ```python
+   result = tools.readFile("path/to/file")
+   ```
+
+2. **XML-based Function Calls** (in templates):
+   ```xml
+   <call template="analyze_data">
+     <arg>weather_data</arg>
+     <arg>standard_config</arg>
+   </call>
+   ```
+
+3. **Template-level Function Calls** (in template fields):
+   ```
+   {{analyze_data(weather_data, standard_config)}}
+   ```
+
+The template-level syntax (#3) provides a user-friendly way to embed function calls within text content. It is internally translated to the standard FunctionCallNode AST structure, ensuring consistent execution semantics while offering improved template authoring experience.
+
+All function call mechanisms, regardless of syntax, follow the same execution flow:
+1. Lookup the function/template by name
+2. Evaluate arguments in the caller's environment
+3. Create a new environment with parameter bindings
+4. Execute the function/template in the new environment
+5. Return the result to the caller
+
+This unified approach ensures consistent behavior across different invocation syntaxes while optimizing for both architectural integrity and user experience.
+
 ### User Input Request Tool
 
 The system provides a standardized tool for requesting user input:
