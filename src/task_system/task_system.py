@@ -171,15 +171,22 @@ class TaskSystem:
                 }
             }
         
+        # Create environment from resolved parameters
+        from .template_utils import Environment, resolve_template_variables
+        env = Environment(resolved_inputs)
+        
+        # Resolve variables in template fields
+        resolved_template = resolve_template_variables(template, env)
+        
         # Select model if available_models provided
         selected_model = None
         if available_models:
-            selected_model = get_preferred_model(template, available_models)
+            selected_model = get_preferred_model(resolved_template, available_models)
         
         # Handle specific task types
         if task_type == "atomic":
             if task_subtype == "associative_matching" or task_subtype == "test_matching":
-                result = self._execute_associative_matching(template, resolved_inputs, memory_system)
+                result = self._execute_associative_matching(resolved_template, resolved_inputs, memory_system)
                 
                 # Add model info if selected
                 if selected_model:
