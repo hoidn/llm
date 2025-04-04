@@ -373,3 +373,254 @@ class TestTemplateVariableResolution:
         assert resolved["subtype"] == "test"
         assert "description" not in resolved
         assert "system_prompt" not in resolved
+
+
+class TestFunctionCallDetection:
+    """Tests for function call detection."""
+    
+    def test_detect_simple_function_call(self):
+        """Test detecting a simple function call."""
+        text = "Text with {{func()}} call"
+        calls = detect_function_calls(text)
+        
+        assert len(calls) == 1
+        assert calls[0]["name"] == "func"
+        assert calls[0]["args_text"] == ""
+        assert calls[0]["match"] == "{{func()}}"
+    
+    def test_detect_function_call_with_args(self):
+        """Test detecting a function call with arguments."""
+        text = "Text with {{func(1, 'test', true)}} call"
+        calls = detect_function_calls(text)
+        
+        assert len(calls) == 1
+        assert calls[0]["name"] == "func"
+        assert calls[0]["args_text"] == "1, 'test', true"
+    
+    def test_detect_multiple_function_calls(self):
+        """Test detecting multiple function calls."""
+        text = "Text with {{func1()}} and {{func2(arg)}} calls"
+        calls = detect_function_calls(text)
+        
+        assert len(calls) == 2
+        assert calls[0]["name"] == "func1"
+        assert calls[1]["name"] == "func2"
+        assert calls[1]["args_text"] == "arg"
+    
+    def test_non_string_input(self):
+        """Test handling of non-string input."""
+        # Should return empty list for non-string inputs
+        assert detect_function_calls(123) == []
+        assert detect_function_calls(None) == []
+        assert detect_function_calls({"key": "value"}) == []
+
+
+class TestFunctionCallParsing:
+    """Tests for function call parsing."""
+    
+    def test_parse_function_call_no_args(self):
+        """Test parsing a function call with no arguments."""
+        func_name, pos_args, named_args = parse_function_call("func", "")
+        
+        assert func_name == "func"
+        assert pos_args == []
+        assert named_args == {}
+    
+    def test_parse_function_call_positional_args(self):
+        """Test parsing a function call with positional arguments."""
+        func_name, pos_args, named_args = parse_function_call("func", "1, 'test', true, null")
+        
+        assert func_name == "func"
+        assert len(pos_args) == 4
+        assert pos_args[0] == 1
+        assert pos_args[1] == "test"
+        assert pos_args[2] is True
+        assert pos_args[3] is None
+        assert named_args == {}
+    
+    def test_parse_function_call_named_args(self):
+        """Test parsing a function call with named arguments."""
+        func_name, pos_args, named_args = parse_function_call("func", "a=1, b='test', c=true")
+        
+        assert func_name == "func"
+        assert pos_args == []
+        assert len(named_args) == 3
+        assert named_args["a"] == 1
+        assert named_args["b"] == "test"
+        assert named_args["c"] is True
+    
+    def test_parse_function_call_mixed_args(self):
+        """Test parsing a function call with mixed positional and named arguments."""
+        func_name, pos_args, named_args = parse_function_call("func", "1, 'test', a=true, b=null")
+        
+        assert func_name == "func"
+        assert len(pos_args) == 2
+        assert pos_args[0] == 1
+        assert pos_args[1] == "test"
+        assert len(named_args) == 2
+        assert named_args["a"] is True
+        assert named_args["b"] is None
+    
+    def test_parse_function_call_quoted_strings(self):
+        """Test parsing a function call with quoted strings."""
+        func_name, pos_args, named_args = parse_function_call("func", "'hello, world', \"quoted, string\"")
+        
+        assert func_name == "func"
+        assert len(pos_args) == 2
+        assert pos_args[0] == "hello, world"
+        assert pos_args[1] == "quoted, string"
+
+
+class TestArgumentEvaluation:
+    """Tests for argument evaluation."""
+    
+    def test_evaluate_positional_args(self):
+        """Test evaluating positional arguments."""
+        env = Environment({"var1": "value1", "var2": 42})
+        pos_args = ["static", "{{var1}}", "{{var2}}"]
+        named_args = {}
+        
+        eval_pos, eval_named = evaluate_arguments(pos_args, named_args, env)
+        
+        assert len(eval_pos) == 3
+        assert eval_pos[0] == "static"
+        assert eval_pos[1] == "value1"
+        assert eval_pos[2] == "42"
+    
+    def test_evaluate_named_args(self):
+        """Test evaluating named arguments."""
+        env = Environment({"var1": "value1", "var2": 42})
+        pos_args = []
+        named_args = {"a": "static", "b": "{{var1}}", "c": "{{var2}}"}
+        
+        eval_pos, eval_named = evaluate_arguments(pos_args, named_args, env)
+        
+        assert eval_pos == []
+        assert len(eval_named) == 3
+        assert eval_named["a"] == "static"
+        assert eval_named["b"] == "value1"
+        assert eval_named["c"] == "42"
+
+
+class TestParameterBinding:
+    """Tests for parameter binding."""
+    
+    def test_bind_arguments_to_parameters(self):
+        """Test binding arguments to parameters."""
+        template = {
+            "name": "test_func",
+            "parameters": {
+                "a": {"type": "string", "required": True},
+                "b": {"type": "integer", "required": True},
+                "c": {"type": "boolean", "default": False}
+            }
+        }
+        
+        pos_args = ["value", 42]
+        named_args = {}
+        
+        bindings = bind_arguments_to_parameters(template, pos_args, named_args)
+        
+        assert len(bindings) == 3
+        assert bindings["a"] == "value"
+        assert bindings["b"] == 42
+        assert bindings["c"] is False  # Default value
+    
+    def test_bind_arguments_with_named_overrides(self):
+        """Test binding arguments with named arguments overriding positional."""
+        template = {
+            "name": "test_func",
+            "parameters": {
+                "a": {"type": "string", "required": True},
+                "b": {"type": "integer", "required": True},
+                "c": {"type": "boolean", "default": False}
+            }
+        }
+        
+        pos_args = ["value", 42]
+        named_args = {"b": 99}  # Override positional argument
+        
+        bindings = bind_arguments_to_parameters(template, pos_args, named_args)
+        
+        assert bindings["a"] == "value"
+        assert bindings["b"] == 99  # Named arg overrides positional
+        assert bindings["c"] is False  # Default value
+    
+    def test_bind_arguments_missing_required(self):
+        """Test error when required parameter is missing."""
+        template = {
+            "name": "test_func",
+            "parameters": {
+                "a": {"type": "string", "required": True},
+                "b": {"type": "integer", "required": True}
+            }
+        }
+        
+        pos_args = ["value"]  # Missing required parameter b
+        named_args = {}
+        
+        with pytest.raises(ValueError) as excinfo:
+            bind_arguments_to_parameters(template, pos_args, named_args)
+        
+        assert "Missing required parameter" in str(excinfo.value)
+    
+    def test_bind_arguments_too_many_positional(self):
+        """Test error when too many positional arguments are provided."""
+        template = {
+            "name": "test_func",
+            "parameters": {
+                "a": {"type": "string", "required": True}
+            }
+        }
+        
+        pos_args = ["value", "extra"]  # Extra positional argument
+        named_args = {}
+        
+        with pytest.raises(ValueError) as excinfo:
+            bind_arguments_to_parameters(template, pos_args, named_args)
+        
+        assert "Too many positional arguments" in str(excinfo.value)
+
+
+class TestFunctionCallResolution:
+    """Tests for function call resolution (requires TaskSystem mock)."""
+    
+    def test_resolve_function_calls_basic(self, monkeypatch):
+        """Test resolving a basic function call."""
+        # Mock task_system and execute_function_call
+        task_system = MagicMock()
+        
+        def mock_execute_function_call(*args, **kwargs):
+            return {"status": "COMPLETE", "content": "Function result"}
+        
+        monkeypatch.setattr(
+            "task_system.template_utils.execute_function_call",
+            mock_execute_function_call
+        )
+        
+        text = "Before {{func()}} after"
+        env = Environment({"var": "value"})
+        
+        result = resolve_function_calls(text, task_system, env)
+        assert result == "Before Function result after"
+    
+    def test_resolve_function_calls_error(self, monkeypatch):
+        """Test handling errors in function call resolution."""
+        # Mock task_system and execute_function_call with error
+        task_system = MagicMock()
+        
+        def mock_execute_function_call(*args, **kwargs):
+            raise ValueError("Test error")
+        
+        monkeypatch.setattr(
+            "task_system.template_utils.execute_function_call",
+            mock_execute_function_call
+        )
+        
+        text = "Before {{func()}} after"
+        env = Environment({"var": "value"})
+        
+        result = resolve_function_calls(text, task_system, env)
+        assert "Before {{error in func()" in result
+        assert "Test error" in result
+        assert "}} after" in result

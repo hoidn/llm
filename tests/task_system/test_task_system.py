@@ -123,6 +123,79 @@ class TestTaskSystemExecution:
         assert result["status"] == "COMPLETE"
         task_system._execute_associative_matching.assert_called_once()
     
+    def test_execute_task_with_function_calls(self):
+        """Test executing a task with function calls in template fields."""
+        # Create a TaskSystem instance
+        task_system = TaskSystem()
+        
+        # Register a simple function template
+        format_template = {
+            "type": "atomic",
+            "subtype": "format",
+            "name": "format_greeting",
+            "description": "Format a greeting for a person",
+            "parameters": {
+                "name": {"type": "string", "required": True},
+                "formal": {"type": "boolean", "default": False}
+            },
+            "system_prompt": "{{formal ? 'Dear' : 'Hello'}}, {{name}}!"
+        }
+        task_system.register_template(format_template)
+        
+        # Register a template that calls the function
+        caller_template = {
+            "type": "atomic",
+            "subtype": "caller",
+            "name": "greeting_caller",
+            "description": "Template that calls format_greeting",
+            "parameters": {
+                "person": {"type": "string", "required": True}
+            },
+            "system_prompt": "Greeting: {{format_greeting(name=person, formal=true)}}"
+        }
+        task_system.register_template(caller_template)
+        
+        # Mock the _execute_associative_matching method for both templates
+        # First mock for the caller template
+        task_system._execute_associative_matching = MagicMock(side_effect=[
+            # Result from the main template execution
+            {
+                "status": "COMPLETE",
+                "content": "Template with call result"
+            }
+        ])
+        
+        # Create a separate mock for the function template execution
+        original_execute = task_system.execute_task
+        
+        def mock_execute(*args, **kwargs):
+            task_type = args[0]
+            task_subtype = args[1]
+            
+            # If this is the format_greeting function call
+            if task_type == "atomic" and task_subtype == "format":
+                return {
+                    "status": "COMPLETE",
+                    "content": "Dear, Test!"
+                }
+            
+            # Otherwise delegate to original implementation
+            return original_execute(*args, **kwargs)
+        
+        # Use our mock function for task execution
+        with patch.object(task_system, 'execute_task', side_effect=mock_execute):
+            # Execute the caller template
+            result = task_system.execute_task("atomic", "caller", {"person": "Test"})
+            
+            # Verify that the format_greeting function call was processed
+            # and its result was included in the system_prompt
+            executed_template = task_system._execute_associative_matching.call_args[0][0]
+            assert "Greeting: Dear, Test!" in executed_template["system_prompt"]
+            
+            # Verify final result
+            assert result["status"] == "COMPLETE"
+            assert result["content"] == "Template with call result"
+    
     def test_execute_task_with_variable_resolution(self):
         """Test executing a task with variable resolution."""
         task_system = TaskSystem()

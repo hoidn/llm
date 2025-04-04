@@ -130,23 +130,25 @@ class TaskSystem:
         return None
     
     def execute_task(self, task_type: str, task_subtype: str, inputs: Dict[str, Any], 
-                     memory_system=None, available_models: Optional[List[str]] = None) -> Dict[str, Any]:
-        """Execute a task with parameter validation and model selection.
-        
+                    memory_system=None, available_models: Optional[List[str]] = None,
+                    call_depth: int = 0) -> Dict[str, Any]:
+        """Execute a task with parameter validation, variable resolution, and function calls.
+    
         Args:
             task_type: Type of task
             task_subtype: Subtype of task
             inputs: Task inputs
             memory_system: Optional Memory System instance
             available_models: Optional list of available model names
-            
+            call_depth: Current call depth for function calls
+        
         Returns:
             Task result
         """
         # Check if task type and subtype are registered
         task_key = f"{task_type}:{task_subtype}"
         template_name = self.template_index.get(task_key)
-        
+    
         if not template_name or template_name not in self.templates:
             return {
                 "status": "FAILED",
@@ -155,10 +157,10 @@ class TaskSystem:
                     "error": "Task type not registered"
                 }
             }
-        
+    
         # Get the template
         template = self.templates[template_name]
-        
+    
         # Resolve parameters
         try:
             resolved_inputs = resolve_parameters(template, inputs)
@@ -170,31 +172,36 @@ class TaskSystem:
                     "error": "PARAMETER_ERROR"
                 }
             }
-        
+    
         # Create environment from resolved parameters
-        from .template_utils import Environment, resolve_template_variables
+        from .template_utils import Environment, resolve_template_variables, resolve_function_calls
         env = Environment(resolved_inputs)
-        
+    
         # Resolve variables in template fields
         resolved_template = resolve_template_variables(template, env)
-        
+    
+        # Resolve function calls in template fields
+        for field in ["system_prompt", "description"]:
+            if field in resolved_template and isinstance(resolved_template[field], str):
+                resolved_template[field] = resolve_function_calls(
+                    resolved_template[field], self, env, current_depth=call_depth)
+    
         # Select model if available_models provided
         selected_model = None
         if available_models:
             selected_model = get_preferred_model(resolved_template, available_models)
-        
+    
         # Handle specific task types
-        if task_type == "atomic":
-            if task_subtype == "associative_matching" or task_subtype == "test_matching" or task_subtype == "var_test":
-                result = self._execute_associative_matching(resolved_template, resolved_inputs, memory_system)
+        if task_type == "atomic" and task_subtype == "associative_matching":
+            result = self._execute_associative_matching(resolved_template, resolved_inputs, memory_system)
+        
+            # Add model info if selected
+            if selected_model:
+                if "notes" not in result:
+                    result["notes"] = {}
+                result["notes"]["selected_model"] = selected_model
                 
-                # Add model info if selected
-                if selected_model:
-                    if "notes" not in result:
-                        result["notes"] = {}
-                    result["notes"]["selected_model"] = selected_model
-                    
-                return result
+            return result
         
         # Default fallback for unimplemented task types
         return {
