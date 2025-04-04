@@ -3,7 +3,10 @@ import pytest
 from task_system.template_utils import (
     resolve_parameters,
     ensure_template_compatibility,
-    get_preferred_model
+    get_preferred_model,
+    Environment,
+    substitute_variables,
+    resolve_template_variables
 )
 
 class TestResolveParameters:
@@ -241,3 +244,132 @@ class TestGetPreferredModel:
         model = get_preferred_model(template, available_models)
         
         assert model == "claude-3"
+
+
+class TestEnvironment:
+    """Tests for the Environment class."""
+    
+    def test_simple_lookup(self):
+        """Test simple variable lookup."""
+        env = Environment({"name": "test", "value": 123})
+        
+        assert env.find("name") == "test"
+        assert env.find("value") == 123
+    
+    def test_parent_lookup(self):
+        """Test lookup through parent environment."""
+        parent = Environment({"parent_var": "parent_value"})
+        child = Environment({"child_var": "child_value"}, parent=parent)
+        
+        assert child.find("child_var") == "child_value"
+        assert child.find("parent_var") == "parent_value"
+    
+    def test_variable_not_found(self):
+        """Test error when variable not found."""
+        env = Environment({"name": "test"})
+        
+        with pytest.raises(ValueError) as excinfo:
+            env.find("unknown")
+        
+        assert "Variable 'unknown' not found" in str(excinfo.value)
+    
+    def test_environment_extension(self):
+        """Test environment extension."""
+        base = Environment({"base_var": "base_value"})
+        extended = base.extend({"extended_var": "extended_value"})
+        
+        assert extended.find("base_var") == "base_value"
+        assert extended.find("extended_var") == "extended_value"
+        assert extended.parent == base
+    
+    def test_variable_shadowing(self):
+        """Test variable shadowing in nested environments."""
+        parent = Environment({"var": "parent_value"})
+        child = Environment({"var": "child_value"}, parent=parent)
+        
+        assert child.find("var") == "child_value"  # Child's value shadows parent's
+
+
+class TestVariableSubstitution:
+    """Tests for variable substitution functions."""
+    
+    def test_basic_substitution(self):
+        """Test basic variable substitution."""
+        env = Environment({"name": "test", "count": 42})
+        text = "Hello {{name}}, your count is {{count}}."
+        
+        result = substitute_variables(text, env)
+        assert result == "Hello test, your count is 42."
+    
+    def test_nested_variable_lookup(self):
+        """Test variable substitution with nested environments."""
+        parent = Environment({"parent_var": "parent_value"})
+        child = Environment({"child_var": "child_value"}, parent=parent)
+        
+        text = "Parent: {{parent_var}}, Child: {{child_var}}"
+        result = substitute_variables(text, child)
+        
+        assert result == "Parent: parent_value, Child: child_value"
+    
+    def test_undefined_variable(self):
+        """Test handling of undefined variables."""
+        env = Environment({"name": "test"})
+        text = "Hello {{name}}, count is {{count}}"
+        
+        result = substitute_variables(text, env)
+        assert result == "Hello test, count is {{undefined:count}}"
+    
+    def test_non_string_input(self):
+        """Test handling of non-string input."""
+        env = Environment({"name": "test"})
+        
+        # Non-string inputs should be returned unchanged
+        assert substitute_variables(123, env) == 123
+        assert substitute_variables(None, env) is None
+        assert substitute_variables({"key": "value"}, env) == {"key": "value"}
+
+
+class TestTemplateVariableResolution:
+    """Tests for template variable resolution."""
+    
+    def test_resolve_template_variables(self):
+        """Test resolving variables in template fields."""
+        template = {
+            "type": "atomic",
+            "subtype": "test",
+            "description": "Test for {{name}}",
+            "system_prompt": "Process query {{query}} with limit {{limit}}"
+        }
+        
+        env = Environment({
+            "name": "test_user",
+            "query": "test_query",
+            "limit": 10
+        })
+        
+        resolved = resolve_template_variables(template, env)
+        
+        # Check that variables were resolved
+        assert resolved["description"] == "Test for test_user"
+        assert resolved["system_prompt"] == "Process query test_query with limit 10"
+        
+        # Check that original template wasn't modified
+        assert template["description"] == "Test for {{name}}"
+        assert template["system_prompt"] == "Process query {{query}} with limit {{limit}}"
+    
+    def test_missing_fields(self):
+        """Test resolution with missing fields."""
+        template = {
+            "type": "atomic",
+            "subtype": "test"
+            # No description or system_prompt
+        }
+        
+        env = Environment({"name": "test"})
+        resolved = resolve_template_variables(template, env)
+        
+        # Template should be returned with same structure
+        assert resolved["type"] == "atomic"
+        assert resolved["subtype"] == "test"
+        assert "description" not in resolved
+        assert "system_prompt" not in resolved

@@ -2,6 +2,108 @@
 from typing import Dict, Any, Optional, List, Union, Type
 
 
+class Environment:
+    """Environment for variable resolution with lexical scoping.
+    
+    Implements the lexical scoping model for variable resolution with parent-child
+    relationships for template variable substitution.
+    """
+    def __init__(self, bindings=None, parent=None):
+        """Initialize an environment with bindings and optional parent.
+        
+        Args:
+            bindings: Dictionary of variable bindings for this environment
+            parent: Optional parent environment for lexical scoping
+        """
+        self.bindings = bindings or {}
+        self.parent = parent
+    
+    def find(self, name):
+        """Find a variable in this environment or parent environments.
+        
+        Args:
+            name: Variable name to look up
+            
+        Returns:
+            Value of the variable
+            
+        Raises:
+            ValueError: If variable is not found in this or parent environments
+        """
+        if name in self.bindings:
+            return self.bindings[name]
+        if self.parent:
+            return self.parent.find(name)
+        raise ValueError(f"Variable '{name}' not found")
+    
+    def extend(self, bindings):
+        """Create a new environment with additional bindings.
+        
+        This creates a child environment with this environment as the parent,
+        implementing lexical scoping.
+        
+        Args:
+            bindings: Dictionary of new bindings for the child environment
+            
+        Returns:
+            A new Environment with this as parent
+        """
+        return Environment(bindings, self)
+
+
+def substitute_variables(text: str, env: Environment) -> str:
+    """Substitute {{variable}} references in text.
+    
+    Args:
+        text: Text containing variable references
+        env: Environment for variable lookups
+        
+    Returns:
+        Text with variables substituted
+    """
+    import re
+    
+    # If input is not a string, return as is
+    if not isinstance(text, str):
+        return text
+    
+    pattern = r'\{\{([^}]+)\}\}'
+    
+    def replace_var(match):
+        var_name = match.group(1).strip()
+        try:
+            value = env.find(var_name)
+            return str(value)
+        except ValueError:
+            return f"{{{{undefined:{var_name}}}}}"
+    
+    return re.sub(pattern, replace_var, text)
+
+
+def resolve_template_variables(template: Dict[str, Any], env: Environment) -> Dict[str, Any]:
+    """Resolve variables in template fields.
+    
+    Args:
+        template: Template dictionary 
+        env: Environment for variable lookups
+        
+    Returns:
+        Template with variables resolved in supported fields
+    """
+    # Create a copy to avoid modifying the original
+    resolved = template.copy()
+    
+    # Fields that should have variables resolved (based on current codebase)
+    resolvable_fields = ["system_prompt", "description"]
+    
+    # Resolve variables in each field
+    for field in resolvable_fields:
+        if field in resolved and isinstance(resolved[field], str):
+            resolved[field] = substitute_variables(resolved[field], env)
+    
+    return resolved
+
+
 def resolve_parameters(template: Dict[str, Any], args: Dict[str, Any]) -> Dict[str, Any]:
     """Resolve and validate parameters based on template schema.
     

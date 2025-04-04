@@ -9,7 +9,7 @@ ASSOCIATIVE_MATCHING_TEMPLATE = {
     "type": "atomic",
     "subtype": "associative_matching",
     "name": "find_relevant_files",  # Unique template name
-    "description": "Find relevant files for the given query",
+    "description": "Find relevant files for '{{query}}' (max: {{max_results}})",  # Now using variables
     "parameters": {  # Structured parameters
         "query": {
             "type": "string",
@@ -40,13 +40,13 @@ ASSOCIATIVE_MATCHING_TEMPLATE = {
         "type": "json",
         "schema": "string[]"
     },
-    "system_prompt": """When finding relevant files, consider:
+    "system_prompt": """When finding relevant files for '{{query}}', consider:
 - Direct keyword matches in file names and content
 - Semantically similar terms to the query
 - Related programming concepts
 - File types appropriate for the task
 
-Return a comprehensive list of relevant files that would be helpful for addressing the user's query."""
+Return up to {{max_results}} relevant files that would be helpful for addressing the user's query."""
 }
 
 def register_template(task_system) -> None:
@@ -66,7 +66,7 @@ def create_xml_template() -> str:
     # This is a helper to generate the actual XML when needed
     xml = """
     <task type="atomic" subtype="associative_matching" name="find_relevant_files">
-      <description>Find relevant files for the given query</description>
+      <description>Find relevant files for '{{query}}' (max: {{max_results}})</description>
       <parameters>
         <parameter name="query" type="string" required="true">The user query or task to find relevant files for</parameter>
         <parameter name="max_results" type="integer" default="20">Maximum number of files to return</parameter>

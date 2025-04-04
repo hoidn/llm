@@ -123,6 +123,43 @@ class TestTaskSystemExecution:
         assert result["status"] == "COMPLETE"
         task_system._execute_associative_matching.assert_called_once()
     
+    def test_execute_task_with_variable_resolution(self):
+        """Test executing a task with variable resolution."""
+        task_system = TaskSystem()
+        
+        # Register a test template with variables in fields
+        template = {
+            "type": "atomic",
+            "subtype": "var_test",
+            "name": "variable_test",
+            "description": "Test for {{user}}",
+            "system_prompt": "Process query '{{query}}' with limit {{limit}}",
+            "parameters": {
+                "query": {"type": "string", "required": True},
+                "user": {"type": "string", "default": "default_user"},
+                "limit": {"type": "integer", "default": 10}
+            }
+        }
+        
+        task_system.register_template(template)
+        
+        # Mock the _execute_associative_matching method
+        task_system._execute_associative_matching = MagicMock(return_value={
+            "status": "COMPLETE",
+            "content": "Test result"
+        })
+        
+        # Execute task with inputs that will be used for variable resolution
+        task_system.execute_task(
+            "atomic", "var_test", 
+            {"query": "search_query", "user": "test_user"}
+        )
+        
+        # Verify that variables were resolved in the template
+        template_arg = task_system._execute_associative_matching.call_args[0][0]
+        assert template_arg["description"] == "Test for test_user"
+        assert template_arg["system_prompt"] == "Process query 'search_query' with limit 10"
+    
     def test_execute_task_with_invalid_parameters(self):
         """Test executing a task with invalid parameters."""
         task_system = TaskSystem()
