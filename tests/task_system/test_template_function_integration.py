@@ -160,42 +160,34 @@ class TestTemplateFunctionIntegration:
         }
         task_system.register_template(recursive_template)
         
-        # We need to track function calls at the execute_task level
+        # Mock _execute_associative_matching to trace the recursion
         calls = []
-        original_execute = task_system.execute_task
         
-        def mock_recursive_execute(*args, **kwargs):
-            task_type = args[0]
-            task_subtype = args[1]
+        def mock_execute_matching(*args, **kwargs):
+            template = args[0]
+            inputs = args[1]
+            depth = inputs.get("depth", 0)
+            calls.append(depth)
             
-            if task_type == "atomic" and task_subtype == "recursive":
-                inputs = kwargs.get('inputs', {}) if 'inputs' in kwargs else args[2]
-                depth = inputs.get("depth", 0)
-                calls.append(depth)
-                
-                # If we're at max depth, the function call should be replaced with an error
-                if len(calls) >= 6:  # Original call + 5 recursive calls
-                    # Return a result with the error message in the content
-                    return {
-                        "status": "COMPLETE",
-                        "content": f"Depth {depth} with {{{{error in recursive(): Maximum recursion depth (5) exceeded in function call to 'recursive'}}}}",
-                        "system_prompt": f"Depth {depth} with {{{{error in recursive(): Maximum recursion depth (5) exceeded in function call to 'recursive'}}}}"
-                    }
-                
+            # Check if this is a template with an error message in system_prompt
+            if "error in recursive" in template.get("system_prompt", ""):
+                # Return the error message in the content
                 return {
                     "status": "COMPLETE",
-                    "content": f"Depth {depth}"
+                    "content": f"Error detected: {template['system_prompt']}"
                 }
             
-            return original_execute(*args, **kwargs)
+            return {"status": "COMPLETE", "content": f"Depth {depth}"}
         
-        with patch.object(task_system, 'execute_task', side_effect=mock_recursive_execute):
-            # Execute the recursive template - should stop at max_depth
-            result = task_system.execute_task("atomic", "recursive", {"depth": 0})
-            
-            # Verify recursion was limited
-            assert len(calls) <= 6  # The max depth is 5, so max 6 calls including the original
-            
-            # Verify the result contains the error message
-            assert "error in recursive" in result["content"]
-            assert "Maximum recursion depth" in result["content"]
+        task_system._execute_associative_matching = MagicMock(side_effect=mock_execute_matching)
+        
+        # Execute the recursive template - should stop at max_depth
+        result = task_system.execute_task("atomic", "recursive", {"depth": 0})
+        
+        # Verify recursion was limited (calls at depth 0-4 only, plus error at depth 5)
+        assert len(calls) <= 6  # The max depth is 5, so max 6 calls including the original
+        
+        # Verify the final template has an error message for exceeding depth
+        final_template = task_system._execute_associative_matching.call_args[0][0]
+        assert "error in recursive" in final_template["system_prompt"]
+        assert "Maximum recursion depth" in final_template["system_prompt"]
