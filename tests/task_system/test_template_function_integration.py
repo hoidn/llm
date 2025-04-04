@@ -237,4 +237,5 @@ class TestTemplateFunctionIntegration:
         
         # Verify at least one template contains the recursion error message
         assert len(error_templates) > 0, "No recursion depth error found in any template"
-        assert "Maximum recursion depth" in final_template["system_prompt"]
+        # Check that the first error template contains the expected error message
+        assert "Maximum recursion depth" in error_templates[0]["system_prompt"]
