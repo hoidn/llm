@@ -1,15 +1,8 @@
 """Task System implementation."""
 from typing import Dict, List, Any, Optional
-import os
-import sys
+import json
 
-# Add parent directory to path to find template_utils
-current_dir = os.path.dirname(os.path.abspath(__file__))
-parent_dir = os.path.dirname(current_dir)
-if parent_dir not in sys.path:
-    sys.path.insert(0, parent_dir)
-
-from task_system.template_utils import resolve_parameters, ensure_template_compatibility, get_preferred_model
+from .template_utils import resolve_parameters, ensure_template_compatibility, get_preferred_model
 
 class TaskSystem:
     """Task System for task execution and management.
@@ -201,7 +194,8 @@ class TaskSystem:
             "content": "Task execution not implemented for this task type",
             "notes": {
                 "task_type": task_type,
-                "task_subtype": task_subtype
+                "task_subtype": task_subtype,
+                "selected_model": selected_model
             }
         }
     
@@ -216,7 +210,7 @@ class TaskSystem:
         Returns:
             Task result with relevant files
         """
-        from task_system.templates.associative_matching import execute_template
+        from .templates.associative_matching import execute_template
         
         # Get query from inputs
         query = inputs.get("query", "")
@@ -231,7 +225,8 @@ class TaskSystem:
         
         # Execute the template
         try:
-            relevant_files = execute_template(query, memory_system)
+            max_results = inputs.get("max_results", 20)
+            relevant_files = execute_template(query, memory_system, max_results)
             
             # Convert to JSON string
             import json
