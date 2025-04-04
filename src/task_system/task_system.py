@@ -192,7 +192,9 @@ class TaskSystem:
             selected_model = get_preferred_model(resolved_template, available_models)
     
         # Handle specific task types
-        if task_type == "atomic" and task_subtype == "associative_matching":
+        if task_type == "atomic":
+            # For all atomic tasks, use the associative matching execution method
+            # This is a temporary solution until specific handlers are implemented for each task type
             result = self._execute_associative_matching(resolved_template, resolved_inputs, memory_system)
         
             # Add model info if selected
