@@ -181,78 +181,42 @@ class TestTemplateFunctionIntegration:
         # Create TaskSystem instance
         task_system = TaskSystem()
         
-        # Register a simple recursive template that calls itself directly
-        recursive_template = {
+        # Define templates for a controlled recursion scenario
+        counter_template = {
             "type": "atomic",
-            "subtype": "recursive",
-            "name": "recursive",
-            "description": "Template that calls itself recursively",
+            "subtype": "counter",
+            "name": "counter",
+            "description": "A simple counter that calls itself with the next value",
             "parameters": {
-                "depth": {"type": "integer", "default": 0}
+                "value": {"type": "integer", "default": 0}
             },
-            "system_prompt": "Depth {{depth}}. {{recursive(depth=depth+1)}}"
+            "system_prompt": "Count: {{value}}{% if value < 10 %}. {{counter(value=value+1)}}{% endif %}"
         }
-        task_system.register_template(recursive_template)
+        task_system.register_template(counter_template)
         
-        # Mock to directly verify recursion depth checking
+        # Create a direct test of execute_function_call
         from task_system.template_utils import execute_function_call, Environment
         
-        # Create a spy on the execute_function_call function to track calls
-        original_execute_function_call = execute_function_call
+        # Test that execute_function_call properly enforces recursion depth
+        env = Environment({"value": 0})
         
-        call_depths = []
-        def spy_execute_function_call(*args, **kwargs):
-            # Extract and track the call depth
-            current_depth = kwargs.get('current_depth', 0)
-            call_depths.append(current_depth)
-            
-            # If we hit max depth, let the exception happen naturally
-            if current_depth >= 5:
-                # This should raise the recursion depth exception
-                return original_execute_function_call(*args, **kwargs)
-            
-            # For depths < 5, call the original function
-            return original_execute_function_call(*args, **kwargs)
+        # Call directly with increasing depth to verify limit is enforced
+        # Depth 0-4 should work, depth 5 should fail
+        for depth in range(5):
+            # This should succeed
+            result = execute_function_call(
+                task_system, "counter", [0], {}, env, 
+                max_depth=5, current_depth=depth
+            )
+            assert result["status"] == "COMPLETE" or result["status"] == "SUCCESS"
         
-        # Set up our spy
-        with patch('task_system.template_utils.execute_function_call', 
-                  side_effect=spy_execute_function_call):
-            
-            # Mock _execute_associative_matching to handle our recursive template
-            def mock_execute_matching(*args, **kwargs):
-                template = args[0]
-                inputs = args[1]
-                
-                # If we detect an error about max recursion in the template
-                if "error in recursive" in str(template.get("system_prompt", "")):
-                    # Propagate the error to the test
-                    return {
-                        "status": "FAILED",
-                        "content": template.get("system_prompt", "")
-                    }
-                
-                # Normal case - just return content based on depth
-                depth = inputs.get("depth", 0)
-                return {"status": "COMPLETE", "content": f"Depth {depth}"}
-                
-            task_system._execute_associative_matching = MagicMock(side_effect=mock_execute_matching)
-            
-            # Execute the template - this should trigger recursion depth error
-            result = task_system.execute_task("atomic", "recursive", {"depth": 0})
-            
-            # Verify we made multiple recursive calls
-            assert len(call_depths) > 0, "No function calls were recorded"
-            
-            # Verify our result contains the error about maximum recursion depth
-            assert "error in recursive" in str(result.get("content", "")), \
-                f"Error message not found in result: {result}"
-            
-            # This is the core test - verify the test recognizes max depth
-            # By this point, the actual error message contents doesn't matter as much
-            # as long as we confirm the recursion depth check is working
-            if "Maximum recursion depth" not in str(result.get("content", "")):
-                print(f"WARNING: Expected 'Maximum recursion depth' in error message.")
-                print(f"Actual error: {result.get('content', '')}")
-                # Instead of asserting on exact message, check that some error occurred
-                assert "error in recursive" in str(result.get("content", "")), \
-                    "No error message found in result"
+        # Testing depth 5 should raise a RuntimeError about max recursion
+        with pytest.raises(RuntimeError) as excinfo:
+            execute_function_call(
+                task_system, "counter", [0], {}, env, 
+                max_depth=5, current_depth=5
+            )
+        
+        # Verify the error message
+        assert "Maximum recursion depth" in str(excinfo.value)
+        assert "counter" in str(excinfo.value)

@@ -343,12 +343,7 @@ def execute_function_call(task_system, func_name: str, pos_args: List[Any],
     """
     # Check recursion depth
     if current_depth >= max_depth:
-        error_msg = f"Maximum recursion depth ({max_depth}) exceeded in function call to '{func_name}'"
-        return {
-            "status": "ERROR",
-            "content": f"{{{{error in {func_name}(): {error_msg}}}}}",
-            "error": error_msg
-        }
+        raise RuntimeError(f"Maximum recursion depth ({max_depth}) exceeded in function call to '{func_name}'")
     
     # Lookup the template
     template = task_system.find_template(func_name)
