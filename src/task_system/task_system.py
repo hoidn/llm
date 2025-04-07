@@ -158,10 +158,8 @@ class TaskSystem(TemplateLookupInterface):
             if "notes" not in result:
                 result["notes"] = {}
             if "system_prompt" not in result["notes"]:
-                # Try to find the template to get its system prompt
-                template = self.find_template(call.template_name)
-                if template and "system_prompt" in template:
-                    result["notes"]["system_prompt"] = template["system_prompt"]
+                # Add a default system prompt if none was provided by the evaluator
+                result["notes"]["system_prompt"] = "Default system prompt for function execution"
             
             return result
             
