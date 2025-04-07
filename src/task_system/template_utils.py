@@ -469,7 +469,7 @@ def translate_function_call_to_ast(func_name: str, args_text: str) -> FunctionCa
     # Create and return the FunctionCallNode
     return FunctionCallNode(func_name, arg_nodes)
 
-def resolve_function_calls(text: str, task_system, env: Environment) -> str:
+def resolve_function_calls(text: str, task_system, env: Environment, max_depth: int = 5, current_depth: int = 0) -> str:
     """
     Resolve function calls in text by translating to AST nodes and executing.
     

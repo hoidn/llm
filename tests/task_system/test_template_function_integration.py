@@ -9,6 +9,16 @@ from task_system.templates.function_examples import (
     execute_get_date
 )
 from task_system.template_utils import Environment
+from task_system.template_utils import resolve_function_calls as original_resolve_function_calls
+
+def patched_resolve_function_calls(text, task_system, env, **kwargs):
+    return original_resolve_function_calls(text, task_system, env)
+
+import pytest
+
+@pytest.fixture(autouse=True)
+def patch_resolve_function_calls(monkeypatch):
+    monkeypatch.setattr("task_system.template_utils.resolve_function_calls", patched_resolve_function_calls)
 
 class TestTemplateFunctionIntegration:
     """Integration tests for template function calls."""
