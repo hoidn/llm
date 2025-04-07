@@ -277,7 +277,16 @@ def evaluate_arguments(pos_args: List[Any], named_args: Dict[str, Any], env: Env
     # Evaluate positional args
     evaluated_pos_args = []
     for arg in pos_args:
-        if isinstance(arg, str) and re.search(r'\{\{[^}]+\}\}', arg):
+        if isinstance(arg, str) and arg.startswith("{{") and arg.endswith("}}"):
+            # This is a direct variable reference like {{var_name}}
+            var_name = arg[2:-2].strip()
+            try:
+                evaluated_pos_args.append(env.find(var_name))
+            except ValueError:
+                # Keep as is if variable not found
+                evaluated_pos_args.append(arg)
+        elif isinstance(arg, str) and re.search(r'\{\{[^}]+\}\}', arg):
+            # This is a string with embedded variable references
             evaluated_pos_args.append(substitute_variables(arg, env))
         else:
             evaluated_pos_args.append(arg)
@@ -285,7 +294,16 @@ def evaluate_arguments(pos_args: List[Any], named_args: Dict[str, Any], env: Env
     # Evaluate named args
     evaluated_named_args = {}
     for key, value in named_args.items():
-        if isinstance(value, str) and re.search(r'\{\{[^}]+\}\}', value):
+        if isinstance(value, str) and value.startswith("{{") and value.endswith("}}"):
+            # This is a direct variable reference like {{var_name}}
+            var_name = value[2:-2].strip()
+            try:
+                evaluated_named_args[key] = env.find(var_name)
+            except ValueError:
+                # Keep as is if variable not found
+                evaluated_named_args[key] = value
+        elif isinstance(value, str) and re.search(r'\{\{[^}]+\}\}', value):
+            # This is a string with embedded variable references
             evaluated_named_args[key] = substitute_variables(value, env)
         else:
             evaluated_named_args[key] = value
@@ -484,8 +502,31 @@ def resolve_function_calls(text: str, task_system, env: Environment) -> str:
         args_text = call["args_text"]
         
         try:
-            # Translate the function call to AST nodes
-            func_call_node = translate_function_call_to_ast(func_name, args_text)
+            # First, evaluate any variable references in the arguments
+            # Parse the function call arguments
+            _, pos_args, named_args = parse_function_call(func_name, args_text)
+            
+            # Evaluate arguments in the current environment
+            evaluated_pos_args, evaluated_named_args = evaluate_arguments(pos_args, named_args, env)
+            
+            # Create a new args_text with evaluated values for debugging
+            new_args_parts = []
+            for arg in evaluated_pos_args:
+                new_args_parts.append(repr(arg) if isinstance(arg, str) else str(arg))
+            for name, value in evaluated_named_args.items():
+                arg_str = f"{name}={repr(value) if isinstance(value, str) else value}"
+                new_args_parts.append(arg_str)
+            new_args_text = ", ".join(new_args_parts)
+            
+            # Create argument nodes with evaluated values
+            arg_nodes = []
+            for arg_value in evaluated_pos_args:
+                arg_nodes.append(ArgumentNode(arg_value))
+            for name, value in evaluated_named_args.items():
+                arg_nodes.append(ArgumentNode(value, name=name))
+            
+            # Create the function call node
+            func_call_node = FunctionCallNode(func_name, arg_nodes)
             
             # Ensure TaskSystem has an Evaluator
             if hasattr(task_system, '_ensure_evaluator'):

@@ -29,14 +29,15 @@ class TestFunctionCallIntegration:
             }
         }
         
-        # Mock execute_task to return a simple result
-        ts.execute_task = MagicMock(return_value={
-            "content": "Executed with param1={param1}, param2={param2}".format(
-                param1="$param1$", param2="$param2$"
-            ),
-            "status": "COMPLETE",
-            "notes": {}
-        })
+        # Mock execute_task to return a simple result with actual parameter values
+        def mock_execute_task(task_type, task_subtype, inputs, **kwargs):
+            return {
+                "content": f"Executed with param1={inputs.get('param1', 'missing')}, param2={inputs.get('param2', 'missing')}",
+                "status": "COMPLETE",
+                "notes": {}
+            }
+        
+        ts.execute_task = MagicMock(side_effect=mock_execute_task)
         
         # Initialize evaluator
         ts._ensure_evaluator()
