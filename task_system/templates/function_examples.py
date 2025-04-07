@@ -92,6 +92,39 @@ NESTED_TEMPLATE = {
     "system_prompt": "User data: {{format_json(value=user_info, indent=4)}}\n\n{{greeting(name=user_info.name, formal=true)}}"
 }
 
+# Math helper templates for arithmetic operations
+ADD_TEMPLATE = {
+    "type": "atomic",
+    "subtype": "math_add",
+    "name": "add",
+    "description": "Add two numbers",
+    "parameters": {
+        "x": {"type": "integer", "description": "First number", "required": True},
+        "y": {"type": "integer", "description": "Second number", "required": True}
+    },
+    "returns": {
+        "type": "integer",
+        "description": "Sum of the two numbers"
+    },
+    "system_prompt": "Adding {{x}} and {{y}}"
+}
+
+SUBTRACT_TEMPLATE = {
+    "type": "atomic",
+    "subtype": "math_subtract",
+    "name": "subtract",
+    "description": "Subtract second number from first",
+    "parameters": {
+        "x": {"type": "integer", "description": "First number", "required": True},
+        "y": {"type": "integer", "description": "Second number to subtract", "required": True}
+    },
+    "returns": {
+        "type": "integer",
+        "description": "Difference between numbers"
+    },
+    "system_prompt": "Subtracting {{y}} from {{x}}"
+}
+
 def register_function_templates(task_system) -> None:
     """Register the function example templates with the Task System.
     
@@ -102,6 +135,8 @@ def register_function_templates(task_system) -> None:
     task_system.register_template(GET_DATE_TEMPLATE)
     task_system.register_template(GREETING_TEMPLATE)
     task_system.register_template(NESTED_TEMPLATE)
+    task_system.register_template(ADD_TEMPLATE)
+    task_system.register_template(SUBTRACT_TEMPLATE)
 
 def execute_format_json(value: Any, indent: int = 2) -> str:
     """Format a value as pretty-printed JSON.
@@ -126,3 +161,27 @@ def execute_get_date(format: str = "%Y-%m-%d") -> str:
     """
     import datetime
     return datetime.datetime.now().strftime(format)
+
+def execute_add(x: int, y: int) -> int:
+    """Add two numbers.
+    
+    Args:
+        x: First number
+        y: Second number
+        
+    Returns:
+        Sum of the two numbers
+    """
+    return x + y
+    
+def execute_subtract(x: int, y: int) -> int:
+    """Subtract second number from first.
+    
+    Args:
+        x: First number
+        y: Second number to subtract
+        
+    Returns:
+        Difference between numbers
+    """
+    return x - y
