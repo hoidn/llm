@@ -7,6 +7,7 @@ from .ast_nodes import FunctionCallNode
 from task_system.template_utils import Environment
 from system.errors import TaskError, create_task_failure, format_error_result
 from evaluator.interfaces import EvaluatorInterface, TemplateLookupInterface
+from task_system.template_processor import TemplateProcessor
 
 class TaskSystem(TemplateLookupInterface):
     """Task System for task execution and management.
@@ -27,6 +28,9 @@ class TaskSystem(TemplateLookupInterface):
         
         # If no evaluator was provided, initialize one later when needed
         self._evaluator_initialized = evaluator is not None
+        
+        # Create template processor
+        self.template_processor = TemplateProcessor(self)
     
     def _ensure_evaluator(self):
         """
@@ -232,17 +236,11 @@ class TaskSystem(TemplateLookupInterface):
             }
     
         # Create environment from resolved parameters
-        from .template_utils import Environment, resolve_template_variables, resolve_function_calls
+        from .template_utils import Environment
         env = Environment(resolved_inputs)
     
-        # Resolve variables in template fields
-        resolved_template = resolve_template_variables(template, env)
-    
-        # Resolve function calls in template fields
-        for field in ["system_prompt", "description"]:
-            if field in resolved_template and isinstance(resolved_template[field], str):
-                resolved_template[field] = resolve_function_calls(
-                    resolved_template[field], self, env, current_depth=call_depth)
+        # Process the template (resolve variables and function calls)
+        resolved_template = self.template_processor.process_template(template, env)
     
         # Select model if available_models provided
         selected_model = None
@@ -273,6 +271,27 @@ class TaskSystem(TemplateLookupInterface):
                 "selected_model": selected_model
             }
         }
+    
+    def _execute_atomic_task(self, template: Dict[str, Any], inputs: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Execute an atomic task.
+        
+        Args:
+            template: Processed template definition
+            inputs: Task inputs
+            
+        Returns:
+            Task execution result
+        """
+        # Extract key template fields for the response
+        task_type = template.get("type", "atomic")
+        task_subtype = template.get("subtype", "generic")
+        description = template.get("description", "No description")
+        system_prompt = template.get("system_prompt", "")
+        
+        # For now, we'll just use the existing associative matching implementation
+        # This will be replaced with specific implementations for each task type
+        return self._execute_associative_matching(template, inputs, None)
     
     def _execute_associative_matching(self, task, inputs, memory_system):
         """Execute an associative matching task.
