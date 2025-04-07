@@ -20,7 +20,7 @@ class EvaluatorInterface(Protocol):
     [Interface:Evaluator:1.0]
     """
     
-    def evaluateFunctionCall(self, call_node: FunctionCallNode, env: Environment) -> Dict[str, Any]:
+    def evaluateFunctionCall(self, call_node: FunctionCallNode, env: Environment, template: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         Evaluate a function call AST node.
         

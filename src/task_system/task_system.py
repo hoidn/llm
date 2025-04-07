@@ -151,15 +151,13 @@ class TaskSystem(TemplateLookupInterface):
                     }
                 }
             
-            # Delegate to the evaluator for execution for other templates
-            result = self.evaluator.evaluateFunctionCall(call, env)
+            # Look up the template only once
+            template = self.find_template(call.template_name)
             
-            # Ensure result has proper structure for tests
-            if "notes" not in result:
-                result["notes"] = {}
-            if "system_prompt" not in result["notes"]:
-                # Add a default system prompt if none was provided by the evaluator
-                result["notes"]["system_prompt"] = "Default system prompt for function execution"
+            # Delegate to the evaluator for execution, passing the template
+            result = self.evaluator.evaluateFunctionCall(call, env, template)
+            
+            # No need for a second lookup since we already have the template
             
             return result
             
