@@ -366,10 +366,15 @@ class TaskSystem(TemplateLookupInterface):
         description = template.get("description", "No description")
         system_prompt = template.get("system_prompt", "")
         
+        # Process function calls in the description
+        from task_system.template_utils import Environment, resolve_function_calls
+        env = Environment(inputs)
+        processed_description = resolve_function_calls(description, self, env)
+        
         # Return the result directly - don't delegate to _execute_associative_matching
         return {
             "status": "COMPLETE",
-            "content": description,  # Put the description in content for visibility
+            "content": processed_description,  # Put the processed description in content
             "notes": {
                 "system_prompt": system_prompt,  # Include system_prompt in notes
                 "inputs": inputs

@@ -192,7 +192,7 @@ class TestTaskSystemEvaluatorIntegration:
         # Verify result
         assert result["status"] == "COMPLETE"  # The task itself should still complete
         # The description should contain an error message
-        assert "error in nonexistent_function()" in result["content"] or "error in nonexistent_function()" in result["notes"]["system_prompt"]
+        assert "Template not found" in result["content"] or "Template not found" in result["notes"]["system_prompt"]
     
     def test_variable_substitution_and_function_calls(self, task_system):
         """Test combining variable substitution with function calls."""
