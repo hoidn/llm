@@ -1,19 +1,77 @@
 """Task System implementation."""
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Union
 import json
 
 from .template_utils import resolve_parameters, ensure_template_compatibility, get_preferred_model
+from .ast_nodes import FunctionCallNode
+from task_system.template_utils import Environment
+from system.errors import TaskError, create_task_failure, format_error_result
+from evaluator.interfaces import EvaluatorInterface, TemplateLookupInterface
 
-class TaskSystem:
+class TaskSystem(TemplateLookupInterface):
     """Task System for task execution and management.
     
     Manages task templates, execution, and context management.
     """
     
-    def __init__(self):
-        """Initialize the Task System."""
+    def __init__(self, evaluator: Optional[EvaluatorInterface] = None):
+        """
+        Initialize the Task System.
+        
+        Args:
+            evaluator: Optional Evaluator instance for AST evaluation
+        """
         self.templates = {}  # Templates by name
         self.template_index = {}  # Maps type:subtype to template name
+        self.evaluator = evaluator  # Store evaluator (dependency injection)
+        
+        # If no evaluator was provided, initialize one later when needed
+        self._evaluator_initialized = evaluator is not None
+    
+    def _ensure_evaluator(self):
+        """
+        Ensure an evaluator is available, creating one if needed.
+        
+        This lazy initialization helps avoid circular imports.
+        """
+        if not self._evaluator_initialized:
+            from evaluator.evaluator import Evaluator
+            self.evaluator = Evaluator(self)
+            self._evaluator_initialized = True
+    
+    def executeCall(self, call: FunctionCallNode, env: Optional[Environment] = None) -> Dict[str, Any]:
+        """
+        Execute a function call using the Evaluator.
+        
+        Args:
+            call: FunctionCallNode to execute
+            env: Optional Environment for variable resolution, creates a new one if None
+            
+        Returns:
+            Function result as a TaskResult
+        """
+        # Create default environment if none provided
+        if env is None:
+            from task_system.template_utils import Environment
+            env = Environment({})
+        
+        # Ensure evaluator is available
+        self._ensure_evaluator()
+        
+        try:
+            # Delegate to the evaluator for execution
+            return self.evaluator.evaluateFunctionCall(call, env)
+        except TaskError as e:
+            # Format error as TaskResult
+            return format_error_result(e)
+        except Exception as e:
+            # Wrap unexpected errors
+            error = create_task_failure(
+                message=f"Unexpected error in function call execution: {str(e)}",
+                reason="unexpected_error",
+                details={"exception": str(e), "exception_type": type(e).__name__}
+            )
+            return format_error_result(error)
         
     def find_matching_tasks(self, input_text: str, memory_system) -> List[Dict[str, Any]]:
         """Find matching templates based on a provided input string.
