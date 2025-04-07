@@ -12,8 +12,10 @@ from task_system.template_utils import (
     parse_function_call,
     evaluate_arguments,
     bind_arguments_to_parameters,
-    resolve_function_calls
+    resolve_function_calls,
+    translate_function_call_to_ast
 )
+from task_system.ast_nodes import FunctionCallNode, ArgumentNode
 
 class TestResolveParameters:
     """Tests for the resolve_parameters function."""
@@ -588,45 +590,106 @@ class TestParameterBinding:
         assert "Too many positional arguments" in str(excinfo.value)
 
 
-class TestFunctionCallResolution:
-    """Tests for function call resolution (requires TaskSystem mock)."""
+class TestTranslationMechanism:
+    """Tests for the function call translation mechanism."""
     
-    def test_resolve_function_calls_basic(self, monkeypatch):
-        """Test resolving a basic function call."""
-        # Mock task_system and execute_function_call
-        task_system = MagicMock()
+    def test_translate_function_call_to_ast(self):
+        """Test translating a text function call to AST nodes."""
+        # Test with positional args
+        node = translate_function_call_to_ast("test_func", "arg1, 42")
         
-        def mock_execute_function_call(*args, **kwargs):
-            return {"status": "COMPLETE", "content": "Function result"}
+        assert isinstance(node, FunctionCallNode)
+        assert node.template_name == "test_func"
+        assert len(node.arguments) == 2
+        assert node.arguments[0].value == "arg1"
+        assert node.arguments[1].value == 42
+        assert node.arguments[0].is_positional()
         
-        monkeypatch.setattr(
-            "task_system.template_utils.execute_function_call",
-            mock_execute_function_call
-        )
+        # Test with named args
+        node = translate_function_call_to_ast("test_func", "name=\"value\", count=5")
         
-        text = "Before {{func()}} after"
-        env = Environment({"var": "value"})
+        assert isinstance(node, FunctionCallNode)
+        assert node.template_name == "test_func"
+        assert len(node.arguments) == 2
+        assert node.arguments[0].value == "value"
+        assert node.arguments[0].name == "name"
+        assert node.arguments[1].value == 5
+        assert node.arguments[1].name == "count"
+        assert node.arguments[0].is_named()
         
-        result = resolve_function_calls(text, task_system, env)
-        assert result == "Before Function result after"
+        # Test with mixed args
+        node = translate_function_call_to_ast("test_func", "arg1, param=42")
+        
+        assert isinstance(node, FunctionCallNode)
+        assert node.template_name == "test_func"
+        assert len(node.arguments) == 2
+        assert node.arguments[0].value == "arg1"
+        assert node.arguments[0].is_positional()
+        assert node.arguments[1].value == 42
+        assert node.arguments[1].name == "param"
+        assert node.arguments[1].is_named()
     
-    def test_resolve_function_calls_error(self, monkeypatch):
-        """Test handling errors in function call resolution."""
-        # Mock task_system and execute_function_call with error
-        task_system = MagicMock()
+    def test_resolve_function_calls(self):
+        """Test resolving function calls in text."""
+        # Create mock TaskSystem
+        mock_task_system = MagicMock()
+        mock_task_system.executeCall.return_value = {
+            "content": "Executed function result",
+            "status": "COMPLETE"
+        }
         
-        def mock_execute_function_call(*args, **kwargs):
-            raise ValueError("Test error")
+        # Create environment
+        env = Environment({"var1": "test_value", "var2": 42})
         
-        monkeypatch.setattr(
-            "task_system.template_utils.execute_function_call",
-            mock_execute_function_call
-        )
+        # Test with single call
+        text = "This is a {{test_function(var1, count=var2)}} in text"
+        result = resolve_function_calls(text, mock_task_system, env)
         
-        text = "Before {{func()}} after"
-        env = Environment({"var": "value"})
+        assert "Executed function result" in result
+        assert mock_task_system.executeCall.call_count == 1
         
-        result = resolve_function_calls(text, task_system, env)
-        assert "Before {{error in func()" in result
+        # Check the FunctionCallNode passed to executeCall
+        call_args = mock_task_system.executeCall.call_args[0]
+        func_call = call_args[0]
+        assert isinstance(func_call, FunctionCallNode)
+        assert func_call.template_name == "test_function"
+        assert len(func_call.arguments) == 2
+        
+        # Test with error handling
+        mock_task_system.executeCall.side_effect = ValueError("Test error")
+        result = resolve_function_calls(text, mock_task_system, env)
+        
+        assert "error in test_function()" in result
         assert "Test error" in result
-        assert "}} after" in result
+        
+        # Test with no calls
+        text = "No function calls here"
+        result = resolve_function_calls(text, mock_task_system, env)
+        assert result == "No function calls here"
+        
+        # Test with invalid input
+        assert resolve_function_calls(None, mock_task_system, env) is None
+        assert resolve_function_calls(123, mock_task_system, env) == 123
+    
+    def test_integration_with_variable_substitution(self):
+        """Test integration between function calls and variable substitution."""
+        # Mock task system that returns the arguments as content
+        mock_task_system = MagicMock()
+        mock_task_system.executeCall.return_value = {
+            "content": "Args received: test_value and 42",
+            "status": "COMPLETE"
+        }
+        
+        # Environment with variables
+        env = Environment({"var1": "test_value", "var2": 42})
+        
+        # Test text with both variable references and function calls
+        text = "{{var1}} is {{test_function(var1, count=var2)}} and {{var2}}"
+        
+        # First do variable substitution
+        var_substituted = substitute_variables(text, env)
+        assert "test_value is {{test_function(var1, count=var2)}} and 42" == var_substituted
+        
+        # Then resolve function calls
+        result = resolve_function_calls(var_substituted, mock_task_system, env)
+        assert "test_value is Args received: test_value and 42 and 42" == result

@@ -1,6 +1,9 @@
 """Utility functions for template management."""
-from typing import Dict, List, Any, Optional, Union, Type, Tuple
+from typing import Dict, List, Any, Optional, Union, Type, Tuple, TypeVar, Callable
 import re
+
+from task_system.ast_nodes import FunctionCallNode, ArgumentNode
+from system.errors import create_input_validation_error, create_unexpected_error
 
 
 class Environment:
@@ -31,6 +34,24 @@ class Environment:
         Raises:
             ValueError: If variable is not found in this or parent environments
         """
+        # Support dot notation for nested properties (e.g., "user.name")
+        if "." in name:
+            parts = name.split(".", 1)  # Split into base and rest
+            base_name = parts[0]
+            rest = parts[1]
+            
+            # Find the base object
+            base_obj = self.find(base_name)
+            
+            # Access nested property
+            if isinstance(base_obj, dict) and rest in base_obj:
+                return base_obj[rest]
+            elif hasattr(base_obj, rest):
+                return getattr(base_obj, rest)
+            else:
+                raise ValueError(f"Cannot access property '{rest}' of variable '{base_name}'")
+        
+        # Regular variable lookup
         if name in self.bindings:
             return self.bindings[name]
         if self.parent:
@@ -114,21 +135,22 @@ def detect_function_calls(text: str) -> List[Dict[str, Any]]:
         text: Text that may contain function calls
         
     Returns:
-        List of dictionaries with function call information
+        List of dictionaries with function call information, including position
     """
     if not isinstance(text, str):
         return []
     
-    # Find all potential function calls
-    pattern = r'\{\{([a-zA-Z_][a-zA-Z0-9_]*)\s*\(([^}]*)\)\}\}'
+    # Find all potential function calls - capture function name and arguments
+    pattern = r'\{\{([a-zA-Z_][a-zA-Z0-9_]*)\s*\(([^}]*?)\)\}\}'
     matches = re.finditer(pattern, text)
     
     calls = []
     for match in matches:
-        full_match = match.group(0)  # The entire match including braces
+        full_match = match.group(0)  # The entire match including braces {{func(args)}}
         func_name = match.group(1)   # The function name
         args_text = match.group(2)   # The argument string
         
+        # Store detailed information about the call
         calls.append({
             "name": func_name,
             "args_text": args_text,
@@ -401,16 +423,46 @@ def format_function_result(result: Dict[str, Any], return_type: Dict[str, Any]) 
     return result
 
 
-def resolve_function_calls(text: str, task_system, env: Environment, 
-                         max_depth: int = 5, current_depth: int = 0) -> str:
-    """Resolve function calls in text by executing templates.
+def translate_function_call_to_ast(func_name: str, args_text: str) -> FunctionCallNode:
+    """
+    Translate a function call from text representation to AST nodes.
+    
+    Args:
+        func_name: Name of the function/template to call
+        args_text: Text of the arguments (without parentheses)
+        
+    Returns:
+        FunctionCallNode representing the function call
+    """
+    # Parse the function call arguments
+    _, pos_args, named_args = parse_function_call(func_name, args_text)
+    
+    # Create ArgumentNode instances for each argument
+    arg_nodes = []
+    
+    # Add positional arguments
+    for arg_value in pos_args:
+        arg_nodes.append(ArgumentNode(arg_value))
+    
+    # Add named arguments
+    for name, value in named_args.items():
+        arg_nodes.append(ArgumentNode(value, name=name))
+    
+    # Create and return the FunctionCallNode
+    return FunctionCallNode(func_name, arg_nodes)
+
+def resolve_function_calls(text: str, task_system, env: Environment) -> str:
+    """
+    Resolve function calls in text by translating to AST nodes and executing.
+    
+    This is the key function for the translation mechanism, converting
+    template-level function calls ({{func(args)}}) to AST nodes and
+    delegating execution to the Evaluator.
     
     Args:
         text: Text containing function calls
         task_system: TaskSystem for template lookup and execution
         env: Current environment for variable resolution
-        max_depth: Maximum recursion depth
-        current_depth: Current depth level
         
     Returns:
         Text with function calls replaced by their results
@@ -423,7 +475,7 @@ def resolve_function_calls(text: str, task_system, env: Environment,
     if not calls:
         return text
     
-    # Process in reverse order to avoid position shifts
+    # Process in reverse order to avoid position shifts when replacing
     calls.sort(key=lambda c: c["start"], reverse=True)
     
     result = text
@@ -432,28 +484,24 @@ def resolve_function_calls(text: str, task_system, env: Environment,
         args_text = call["args_text"]
         
         try:
-            # Parse the function call
-            _, pos_args, named_args = parse_function_call(func_name, args_text)
+            # Translate the function call to AST nodes
+            func_call_node = translate_function_call_to_ast(func_name, args_text)
             
-            # Evaluate arguments in current environment
-            evaluated_pos_args, evaluated_named_args = evaluate_arguments(pos_args, named_args, env)
+            # Ensure TaskSystem has an Evaluator
+            if hasattr(task_system, '_ensure_evaluator'):
+                task_system._ensure_evaluator()
             
-            # Execute the function
-            func_result = execute_function_call(
-                task_system, func_name, evaluated_pos_args, evaluated_named_args, 
-                env, max_depth=max_depth, current_depth=current_depth
-            )
+            # Execute the function call using the Evaluator
+            # This is the key part where we unify the execution path
+            execution_result = task_system.executeCall(func_call_node, env)
             
             # Extract content from result
-            replacement = str(func_result.get("content", ""))
+            replacement = str(execution_result.get("content", ""))
             
         except Exception as e:
             # Format error message to include detailed information
             error_msg = str(e)
-            if "Maximum recursion depth" in error_msg:
-                replacement = f"{{{{error in {func_name}(): {error_msg}}}}}"
-            else:
-                replacement = f"{{{{error in {func_name}(): {error_msg}}}}}"
+            replacement = f"{{{{error in {func_name}(): {error_msg}}}}}"
         
         # Replace the function call with the result
         result = result[:call["start"]] + replacement + result[call["end"]:]
