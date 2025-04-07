@@ -245,15 +245,22 @@ class TaskSystem(TemplateLookupInterface):
         Returns:
             Template dictionary or None if not found
         """
+        print(f"Looking up template with identifier: {identifier}")
+        print(f"Available templates: {list(self.templates.keys())}")
+        print(f"Template index: {self.template_index}")
+        
         # Try direct name lookup first
         if identifier in self.templates:
+            print(f"Found template by name: {identifier}")
             return self.templates[identifier]
         
         # Try type:subtype lookup via index
         if identifier in self.template_index:
             name = self.template_index[identifier]
+            print(f"Found template by type:subtype: {identifier} -> {name}")
             return self.templates.get(name)
         
+        print(f"Template not found: {identifier}")
         return None
     
     def execute_task(self, task_type: str, task_subtype: str, inputs: Dict[str, Any], 
@@ -272,11 +279,15 @@ class TaskSystem(TemplateLookupInterface):
         Returns:
             Task result
         """
+        print(f"Executing task: {task_type}:{task_subtype}")
+        
         # Check if task type and subtype are registered
         task_key = f"{task_type}:{task_subtype}"
+        print(f"Looking up template with key: {task_key}")
         template_name = self.template_index.get(task_key)
     
         if not template_name or template_name not in self.templates:
+            print(f"Template not found for key: {task_key}")
             return {
                 "status": "FAILED",
                 "content": f"Unknown task type: {task_key}",
@@ -287,6 +298,7 @@ class TaskSystem(TemplateLookupInterface):
     
         # Get the template
         template = self.templates[template_name]
+        print(f"Found template: {template.get('name')}")
     
         # Resolve parameters
         try:
@@ -314,6 +326,7 @@ class TaskSystem(TemplateLookupInterface):
     
         # Handle specific task types
         if task_type == "atomic":
+            print(f"Calling _execute_atomic_task with template: {resolved_template.get('name')}")
             # Use the atomic task execution method
             result = self._execute_atomic_task(resolved_template, resolved_inputs)
         
