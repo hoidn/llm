@@ -2,8 +2,36 @@
 from typing import Dict, List, Any, Optional, Union, Type, Tuple, TypeVar, Callable
 import re
 
-from src.task_system.ast_nodes import FunctionCallNode, ArgumentNode
+# Try different import paths to handle various environments
+try:
+    # First try the direct import
+    from src.task_system.ast_nodes import FunctionCallNode, ArgumentNode
+except ImportError:
+    try:
+        # Try with relative imports (common in some test environments)
+        from .ast_nodes import FunctionCallNode, ArgumentNode
+    except ImportError:
+        try:
+            # For absolute imports in tests
+            from task_system.ast_nodes import FunctionCallNode, ArgumentNode
+        except ImportError:
+            # Last resort for relative imports
+            from ast_nodes import FunctionCallNode, ArgumentNode
+
 from system.errors import create_input_validation_error, create_unexpected_error
+
+# Type compatibility helpers for testing
+# This helps tests recognize our nodes even if import paths differ
+def is_function_call_node(obj):
+    """Check if an object is a FunctionCallNode regardless of import path."""
+    return (hasattr(obj, 'type') and obj.type == 'call' and
+            hasattr(obj, 'template_name') and
+            hasattr(obj, 'arguments'))
+
+def is_argument_node(obj):
+    """Check if an object is an ArgumentNode regardless of import path."""
+    return (hasattr(obj, 'type') and obj.type == 'argument' and
+            hasattr(obj, 'value'))
 
 
 class Environment:
@@ -501,14 +529,17 @@ def translate_function_call_to_ast(func_name: str, args_text: str) -> FunctionCa
     
     # Add positional arguments
     for arg_value in pos_args:
-        arg_nodes.append(ArgumentNode(arg_value))
+        arg_node = ArgumentNode(arg_value)
+        arg_nodes.append(arg_node)
     
     # Add named arguments
     for name, value in named_args.items():
-        arg_nodes.append(ArgumentNode(value, name=name))
+        arg_node = ArgumentNode(value, name=name)
+        arg_nodes.append(arg_node)
     
     # Create and return the FunctionCallNode
-    return FunctionCallNode(func_name, arg_nodes)
+    result = FunctionCallNode(func_name, arg_nodes)
+    return result
 
 def resolve_function_calls(text: str, task_system, env: Environment, max_depth: int = 5, current_depth: int = 0) -> str:
     """
