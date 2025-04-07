@@ -493,7 +493,7 @@ class TestArgumentEvaluation:
         assert len(eval_pos) == 3
         assert eval_pos[0] == "static"
         assert eval_pos[1] == "value1"
-        assert eval_pos[2] == "42"
+        assert eval_pos[2] == 42  # Should be numeric, not string
     
     def test_evaluate_named_args(self):
         """Test evaluating named arguments."""
@@ -507,7 +507,7 @@ class TestArgumentEvaluation:
         assert len(eval_named) == 3
         assert eval_named["a"] == "static"
         assert eval_named["b"] == "value1"
-        assert eval_named["c"] == "42"
+        assert eval_named["c"] == 42  # Should be numeric, not string
 
 
 class TestParameterBinding:
