@@ -2,11 +2,11 @@
 import pytest
 from unittest.mock import MagicMock, patch
 
-from src.task_system.task_system import TaskSystem
-from src.task_system.template_utils import Environment
-from src.task_system.ast_nodes import FunctionCallNode, ArgumentNode
-from src.evaluator.evaluator import Evaluator
-from src.task_system.mock_handler import MockHandler
+from task_system.task_system import TaskSystem
+from task_system.template_utils import Environment
+from task_system.ast_nodes import FunctionCallNode, ArgumentNode
+from evaluator.evaluator import Evaluator
+from task_system.mock_handler import MockHandler
 
 
 class TestTaskSystemEvaluatorIntegration:
