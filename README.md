@@ -1,14 +1,27 @@
-# Passthrough Mode with Git Repository Context
+# LLM Context Management System
 
-A tiny demo of automatic context management for LLMs. This is also a construction site for a new [domain specific language for LLMs](./docs/)
+A comprehensive system for context-aware LLM interactions with code repositories. This project provides a framework for intelligent code assistance with automatic context management, task execution, and Aider integration.
 
 ## Features
 
-- **Git Repository Indexing**: Index Git repositories for context-aware responses
+- **Git Repository Indexing**: Automatically index Git repositories for context-aware responses
+- **Memory System**: Intelligent context retrieval based on query relevance
+- **Task System**: Template-based task execution with variable substitution
 - **Passthrough Mode**: Process natural language queries without complex AST compilation
+- **Aider Integration**: Seamless integration with Aider for code editing capabilities
 - **Visual Context Feedback**: See which files are being used for context in your queries
 - **Multi-turn Conversations**: Maintain conversation state between queries
-- **File Content Integration**: Include relevant file contents in the AI's context
+- **Evaluator Component**: Evaluate function calls and template execution
+
+## Architecture
+
+The system consists of several key components:
+
+- **Memory System**: Manages repository metadata and retrieves relevant context
+- **Task System**: Handles task templates and execution
+- **Handler Components**: Process user queries and manage LLM interactions
+- **Evaluator**: Evaluates function calls and manages execution context
+- **Aider Bridge**: Integrates with Aider for code editing capabilities
 
 ## Usage
 
@@ -28,7 +41,7 @@ A tiny demo of automatic context management for LLMs. This is also a constructio
 
 Start the application:
 ```bash
-python main.py
+python src/main.py
 ```
 
 ### REPL Commands
@@ -52,8 +65,8 @@ python main.py
 Thinking...
 
 Files in context:
-  1. /home/user/projects/my-repo/memory/indexers/git_repository_indexer.py
-  2. /home/user/projects/my-repo/memory/memory_system.py
+  1. ~/projects/my-repo/src/memory/indexers/git_repository_indexer.py
+  2. ~/projects/my-repo/src/memory/memory_system.py
 
 Response:
 The file indexing process works by scanning the Git repository...
@@ -64,8 +77,8 @@ The file indexing process works by scanning the Git repository...
 Thinking...
 
 Files in context:
-  1. /home/user/projects/my-repo/memory/indexers/git_repository_indexer.py
-  2. /home/user/projects/my-repo/tests/memory/indexers/test_git_repository_indexer.py
+  1. ~/projects/my-repo/src/memory/indexers/git_repository_indexer.py
+  2. ~/projects/my-repo/tests/memory/indexers/test_git_repository_indexer.py
 
 Response:
 The GitRepositoryIndexer class is responsible for...
@@ -81,27 +94,40 @@ When you send a query, the system will:
 
 This helps you understand which files the system considers relevant to your query, making the system more transparent and helping you formulate better questions.
 
-If no files are found relevant to your query, the system will explicitly tell you so.
+## Aider Integration
 
-## Verbose Mode
+The system integrates with Aider to provide code editing capabilities:
 
-For additional details about the system's operation:
+- **Automatic Mode**: Execute code edits without user confirmation
+- **Interactive Mode**: Start an interactive Aider session for complex edits
 
+Example:
 ```
-(passthrough) > /verbose on
-Verbose mode: on
-
-(passthrough) > Tell me about the project structure
+(passthrough) > Update the GitRepositoryIndexer to handle binary files better
 
 Thinking...
 
 Files in context:
-  1. /home/user/projects/my-repo/README.md
-  2. /home/user/projects/my-repo/main.py
+  1. ~/projects/my-repo/src/memory/indexers/git_repository_indexer.py
 
 Response:
-The project has a simple structure with...
+I'll help you update the GitRepositoryIndexer. Here's what I'm changing:
 
-Metadata:
-  subtask_id: subtask_1
+1. Improving the is_text_file method to better detect binary files
+2. Adding a skip_binary_files option to the index_repository method
+
+Changes applied to:
+- src/memory/indexers/git_repository_indexer.py
 ```
+
+## Development
+
+### Running Tests
+
+```bash
+pytest
+```
+
+### Project Structure
+
+See the project_rules.md file for detailed information about the project structure, coding guidelines, and development practices.
