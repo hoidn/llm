@@ -267,9 +267,8 @@ def parse_argument_value(arg_value: str) -> Any:
 
 
 def evaluate_arguments(pos_args: List[Any], named_args: Dict[str, Any], env: Environment) -> Tuple[List[Any], Dict[str, Any]]:
-    """Evaluate arguments in the caller's environment.
-    
-    Resolves any variable references in the arguments using the provided environment.
+    """
+    Evaluate arguments in the caller's environment.
     
     Args:
         pos_args: List of positional arguments (may contain variable references)
@@ -282,53 +281,69 @@ def evaluate_arguments(pos_args: List[Any], named_args: Dict[str, Any], env: Env
     # Evaluate positional args
     evaluated_pos_args = []
     for arg in pos_args:
-        if isinstance(arg, str) and arg.startswith("{{") and arg.endswith("}}"):
-            # This is a direct variable reference like {{var_name}}
-            var_name = arg[2:-2].strip()
-            try:
-                evaluated_pos_args.append(env.find(var_name))
-            except ValueError:
-                # Keep as is if variable not found
-                evaluated_pos_args.append(arg)
-        elif isinstance(arg, str) and re.search(r'\{\{[^}]+\}\}', arg):
-            # This is a string with embedded variable references
-            evaluated_pos_args.append(substitute_variables(arg, env))
-        elif isinstance(arg, str) and not (arg.startswith('"') or arg.startswith("'") or 
-                                          arg.lower() in ('true', 'false', 'null', 'none')):
-            # This is a plain string that might be a variable name
-            try:
-                # Try to resolve it as a variable name
-                evaluated_pos_args.append(env.find(arg))
-            except ValueError:
-                # If not found, treat as a literal string
+        if isinstance(arg, str):
+            # Case 1: Check if it's an explicit variable reference with braces
+            if arg.startswith("{{") and arg.endswith("}}"):
+                var_name = arg[2:-2].strip()
+                try:
+                    evaluated_pos_args.append(env.find(var_name))
+                except ValueError:
+                    # Keep as is if variable not found
+                    evaluated_pos_args.append(arg)
+            
+            # Case 2: Check if it's a plain string that might be a variable name
+            elif arg.isidentifier():  # Only valid Python identifiers can be variables
+                try:
+                    resolved_value = env.find(arg)
+                    evaluated_pos_args.append(resolved_value)
+                except ValueError:
+                    # Use as literal if not found as variable
+                    evaluated_pos_args.append(arg)
+            
+            # Case 3: String with embedded variable references
+            elif re.search(r'\{\{[^}]+\}\}', arg):
+                # Substitute variables
+                evaluated_pos_args.append(substitute_variables(arg, env))
+            
+            # Case 4: Not a variable reference, use as literal
+            else:
                 evaluated_pos_args.append(arg)
         else:
+            # Non-string values pass through unchanged
             evaluated_pos_args.append(arg)
     
-    # Evaluate named args
+    # Evaluate named args with the same logic
     evaluated_named_args = {}
     for key, value in named_args.items():
-        if isinstance(value, str) and value.startswith("{{") and value.endswith("}}"):
-            # This is a direct variable reference like {{var_name}}
-            var_name = value[2:-2].strip()
-            try:
-                evaluated_named_args[key] = env.find(var_name)
-            except ValueError:
-                # Keep as is if variable not found
-                evaluated_named_args[key] = value
-        elif isinstance(value, str) and re.search(r'\{\{[^}]+\}\}', value):
-            # This is a string with embedded variable references
-            evaluated_named_args[key] = substitute_variables(value, env)
-        elif isinstance(value, str) and not (value.startswith('"') or value.startswith("'") or 
-                                            value.lower() in ('true', 'false', 'null', 'none')):
-            # This is a plain string that might be a variable name
-            try:
-                # Try to resolve it as a variable name
-                evaluated_named_args[key] = env.find(value)
-            except ValueError:
-                # If not found, treat as a literal string
+        if isinstance(value, str):
+            # Case 1: Check if it's an explicit variable reference with braces
+            if value.startswith("{{") and value.endswith("}}"):
+                var_name = value[2:-2].strip()
+                try:
+                    evaluated_named_args[key] = env.find(var_name)
+                except ValueError:
+                    # Keep as is if variable not found
+                    evaluated_named_args[key] = value
+            
+            # Case 2: Check if it's a plain string that might be a variable name
+            elif value.isidentifier():  # Only valid Python identifiers can be variables
+                try:
+                    resolved_value = env.find(value)
+                    evaluated_named_args[key] = resolved_value
+                except ValueError:
+                    # Use as literal if not found as variable
+                    evaluated_named_args[key] = value
+            
+            # Case 3: String with embedded variable references
+            elif re.search(r'\{\{[^}]+\}\}', value):
+                # Substitute variables
+                evaluated_named_args[key] = substitute_variables(value, env)
+            
+            # Case 4: Not a variable reference, use as literal
+            else:
                 evaluated_named_args[key] = value
         else:
+            # Non-string values pass through unchanged
             evaluated_named_args[key] = value
     
     return evaluated_pos_args, evaluated_named_args
@@ -507,6 +522,8 @@ def resolve_function_calls(text: str, task_system, env: Environment, max_depth: 
         text: Text containing function calls
         task_system: TaskSystem for template lookup and execution
         env: Current environment for variable resolution
+        max_depth: Maximum recursion depth to prevent infinite loops
+        current_depth: Current recursion depth (internal use)
         
     Returns:
         Text with function calls replaced by their results
@@ -528,21 +545,12 @@ def resolve_function_calls(text: str, task_system, env: Environment, max_depth: 
         args_text = call["args_text"]
         
         try:
+            # First, evaluate any variable references in the arguments
             # Parse the function call arguments
             _, pos_args, named_args = parse_function_call(func_name, args_text)
             
             # Evaluate arguments in the current environment
-            # This will now properly resolve plain variable names
             evaluated_pos_args, evaluated_named_args = evaluate_arguments(pos_args, named_args, env)
-            
-            # Create a new args_text with evaluated values for debugging
-            new_args_parts = []
-            for arg in evaluated_pos_args:
-                new_args_parts.append(repr(arg) if isinstance(arg, str) else str(arg))
-            for name, value in evaluated_named_args.items():
-                arg_str = f"{name}={repr(value) if isinstance(value, str) else value}"
-                new_args_parts.append(arg_str)
-            new_args_text = ", ".join(new_args_parts)
             
             # Create argument nodes with evaluated values
             arg_nodes = []

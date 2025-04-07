@@ -388,7 +388,71 @@ class TaskSystem(TemplateLookupInterface):
             # In a real implementation, this would load file contents
             file_context = f"Files: {', '.join(resolved_inputs['file_paths'])}"
         
-        # Handle specific task types
+        # Check for specialized task subtypes FIRST
+        if task_type == "atomic":
+            # Check for specialized handlers based on subtype
+            if task_subtype == "associative_matching":
+                print(f"Calling _execute_associative_matching with template: {resolved_template.get('name')}")
+                return self._execute_associative_matching(resolved_template, resolved_inputs, memory_system)
+                
+            # For format_json subtype
+            elif task_subtype == "format_json":
+                # Execute the format_json template directly
+                try:
+                    from .templates.function_examples import execute_format_json
+                    value = resolved_inputs.get("value", {})
+                    indent = resolved_inputs.get("indent", 2)
+                    result = execute_format_json(value, indent)
+                    return {
+                        "status": "COMPLETE",
+                        "content": result,
+                        "notes": {}
+                    }
+                except Exception as e:
+                    return {
+                        "status": "FAILED", 
+                        "content": f"Error formatting JSON: {str(e)}",
+                        "notes": {"error": str(e)}
+                    }
+            
+            # For math operation subtypes
+            elif task_subtype == "math_add":
+                try:
+                    from .templates.function_examples import execute_add
+                    x = resolved_inputs.get("x", 0)
+                    y = resolved_inputs.get("y", 0)
+                    result = execute_add(x, y)
+                    return {
+                        "status": "COMPLETE",
+                        "content": str(result),
+                        "notes": {}
+                    }
+                except Exception as e:
+                    return {
+                        "status": "FAILED",
+                        "content": f"Error executing add: {str(e)}",
+                        "notes": {"error": str(e)}
+                    }
+                    
+            elif task_subtype == "math_subtract":
+                try:
+                    from .templates.function_examples import execute_subtract
+                    x = resolved_inputs.get("x", 0)
+                    y = resolved_inputs.get("y", 0)
+                    result = execute_subtract(x, y)
+                    return {
+                        "status": "COMPLETE",
+                        "content": str(result),
+                        "notes": {}
+                    }
+                except Exception as e:
+                    return {
+                        "status": "FAILED",
+                        "content": f"Error executing subtract: {str(e)}",
+                        "notes": {"error": str(e)}
+                    }
+        
+        # Handle general task types (this should remain as it was)
         if task_type == "atomic":
             print(f"Calling _execute_atomic_task with template: {resolved_template.get('name')}")
             # Use the atomic task execution method
@@ -445,16 +509,31 @@ class TaskSystem(TemplateLookupInterface):
         from .template_utils import resolve_function_calls
         processed_description = resolve_function_calls(description, self, env)
         
+        # Process function calls in the system_prompt field
+        system_prompt = template.get("system_prompt", "")
+        processed_system_prompt = resolve_function_calls(system_prompt, self, env)
+        
+        # Create a processed template with resolved function calls
+        processed_template = template.copy()
+        processed_template["description"] = processed_description
+        processed_template["system_prompt"] = processed_system_prompt
+        
         # Execute task using the handler with the processed description
         result = handler.execute_prompt(
             processed_description,            # Processed task prompt with resolved function calls
-            template.get("system_prompt"),    # Template-specific system prompt
+            processed_system_prompt,          # Processed system prompt
             file_context                      # File context
         )
         
         # For test compatibility, ensure the processed description is reflected in the content
-        if result["content"] == description and processed_description != description:
+        if "content" in result and result["content"] == description and processed_description != description:
             result["content"] = processed_description
+        
+        # Add system_prompt to notes for tests expecting it
+        if "notes" not in result:
+            result["notes"] = {}
+        if "system_prompt" not in result["notes"]:
+            result["notes"]["system_prompt"] = processed_system_prompt
             
         return result
     
