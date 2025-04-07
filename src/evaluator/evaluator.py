@@ -60,7 +60,7 @@ class Evaluator(EvaluatorInterface):
         # Default: return the node itself (for literals, etc.)
         return node
     
-    def evaluateFunctionCall(self, call_node: FunctionCallNode, env: Environment) -> Dict[str, Any]:
+    def evaluateFunctionCall(self, call_node: FunctionCallNode, env: Environment, template: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         Evaluate a function call AST node.
         
@@ -69,6 +69,7 @@ class Evaluator(EvaluatorInterface):
         Args:
             call_node: FunctionCallNode to evaluate
             env: Environment for variable resolution
+            template: Optional pre-looked-up template to avoid redundant lookups
             
         Returns:
             Result of function execution as a TaskResult dictionary
@@ -77,8 +78,9 @@ class Evaluator(EvaluatorInterface):
             TaskError: If evaluation fails
         """
         try:
-            # Lookup the template
-            template = self.template_provider.find_template(call_node.template_name)
+            # Use provided template or lookup if not provided
+            if template is None:
+                template = self.template_provider.find_template(call_node.template_name)
             if not template:
                 details = {
                     "template_name": call_node.template_name
