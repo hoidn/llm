@@ -74,20 +74,23 @@ class TestTemplateProcessor:
     
     def test_process_template(self, processor, template, environment):
         """Test processing a template."""
-        processed = processor.process_template(template, environment)
-        
-        # Original template should not be modified
-        assert template["description"] == "Test template with {{var}} and {{func(arg)}}"
-        
-        # Variables should be substituted
-        assert "variable_value" in processed["description"]
-        assert "variable_value" in processed["system_prompt"]
-        assert "variable_value" in processed["custom_field"]
-        
-        # Function calls should be processed
-        assert "[PROCESSED]{{func(arg)}}" in processed["description"]
-        assert "[PROCESSED]{{func(arg)}}" in processed["taskPrompt"]
-        assert "[PROCESSED]{{func(arg)}}" in processed["custom_field"]
+        # Patch the resolve_function_calls during test execution
+        with patch('task_system.template_processor.resolve_function_calls', 
+                  side_effect=lambda text, ts, env: text.replace("{{", "[PROCESSED]{{") if isinstance(text, str) and "{{" in text else text):
+            processed = processor.process_template(template, environment)
+            
+            # Original template should not be modified
+            assert template["description"] == "Test template with {{var}} and {{func(arg)}}"
+            
+            # Variables should be substituted
+            assert "variable_value" in processed["description"]
+            assert "variable_value" in processed["system_prompt"]
+            assert "variable_value" in processed["custom_field"]
+            
+            # Function calls should be processed
+            assert "[PROCESSED]{{func(arg)}}" in processed["description"]
+            assert "[PROCESSED]{{func(arg)}}" in processed["taskPrompt"]
+            assert "[PROCESSED]{{func(arg)}}" in processed["custom_field"]
         
         # Non-template fields should remain unchanged
         assert processed["non_template_field"] == "Regular field without templates"

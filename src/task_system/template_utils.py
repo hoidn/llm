@@ -539,6 +539,11 @@ def resolve_function_calls(text: str, task_system, env: Environment, max_depth: 
             # Extract content from result
             replacement = str(execution_result.get("content", ""))
             
+            # If content is empty or just "[]", try to get something from notes
+            if replacement == "[]" or not replacement.strip():
+                if "notes" in execution_result and "system_prompt" in execution_result["notes"]:
+                    replacement = f"[Function result: {func_name}]"
+            
         except Exception as e:
             # Format error message to include detailed information
             error_msg = str(e)
