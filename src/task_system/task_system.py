@@ -8,6 +8,7 @@ from task_system.template_utils import Environment
 from system.errors import TaskError, create_task_failure, format_error_result
 from evaluator.interfaces import EvaluatorInterface, TemplateLookupInterface
 from task_system.template_processor import TemplateProcessor
+from task_system.mock_handler import MockHandler
 
 class TaskSystem(TemplateLookupInterface):
     """Task System for task execution and management.
@@ -31,6 +32,12 @@ class TaskSystem(TemplateLookupInterface):
         
         # Create template processor
         self.template_processor = TemplateProcessor(self)
+        
+        # Initialize handler cache
+        self._handlers = {}
+        
+        # Flag to determine if we're in test mode
+        self._test_mode = False
     
     def _ensure_evaluator(self):
         """
@@ -42,6 +49,46 @@ class TaskSystem(TemplateLookupInterface):
             from evaluator.evaluator import Evaluator
             self.evaluator = Evaluator(self)
             self._evaluator_initialized = True
+            
+    def _get_handler(self, model=None, config=None) -> Any:
+        """
+        Get or create a handler for the given model.
+        
+        Args:
+            model: Optional model to use
+            config: Optional configuration
+            
+        Returns:
+            Handler instance
+        """
+        if self._test_mode:
+            # In test mode, always return a new MockHandler
+            return MockHandler(config)
+        
+        # In a real implementation, this would retrieve handlers from a registry
+        # or create them as needed, based on the model
+        # For now, we'll just use MockHandler for everything
+        key = str(model) if model else "default"
+        
+        if key not in self._handlers:
+            handler_config = config or {}
+            if model:
+                handler_config["model"] = model
+            self._handlers[key] = MockHandler(handler_config)
+            
+        return self._handlers[key]
+    
+    def set_test_mode(self, enabled=True):
+        """
+        Set test mode for the TaskSystem.
+        
+        In test mode, the TaskSystem will use MockHandler instances
+        that don't persist between calls, to avoid test interference.
+        
+        Args:
+            enabled: Whether test mode should be enabled
+        """
+        self._test_mode = enabled
     
     def executeCall(self, call: FunctionCallNode, env: Optional[Environment] = None) -> Dict[str, Any]:
         """
@@ -265,7 +312,7 @@ class TaskSystem(TemplateLookupInterface):
     
     def execute_task(self, task_type: str, task_subtype: str, inputs: Dict[str, Any], 
                     memory_system=None, available_models: Optional[List[str]] = None,
-                    call_depth: int = 0) -> Dict[str, Any]:
+                    call_depth: int = 0, **kwargs) -> Dict[str, Any]:
         """Execute a task with parameter validation, variable resolution, and function calls.
     
         Args:
@@ -275,6 +322,7 @@ class TaskSystem(TemplateLookupInterface):
             memory_system: Optional Memory System instance
             available_models: Optional list of available model names
             call_depth: Current call depth for function calls
+            **kwargs: Additional execution options
         
         Returns:
             Task result
@@ -324,6 +372,22 @@ class TaskSystem(TemplateLookupInterface):
         if available_models:
             selected_model = get_preferred_model(resolved_template, available_models)
     
+        # Get appropriate handler
+        handler_config = kwargs.get("handler_config", {})
+        if selected_model:
+            handler_config["model"] = selected_model
+        
+        handler = self._get_handler(
+            model=resolved_template.get("model"),
+            config=handler_config
+        )
+        
+        # Extract file context if available
+        file_context = None
+        if "file_paths" in resolved_inputs and resolved_inputs["file_paths"]:
+            # In a real implementation, this would load file contents
+            file_context = f"Files: {', '.join(resolved_inputs['file_paths'])}"
+        
         # Handle specific task types
         if task_type == "atomic":
             print(f"Calling _execute_atomic_task with template: {resolved_template.get('name')}")
@@ -360,26 +424,24 @@ class TaskSystem(TemplateLookupInterface):
         Returns:
             Task execution result
         """
-        # Extract key template fields for the response
-        task_type = template.get("type", "atomic")
-        task_subtype = template.get("subtype", "generic")
-        description = template.get("description", "No description")
-        system_prompt = template.get("system_prompt", "")
+        # Get a handler for this task
+        handler = self._get_handler(
+            model=template.get("model"),
+            config={"task_type": "atomic", "task_subtype": template.get("subtype")}
+        )
         
-        # Process function calls in the description
-        from task_system.template_utils import Environment, resolve_function_calls
-        env = Environment(inputs)
-        processed_description = resolve_function_calls(description, self, env)
+        # Extract file context if available
+        file_context = None
+        if "file_paths" in inputs and inputs["file_paths"]:
+            # In a real implementation, this would load file contents
+            file_context = f"Files: {', '.join(inputs['file_paths'])}"
         
-        # Return the result directly - don't delegate to _execute_associative_matching
-        return {
-            "status": "COMPLETE",
-            "content": processed_description,  # Put the processed description in content
-            "notes": {
-                "system_prompt": system_prompt,  # Include system_prompt in notes
-                "inputs": inputs
-            }
-        }
+        # Execute task using the handler
+        return handler.execute_prompt(
+            template.get("description", ""),  # Task prompt
+            template.get("system_prompt"),    # Template-specific system prompt
+            file_context                      # File context
+        )
     
     def _execute_associative_matching(self, task, inputs, memory_system):
         """Execute an associative matching task.
