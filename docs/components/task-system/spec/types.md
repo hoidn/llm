@@ -60,8 +60,31 @@ interface BaseTaskDefinition {
      * These files will always be included regardless of other context settings.
      * Paths can be absolute or relative to repo root.
      * Invalid paths will generate warnings but execution will continue.
+     * Only used when file_paths_source is not provided or has type 'literal'.
      */
     file_paths?: string[];
+    
+    /**
+     * Optional source for generating file paths to include in context.
+     * Takes precedence over file_paths array when provided with type 'command' or 'description'.
+     */
+    file_paths_source?: {
+        /**
+         * Source type for file paths:
+         * - 'literal': Use explicit file_paths array (default behavior)
+         * - 'command': Execute bash command to generate file paths
+         * - 'description': Use natural language description for context-specific matching
+         */
+        type: 'literal' | 'command' | 'description';
+        
+        /**
+         * Value depends on type:
+         * - For 'command': Bash command to execute
+         * - For 'description': Natural language description
+         * - For 'literal': Ignored (use file_paths array instead)
+         */
+        value: string;
+    };
     
     context_management?: ContextManagement;
     inputs?: Record<string, any>;

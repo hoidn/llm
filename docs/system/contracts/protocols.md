@@ -83,9 +83,22 @@ The task template schema defines the structure for XML task template files and m
         </xs:element>
         <xs:element name="file_paths" minOccurs="0">
           <xs:complexType>
-            <xs:sequence>
-              <xs:element name="path" type="xs:string" maxOccurs="unbounded"/>
-            </xs:sequence>
+            <xs:choice>
+              <xs:sequence>
+                <xs:element name="path" type="xs:string" maxOccurs="unbounded"/>
+              </xs:sequence>
+              <xs:element name="command" type="xs:string"/>
+              <xs:element name="description" type="xs:string"/>
+            </xs:choice>
+            <xs:attribute name="source" use="optional" default="literal">
+              <xs:simpleType>
+                <xs:restriction base="xs:string">
+                  <xs:enumeration value="literal"/>
+                  <xs:enumeration value="command"/>
+                  <xs:enumeration value="description"/>
+                </xs:restriction>
+              </xs:simpleType>
+            </xs:attribute>
           </xs:complexType>
         </xs:element>
         <xs:element name="steps">

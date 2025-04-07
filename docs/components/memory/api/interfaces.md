@@ -50,10 +50,26 @@ interface MemorySystem {
      * It does NOT read file contents - it only returns file paths and metadata.
      *
      * @param input - The ContextGenerationInput containing task context
+     * @param contextDescription - Optional separate description specifically for context matching
      * @returns Promise resolving to associative match result
      * @throws {INVALID_INPUT} If the input structure is malformed or missing required fields
      */
-    getRelevantContextFor(input: ContextGenerationInput): Promise<AssociativeMatchResult>;
+    getRelevantContextFor(
+        input: ContextGenerationInput, 
+        contextDescription?: string
+    ): Promise<AssociativeMatchResult>;
+    
+    /**
+     * Execute command to get file paths
+     * 
+     * Executes a bash command that outputs file paths (one per line)
+     * and returns them as an array.
+     *
+     * @param command - The bash command to execute
+     * @returns Promise resolving to array of file paths
+     * @throws {COMMAND_EXECUTION_ERROR} If the command fails to execute
+     */
+    getFilePathsFromCommand(command: string): Promise<string[]>;
 }
 ```
 
