@@ -5,8 +5,8 @@ evaluating AST nodes, particularly function calls.
 """
 from typing import Any, Dict, List, Optional, Union, Tuple, TypeVar, cast
 
-from task_system.ast_nodes import ArgumentNode, FunctionCallNode
-from task_system.template_utils import Environment, resolve_parameters
+from src.task_system.ast_nodes import ArgumentNode, FunctionCallNode
+from src.task_system.template_utils import Environment, resolve_parameters
 from system.errors import (
     TaskError, 
     create_input_validation_error,
