@@ -239,9 +239,23 @@ class Evaluator(EvaluatorInterface):
         Raises:
             ValueError: If required parameters are missing or too many positional arguments
         """
+        # Convert positional arguments to named arguments based on parameter order
+        parameters = template.get("parameters", {})
+        param_names = list(parameters.keys())
+        
+        # Combine positional and named arguments
+        combined_args = named_args.copy()
+        
+        # Map positional arguments to parameter names
+        for i, arg in enumerate(pos_args):
+            if i < len(param_names):
+                combined_args[param_names[i]] = arg
+            else:
+                raise ValueError(f"Too many positional arguments for template '{template.get('name')}'")
+        
         # Using existing parameter resolution logic from template_utils
         if callable(resolve_parameters):
-            return resolve_parameters(template, named_args)
+            return resolve_parameters(template, combined_args)
         
         # Fallback logic if resolve_parameters is not available
         parameters = template.get("parameters", {})
