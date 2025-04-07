@@ -4,16 +4,16 @@ import re
 
 # Try different import paths to handle various environments
 try:
-    # First try the direct import
-    from src.task_system.ast_nodes import FunctionCallNode, ArgumentNode
+    # First try the import path used in tests
+    from task_system.ast_nodes import FunctionCallNode, ArgumentNode
 except ImportError:
     try:
-        # Try with relative imports (common in some test environments)
-        from .ast_nodes import FunctionCallNode, ArgumentNode
+        # Try with direct import (production code)
+        from src.task_system.ast_nodes import FunctionCallNode, ArgumentNode
     except ImportError:
         try:
-            # For absolute imports in tests
-            from task_system.ast_nodes import FunctionCallNode, ArgumentNode
+            # Try with relative imports (common in some test environments)
+            from .ast_nodes import FunctionCallNode, ArgumentNode
         except ImportError:
             # Last resort for relative imports
             from ast_nodes import FunctionCallNode, ArgumentNode
