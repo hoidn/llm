@@ -225,7 +225,7 @@ def parse_argument_value(arg_value: str) -> Any:
     - Numbers: 123, 45.67
     - Booleans: true, false
     - None: null
-    - Variables: {{variable_name}}
+    - Variables: {{variable_name}} or plain variable names
     
     Args:
         arg_value: String representation of the value
@@ -257,7 +257,12 @@ def parse_argument_value(arg_value: str) -> Any:
     except ValueError:
         pass
     
-    # Leave variable references and other values as is
+    # Check if this is an explicit variable reference
+    if arg_value.startswith("{{") and arg_value.endswith("}}"):
+        return arg_value
+    
+    # Plain string that might be a variable name or a literal
+    # We'll return it as is and let evaluate_arguments handle the resolution
     return arg_value
 
 
@@ -288,6 +293,15 @@ def evaluate_arguments(pos_args: List[Any], named_args: Dict[str, Any], env: Env
         elif isinstance(arg, str) and re.search(r'\{\{[^}]+\}\}', arg):
             # This is a string with embedded variable references
             evaluated_pos_args.append(substitute_variables(arg, env))
+        elif isinstance(arg, str) and not (arg.startswith('"') or arg.startswith("'") or 
+                                          arg.lower() in ('true', 'false', 'null', 'none')):
+            # This is a plain string that might be a variable name
+            try:
+                # Try to resolve it as a variable name
+                evaluated_pos_args.append(env.find(arg))
+            except ValueError:
+                # If not found, treat as a literal string
+                evaluated_pos_args.append(arg)
         else:
             evaluated_pos_args.append(arg)
     
@@ -305,6 +319,15 @@ def evaluate_arguments(pos_args: List[Any], named_args: Dict[str, Any], env: Env
         elif isinstance(value, str) and re.search(r'\{\{[^}]+\}\}', value):
             # This is a string with embedded variable references
             evaluated_named_args[key] = substitute_variables(value, env)
+        elif isinstance(value, str) and not (value.startswith('"') or value.startswith("'") or 
+                                            value.lower() in ('true', 'false', 'null', 'none')):
+            # This is a plain string that might be a variable name
+            try:
+                # Try to resolve it as a variable name
+                evaluated_named_args[key] = env.find(value)
+            except ValueError:
+                # If not found, treat as a literal string
+                evaluated_named_args[key] = value
         else:
             evaluated_named_args[key] = value
     
@@ -390,9 +413,12 @@ def execute_function_call(task_system, func_name: str, pos_args: List[Any],
     if not template:
         raise ValueError(f"Template not found: '{func_name}'")
     
+    # Evaluate arguments in the caller's environment
+    evaluated_pos_args, evaluated_named_args = evaluate_arguments(pos_args, named_args, caller_env)
+    
     # Bind arguments to parameters
     try:
-        parameter_bindings = bind_arguments_to_parameters(template, pos_args, named_args)
+        parameter_bindings = bind_arguments_to_parameters(template, evaluated_pos_args, evaluated_named_args)
     except ValueError as e:
         raise ValueError(f"Error in call to '{func_name}': {str(e)}")
     
@@ -502,11 +528,11 @@ def resolve_function_calls(text: str, task_system, env: Environment, max_depth: 
         args_text = call["args_text"]
         
         try:
-            # First, evaluate any variable references in the arguments
             # Parse the function call arguments
             _, pos_args, named_args = parse_function_call(func_name, args_text)
             
             # Evaluate arguments in the current environment
+            # This will now properly resolve plain variable names
             evaluated_pos_args, evaluated_named_args = evaluate_arguments(pos_args, named_args, env)
             
             # Create a new args_text with evaluated values for debugging
