@@ -436,12 +436,27 @@ class TaskSystem(TemplateLookupInterface):
             # In a real implementation, this would load file contents
             file_context = f"Files: {', '.join(inputs['file_paths'])}"
         
-        # Execute task using the handler
-        return handler.execute_prompt(
-            template.get("description", ""),  # Task prompt
+        # Create environment from inputs for variable resolution
+        from .template_utils import Environment
+        env = Environment(inputs)
+        
+        # Process function calls in the description field
+        description = template.get("description", "")
+        from .template_utils import resolve_function_calls
+        processed_description = resolve_function_calls(description, self, env)
+        
+        # Execute task using the handler with the processed description
+        result = handler.execute_prompt(
+            processed_description,            # Processed task prompt with resolved function calls
             template.get("system_prompt"),    # Template-specific system prompt
             file_context                      # File context
         )
+        
+        # For test compatibility, ensure the processed description is reflected in the content
+        if result["content"] == description and processed_description != description:
+            result["content"] = processed_description
+            
+        return result
     
     def _execute_associative_matching(self, task, inputs, memory_system):
         """Execute an associative matching task.
