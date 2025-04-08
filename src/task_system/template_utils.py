@@ -132,6 +132,36 @@ class Environment:
         Raises:
             ValueError: If variable is not found or path cannot be resolved
         """
+        # Special case for direct array indexing without dots
+        if "[" in name and "]" in name and "." not in name:
+            open_bracket = name.index("[")
+            base_name = name[:open_bracket]
+            index_str = name[open_bracket+1:-1]
+            
+            # Directly look up base name in bindings or parent (avoid recursion)
+            if base_name in self.bindings:
+                base_obj = self.bindings[base_name]
+            elif self.parent:
+                base_obj = self.parent.find(base_name)
+            else:
+                raise ValueError(f"Variable '{base_name}' not found")
+            
+            # Process the array index
+            try:
+                index = int(index_str)
+                if isinstance(base_obj, (list, tuple)):
+                    if 0 <= index < len(base_obj):
+                        return base_obj[index]
+                    else:
+                        raise ValueError(f"Index {index} out of bounds for '{base_name}' (length {len(base_obj)})")
+                else:
+                    raise ValueError(f"Cannot use array indexing on non-array variable '{base_name}'")
+            except ValueError as e:
+                # Re-raise with better message if it's our own error
+                if str(e).startswith("Index") or str(e).startswith("Cannot use"):
+                    raise
+                raise ValueError(f"Invalid array index '{index_str}' for variable '{base_name}'")
+        
         # Handle simple variable case (no dots or brackets)
         if "." not in name and "[" not in name:
             if name in self.bindings:
@@ -140,14 +170,16 @@ class Environment:
                 return self.parent.find(name)
             raise ValueError(f"Variable '{name}' not found")
         
-        # For complex paths, parse and navigate step by step
+        # For complex paths with dots, parse and navigate step by step
         parts = name.split(".")
         base_name = parts[0]
         
-        # Resolve the base object first
-        try:
-            current = self.find(base_name)  # This handles parent environment lookup too
-        except ValueError:
+        # Directly look up base name in bindings or parent (avoid recursion)
+        if base_name in self.bindings:
+            current = self.bindings[base_name]
+        elif self.parent:
+            current = self.parent.find(base_name)
+        else:
             raise ValueError(f"Variable '{base_name}' not found")
         
         # Process each path segment after the first dot
