@@ -6,8 +6,8 @@ from unittest.mock import MagicMock
 from .template_utils import resolve_parameters, ensure_template_compatibility, get_preferred_model
 from .ast_nodes import FunctionCallNode
 from .template_utils import Environment
-from src.system.errors import TaskError, create_task_failure, format_error_result
-from src.evaluator.interfaces import EvaluatorInterface, TemplateLookupInterface
+from system.errors import TaskError, create_task_failure, format_error_result
+from evaluator.interfaces import EvaluatorInterface, TemplateLookupInterface
 from .template_processor import TemplateProcessor
 from .mock_handler import MockHandler
 
@@ -47,7 +47,7 @@ class TaskSystem(TemplateLookupInterface):
         This lazy initialization helps avoid circular imports.
         """
         if not self._evaluator_initialized:
-            from src.evaluator.evaluator import Evaluator
+            from evaluator.evaluator import Evaluator
             self.evaluator = Evaluator(self)
             self._evaluator_initialized = True
             
