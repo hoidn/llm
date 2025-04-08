@@ -322,30 +322,6 @@ class Evaluator(EvaluatorInterface):
         Raises:
             TaskError: If template execution fails
         """
-    
-    def execute_subtask(self, inputs: Dict[str, Any], template: Dict[str, Any], parent_env: Optional[Environment] = None, isolate: bool = True) -> Dict[str, Any]:
-        """
-        Execute a subtask with proper environment handling.
-        
-        Args:
-            inputs: Subtask inputs
-            template: Subtask template
-            parent_env: Optional parent environment
-            isolate: Whether to isolate the subtask environment from parent
-            
-        Returns:
-            Subtask result
-        """
-        # Create environment based on isolation setting
-        if isolate or parent_env is None:
-            # Create isolated environment (not extending parent)
-            subtask_env = Environment(inputs)
-        else:
-            # Create environment extending parent
-            subtask_env = parent_env.extend(inputs)
-        
-        # Execute subtask with appropriate environment
-        return self._execute_template(template, subtask_env)
         try:
             # Extract task type and subtype from template
             task_type = template.get("type", "atomic")
@@ -389,3 +365,27 @@ class Evaluator(EvaluatorInterface):
                 message=f"Error executing template: {str(e)}",
                 exception=e
             )
+    
+    def execute_subtask(self, inputs: Dict[str, Any], template: Dict[str, Any], parent_env: Optional[Environment] = None, isolate: bool = True) -> Dict[str, Any]:
+        """
+        Execute a subtask with proper environment handling.
+        
+        Args:
+            inputs: Subtask inputs
+            template: Subtask template
+            parent_env: Optional parent environment
+            isolate: Whether to isolate the subtask environment from parent
+            
+        Returns:
+            Subtask result
+        """
+        # Create environment based on isolation setting
+        if isolate or parent_env is None:
+            # Create isolated environment (not extending parent)
+            subtask_env = Environment(inputs)
+        else:
+            # Create environment extending parent
+            subtask_env = parent_env.extend(inputs)
+        
+        # Execute subtask with appropriate environment
+        return self._execute_template(template, subtask_env)
