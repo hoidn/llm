@@ -42,6 +42,7 @@ interface TaskResult {
     notes: {
         dataUsage?: string;
         successScore?: number;
+        parseError?: string;  // Present when JSON parsing fails
         [key: string]: any;
     };
 }

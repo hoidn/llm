@@ -19,6 +19,8 @@ Implement a function-based template model with explicit parameter declarations:
    - Arguments can be literals, variable references, or nested expressions
    - A new environment is created for each function call with bindings for parameters
    - No implicit access to the caller's environment is allowed
+   - Function results are returned to the caller but not automatically stored in the environment
+   - Results must be explicitly bound to variables when needed for later reference
 
 3. **XML Representation**
    ```xml
