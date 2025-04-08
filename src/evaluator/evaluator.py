@@ -198,6 +198,7 @@ class Evaluator(EvaluatorInterface):
                 # Check for array indexing or dot notation patterns without explicit {{ }}
                 elif ("[" in arg_node.value and arg_node.value.endswith("]")) or "." in arg_node.value:
                     try:
+                        # Try to resolve as a variable reference
                         return env.find(arg_node.value)
                     except ValueError:
                         # Return as literal string if pattern doesn't resolve
