@@ -174,17 +174,34 @@ class Evaluator(EvaluatorInterface):
         """
         try:
             # Check if the value is a variable reference
-            if isinstance(arg_node.value, str) and self._is_variable_reference(arg_node.value):
-                # Extract variable name and resolve it
-                var_name = self._extract_variable_name(arg_node.value)
-                try:
-                    return env.find(var_name)
-                except ValueError as e:
-                    raise create_input_validation_error(
-                        message=f"Error resolving variable '{var_name}': {str(e)}",
-                        details={"variable_name": var_name},
-                        source_node=arg_node
-                    )
+            if isinstance(arg_node.value, str):
+                # Check for explicit variable reference pattern "{{var}}"
+                if self._is_variable_reference(arg_node.value):
+                    var_name = self._extract_variable_name(arg_node.value)
+                    try:
+                        return env.find(var_name)
+                    except ValueError as e:
+                        raise create_input_validation_error(
+                            message=f"Error resolving variable '{var_name}': {str(e)}",
+                            details={"variable_name": var_name},
+                            source_node=arg_node
+                        )
+                
+                # Check if this could be a direct variable reference (plain identifier)
+                elif arg_node.value.isidentifier():
+                    try:
+                        return env.find(arg_node.value)
+                    except ValueError:
+                        # Return as literal string if not found as variable
+                        return arg_node.value
+                
+                # Check for array indexing or dot notation patterns without explicit {{ }}
+                elif ("[" in arg_node.value and arg_node.value.endswith("]")) or "." in arg_node.value:
+                    try:
+                        return env.find(arg_node.value)
+                    except ValueError:
+                        # Return as literal string if pattern doesn't resolve
+                        return arg_node.value
             
             # For literal values or non-variable strings, return as is
             return arg_node.value
@@ -304,6 +321,30 @@ class Evaluator(EvaluatorInterface):
         Raises:
             TaskError: If template execution fails
         """
+    
+    def execute_subtask(self, inputs: Dict[str, Any], template: Dict[str, Any], parent_env: Optional[Environment] = None, isolate: bool = True) -> Dict[str, Any]:
+        """
+        Execute a subtask with proper environment handling.
+        
+        Args:
+            inputs: Subtask inputs
+            template: Subtask template
+            parent_env: Optional parent environment
+            isolate: Whether to isolate the subtask environment from parent
+            
+        Returns:
+            Subtask result
+        """
+        # Create environment based on isolation setting
+        if isolate or parent_env is None:
+            # Create isolated environment (not extending parent)
+            subtask_env = Environment(inputs)
+        else:
+            # Create environment extending parent
+            subtask_env = parent_env.extend(inputs)
+        
+        # Execute subtask with appropriate environment
+        return self._execute_template(template, subtask_env)
         try:
             # Extract task type and subtype from template
             task_type = template.get("type", "atomic")
@@ -323,7 +364,24 @@ class Evaluator(EvaluatorInterface):
                 inputs["file_paths"] = file_paths
             
             # Execute template using template provider
-            return self.template_provider.execute_task(task_type, task_subtype, inputs)
+            result = self.template_provider.execute_task(task_type, task_subtype, inputs)
+            
+            # Add JSON parsing
+            output_format = template.get("output_format", {})
+            if isinstance(output_format, dict) and output_format.get("type") == "json":
+                try:
+                    import json
+                    content = result.get("content", "")
+                    if isinstance(content, str) and content.strip():
+                        parsed_content = json.loads(content)
+                        result["parsedContent"] = parsed_content
+                except json.JSONDecodeError as e:
+                    # Add parsing error to notes but don't fail the task
+                    if "notes" not in result:
+                        result["notes"] = {}
+                    result["notes"]["parseError"] = f"Failed to parse output as JSON: {str(e)}"
+            
+            return result
         except Exception as e:
             # Wrap exceptions in TaskError
             raise create_unexpected_error(

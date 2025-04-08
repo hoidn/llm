@@ -126,6 +126,35 @@ class Environment:
         Raises:
             ValueError: If variable is not found in this or parent environments
         """
+        # Support array indexing (e.g., "array[0]")
+        if "[" in name and name.endswith("]"):
+            # Extract base name and index
+            open_bracket = name.index("[")
+            base_name = name[:open_bracket]
+            index_str = name[open_bracket+1:-1]
+            
+            # Find the base object
+            try:
+                base_obj = self.find(base_name)
+            except ValueError:
+                raise ValueError(f"Variable '{base_name}' not found")
+            
+            # Convert index to int and access array element
+            try:
+                index = int(index_str)
+                if isinstance(base_obj, (list, tuple)):
+                    if 0 <= index < len(base_obj):
+                        return base_obj[index]
+                    else:
+                        raise ValueError(f"Index {index} out of bounds for '{base_name}' (length {len(base_obj)})")
+                else:
+                    raise ValueError(f"Cannot use array indexing on non-array variable '{base_name}'")
+            except ValueError as e:
+                # Re-raise with better message if it's our own error
+                if str(e).startswith("Index") or str(e).startswith("Cannot use"):
+                    raise
+                raise ValueError(f"Invalid array index '{index_str}' for variable '{base_name}'")
+        
         # Support dot notation for nested properties (e.g., "user.name")
         if "." in name:
             parts = name.split(".", 1)  # Split into base and rest

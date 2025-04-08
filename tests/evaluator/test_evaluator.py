@@ -221,3 +221,50 @@ class TestEvaluator:
         
         # Verify task_system.execute_task was called
         task_system.execute_task.assert_called_once()
+        
+    def test_json_output_parsing(self):
+        """Test JSON output parsing for template results."""
+        # Setup mock template provider
+        mock_provider = MagicMock()
+        mock_provider.execute_task.return_value = {
+            "content": '{"key": "value", "items": [1, 2, 3]}',
+            "status": "COMPLETE",
+            "notes": {}
+        }
+        
+        # Create evaluator with mock provider
+        evaluator = Evaluator(mock_provider)
+        
+        # Create environment
+        env = Environment({})
+        
+        # Test template with JSON output format
+        template = {
+            "name": "test_template",
+            "type": "atomic",
+            "subtype": "test",
+            "output_format": {"type": "json"}
+        }
+        
+        # Execute template
+        result = evaluator._execute_template(template, env)
+        
+        # Verify parsed content
+        assert "parsedContent" in result
+        assert result["parsedContent"]["key"] == "value"
+        assert result["parsedContent"]["items"] == [1, 2, 3]
+        
+        # Test with invalid JSON
+        mock_provider.execute_task.return_value = {
+            "content": "This is not JSON",
+            "status": "COMPLETE",
+            "notes": {}
+        }
+        
+        result = evaluator._execute_template(template, env)
+        
+        # Verify error handling
+        assert "parsedContent" not in result
+        assert "notes" in result
+        assert "parseError" in result["notes"]
+        assert "Failed to parse output as JSON" in result["notes"]["parseError"]
