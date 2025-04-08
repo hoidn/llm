@@ -5,7 +5,7 @@ variable substitution and function call resolution.
 """
 from typing import Dict, Any, List, Optional, Union, Set
 
-from src.task_system.template_utils import Environment, substitute_variables, resolve_function_calls
+from task_system.template_utils import Environment, substitute_variables, resolve_function_calls
 
 class TemplateProcessor:
     """
