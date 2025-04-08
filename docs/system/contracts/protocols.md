@@ -344,6 +344,14 @@ The `schema` attribute provides basic type information:
 - "number" - Numeric value
 - "boolean" - Boolean value
 
+Initial implementation provides basic type validation to ensure the result matches the specified type. When validation fails, a structured error is returned with error_type, message, and location information. More comprehensive schema validation may be implemented in future phases as needed.
+
+When output_format type is "json", the system will:
+1. Attempt to parse the content as JSON
+2. Store the parsed result in the parsedContent property of TaskResult
+3. Keep the original string content in the content property
+4. Record any parsing errors in notes.parseError
+
 Output validation ensures the result matches the specified type.
 
 ## Subtask Spawning Protocol [Protocol:SubtaskSpawning:1.0]

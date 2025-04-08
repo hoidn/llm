@@ -62,10 +62,12 @@ The Task System is responsible for managing LLM task execution, including:
   * Attempts to parse content as JSON when type="json"
   * Adds parsed content to TaskResult as parsedContent property
   * Falls back to original string content if parsing fails
-- Type validation process:
-  * Validates parsed content against schema attribute
-  * Generates error if type mismatch occurs
+  * Records parse errors in notes.parseError when applicable
+- Type validation process (initial implementation):
+  * Basic type checking against schema attribute (e.g., "object", "array")
+  * Simple error structure for type mismatches with error_type, message, and location
   * Preserves original content in error details
+  * More comprehensive schema validation may be implemented in future phases
 
 ## Error Handling
 

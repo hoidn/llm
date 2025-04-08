@@ -27,9 +27,12 @@ We will implement an optional but well-supported JSON-based output standardizati
 
 2. **Content Field for Output**: Structured outputs will remain in the TaskResult.content field, preserving the existing interface.
 
-3. **Automatic Format Detection**: The evaluator will attempt to detect and parse JSON outputs even when not explicitly declared.
+3. **Enhanced TaskResult interface with a `parsedContent` property to store parsed JSON data when content is successfully parsed as JSON.
 
-4. **Basic Type Validation**: The system will validate that outputs match the expected basic type (object, array, string, number, boolean).
+4. **Added basic output format validation with specific error handling for format violations**:
+   - Initial implementation focuses on basic type validation (object, array, string, number, boolean)
+   - Error information includes the error type, message, and context about where the error occurred
+   - More advanced schema validation may be added in the future if needed
 
 5. **Backward Compatibility**: Free-text outputs will continue to be supported as the default option.
 
