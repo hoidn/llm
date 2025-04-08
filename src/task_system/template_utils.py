@@ -117,67 +117,84 @@ class Environment:
     def find(self, name):
         """Find a variable in this environment or parent environments.
         
+        Supports:
+        - Simple variable names: "variableName"
+        - Dot notation: "object.property.subproperty"  
+        - Array indexing: "array[0]"
+        - Mixed access: "results.items[0].name"
+        
         Args:
-            name: Variable name to look up
-            
+            name: Variable name or path to look up
+                
         Returns:
-            Value of the variable
-            
+            Value of the variable or resolved path
+                
         Raises:
-            ValueError: If variable is not found in this or parent environments
+            ValueError: If variable is not found or path cannot be resolved
         """
-        # Support array indexing (e.g., "array[0]")
-        if "[" in name and name.endswith("]"):
-            # Extract base name and index
-            open_bracket = name.index("[")
-            base_name = name[:open_bracket]
-            index_str = name[open_bracket+1:-1]
+        # Handle simple variable case (no dots or brackets)
+        if "." not in name and "[" not in name:
+            if name in self.bindings:
+                return self.bindings[name]
+            if self.parent:
+                return self.parent.find(name)
+            raise ValueError(f"Variable '{name}' not found")
+        
+        # For complex paths, parse and navigate step by step
+        parts = name.split(".")
+        base_name = parts[0]
+        
+        # Resolve the base object first
+        try:
+            current = self.find(base_name)  # This handles parent environment lookup too
+        except ValueError:
+            raise ValueError(f"Variable '{base_name}' not found")
+        
+        # Process each path segment after the first dot
+        current_path = base_name
+        for part in parts[1:]:
+            current_path += f".{part}"
             
-            # Find the base object
-            try:
-                base_obj = self.find(base_name)
-            except ValueError:
-                raise ValueError(f"Variable '{base_name}' not found")
-            
-            # Convert index to int and access array element
-            try:
-                index = int(index_str)
-                if isinstance(base_obj, (list, tuple)):
-                    if 0 <= index < len(base_obj):
-                        return base_obj[index]
+            # Handle array indexing if present in this part
+            if "[" in part and part.endswith("]"):
+                # Split the property name and array indexing
+                prop_name, array_part = part.split("[", 1)
+                array_indices = array_part.rstrip("]").split("][")
+                
+                # Access property first (if any)
+                if prop_name:
+                    if isinstance(current, dict) and prop_name in current:
+                        current = current[prop_name]
+                    elif hasattr(current, prop_name):
+                        current = getattr(current, prop_name)
                     else:
-                        raise ValueError(f"Index {index} out of bounds for '{base_name}' (length {len(base_obj)})")
-                else:
-                    raise ValueError(f"Cannot use array indexing on non-array variable '{base_name}'")
-            except ValueError as e:
-                # Re-raise with better message if it's our own error
-                if str(e).startswith("Index") or str(e).startswith("Cannot use"):
-                    raise
-                raise ValueError(f"Invalid array index '{index_str}' for variable '{base_name}'")
-        
-        # Support dot notation for nested properties (e.g., "user.name")
-        if "." in name:
-            parts = name.split(".", 1)  # Split into base and rest
-            base_name = parts[0]
-            rest = parts[1]
-            
-            # Find the base object
-            base_obj = self.find(base_name)
-            
-            # Access nested property
-            if isinstance(base_obj, dict) and rest in base_obj:
-                return base_obj[rest]
-            elif hasattr(base_obj, rest):
-                return getattr(base_obj, rest)
+                        raise ValueError(f"Cannot access property '{prop_name}' of '{current_path}'")
+                
+                # Apply each array index
+                for idx_str in array_indices:
+                    try:
+                        idx = int(idx_str)
+                        if isinstance(current, (list, tuple)) and 0 <= idx < len(current):
+                            current = current[idx]
+                        else:
+                            if not isinstance(current, (list, tuple)):
+                                raise ValueError(f"Cannot use array indexing on non-array value in '{current_path}'")
+                            else:
+                                raise ValueError(f"Index {idx} out of bounds for array in '{current_path}' (length: {len(current)})")
+                    except ValueError as e:
+                        if "Cannot use array" in str(e) or "Index" in str(e):
+                            raise  # Re-raise our custom error
+                        raise ValueError(f"Invalid array index '{idx_str}' in '{current_path}'")
             else:
-                raise ValueError(f"Cannot access property '{rest}' of variable '{base_name}'")
+                # Regular property access
+                if isinstance(current, dict) and part in current:
+                    current = current[part]
+                elif hasattr(current, part):
+                    current = getattr(current, part)
+                else:
+                    raise ValueError(f"Cannot access property '{part}' of '{current_path}'")
         
-        # Regular variable lookup
-        if name in self.bindings:
-            return self.bindings[name]
-        if self.parent:
-            return self.parent.find(name)
-        raise ValueError(f"Variable '{name}' not found")
+        return current
     
     def extend(self, bindings):
         """Create a new environment with additional bindings.

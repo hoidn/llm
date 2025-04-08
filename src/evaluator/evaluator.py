@@ -175,7 +175,7 @@ class Evaluator(EvaluatorInterface):
         try:
             # Check if the value is a variable reference
             if isinstance(arg_node.value, str):
-                # Check for explicit variable reference pattern "{{var}}"
+                # Case 1: Explicit variable reference with braces {{variable}}
                 if self._is_variable_reference(arg_node.value):
                     var_name = self._extract_variable_name(arg_node.value)
                     try:
@@ -187,21 +187,21 @@ class Evaluator(EvaluatorInterface):
                             source_node=arg_node
                         )
                 
-                # Check if this could be a direct variable reference (plain identifier)
+                # Case 2: Try to resolve complex paths (with . or [])
+                # This includes cases like "obj.prop", "array[0]", or "obj.array[0].prop"
+                elif "." in arg_node.value or ("[" in arg_node.value and "]" in arg_node.value):
+                    try:
+                        return env.find(arg_node.value)
+                    except ValueError:
+                        # Return as literal string if path doesn't resolve
+                        return arg_node.value
+                
+                # Case 3: Try as simple variable name
                 elif arg_node.value.isidentifier():
                     try:
                         return env.find(arg_node.value)
                     except ValueError:
-                        # Return as literal string if not found as variable
-                        return arg_node.value
-                
-                # Check for array indexing or dot notation patterns without explicit {{ }}
-                elif ("[" in arg_node.value and arg_node.value.endswith("]")) or "." in arg_node.value:
-                    try:
-                        # Try to resolve as a variable reference
-                        return env.find(arg_node.value)
-                    except ValueError:
-                        # Return as literal string if pattern doesn't resolve
+                        # Return as literal if not found
                         return arg_node.value
             
             # For literal values or non-variable strings, return as is
