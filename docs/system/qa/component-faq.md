@@ -38,6 +38,12 @@ A: No, this is delegated to the Handler (see [Interface:Handler:ResourceMonitori
     
 **Q: Who handles file content access?**  
 A: File content access is handled by the LLM using Handler tools, not by the Memory System. The Memory System only provides the file paths and metadata needed to identify relevant files.
+
+**Q: How does the Memory System handle very large repositories?**  
+A: The Memory System supports token-based sharded context retrieval for large repositories. It estimates token counts for metadata, divides the global index into optimally sized shards, and processes shards in parallel. This approach maintains performance while still returning all relevant matches without filtering or prioritization.
+
+**Q: Is there a limit to how many files the Memory System can handle?**  
+A: The Memory System is designed to scale with repository size through its sharded retrieval approach. Performance is maintained by dividing the workload based on estimated token counts rather than file counts, making it suitable for repositories of any size within system resource constraints.
     
 ## Evaluator
     

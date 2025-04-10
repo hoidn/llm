@@ -35,6 +35,8 @@ Memory resources are managed with:
 - Size-based eviction policies for context management
 - Relevance-based retention for associative memory
 - Explicit versioning for all stored artifacts
+- Token-based sharding for efficient handling of large repositories
+- Parallel processing optimization for context retrieval
 
 ## 2. Resource Management Protocols
 
