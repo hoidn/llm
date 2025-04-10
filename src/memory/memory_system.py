@@ -34,6 +34,38 @@ class MemorySystem:
         """
         self.global_index.update(index)  # Update instead of replace
     
+    def get_relevant_context_with_description(self, query: str, context_description: str) -> Any:
+        """Get relevant context using a dedicated context description.
+        
+        Uses the context description for associative matching instead of the main query.
+        
+        Args:
+            query: The main task query
+            context_description: Description specifically for context matching
+            
+        Returns:
+            Object containing context and file matches
+        """
+        # Use the context description for matching instead of the main query
+        context_input = {
+            "taskText": context_description, 
+            "inheritedContext": ""
+        }
+        
+        # Get relevant context using the description
+        result = self.get_relevant_context_for(context_input)
+        
+        # If using the handler for determination, provide additional info
+        if self.handler and hasattr(self.handler, 'determine_relevant_files'):
+            try:
+                # Inform the handler about both queries
+                self.handler.log_debug(f"Using dedicated context description: '{context_description}'")
+                self.handler.log_debug(f"Original query: '{query}'")
+            except AttributeError:
+                pass
+                
+        return result
+    
     def get_relevant_context_for(self, input_data: Dict[str, Any]) -> Any:
         """
         Get relevant context for a task.

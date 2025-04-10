@@ -75,7 +75,7 @@ class ClaudeProvider(ProviderAdapter):
         
         # Default parameters
         self.default_params = {
-            "temperature": 0.7,
+            "temperature": 0.3,
             "max_tokens": 4000
         }
     

@@ -179,6 +179,38 @@ class TestEvaluator:
         # Test with a dict
         test_dict = {"key": "value"}
         assert evaluator.evaluate(test_dict, base_environment) == test_dict
+        
+    def test_evaluate_argument_with_complex_references(self):
+        """Test evaluating arguments with complex reference patterns."""
+        # Create test environment
+        env = Environment({
+            "items": [1, 2, 3, 4, 5],
+            "results": [{"name": "first"}, {"name": "second"}],
+            "nested": {"key": {"subkey": "value"}}
+        })
+        
+        # Create evaluator
+        evaluator = Evaluator(MagicMock())
+        
+        # Test array indexing in arguments
+        arg1 = ArgumentNode("items[0]")
+        assert evaluator._evaluate_argument(arg1, env) == 1
+        
+        # Test nested object access
+        arg2 = ArgumentNode("nested.key.subkey")
+        assert evaluator._evaluate_argument(arg2, env) == "value"
+        
+        # Test combined patterns
+        arg3 = ArgumentNode("results[1].name")
+        assert evaluator._evaluate_argument(arg3, env) == "second"
+        
+        # Test with explicit variable reference syntax
+        arg4 = ArgumentNode("{{items[0]}}")
+        assert evaluator._evaluate_argument(arg4, env) == 1
+        
+        # Test fallback to literal for non-existent variables
+        arg5 = ArgumentNode("nonexistent[0]")
+        assert evaluator._evaluate_argument(arg5, env) == "nonexistent[0]"
     
     def test_integration_with_task_system(self):
         """Test integration between Evaluator and TaskSystem."""
@@ -221,3 +253,50 @@ class TestEvaluator:
         
         # Verify task_system.execute_task was called
         task_system.execute_task.assert_called_once()
+        
+    def test_json_output_parsing(self):
+        """Test JSON output parsing for template results."""
+        # Setup mock template provider
+        mock_provider = MagicMock()
+        mock_provider.execute_task.return_value = {
+            "content": '{"key": "value", "items": [1, 2, 3]}',
+            "status": "COMPLETE",
+            "notes": {}
+        }
+        
+        # Create evaluator with mock provider
+        evaluator = Evaluator(mock_provider)
+        
+        # Create environment
+        env = Environment({})
+        
+        # Test template with JSON output format
+        template = {
+            "name": "test_template",
+            "type": "atomic",
+            "subtype": "test",
+            "output_format": {"type": "json"}
+        }
+        
+        # Execute template
+        result = evaluator._execute_template(template, env)
+        
+        # Verify parsed content
+        assert "parsedContent" in result
+        assert result["parsedContent"]["key"] == "value"
+        assert result["parsedContent"]["items"] == [1, 2, 3]
+        
+        # Test with invalid JSON
+        mock_provider.execute_task.return_value = {
+            "content": "This is not JSON",
+            "status": "COMPLETE",
+            "notes": {}
+        }
+        
+        result = evaluator._execute_template(template, env)
+        
+        # Verify error handling
+        assert "parsedContent" not in result
+        assert "notes" in result
+        assert "parseError" in result["notes"]
+        assert "Failed to parse output as JSON" in result["notes"]["parseError"]

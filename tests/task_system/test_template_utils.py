@@ -296,6 +296,34 @@ class TestEnvironment:
         child = Environment({"var": "child_value"}, parent=parent)
         
         assert child.find("var") == "child_value"  # Child's value shadows parent's
+        
+    def test_environment_find_array_indexing(self):
+        """Test array indexing in Environment.find()."""
+        # Setup test environment with array data
+        env = Environment({
+            "items": [1, 2, 3, 4, 5],
+            "empty": [],
+            "nested": [{"name": "first"}, {"name": "second"}],
+            "not_array": "string"
+        })
+        
+        # Test basic array access
+        assert env.find("items[0]") == 1
+        assert env.find("items[4]") == 5
+        
+        # Test nested access (combining array indexing and dot notation)
+        assert env.find("nested[0].name") == "first"
+        assert env.find("nested[1].name") == "second"
+        
+        # Test error cases
+        with pytest.raises(ValueError, match="Index .* out of bounds"):
+            env.find("items[5]")  # Out of bounds
+        
+        with pytest.raises(ValueError, match="Cannot use array indexing on non-array"):
+            env.find("not_array[0]")  # Not an array
+        
+        with pytest.raises(ValueError, match="Invalid array index"):
+            env.find("items[invalid]")  # Invalid index
 
 
 class TestVariableSubstitution:

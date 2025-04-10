@@ -3,6 +3,7 @@ from typing import Dict, List, Optional, Any, Callable, Tuple
 
 from handler.model_provider import ProviderAdapter, ClaudeProvider
 from handler.file_access import FileAccessManager
+from handler.command_executor import execute_command_safely, parse_file_paths_from_output
 
 class BaseHandler:
     """Base class for all handlers with common functionality.
@@ -95,6 +96,30 @@ class BaseHandler:
         else:
             self.log_debug(f"Tool {tool_name} not found")
             return None
+    
+    def execute_file_path_command(self, command: str) -> List[str]:
+        """Execute command and return file paths.
+        
+        Args:
+            command: Shell command to execute
+            
+        Returns:
+            List of file paths returned by the command
+        """
+        self.log_debug(f"Executing file path command: {command}")
+        
+        # Execute command safely
+        result = execute_command_safely(command)
+        
+        if not result["success"]:
+            self.log_debug(f"Command execution failed: {result['error']}")
+            return []
+            
+        # Parse file paths from output
+        file_paths = parse_file_paths_from_output(result["output"])
+        self.log_debug(f"Command returned {len(file_paths)} file paths")
+        
+        return file_paths
     
     def _get_relevant_files(self, query: str) -> List[str]:
         """Get relevant files from memory system based on query.

@@ -2,6 +2,7 @@
 from typing import Dict, Any, Optional, List, Union
 
 from handler.base_handler import BaseHandler
+from handler.command_executor import execute_command_safely, parse_file_paths_from_output
 
 class PassthroughHandler(BaseHandler):
     """Handles raw text queries without AST compilation.
@@ -46,6 +47,9 @@ class PassthroughHandler(BaseHandler):
         Always invoke the appropriate tool for code editing tasks rather than trying to explain how to make the changes manually.
         """
         self.base_system_prompt = f"{self.base_system_prompt}\n\n{passthrough_extension}"
+        
+        # Register built-in tools
+        self.register_command_execution_tool()
     
     def handle_query(self, query: str) -> Dict[str, Any]:
         """Handle a raw text query in passthrough mode.
@@ -257,6 +261,66 @@ class PassthroughHandler(BaseHandler):
             # Fallback for tests or when API is unavailable
             print(f"Error sending to model: {str(e)}")
             return f"Processed query: {query}"
+        
+    def register_command_execution_tool(self):
+        """Register the command execution tool.
+        
+        Returns:
+            True if registration successful, False otherwise
+        """
+        tool_spec = {
+            "name": "executeFilePathCommand",
+            "description": "Execute a command to find file paths",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "command": {
+                        "type": "string", 
+                        "description": "Shell command to execute"
+                    }
+                },
+                "required": ["command"]
+            }
+        }
+        
+        # Define the tool executor function
+        def command_executor(input_data):
+            if not isinstance(input_data, dict) or "command" not in input_data:
+                return {
+                    "status": "error",
+                    "content": "Invalid input: missing command",
+                    "metadata": {
+                        "success": False,
+                        "output": "",
+                        "error": "Missing command parameter"
+                    }
+                }
+                
+            command = input_data["command"]
+            result = execute_command_safely(command)
+            
+            if not result["success"]:
+                return {
+                    "status": "error",
+                    "content": f"Command execution failed: {result['error']}",
+                    "metadata": result
+                }
+                
+            # Parse file paths
+            file_paths = parse_file_paths_from_output(result["output"])
+            
+            return {
+                "status": "success",
+                "content": f"Found {len(file_paths)} file paths",
+                "metadata": {
+                    "file_paths": file_paths,
+                    "success": True,
+                    "output": result["output"]
+                }
+            }
+        
+        # Register the tool
+        return self.register_tool(tool_spec, command_executor)
         
     def reset_conversation(self):
         """Reset the conversation state."""
