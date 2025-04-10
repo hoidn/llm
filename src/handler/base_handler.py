@@ -96,6 +96,19 @@ class BaseHandler:
             self.log_debug(f"Tool {tool_name} not found")
             return None
     
+    def execute_file_path_command(self, command: str) -> List[str]:
+        """Execute command and return file paths.
+        
+        Args:
+            command: Shell command to execute
+            
+        Returns:
+            List of file paths returned by the command
+        """
+        # In Phase 1, return empty list with warning
+        self.log_debug(f"Warning: Command execution not yet implemented: {command}")
+        return []
+    
     def _get_relevant_files(self, query: str) -> List[str]:
         """Get relevant files from memory system based on query.
         

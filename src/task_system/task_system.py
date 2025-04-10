@@ -1,5 +1,5 @@
 """Task System implementation."""
-from typing import Dict, List, Any, Optional, Union
+from typing import Dict, List, Any, Optional, Union, Tuple
 import json
 from unittest.mock import MagicMock
 
@@ -307,6 +307,60 @@ class TaskSystem(TemplateLookupInterface):
         print(f"Template not found: {identifier}")
         return None
     
+    def resolve_file_paths(self, template: Dict[str, Any], memory_system, handler) -> Tuple[List[str], Optional[str]]:
+        """Resolve file paths from various sources.
+        
+        Coordinates the file path resolution process by delegating to the appropriate components
+        based on the source type.
+        
+        Args:
+            template: The task template
+            memory_system: Memory System instance
+            handler: Handler instance
+            
+        Returns:
+            Tuple of (resolved_file_paths, error_message)
+        """
+        file_paths = []
+        error_message = None
+        
+        # Handle explicit file paths first
+        if "file_paths" in template and template["file_paths"]:
+            file_paths.extend(template["file_paths"])
+        
+        # Check for file_paths_source
+        source = template.get("file_paths_source", {"type": "literal"})
+        source_type = source.get("type", "literal")
+        
+        # Handle description source type
+        if source_type == "description" and "value" in source:
+            context_description = source["value"]
+            if memory_system and hasattr(memory_system, "get_relevant_context_with_description"):
+                try:
+                    query = template.get("description", "")
+                    context_result = memory_system.get_relevant_context_with_description(
+                        query=query,
+                        context_description=context_description
+                    )
+                    # Extract file paths from matches
+                    if hasattr(context_result, 'matches'):
+                        desc_file_paths = [match[0] for match in context_result.matches]
+                        file_paths.extend(desc_file_paths)
+                except Exception as e:
+                    error_message = f"Error retrieving context files: {str(e)}"
+                    print(error_message)
+        elif source_type == "command":
+            if "value" in source and handler and hasattr(handler, "execute_file_path_command"):
+                try:
+                    command = source["value"]
+                    command_file_paths = handler.execute_file_path_command(command)
+                    file_paths.extend(command_file_paths)
+                except Exception as e:
+                    error_message = f"Error executing command for file paths: {str(e)}"
+                    print(error_message)
+        
+        return file_paths, error_message
+        
     def execute_task(self, task_type: str, task_subtype: str, inputs: Dict[str, Any], 
                     memory_system=None, available_models: Optional[List[str]] = None,
                     call_depth: int = 0, **kwargs) -> Dict[str, Any]:
@@ -379,11 +433,20 @@ class TaskSystem(TemplateLookupInterface):
             config=handler_config
         )
         
-        # Extract file context if available
+        # Resolve file paths using the coordinator
+        file_paths, error_message = self.resolve_file_paths(resolved_template, memory_system, handler)
+        
+        # Create file context if paths are available
         file_context = None
-        if "file_paths" in resolved_inputs and resolved_inputs["file_paths"]:
+        if file_paths:
             # In a real implementation, this would load file contents
-            file_context = f"Files: {', '.join(resolved_inputs['file_paths'])}"
+            file_context = f"Files: {', '.join(file_paths)}"
+        
+        # Add error message to notes if present
+        if error_message:
+            if "notes" not in result:
+                result["notes"] = {}
+            result["notes"]["file_paths_error"] = error_message
         
         # Check for mock handlers (used in tests)
         is_associative_mock = (

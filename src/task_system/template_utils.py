@@ -855,6 +855,14 @@ def ensure_template_compatibility(template: Dict[str, Any]) -> Dict[str, Any]:
             "type": "object"  # Generic object return type
         }
     
+    # Add file_paths_source field if missing
+    if "file_paths_source" not in enhanced:
+        enhanced["file_paths_source"] = {
+            "type": "literal"  # Default to literal for backward compatibility
+        }
+    elif isinstance(enhanced["file_paths_source"], dict) and "type" not in enhanced["file_paths_source"]:
+        enhanced["file_paths_source"]["type"] = "literal"
+    
     return enhanced
 
 
