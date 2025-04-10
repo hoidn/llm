@@ -442,12 +442,18 @@ class TaskSystem(TemplateLookupInterface):
             # In a real implementation, this would load file contents
             file_context = f"Files: {', '.join(file_paths)}"
         
+        # Initialize result dictionary to store error message
+        result = {
+            "status": "PENDING",
+            "notes": {}
+        }
+        
         # Add error message to notes if present
         if error_message:
             if "notes" not in result:
                 result["notes"] = {}
             result["notes"]["file_paths_error"] = error_message
-        
+            
         # Check for mock handlers (used in tests)
         is_associative_mock = (
             hasattr(self, "_execute_associative_matching") and 
