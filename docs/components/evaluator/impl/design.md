@@ -37,6 +37,7 @@ function evaluateFunctionCall(call: FunctionCallNode, env: Environment): Promise
   const template = env.find("taskLibrary").get(call.templateName);
   
   // 2. Evaluate all arguments in the caller's environment
+  // This supports basic array indexing (array[0]) and dot notation (object.property)
   const argValues = await Promise.all(
     call.arguments.map(arg => evaluateArgument(arg, env))
   );
@@ -48,8 +49,32 @@ function evaluateFunctionCall(call: FunctionCallNode, env: Environment): Promise
   }
   
   // 4. Evaluate the template body in the new environment
+  // Note: Results are returned but not automatically stored in the environment
+  // Explicit binding is required if results need to be referenced later
   return evaluateTask(template.body, funcEnv);
 }
+
+// Extended Environment.find() method with array indexing support
+Environment.prototype.find = function(name) {
+  // Support for array indexing syntax (e.g., array[0])
+  if (name.includes('[') && name.endsWith(']')) {
+    const openBracket = name.indexOf('[');
+    const baseName = name.substring(0, openBracket);
+    const indexStr = name.substring(openBracket + 1, name.length - 1);
+    
+    // Find the base object
+    const baseObj = this.find(baseName);
+    
+    // Access array element
+    const index = parseInt(indexStr, 10);
+    if (Array.isArray(baseObj) && index >= 0 && index < baseObj.length) {
+      return baseObj[index];
+    }
+    throw new Error(`Invalid array access: ${name}`);
+  }
+  
+  // Original dot notation and variable resolution logic...
+};
 
 // Task execution with hierarchical system prompt support
 async function executeTask(task: Task, environment: Environment): Promise<TaskResult> {

@@ -45,20 +45,49 @@ In addition to the three-dimensional context model, the system supports direct f
 - **Behavior**: Operates outside the standard three-dimensional model
 - **Priority**: Files specified via `file_paths` are always included in context, regardless of other settings
 - **Integration**: Works alongside other context management settings
+- **Source Types**:
+  - **literal** (default): Direct list of file paths
+  - **command**: Bash command that outputs file paths (one per line)
+  - **description**: Natural language description for context-specific associative matching
 
 ```xml
+<!-- Literal paths (default behavior) -->
 <task type="atomic">
   <description>Task with specific file context</description>
   <context_management>
     <inherit_context>none</inherit_context>
     <fresh_context>disabled</fresh_context>
   </context_management>
-  <file_paths>
+  <file_paths source="literal">
     <path>./src/main.py</path>
     <path>/absolute/path/file.txt</path>
   </file_paths>
 </task>
+
+<!-- Bash command that generates file paths -->
+<task type="atomic">
+  <description>Task with command-generated file context</description>
+  <file_paths source="command">
+    <command>find ./src -name "*.py" | grep -v "__pycache__"</command>
+  </file_paths>
+</task>
+
+<!-- Natural language description for context files -->
+<task type="atomic">
+  <description>Task with description-based file context</description>
+  <file_paths source="description">
+    <description>Find all Python files related to authentication</description>
+  </file_paths>
+</task>
 ```
+
+#### Integration with Context Settings
+
+The `file_paths` element with source types integrates with context settings as follows:
+
+- With `inherit_context="subset"`: Files from the chosen source take precedence over associative matching
+- With `fresh_context="enabled"`: Files from the chosen source are added to the associatively matched context
+- When using `source="description"`: A separate associative matching operation is performed using only this description
 
 When `file_paths` is combined with other context settings:
 
@@ -272,9 +301,19 @@ In automatic mode:
 The `file_paths` element serves as the primary mechanism for context transfer:
 
 ```xml
-<file_paths>
+<file_paths source="literal">
   <path>/absolute/path/to/file1.py</path>
   <path>/absolute/path/to/file2.py</path>
+</file_paths>
+
+<!-- OR -->
+<file_paths source="command">
+  <command>find ./src -name "*.py" | grep -v "__pycache__"</command>
+</file_paths>
+
+<!-- OR -->
+<file_paths source="description">
+  <description>Find all Python files related to authentication</description>
 </file_paths>
 ```
 

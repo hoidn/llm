@@ -138,18 +138,50 @@ try {
 ```
 
 ### Function Call with JSON Result
-```xml
+
+<!-- Example of sequential tasks with explicit result binding -->
 <task type="sequential">
   <steps>
+    <!-- Step 1: Get directory listing and bind result -->
     <task>
-      <description>Get directory listing</description>
+      <description>Get directory listing and store result</description>
+      <code>
+        // Get directory listing
+        const listing = await getDirectoryListing("/path/to/dir");
+        
+        // Explicitly bind result for later reference
+        env.bindings.set("directory_listing", listing);
+        
+        return {
+          content: JSON.stringify(listing),
+          status: "COMPLETE",
+          notes: {}
+        };
+      </code>
     </task>
+    
+    <!-- Step 2: Use explicitly bound result -->
     <call template="get_file_info">
-      <arg>result[0]</arg>
+      <arg>directory_listing[0]</arg>
     </call>
   </steps>
 </task>
-```
+
+<!-- Alternative using step_results array (automatically maintained) -->
+<task type="sequential">
+  <steps>
+    <!-- Step 1: Get directory listing -->
+    <task>
+      <description>Get directory listing</description>
+      <!-- Output is stored in step_results[0] -->
+    </task>
+    
+    <!-- Step 2: Access previous step result -->
+    <call template="get_file_info">
+      <arg>step_results[0].parsedContent[0]</arg> <!-- Access first item in parsed JSON array -->
+    </call>
+  </steps>
+</task>
 
 ### TypeScript Example
 ```typescript

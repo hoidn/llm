@@ -50,10 +50,26 @@ interface MemorySystem {
      * It does NOT read file contents - it only returns file paths and metadata.
      *
      * @param input - The ContextGenerationInput containing task context
+     * @param contextDescription - Optional separate description specifically for context matching
      * @returns Promise resolving to associative match result
      * @throws {INVALID_INPUT} If the input structure is malformed or missing required fields
      */
-    getRelevantContextFor(input: ContextGenerationInput): Promise<AssociativeMatchResult>;
+    getRelevantContextFor(
+        input: ContextGenerationInput, 
+        contextDescription?: string
+    ): Promise<AssociativeMatchResult>;
+    
+    /**
+     * Get relevant context using a dedicated context description
+     * 
+     * @param query - The main task query
+     * @param contextDescription - Description specifically for context matching
+     * @returns Promise resolving to associative match result
+     */
+    getRelevantContextWithDescription(
+        query: string, 
+        contextDescription: string
+    ): Promise<AssociativeMatchResult>;
 }
 ```
 

@@ -169,6 +169,40 @@ This document contains examples of context management in the Task System.
 </task>
 ```
     
+## Advanced File Path Examples
+
+### Command-Based File Paths
+
+```xml
+<!-- Example: Atomic Task with Command-Based File Paths -->
+<task type="atomic">
+    <description>Analyze Python files in the project</description>
+    <context_management>
+        <inherit_context>none</inherit_context>
+        <fresh_context>disabled</fresh_context>
+    </context_management>
+    <file_paths source="command">
+        <command>find ./src -name "*.py" | grep -v "__pycache__"</command>
+    </file_paths>
+</task>
+```
+
+### Description-Based File Paths
+
+```xml
+<!-- Example: Atomic Task with Description-Based File Paths -->
+<task type="atomic">
+    <description>Analyze authentication related code</description>
+    <context_management>
+        <inherit_context>none</inherit_context>
+        <fresh_context>disabled</fresh_context>
+    </context_management>
+    <file_paths source="description">
+        <description>Find all Python files related to authentication</description>
+    </file_paths>
+</task>
+```
+
 ## TypeScript Usage Example
     
 ```typescript
@@ -191,6 +225,18 @@ return {
     }
   }
 };
+
+// Execute task with command-based file paths
+const commandResult = await taskSystem.executeTask(
+  "<task type='atomic'><description>Analyze repository</description><file_paths source='command'><command>find ./src -name '*.py'</command></file_paths></task>",
+  memorySystem
+);
+
+// Execute task with description-based file paths
+const descriptionResult = await taskSystem.executeTask(
+  "<task type='atomic'><description>Analyze auth module</description><file_paths source='description'><description>Find files related to authentication</description></file_paths></task>",
+  memorySystem
+);
 ```
     
 ## Related Documentation

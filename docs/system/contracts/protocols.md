@@ -83,9 +83,22 @@ The task template schema defines the structure for XML task template files and m
         </xs:element>
         <xs:element name="file_paths" minOccurs="0">
           <xs:complexType>
-            <xs:sequence>
-              <xs:element name="path" type="xs:string" maxOccurs="unbounded"/>
-            </xs:sequence>
+            <xs:choice>
+              <xs:sequence>
+                <xs:element name="path" type="xs:string" maxOccurs="unbounded"/>
+              </xs:sequence>
+              <xs:element name="command" type="xs:string"/>
+              <xs:element name="description" type="xs:string"/>
+            </xs:choice>
+            <xs:attribute name="source" use="optional" default="literal">
+              <xs:simpleType>
+                <xs:restriction base="xs:string">
+                  <xs:enumeration value="literal"/>
+                  <xs:enumeration value="command"/>
+                  <xs:enumeration value="description"/>
+                </xs:restriction>
+              </xs:simpleType>
+            </xs:attribute>
           </xs:complexType>
         </xs:element>
         <xs:element name="steps">
@@ -330,6 +343,14 @@ The `schema` attribute provides basic type information:
 - "string[]" - Array of strings
 - "number" - Numeric value
 - "boolean" - Boolean value
+
+Initial implementation provides basic type validation to ensure the result matches the specified type. When validation fails, a structured error is returned with error_type, message, and location information. More comprehensive schema validation may be implemented in future phases as needed.
+
+When output_format type is "json", the system will:
+1. Attempt to parse the content as JSON
+2. Store the parsed result in the parsedContent property of TaskResult
+3. Keep the original string content in the content property
+4. Record any parsing errors in notes.parseError
 
 Output validation ensures the result matches the specified type.
 

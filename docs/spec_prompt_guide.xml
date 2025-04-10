@@ -206,5 +206,603 @@ UPDATE src/process.py:
         RETURN (processed_data, quality_score)
 </example 3>
 
+<example 4>
+# Specification Template: Template Schema Enhancement
+> Ingest the information from this file, implement the Low-Level Tasks, and generate the code that will satisfy the High and Mid-Level Objectives.
+
+## High-Level Objective
+
+- Enhance the template system to support structured parameters, model selection, and template naming while maintaining backward compatibility
+
+## Mid-Level Objective
+
+- Extend the template schema to include parameters, model preferences, and unique names
+- Implement parameter resolution and validation
+- Update TaskSystem to support template lookup by name
+- Ensure backward compatibility with existing templates
+- Create comprehensive tests for all new functionality
+
+## Implementation Notes
+- Follow KISS and YAGNI principles - keep it simple and avoid unnecessary abstractions
+- Build upon existing TaskSystem implementation rather than creating new classes
+- Maintain backward compatibility with existing templates
+- Use dictionary-based approach for consistency with current implementation
+- Include tests for all new functionality to validate behavior and prevent regressions
+
+## Context
+
+### Beginning context
+- `task_system/task_system.py` - Contains TaskSystem class with template registry and execution
+- `task_system/templates/associative_matching.py` - Example of existing template
+- `tests/task_system/` - Directory for task system tests (may need to be created)
+
+### Ending context  
+- `task_system/task_system.py` - Updated with parameter validation support and name-based lookup
+- `task_system/template_utils.py` - New utility functions for template enhancement
+- `task_system/templates/associative_matching.py` - Enhanced example template
+- `tests/task_system/test_template_utils.py` - Tests for template utility functions
+- `tests/task_system/test_task_system.py` - Tests for TaskSystem enhancements
+- `tests/task_system/test_template_integration.py` - Integration tests for template functionality
+
+## Low-Level Tasks
+> Ordered from start to finish
+
+1. Create utility functions for template parameter handling
+```aider
+CREATE task_system/template_utils.py:
+```
+```python
+"""Utility functions for template management."""
+from typing import Dict, Any, Optional, List, Union, Type
+
+
+def resolve_parameters(template: Dict[str, Any], args: Dict[str, Any]) -> Dict[str, Any]:
+    """Resolve and validate parameters based on template schema.
+    
+    Args:
+        template: Dict containing template schema with optional "parameters" field
+        args: Dict of argument values provided for template execution
+        
+    Returns:
+        Dict of validated and resolved parameter values
+        
+    Raises:
+        ValueError: If required parameters are missing or validation fails
+    """
+    params = template.get("parameters", {})
+    result = {}
+    
+    # If no parameters defined, just return the args as-is (backward compatibility)
+    if not params:
+        return args
+    
+    # Process each parameter
+    for name, schema in params.items():
+        if name in args:
+            # Parameter provided in args
+            value = args[name]
+            
+            # Basic type validation if specified
+            if "type" in schema:
+                is_valid = True
+                param_type = schema["type"]
+                
+                if param_type == "string" and not isinstance(value, str):
+                    is_valid = False
+                elif param_type == "integer" and not isinstance(value, int):
+                    is_valid = False
+                elif param_type == "number" and not isinstance(value, (int, float)):
+                    is_valid = False
+                elif param_type == "boolean" and not isinstance(value, bool):
+                    is_valid = False
+                elif param_type == "array" and not isinstance(value, list):
+                    is_valid = False
+                elif param_type == "object" and not isinstance(value, dict):
+                    is_valid = False
+                    
+                if not is_valid:
+                    raise ValueError(f"Parameter '{name}' expected type '{param_type}' but got '{type(value).__name__}'")
+            
+            result[name] = value
+        elif "default" in schema:
+            # Use default value
+            result[name] = schema["default"]
+        elif schema.get("required", False):
+            # Missing required parameter
+            raise ValueError(f"Missing required parameter: {name}")
+    
+    return result
+
+
+def ensure_template_compatibility(template: Dict[str, Any]) -> Dict[str, Any]:
+    """Ensure a template has the enhanced structure with name, parameters, and model.
+    
+    Args:
+        template: Original template dictionary
+        
+    Returns:
+        Enhanced template with updated structure
+    """
+    # Copy template to avoid modifying the original
+    enhanced = template.copy()
+    
+    # Add name field if missing
+    if "name" not in enhanced:
+        type_name = enhanced.get("type", "unknown")
+        subtype = enhanced.get("subtype", "unknown")
+        enhanced["name"] = f"{type_name}_{subtype}"
+    
+    # Add parameters field if missing but inputs exists
+    if "parameters" not in enhanced and "inputs" in enhanced:
+        parameters = {}
+        for name, description in enhanced["inputs"].items():
+            parameters[name] = {
+                "type": "string",  # Default type
+                "description": description,
+                "required": True
+            }
+        enhanced["parameters"] = parameters
+    
+    # Add model field if missing
+    if "model" not in enhanced:
+        # Use a sensible default
+        enhanced["model"] = {
+            "preferred": "default",  # System default
+            "fallback": []  # No fallbacks
+        }
+    elif isinstance(enhanced["model"], str):
+        # Convert simple string model to structured format
+        enhanced["model"] = {
+            "preferred": enhanced["model"],
+            "fallback": []
+        }
+    
+    # Add returns field if missing
+    if "returns" not in enhanced:
+        enhanced["returns"] = {
+            "type": "object"  # Generic object return type
+        }
+    
+    return enhanced
+
+
+def get_preferred_model(template: Dict[str, Any], available_models: Optional[List[str]] = None) -> Optional[str]:
+    """Get the preferred model for a template based on availability.
+    
+    Args:
+        template: Template dictionary with model preferences
+        available_models: List of available model names, or None to accept any
+        
+    Returns:
+        Name of the preferred available model, or None if no match
+    """
+    if not available_models:
+        # If no available models specified, just return the preferred
+        if "model" not in template:
+            return None
+            
+        if isinstance(template["model"], str):
+            return template["model"]
+            
+        return template["model"].get("preferred")
+    
+    # Get model preferences
+    model_pref = template.get("model")
+    if not model_pref:
+        # No preference, use first available
+        return available_models[0] if available_models else None
+    
+    # Handle string model
+    if isinstance(model_pref, str):
+        return model_pref if model_pref in available_models else available_models[0]
+    
+    # Handle structured model preferences
+    preferred = model_pref.get("preferred")
+    if preferred and preferred in available_models:
+        return preferred
+    
+    # Try fallbacks
+    fallbacks = model_pref.get("fallback", [])
+    for model in fallbacks:
+        if model in available_models:
+            return model
+    
+    # Default to first available if no match
+    return available_models[0] if available_models else None
+```
+
+2. Update TaskSystem to support enhanced templates
+```aider
+UPDATE task_system/task_system.py:
+```
+```python
+"""Task System implementation."""
+from typing import Dict, List, Any, Optional
+import os
+import sys
+
+# Add parent directory to path to find template_utils
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(current_dir)
+if parent_dir not in sys.path:
+    sys.path.insert(0, parent_dir)
+
+from task_system.template_utils import resolve_parameters, ensure_template_compatibility, get_preferred_model
+
+class TaskSystem:
+    """Task System for task execution and management.
+    
+    Manages task templates, execution, and context management.
+    """
+    
+    def __init__(self):
+        """Initialize the Task System."""
+        self.templates = {}  # Templates by name
+        self.template_index = {}  # Maps type:subtype to template name
+        
+    def find_matching_tasks(self, input_text: str, memory_system) -> List[Dict[str, Any]]:
+        """Find matching templates based on a provided input string.
+        
+        Args:
+            input_text: Natural language task description
+            memory_system: MemorySystem instance providing context
+            
+        Returns:
+            List of matching templates with scores
+        """
+        matches = []
+        
+        # Filter for atomic templates only
+        for name, template in self.templates.items():
+            if template.get("type") == "atomic":
+                # Calculate similarity score
+                description = template.get("description", "")
+                score = self._calculate_similarity_score(input_text, description)
+                
+                # Add to matches if score is above threshold
+                if score > 0.1:  # Low threshold to ensure we get some matches
+                    task_type = template.get("type", "")
+                    subtype = template.get("subtype", "")
+                    matches.append({
+                        "task": template,
+                        "score": score,
+                        "taskType": task_type,
+                        "subtype": subtype
+                    })
+        
+        # Sort by score (descending)
+        matches.sort(key=lambda x: x["score"], reverse=True)
+        return matches
+    
+    def _calculate_similarity_score(self, input_text: str, template_description: str) -> float:
+        """Calculate similarity score between input text and template description.
+        
+        This is a simple heuristic approach using word overlap.
+        
+        Args:
+            input_text: User's input text
+            template_description: Template description
+            
+        Returns:
+            Similarity score (0-1)
+        """
+        # Normalize texts
+        input_text = input_text.lower()
+        template_description = template_description.lower()
+        
+        # Remove punctuation
+        for char in ".,;:!?()[]{}\"'":
+            input_text = input_text.replace(char, " ")
+            template_description = template_description.replace(char, " ")
+        
+        # Split into words
+        input_words = set(input_text.split())
+        template_words = set(template_description.split())
+        
+        # Calculate overlap
+        if not template_words:
+            return 0.0
+            
+        # Jaccard similarity
+        intersection = len(input_words.intersection(template_words))
+        union = len(input_words.union(template_words))
+        
+        if union == 0:
+            return 0.0
+            
+        return intersection / union
+    
+    def register_template(self, template: Dict[str, Any]) -> None:
+        """Register a task template with enhanced structure.
+        
+        Args:
+            template: Template definition
+        """
+        # Ensure template is compatible with enhanced structure
+        enhanced_template = ensure_template_compatibility(template)
+        
+        # Get template name, type and subtype
+        template_name = enhanced_template.get("name")
+        template_type = enhanced_template.get("type")
+        template_subtype = enhanced_template.get("subtype")
+        
+        # Register by name (primary key)
+        self.templates[template_name] = enhanced_template
+        
+        # Also index by type and subtype
+        if template_type and template_subtype:
+            key = f"{template_type}:{template_subtype}"
+            self.template_index[key] = template_name
+    
+    def find_template(self, identifier: str) -> Optional[Dict[str, Any]]:
+        """Find template by name or type:subtype combination.
+        
+        Args:
+            identifier: Template name or 'type:subtype' string
+            
+        Returns:
+            Template dictionary or None if not found
+        """
+        # Try direct name lookup first
+        if identifier in self.templates:
+            return self.templates[identifier]
+        
+        # Try type:subtype lookup via index
+        if identifier in self.template_index:
+            name = self.template_index[identifier]
+            return self.templates.get(name)
+        
+        return None
+    
+    def execute_task(self, task_type: str, task_subtype: str, inputs: Dict[str, Any], 
+                     memory_system=None, available_models: Optional[List[str]] = None) -> Dict[str, Any]:
+        """Execute a task with parameter validation and model selection.
+        
+        Args:
+            task_type: Type of task
+            task_subtype: Subtype of task
+            inputs: Task inputs
+            memory_system: Optional Memory System instance
+            available_models: Optional list of available model names
+            
+        Returns:
+            Task result
+        """
+        # Check if task type and subtype are registered
+        task_key = f"{task_type}:{task_subtype}"
+        template_name = self.template_index.get(task_key)
+        
+        if not template_name or template_name not in self.templates:
+            return {
+                "status": "FAILED",
+                "content": f"Unknown task type: {task_key}",
+                "notes": {
+                    "error": "Task type not registered"
+                }
+            }
+        
+        # Get the template
+        template = self.templates[template_name]
+        
+        # Resolve parameters
+        try:
+            resolved_inputs = resolve_parameters(template, inputs)
+        except ValueError as e:
+            return {
+                "status": "FAILED",
+                "content": str(e),
+                "notes": {
+                    "error": "PARAMETER_ERROR"
+                }
+            }
+        
+        # Select model if available_models provided
+        selected_model = None
+        if available_models:
+            selected_model = get_preferred_model(template, available_models)
+        
+        # Handle specific task types
+        if task_type == "atomic" and task_subtype == "associative_matching":
+            result = self._execute_associative_matching(template, resolved_inputs, memory_system)
+            
+            # Add model info if selected
+            if selected_model:
+                if "notes" not in result:
+                    result["notes"] = {}
+                result["notes"]["selected_model"] = selected_model
+                
+            return result
+        
+        # Default fallback for unimplemented task types
+        return {
+            "status": "FAILED",
+            "content": "Task execution not implemented for this task type",
+            "notes": {
+                "task_type": task_type,
+                "task_subtype": task_subtype,
+                "selected_model": selected_model
+            }
+        }
+    
+    def _execute_associative_matching(self, task, inputs, memory_system):
+        """Execute an associative matching task.
+        
+        Args:
+            task: The task definition
+            inputs: Task inputs
+            memory_system: The Memory System instance
+            
+        Returns:
+            Task result with relevant files
+        """
+        from task_system.templates.associative_matching import execute_template
+        
+        # Get query from inputs
+        query = inputs.get("query", "")
+        if not query:
+            return {
+                "content": "[]",
+                "status": "COMPLETE",
+                "notes": {
+                    "error": "No query provided"
+                }
+            }
+        
+        # Execute the template
+        try:
+            relevant_files = execute_template(query, memory_system)
+            
+            # Convert to JSON string
+            import json
+            file_list_json = json.dumps(relevant_files)
+            
+            return {
+                "content": file_list_json,
+                "status": "COMPLETE",
+                "notes": {
+                    "file_count": len(relevant_files)
+                }
+            }
+        except Exception as e:
+            return {
+                "content": "[]",
+                "status": "FAILED",
+                "notes": {
+                    "error": f"Error during associative matching: {str(e)}"
+                }
+            }
+```
+
+[low level tasks 3 through 5 deleted from the example to save space]
+
+6. Create integration tests
+```aider
+CREATE tests/task_system/test_template_integration.py:
+```
+```python
+"""Integration tests for template enhancements."""
+import pytest
+from unittest.mock import MagicMock, patch
+from task_system.task_system import TaskSystem
+from task_system.templates.associative_matching import ASSOCIATIVE_MATCHING_TEMPLATE, execute_template
+
+class TestTemplateIntegration:
+    """Integration tests for template system."""
+    
+    def test_register_and_execute_enhanced_template(self):
+        """Test registering and executing an enhanced template."""
+        # Create task system
+        task_system = TaskSystem()
+        
+        # Create a test template based on associative matching
+        test_template = {
+            "type": "atomic",
+            "subtype": "test_matching",
+            "name": "test_matching_template",
+            "description": "Test matching template",
+            "parameters": {
+                "query": {"type": "string", "required": True},
+                "max_results": {"type": "integer", "default": 5}
+            }
+        }
+        
+        # Register the template
+        task_system.register_template(test_template)
+        
+        # Mock _execute_associative_matching for the test
+        task_system._execute_associative_matching = MagicMock(return_value={
+            "status": "COMPLETE",
+            "content": '["file1.py", "file2.py"]'
+        })
+        
+        # Execute the template
+        result = task_system.execute_task(
+            "atomic", "test_matching", 
+            {"query": "test query"}
+        )
+        
+        # Verify successful execution
+        assert result["status"] == "COMPLETE"
+        assert "file1.py" in result["content"]
+        
+        # Verify parameters were passed correctly
+        args = task_system._execute_associative_matching.call_args[0]
+        assert "parameters" in args[0]
+        assert args[1]["query"] == "test query"
+        assert args[1]["max_results"] == 5  # Default value
+    
+    def test_backward_compatibility(self):
+        """Test backward compatibility with existing template usage."""
+        # Create task system
+        task_system = TaskSystem()
+        
+        # Register the real associative matching template
+        task_system.register_template(ASSOCIATIVE_MATCHING_TEMPLATE)
+        
+        # Create mock memory system
+        mock_memory = MagicMock()
+        mock_memory.get_relevant_context_for.return_value = MagicMock(
+            matches=[("file1.py", 0.9), ("file2.py", 0.8)]
+        )
+        
+        # Execute using the legacy style (type and subtype)
+        result = task_system.execute_task(
+            "atomic", "associative_matching", 
+            {"query": "test query"},
+            memory_system=mock_memory
+        )
+        
+        # Verify successful execution
+        assert result["status"] == "COMPLETE"
+        assert "file_count" in result["notes"]
+        assert result["notes"]["file_count"] == 2
+    
+    def test_enhanced_template_with_model_selection(self):
+        """Test enhanced template with model selection."""
+        # Create task system
+        task_system = TaskSystem()
+        
+        # Create a test template with model preferences
+        test_template = {
+            "type": "atomic",
+            "subtype": "model_test",
+            "name": "model_test_template",
+            "description": "Test template with model preference",
+            "parameters": {
+                "query": {"type": "string", "required": True}
+            },
+            "model": {
+                "preferred": "claude-3",
+                "fallback": ["gpt-4", "llama-3"]
+            }
+        }
+        
+        # Register the template
+        task_system.register_template(test_template)
+        
+        # Mock _execute_associative_matching for the test
+        task_system._execute_associative_matching = MagicMock(return_value={
+            "status": "COMPLETE",
+            "content": '[]'
+        })
+        
+        # Available models (preferred not available)
+        available_models = ["llama-3", "gpt-3.5"]
+        
+        # Execute with available models
+        result = task_system.execute_task(
+            "atomic", "model_test", 
+            {"query": "test query"},
+            available_models=available_models
+        )
+        
+        # Verify model selection
+        assert "notes" in result
+        assert "selected_model" in result["notes"]
+        assert result["notes"]["selected_model"] == "llama-3"  # Second fallback
+```
+</example 4>
+
 </spec examples>
 </spec prompt guide>
+

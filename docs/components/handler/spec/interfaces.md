@@ -136,6 +136,22 @@ export interface Handler extends BaseHandler {
      * @param callback - Function to call when user input is requested
      */
     onRequestInput(callback: (prompt: string) => Promise<string>): void;
+
+    /**
+     * Execute command and return file paths
+     * 
+     * @param command - Shell command to execute
+     * @returns Promise resolving to array of file paths
+     */
+    execute_file_path_command(command: string): Promise<string[]>;
+    
+    /**
+     * Register command execution tool
+     * Registers a tool for executing commands to find file paths
+     * 
+     * @returns Boolean indicating success
+     */
+    register_command_execution_tool(): boolean;
 }
 
 /**
