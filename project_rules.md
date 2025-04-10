@@ -13,9 +13,15 @@ project_root/
 │   │   ├── result_formatter.py # Formats Aider operation results
 │   │   └── tools.py         # Aider tool specifications
 │   │
+│   ├── evaluator/           # Evaluator components
+│   │   ├── __init__.py
+│   │   ├── evaluator.py     # Main Evaluator implementation
+│   │   └── interfaces.py    # Evaluator interfaces
+│   │
 │   ├── handler/             # Handler components
 │   │   ├── __init__.py
 │   │   ├── base_handler.py  # Base handler implementation
+│   │   ├── command_executor.py # Command execution utilities
 │   │   ├── file_access.py   # File access manager
 │   │   ├── model_provider.py # Model provider adapters
 │   │   └── passthrough_handler.py # Passthrough mode handler
@@ -36,22 +42,40 @@ project_root/
 │   │   ├── test_aider_flow.py
 │   │   └── test_handler_manual.py
 │   │
+│   ├── system/              # System-wide utilities
+│   │   ├── __init__.py
+│   │   └── errors.py        # Error handling utilities
+│   │
 │   ├── task_system/         # Task system components
 │   │   ├── __init__.py
+│   │   ├── ast_nodes.py     # AST node definitions
+│   │   ├── mock_handler.py  # Mock handler for testing
 │   │   ├── task_system.py   # Main Task System implementation
+│   │   ├── template_processor.py # Template processing utilities
+│   │   ├── template_utils.py # Template utility functions
 │   │   └── templates/       # Task templates
 │   │       ├── __init__.py
-│   │       └── associative_matching.py
+│   │       ├── associative_matching.py
+│   │       └── function_examples.py # Function template examples
 │   │
 │   └── main.py              # Application entry point
 │
 ├── tests/                   # Test directory (mirrors src structure)
 │   ├── __init__.py
 │   ├── conftest.py          # Common test fixtures
+│   ├── evaluator/           # Evaluator tests
+│   │   └── test_evaluator.py
 │   ├── handler/             # Handler tests
+│   │   ├── test_command_executor.py
 │   │   └── test_handler_passthrough.py
+│   ├── integration/         # Integration tests
+│   │   └── test_enhanced_file_paths.py
 │   ├── memory/              # Memory system tests
 │   │   └── test_memory_system_indexing.py
+│   ├── task_system/         # Task system tests
+│   │   ├── test_file_path_resolution.py
+│   │   ├── test_function_call_integration.py
+│   │   └── test_integration.py
 │   └── test_tool_invocation.py
 │
 ├── devdocs/                 # Development documentation
