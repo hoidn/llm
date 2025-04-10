@@ -60,16 +60,16 @@ interface MemorySystem {
     ): Promise<AssociativeMatchResult>;
     
     /**
-     * Execute command to get file paths
+     * Get relevant context using a dedicated context description
      * 
-     * Executes a bash command that outputs file paths (one per line)
-     * and returns them as an array.
-     *
-     * @param command - The bash command to execute
-     * @returns Promise resolving to array of file paths
-     * @throws {COMMAND_EXECUTION_ERROR} If the command fails to execute
+     * @param query - The main task query
+     * @param contextDescription - Description specifically for context matching
+     * @returns Promise resolving to associative match result
      */
-    getFilePathsFromCommand(command: string): Promise<string[]>;
+    getRelevantContextWithDescription(
+        query: string, 
+        contextDescription: string
+    ): Promise<AssociativeMatchResult>;
 }
 ```
 
