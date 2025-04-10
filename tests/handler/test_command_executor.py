@@ -132,7 +132,7 @@ class TestCommandExecutor:
         
         # Verify result
         assert result["success"] is False
-        assert "timeout" in result["error"]
+        assert "timed out" in result["error"]  # Changed from "timeout" to "timed out"
         assert result["exit_code"] == -1
     
     def test_unsafe_command_rejected(self):
