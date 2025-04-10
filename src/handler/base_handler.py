@@ -3,6 +3,7 @@ from typing import Dict, List, Optional, Any, Callable, Tuple
 
 from handler.model_provider import ProviderAdapter, ClaudeProvider
 from handler.file_access import FileAccessManager
+from handler.command_executor import execute_command_safely, parse_file_paths_from_output
 
 class BaseHandler:
     """Base class for all handlers with common functionality.
@@ -105,9 +106,20 @@ class BaseHandler:
         Returns:
             List of file paths returned by the command
         """
-        # In Phase 1, return empty list with warning
-        self.log_debug(f"Warning: Command execution not yet implemented: {command}")
-        return []
+        self.log_debug(f"Executing file path command: {command}")
+        
+        # Execute command safely
+        result = execute_command_safely(command)
+        
+        if not result["success"]:
+            self.log_debug(f"Command execution failed: {result['error']}")
+            return []
+            
+        # Parse file paths from output
+        file_paths = parse_file_paths_from_output(result["output"])
+        self.log_debug(f"Command returned {len(file_paths)} file paths")
+        
+        return file_paths
     
     def _get_relevant_files(self, query: str) -> List[str]:
         """Get relevant files from memory system based on query.
