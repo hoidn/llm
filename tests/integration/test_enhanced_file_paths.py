@@ -171,6 +171,10 @@ class TestEnhancedFilePathsIntegration:
             }
         }
         
+        # For direct method testing, disable the _execute_tool method on the handler
+        if hasattr(handler, "_execute_tool"):
+            delattr(handler, "_execute_tool")
+        
         # Resolve file paths
         file_paths, error = task_system.resolve_file_paths(template, memory_system, handler)
         

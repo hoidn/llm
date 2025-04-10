@@ -3,6 +3,7 @@ import pytest
 from unittest.mock import patch, MagicMock
 import os
 import tempfile
+import subprocess
 
 from handler.command_executor import (
     execute_command_safely,

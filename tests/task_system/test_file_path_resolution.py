@@ -109,6 +109,11 @@ class TestFilePathResolution:
             }
         }
         
+        # For this test, remove the _execute_tool method from the mock handler
+        # to force it to use the direct method
+        if hasattr(mock_handler, "_execute_tool"):
+            delattr(mock_handler, "_execute_tool")
+        
         # Resolve file paths
         file_paths, error = task_system.resolve_file_paths(template, mock_memory_system, mock_handler)
         
@@ -124,6 +129,7 @@ class TestFilePathResolution:
         # Verify no interactions with memory system
         mock_memory_system.get_relevant_context_with_description.assert_not_called()
     
+    """This test already correctly tests tool-based execution."""
     def test_resolve_file_paths_tool_based(self, task_system, mock_memory_system, mock_handler):
         """Test resolving file paths with tool-based execution."""
         # Create template with command source
