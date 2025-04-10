@@ -349,14 +349,36 @@ class TaskSystem(TemplateLookupInterface):
                 except Exception as e:
                     error_message = f"Error retrieving context files: {str(e)}"
                     print(error_message)
-        elif source_type == "command":
-            if "value" in source and handler and hasattr(handler, "execute_file_path_command"):
+        
+        # Handle command source type
+        elif source_type == "command" and "value" in source:
+            command = source["value"]
+            
+            # First try tool-based execution
+            if handler and hasattr(handler, "_execute_tool"):
                 try:
-                    command = source["value"]
+                    tool_result = handler._execute_tool("executeFilePathCommand", {"command": command})
+                    
+                    if tool_result and tool_result.get("status") == "success":
+                        # Extract file paths from metadata
+                        metadata = tool_result.get("metadata", {})
+                        command_file_paths = metadata.get("file_paths", [])
+                        file_paths.extend(command_file_paths)
+                    else:
+                        # Fall back to direct method if tool execution failed
+                        if handler and hasattr(handler, "execute_file_path_command"):
+                            command_file_paths = handler.execute_file_path_command(command)
+                            file_paths.extend(command_file_paths)
+                except Exception as e:
+                    error_message = f"Error executing command '{command}': {str(e)}"
+                    print(error_message)
+            # Fall back to direct method
+            elif handler and hasattr(handler, "execute_file_path_command"):
+                try:
                     command_file_paths = handler.execute_file_path_command(command)
                     file_paths.extend(command_file_paths)
                 except Exception as e:
-                    error_message = f"Error executing command for file paths: {str(e)}"
+                    error_message = f"Error executing command '{command}': {str(e)}"
                     print(error_message)
         
         return file_paths, error_message
