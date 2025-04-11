@@ -212,10 +212,8 @@ class MemorySystem:
                 # Get file metadata
                 file_metadata = self.get_global_index()
                 
-                # Use the handler to determine relevant files based on template description
-                # and relevant inputs
-                query_text = self._build_query_from_input(context_input)
-                relevant_matches = self.handler.determine_relevant_files(query_text, file_metadata)
+                # Use the handler to determine relevant files based on context input
+                relevant_matches = self.handler.determine_relevant_files(context_input, file_metadata)
                 
                 if relevant_matches:
                     context = f"Found {len(relevant_matches)} relevant files."
@@ -350,33 +348,3 @@ class MemorySystem:
             self.update_global_index(file_metadata)
         
         print(f"Updated global index with {len(file_metadata)} files from repository")
-    def _build_query_from_input(self, context_input: ContextGenerationInput) -> str:
-        """
-        Build a query string from context input by combining template description 
-        and relevant inputs.
-        
-        Args:
-            context_input: The context generation input
-            
-        Returns:
-            Query string for relevance matching
-        """
-        # Start with template description
-        query_parts = [context_input.template_description]
-        
-        # Add relevant inputs
-        for name, value in context_input.inputs.items():
-            # Only include inputs marked as relevant
-            if name in context_input.context_relevance and context_input.context_relevance[name]:
-                # Convert input value to string if needed
-                if value is not None:
-                    if not isinstance(value, str):
-                        value = str(value)
-                    query_parts.append(f"{name}: {value}")
-        
-        # Add inherited context if available
-        if context_input.inherited_context:
-            query_parts.append(context_input.inherited_context)
-        
-        # Join all parts with spaces
-        return " ".join(query_parts)

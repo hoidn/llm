@@ -327,8 +327,25 @@ class TaskSystem(TemplateLookupInterface):
         # Handle explicit file paths first
         if "file_paths" in template and template["file_paths"]:
             file_paths.extend(template["file_paths"])
+            
+        # Try template-aware context generation if memory_system is available
+        if memory_system and "_context_input" in template:
+            try:
+                # Get context input created during execute_task
+                context_input = template["_context_input"]
+                
+                # Get relevant context
+                context_result = memory_system.get_relevant_context_for(context_input)
+                
+                # Extract file paths from matches
+                if hasattr(context_result, 'matches'):
+                    context_file_paths = [match[0] for match in context_result.matches]
+                    file_paths.extend(context_file_paths)
+            except Exception as e:
+                error_message = f"Error retrieving context: {str(e)}"
+                print(error_message)
         
-        # Check for file_paths_source
+        # Check for file_paths_source (maintain backward compatibility)
         source = template.get("file_paths_source", {"type": "literal"})
         source_type = source.get("type", "literal")
         
@@ -432,6 +449,27 @@ class TaskSystem(TemplateLookupInterface):
                     "error": "PARAMETER_ERROR"
                 }
             }
+            
+        # Extract context relevance from template
+        context_relevance = template.get("context_relevance", {})
+        if not context_relevance:
+            # Default all parameters to relevant if not specified
+            context_relevance = {param: True for param in resolved_inputs}
+        
+        # Create context generation input for memory system
+        if memory_system:
+            context_input = ContextGenerationInput(
+                template_description=template.get("description", ""),
+                template_type=template.get("type", ""),
+                template_subtype=template.get("subtype", ""),
+                inputs=resolved_inputs,
+                context_relevance=context_relevance,
+                inherited_context=kwargs.get("inherited_context", ""),
+                previous_outputs=kwargs.get("previous_outputs", [])
+            )
+            
+            # Store for later use in file path resolution
+            template["_context_input"] = context_input
     
         # Create environment from resolved parameters
         from .template_utils import Environment

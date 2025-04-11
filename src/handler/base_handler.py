@@ -1,5 +1,5 @@
 """Base handler providing common functionality for all handlers."""
-from typing import Dict, List, Optional, Any, Callable, Tuple
+from typing import Dict, List, Optional, Any, Callable, Tuple, Union
 
 from handler.model_provider import ProviderAdapter, ClaudeProvider
 from handler.file_access import FileAccessManager
@@ -235,32 +235,78 @@ class BaseHandler:
         self.log_debug(f"Built system prompt with {len(system_prompt)} characters")
         return system_prompt
         
-    def determine_relevant_files(self, query: str, file_metadata: Dict[str, str]) -> List[Tuple[str, str]]:
+    def _build_file_relevance_message(self, query: str, inputs: Dict[str, Any], file_metadata: Dict[str, str]) -> str:
+        """Build user message for file relevance determination.
+        
+        Args:
+            query: Main query or template description
+            inputs: Dictionary of relevant input parameters
+            file_metadata: Dictionary of file metadata
+            
+        Returns:
+            Formatted user message
+        """
+        # Build context with query
+        message = f"Query: {query}\n\n"
+        
+        # Add inputs if available
+        if inputs:
+            message += "Additional context:\n"
+            for name, value in inputs.items():
+                message += f"{name}: {value}\n"
+            message += "\n"
+        
+        # Add file metadata
+        message += "Available files:\n\n"
+        for i, (path, metadata) in enumerate(file_metadata.items(), 1):
+            message += f"File {i}: {path}\n"
+            message += f"Metadata: {metadata}\n\n"
+        
+        message += "Select the files most relevant to this context."
+        return message
+        
+    def determine_relevant_files(self, query_input: Union[str, ContextGenerationInput], file_metadata: Dict[str, str]) -> List[Tuple[str, str]]:
         """Determine relevant files for a query using LLM.
         
         Args:
-            query: The user query or task
+            query_input: The user query/task or ContextGenerationInput object
             file_metadata: Dictionary mapping file paths to their metadata
             
         Returns:
             List of tuples containing (file_path, relevance_context)
         """
-        self.log_debug(f"Determining relevant files for query: '{query}'")
+        # Extract query and relevant inputs based on input type
+        query = ""
+        relevant_inputs = {}
+        
+        if isinstance(query_input, str):
+            query = query_input
+            self.log_debug(f"Determining relevant files for query string: '{query}'")
+        elif isinstance(query_input, ContextGenerationInput):
+            query = query_input.template_description
+            self.log_debug(f"Determining relevant files for template: '{query}'")
+            
+            # Extract relevant inputs
+            for name, value in query_input.inputs.items():
+                if name in query_input.context_relevance and query_input.context_relevance[name]:
+                    relevant_inputs[name] = value
+                    
+            if relevant_inputs:
+                self.log_debug(f"Including {len(relevant_inputs)} relevant inputs in context")
+        elif isinstance(query_input, dict):
+            # Legacy format support
+            query = query_input.get("taskText", "")
+            self.log_debug(f"Determining relevant files for legacy format: '{query}'")
+        
         self.log_debug(f"Number of files to evaluate: {len(file_metadata)}")
         
-        file_context = "Available files:\n\n"
-        for i, (path, metadata) in enumerate(file_metadata.items(), 1):
-            file_context += f"File {i}: {path}\n"
-            file_context += f"Metadata: {metadata}\n\n"
+        # Build user message
+        user_message = self._build_file_relevance_message(query, relevant_inputs, file_metadata)
         
         # Get system prompt from registry
         system_prompt = prompt_registry.get_prompt("file_relevance")
         if not system_prompt:
-            system_prompt = """You are a file relevance assistant. Your task is to select files that are relevant to a user's query.
-            Return ONLY a JSON array of objects with the following format:
-            [{"path": "path/to/file1.py", "relevance": "Reason"}]"""
-        
-        user_message = f"Query: {query}\n\n{file_context}\n\nSelect the files most relevant to this query."
+            system_prompt = "You are a file relevance assistant. Select files relevant to the query."
         
         try:
             messages = [{"role": "user", "content": user_message}]

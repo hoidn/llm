@@ -22,6 +22,10 @@ ASSOCIATIVE_MATCHING_TEMPLATE = {
             "default": 20
         }
     },
+    "context_relevance": {
+        "query": True,        # Include query in context matching
+        "max_results": False  # Exclude max_results from context matching
+    },
     "model": {  # Model preferences
         "preferred": "claude-3-5-sonnet",
         "fallback": ["gpt-4", "claude-3-haiku"]
