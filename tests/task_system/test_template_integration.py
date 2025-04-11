@@ -74,6 +74,9 @@ class TestTemplateIntegration:
             
             # Create mock memory system
             mock_memory = MagicMock()
+            # Initialize global_index
+            mock_memory.global_index = {"file1.py": "Test metadata", "file2.py": "Test metadata"}
+            mock_memory.get_global_index = MagicMock(return_value=mock_memory.global_index)
             mock_memory.get_relevant_context_for.return_value = MagicMock(
                 matches=[("file1.py", 0.9), ("file2.py", 0.8)]
             )

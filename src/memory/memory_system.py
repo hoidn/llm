@@ -276,7 +276,13 @@ class MemorySystem:
             
             # Get file metadata
             file_metadata = self.get_global_index()
+            
+            # Add debug logging
+            print(f"Global index contains {len(file_metadata)} files")
+            
             if not file_metadata:
+                # Make this a clear log message for debugging
+                print("EARLY RETURN: No files in index")
                 return Result(context="No files in index", matches=[])
             
             # Use TaskSystem mediator pattern
@@ -288,8 +294,11 @@ class MemorySystem:
             # Convert to legacy Result object for backward compatibility
             return Result(context=associative_result.context, matches=associative_result.matches)
         except Exception as e:
+            # Improved error handling with detailed logging
             error_msg = f"Error during context generation with mediator: {str(e)}"
-            print(error_msg)
+            print(f"EXCEPTION: {error_msg}")
+            import traceback
+            print(traceback.format_exc())
             return Result(context=error_msg, matches=[])
 
     def _get_relevant_context_sharded_with_mediator(self, context_input: ContextGenerationInput) -> Any:

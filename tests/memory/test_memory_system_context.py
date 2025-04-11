@@ -23,6 +23,9 @@ class TestMemorySystemContext:
         }
         memory_system._sharded_index = []
         
+        # Add this line to initialize global_index
+        memory_system.global_index = {"file.py": "Test metadata"}
+        
         # Create and configure mock TaskSystem
         mock_task_system = MagicMock(spec=TaskSystem)
         memory_system.task_system = mock_task_system
@@ -68,6 +71,9 @@ class TestMemorySystemContext:
         }
         memory_system._sharded_index = []
         
+        # Initialize global_index
+        memory_system.global_index = {"file1.py": "Test metadata"}
+        
         # Create a mock TaskSystem
         mock_task_system = MagicMock(spec=TaskSystem)
         memory_system.task_system = mock_task_system
@@ -112,6 +118,9 @@ class TestMemorySystemContext:
             "token_estimation_ratio": 0.25
         }
         memory_system._sharded_index = []
+        
+        # Initialize global_index
+        memory_system.global_index = {"file1.py": "Test metadata"}
         
         # Create a mock TaskSystem
         mock_task_system = MagicMock(spec=TaskSystem)

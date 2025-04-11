@@ -220,13 +220,21 @@ class TestEnhancedFilePathsIntegration:
             })
         
         # Execute the task
-        result = task_system.execute_task("atomic", "test", {}, memory_system, handler=handler)
-        
-        # Verify result
-        assert result["status"] == "COMPLETE"
-        
-        # Verify that execute_prompt was called with the right parameters
-        handler.execute_prompt.assert_called_once()
-        args, kwargs = handler.execute_prompt.call_args
-        assert args[0] == "Test template"  # Description
-        assert "Files: " in args[2]  # File context
+        with patch.object(handler, 'execute_prompt') as mock_execute_prompt:
+            mock_execute_prompt.return_value = {
+                "status": "COMPLETE",
+                "content": "Task executed",
+                "notes": {}
+            }
+            
+            # Execute the task
+            result = task_system.execute_task("atomic", "test", {}, memory_system, handler=handler)
+            
+            # Verify result
+            assert result["status"] == "COMPLETE"
+            
+            # Verify that execute_prompt was called with the right parameters
+            mock_execute_prompt.assert_called_once()
+            args, kwargs = mock_execute_prompt.call_args
+            assert args[0] == "Test template"  # Description
+            assert "Files: " in args[2]  # File context
