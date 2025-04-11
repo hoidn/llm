@@ -18,7 +18,8 @@ class ContextGenerationInput:
         context_relevance: Optional[Dict[str, bool]] = None,
         inherited_context: str = "",
         previous_outputs: Optional[List[str]] = None,
-        fresh_context: str = "enabled"
+        fresh_context: str = "enabled",
+        taskText: str = ""  # For backward compatibility
     ):
         """Initialize a ContextGenerationInput instance.
         
@@ -31,8 +32,9 @@ class ContextGenerationInput:
             inherited_context: Context inherited from parent tasks
             previous_outputs: Previous task outputs for context accumulation
             fresh_context: Whether to generate fresh context or use inherited only
+            taskText: Legacy parameter for backward compatibility
         """
-        self.template_description = template_description
+        self.template_description = template_description or taskText
         self.template_type = template_type
         self.template_subtype = template_subtype
         self.inputs = inputs or {}
@@ -40,10 +42,48 @@ class ContextGenerationInput:
         self.inherited_context = inherited_context
         self.previous_outputs = previous_outputs or []
         self.fresh_context = fresh_context
+        self.taskText = taskText or template_description  # For backward compatibility
         
         # Default to including all inputs if not specified
         if not self.context_relevance and self.inputs:
             self.context_relevance = {k: True for k in self.inputs.keys()}
+            
+    def get(self, key, default=None):
+        """Dictionary-like access for backward compatibility.
+        
+        Args:
+            key: Key to look up
+            default: Default value if key not found
+            
+        Returns:
+            Value for key or default
+        """
+        if key == "taskText":
+            return self.taskText or default
+        elif key == "inheritedContext":
+            return self.inherited_context or default
+        elif key == "previousOutputs":
+            return self.previous_outputs or default
+        elif hasattr(self, key):
+            return getattr(self, key) or default
+        return default
+        
+    def __getitem__(self, key):
+        """Dictionary-like access for backward compatibility.
+        
+        Args:
+            key: Key to look up
+            
+        Returns:
+            Value for key
+            
+        Raises:
+            KeyError: If key not found
+        """
+        result = self.get(key)
+        if result is None:
+            raise KeyError(key)
+        return result
     
     @classmethod
     def from_legacy_format(cls, input_data: Dict[str, Any]) -> 'ContextGenerationInput':

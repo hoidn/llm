@@ -4,7 +4,7 @@ from unittest.mock import patch, MagicMock
 import os
 import tempfile
 
-from src.memory.context_generation import ContextGenerationInput as RealContextGenerationInput
+from memory.context_generation import ContextGenerationInput as RealContextGenerationInput
 from src.task_system.templates.context_examples import (
     INCLUDE_ALL_TEMPLATE,
     SELECTIVE_CONTEXT_TEMPLATE,
