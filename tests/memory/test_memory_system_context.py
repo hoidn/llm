@@ -14,6 +14,15 @@ class TestMemorySystemContext:
         """Test handling of context input objects."""
         memory_system = MemorySystem()
         
+        # Initialize _config and _sharded_index for proper flow
+        memory_system._config = {
+            "sharding_enabled": False,
+            "token_size_per_shard": 4000,
+            "max_shards": 8,
+            "token_estimation_ratio": 0.25
+        }
+        memory_system._sharded_index = []
+        
         # Create and configure mock TaskSystem
         mock_task_system = MagicMock(spec=TaskSystem)
         memory_system.task_system = mock_task_system
@@ -50,6 +59,15 @@ class TestMemorySystemContext:
         """Test get_relevant_context_for with ContextGenerationInput."""
         memory_system = MemorySystem()
         
+        # Initialize _config and _sharded_index for proper flow
+        memory_system._config = {
+            "sharding_enabled": False,
+            "token_size_per_shard": 4000,
+            "max_shards": 8,
+            "token_estimation_ratio": 0.25
+        }
+        memory_system._sharded_index = []
+        
         # Create a mock TaskSystem
         mock_task_system = MagicMock(spec=TaskSystem)
         memory_system.task_system = mock_task_system
@@ -85,6 +103,15 @@ class TestMemorySystemContext:
     def test_get_relevant_context_for_with_legacy_format(self):
         """Test get_relevant_context_for with legacy dictionary format."""
         memory_system = MemorySystem()
+        
+        # Initialize _config and _sharded_index for proper flow
+        memory_system._config = {
+            "sharding_enabled": False,
+            "token_size_per_shard": 4000,
+            "max_shards": 8,
+            "token_estimation_ratio": 0.25
+        }
+        memory_system._sharded_index = []
         
         # Create a mock TaskSystem
         mock_task_system = MagicMock(spec=TaskSystem)

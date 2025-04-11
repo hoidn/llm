@@ -270,6 +270,10 @@ class MemorySystem:
                 self.matches = matches
         
         try:
+            # Check if task_system is available (should have been checked in get_relevant_context_for)
+            if not hasattr(self, 'task_system') or self.task_system is None:
+                return Result(context="TaskSystem not available for context generation", matches=[])
+            
             # Get file metadata
             file_metadata = self.get_global_index()
             if not file_metadata:
@@ -284,7 +288,7 @@ class MemorySystem:
             # Convert to legacy Result object for backward compatibility
             return Result(context=associative_result.context, matches=associative_result.matches)
         except Exception as e:
-            error_msg = f"Error during context generation: {str(e)}"
+            error_msg = f"Error during context generation with mediator: {str(e)}"
             print(error_msg)
             return Result(context=error_msg, matches=[])
 
@@ -303,6 +307,10 @@ class MemorySystem:
             def __init__(self, context, matches):
                 self.context = context
                 self.matches = matches
+        
+        # Check if task_system is available (should have been checked in get_relevant_context_for)
+        if not hasattr(self, 'task_system') or self.task_system is None:
+            return Result(context="TaskSystem not available for context generation", matches=[])
         
         # Process each shard independently
         all_matches = []

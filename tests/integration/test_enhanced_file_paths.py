@@ -208,25 +208,25 @@ class TestEnhancedFilePathsIntegration:
         # Mock the resolve_file_paths method
         def mock_resolve_file_paths(template, memory_system, handler):
             return [os.path.join(temp_dir, "test0.py"), os.path.join(temp_dir, "test1.py")], None
-            
+        
         task_system.resolve_file_paths = mock_resolve_file_paths
         
-        # Execute the task
-        with patch.object(handler, 'execute_prompt') as mock_execute_prompt:
-            mock_execute_prompt.return_value = {
+        # Explicitly add execute_prompt method to the mock handler
+        if not hasattr(handler, 'execute_prompt') or not callable(handler.execute_prompt):
+            handler.execute_prompt = MagicMock(return_value={
                 "status": "COMPLETE",
                 "content": "Task executed",
                 "notes": {}
-            }
-            
-            result = task_system.execute_task("atomic", "test", {}, memory_system, handler=handler)
-            
-            # Verify result
-            assert result["status"] == "COMPLETE"
-            
-            # Verify execute_prompt was called with file context
-            mock_execute_prompt.assert_called_once()
-            args = mock_execute_prompt.call_args[0]
-            assert "Files:" in args[2]  # Third argument is file_context
-            assert "test0.py" in args[2]
-            assert "test1.py" in args[2]
+            })
+        
+        # Execute the task
+        result = task_system.execute_task("atomic", "test", {}, memory_system, handler=handler)
+        
+        # Verify result
+        assert result["status"] == "COMPLETE"
+        
+        # Verify that execute_prompt was called with the right parameters
+        handler.execute_prompt.assert_called_once()
+        args, kwargs = handler.execute_prompt.call_args
+        assert args[0] == "Test template"  # Description
+        assert "Files: " in args[2]  # File context

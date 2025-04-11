@@ -549,7 +549,17 @@ class TaskSystem(TemplateLookupInterface):
             # Check for specialized handlers based on subtype
             if task_subtype == "associative_matching":
                 print(f"Calling _execute_associative_matching with template: {template.get('name')}")
-                return self._execute_associative_matching(template, resolved_inputs, memory_system)
+                result = self._execute_associative_matching(template, resolved_inputs, memory_system)
+                
+                # Ensure result has notes field
+                if "notes" not in result:
+                    result["notes"] = {}
+                    
+                # Add model info if selected
+                if selected_model:
+                    result["notes"]["selected_model"] = selected_model
+                    
+                return result
                     
             # For format_json subtype
             elif task_subtype == "format_json":
@@ -885,7 +895,7 @@ class TaskSystem(TemplateLookupInterface):
             return {
                 "content": "[]",
                 "status": "COMPLETE",
-                "notes": {
+                "notes": {  # Always include notes
                     "error": "No query provided",
                     "system_prompt": task.get("system_prompt", "")
                 }
@@ -903,7 +913,7 @@ class TaskSystem(TemplateLookupInterface):
             return {
                 "content": file_list_json,
                 "status": "COMPLETE",
-                "notes": {
+                "notes": {  # Always include notes
                     "file_count": len(relevant_files),
                     "system_prompt": task.get("system_prompt", "")
                 }
@@ -919,7 +929,7 @@ class TaskSystem(TemplateLookupInterface):
                 return {
                     "content": "[]",
                     "status": "COMPLETE",  # Return COMPLETE instead of FAILED for backward compatibility
-                    "notes": {
+                    "notes": {  # Always include notes
                         "error": f"Error during associative matching: {str(e)}",
                         "system_prompt": task.get("system_prompt", "")
                     }
@@ -928,7 +938,7 @@ class TaskSystem(TemplateLookupInterface):
                 return {
                     "content": "[]",
                     "status": "FAILED",
-                    "notes": {
+                    "notes": {  # Always include notes
                         "error": f"Error during associative matching: {str(e)}",
                         "system_prompt": task.get("system_prompt", "")
                     }
