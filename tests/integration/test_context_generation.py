@@ -82,7 +82,7 @@ class TestTemplateAwareContextGeneration:
         context_input_capture = {}
         def capture_context_input(input_data):
             nonlocal context_input_capture
-            if isinstance(input_data, ContextGenerationInput):
+            if isinstance(input_data, RealContextGenerationInput):
                 context_input_capture = {
                     "template_description": input_data.template_description,
                     "inputs": input_data.inputs,
@@ -126,7 +126,7 @@ class TestTemplateAwareContextGeneration:
         context_input_capture = {}
         def capture_context_input(input_data):
             nonlocal context_input_capture
-            if isinstance(input_data, ContextGenerationInput):
+            if isinstance(input_data, RealContextGenerationInput):
                 context_input_capture = {
                     "template_description": input_data.template_description,
                     "inputs": input_data.inputs,
