@@ -198,7 +198,7 @@ class MemorySystem:
     
     def get_relevant_context_for(self, input_data: Union[Dict[str, Any], ContextGenerationInput]) -> Any:
         """
-        Get relevant context for a task.
+        Get relevant context for a task using TaskSystem mediator exclusively.
         
         Args:
             input_data: The input data containing task context, either as a
@@ -236,35 +236,32 @@ class MemorySystem:
         # If TaskSystem is available, use it as mediator (preferred approach)
         try:
             if hasattr(self, 'task_system') and self.task_system:
-                # Get file metadata
-                file_metadata = self.get_global_index()
+                # If sharding is disabled or global index is small enough, use standard approach
+                if not self._config["sharding_enabled"] or len(self._sharded_index) <= 1:
+                    return self._get_relevant_context_with_mediator(context_input)
                 
-                # Use TaskSystem mediator pattern
-                from memory.context_generation import AssociativeMatchResult
-                associative_result = self.task_system.generate_context_for_memory_system(
-                    context_input, file_metadata
+                # Otherwise, use sharded approach with mediator
+                return self._get_relevant_context_sharded_with_mediator(context_input)
+            else:
+                print("WARNING: TaskSystem not available for context generation")
+                return Result(
+                    context="TaskSystem not available for context generation",
+                    matches=[]
                 )
-                
-                # Convert to legacy Result object for backward compatibility
-                return Result(context=associative_result.context, matches=associative_result.matches)
         except Exception as e:
-            print(f"Error using TaskSystem mediator: {e}")
-            # Fall back to basic matching
-        
-        # If sharding is disabled or global index is small enough, use standard approach
-        if not self._config["sharding_enabled"] or len(self._sharded_index) <= 1:
-            return self._get_relevant_context_standard(context_input)
-        
-        # Otherwise, use sharded approach (internal implementation)
-        return self._get_relevant_context_sharded(context_input)
+            print(f"Error in get_relevant_context_for: {str(e)}")
+            # Fall back to empty result with error message
+            return Result(
+                context=f"Error during context generation: {str(e)}",
+                matches=[]
+            )
     
-    def _get_relevant_context_standard(self, input_data: ContextGenerationInput) -> Any:
+    def _get_relevant_context_with_mediator(self, context_input: ContextGenerationInput) -> Any:
         """
-        Get relevant context using standard approach.
-        This is an internal method.
+        Get relevant context using TaskSystem mediator.
         
         Args:
-            input_data: The ContextGenerationInput instance
+            context_input: The ContextGenerationInput instance
             
         Returns:
             Object containing context and file matches
@@ -275,47 +272,31 @@ class MemorySystem:
                 self.context = context
                 self.matches = matches
         
-        # For simple matching without LLM, use template_description directly
-        query = input_data.template_description
-        
-        # Build additional context string from relevant inputs
-        additional_context = ""
-        for name, value in input_data.inputs.items():
-            if input_data.context_relevance.get(name, True):
-                additional_context += f"{name}: {value}\n"
-        
-        # Combine query with additional context if available
-        if additional_context:
-            query = f"{query}\n\n{additional_context}"
-        
-        # Include inherited context if available and applicable
-        if input_data.inherited_context:
-            query = f"{query}\n\n{input_data.inherited_context}"
-        
-        # Perform basic keyword matching - return ALL matches
-        matches = []
-        for path, metadata in self.global_index.items():
-            # Check if any keywords from the query appear in the metadata
-            if any(keyword.lower() in metadata.lower() for keyword in query.lower().split()):
-                # Include the search term in the relevance description for test compatibility
-                search_terms = [kw for kw in query.lower().split() if kw.lower() in metadata.lower()]
-                relevance = f"Relevant to query: {', '.join(search_terms)}"
-                matches.append((path, relevance))
-        
-        if matches:
-            context = f"Found {len(matches)} relevant files."
-        else:
-            context = f"No relevant files found."
+        try:
+            # Get file metadata
+            file_metadata = self.get_global_index()
+            if not file_metadata:
+                return Result(context="No files in index", matches=[])
             
-        return Result(context=context, matches=matches)
+            # Use TaskSystem mediator pattern
+            from memory.context_generation import AssociativeMatchResult
+            associative_result = self.task_system.generate_context_for_memory_system(
+                context_input, file_metadata
+            )
+            
+            # Convert to legacy Result object for backward compatibility
+            return Result(context=associative_result.context, matches=associative_result.matches)
+        except Exception as e:
+            error_msg = f"Error during context generation: {str(e)}"
+            print(error_msg)
+            return Result(context=error_msg, matches=[])
 
-    def _get_relevant_context_sharded(self, input_data: ContextGenerationInput) -> Any:
+    def _get_relevant_context_sharded_with_mediator(self, context_input: ContextGenerationInput) -> Any:
         """
-        Get relevant context using sharded approach.
-        This is an internal method.
+        Get relevant context using sharded approach with TaskSystem mediator.
         
         Args:
-            input_data: The ContextGenerationInput instance
+            context_input: The ContextGenerationInput instance
             
         Returns:
             Object containing context and file matches
@@ -328,34 +309,43 @@ class MemorySystem:
         
         # Process each shard independently
         all_matches = []
-        for shard in self._sharded_index:
-            # In a real implementation with LLM, we would pass the whole input_data
-            # For this simple matching, use template_description directly
-            query = input_data.template_description
-            
-            # Build additional context from relevant inputs
-            additional_context = ""
-            for name, value in input_data.inputs.items():
-                if input_data.context_relevance.get(name, True):
-                    additional_context += f"{name}: {value}\n"
-            
-            # Include additional context in query
-            if additional_context:
-                query = f"{query}\n\n{additional_context}"
-                
-            # Include inherited context if available
-            if input_data.inherited_context:
-                query = f"{query}\n\n{input_data.inherited_context}"
-            
-            # Basic keyword matching for this shard
-            for path, metadata in shard.items():
-                if any(keyword.lower() in metadata.lower() for keyword in query.lower().split()):
-                    # Include the search term in the relevance description for test compatibility
-                    search_terms = [kw for kw in query.lower().split() if kw.lower() in metadata.lower()]
-                    relevance = f"Relevant to query: {', '.join(search_terms)}"
-                    all_matches.append((path, relevance))
+        successful_shards = 0
+        total_shards = len(self._sharded_index)
         
-        # Remove duplicates while preserving order (deduplication is acceptable)
+        for shard_index, shard in enumerate(self._sharded_index):
+            try:
+                # Skip empty shards
+                if not shard:
+                    continue
+                    
+                print(f"Processing shard {shard_index+1}/{total_shards} with {len(shard)} files")
+                
+                # Create a copy of the context input for this shard
+                shard_context_input = ContextGenerationInput(
+                    template_description=context_input.template_description,
+                    template_type=context_input.template_type,
+                    template_subtype=context_input.template_subtype,
+                    inputs=context_input.inputs,
+                    context_relevance=context_input.context_relevance,
+                    inherited_context=context_input.inherited_context,
+                    previous_outputs=context_input.previous_outputs,
+                    fresh_context=context_input.fresh_context
+                )
+                
+                # Use TaskSystem mediator for this shard
+                from memory.context_generation import AssociativeMatchResult
+                shard_result = self.task_system.generate_context_for_memory_system(
+                    shard_context_input, shard
+                )
+                
+                # Add matches from this shard
+                all_matches.extend(shard_result.matches)
+                successful_shards += 1
+            except Exception as e:
+                print(f"Error processing shard {shard_index}: {str(e)}")
+                # Continue with other shards even if one fails
+        
+        # Remove duplicates while preserving order
         seen = set()
         unique_matches = []
         for match in all_matches:
@@ -366,9 +356,9 @@ class MemorySystem:
         
         # Create context message
         if unique_matches:
-            context = f"Found {len(unique_matches)} relevant files."
+            context = f"Found {len(unique_matches)} relevant files across {successful_shards}/{total_shards} shards."
         else:
-            context = f"No relevant files found."
+            context = f"No relevant files found across {successful_shards}/{total_shards} shards."
         
         return Result(context=context, matches=unique_matches)
     

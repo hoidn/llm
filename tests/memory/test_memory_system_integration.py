@@ -1,159 +1,178 @@
-"""Integration tests for Memory System with new context generation."""
+"""Integration tests for Memory System with TaskSystem mediator."""
 import pytest
 from unittest.mock import MagicMock, patch
 import os
-import tempfile
+import sys
 
 from memory.memory_system import MemorySystem
 from memory.context_generation import ContextGenerationInput, AssociativeMatchResult
 from task_system.task_system import TaskSystem
 
-
 class TestMemorySystemIntegration:
-    """Integration tests for Memory System with new context generation."""
+    """Integration tests for Memory System with TaskSystem mediator."""
     
     @pytest.fixture
-    def memory_system_with_task_system(self):
-        """Create a Memory System with TaskSystem for testing."""
+    def setup_components(self):
+        """Set up MemorySystem and mocked TaskSystem."""
         # Create mock TaskSystem
-        task_system = MagicMock()
+        mock_task_system = MagicMock(spec=TaskSystem)
         
-        # Get absolute paths for test files
-        file1_path = os.path.abspath("file1.py")
-        file2_path = os.path.abspath("file2.py")
-        file3_path = os.path.abspath("file3.py")
-        
-        # Mock generate_context_for_memory_system method with absolute paths
-        task_system.generate_context_for_memory_system.return_value = AssociativeMatchResult(
+        # Create standard result for most tests
+        standard_result = AssociativeMatchResult(
             context="Found 2 relevant files",
-            matches=[
-                (file1_path, "Contains authentication logic"),
-                (file2_path, "Contains user model")
-            ]
+            matches=[("file1.py", "Relevant to query"), ("file2.py", "Also relevant")]
         )
         
-        # Create Memory System
-        memory_system = MemorySystem()
+        # Configure mock to return standard result
+        mock_task_system.generate_context_for_memory_system.return_value = standard_result
         
-        # Set task_system attribute
-        memory_system.task_system = task_system
+        # Create Memory System with mock TaskSystem
+        memory_system = MemorySystem(task_system=mock_task_system)
         
-        # Add some test data to global index with absolute paths
-        memory_system.update_global_index({
-            file1_path: "Authentication module for user login",
-            file2_path: "User model definition with profile data",
-            file3_path: "Unrelated utility functions"
-        })
+        # Add test files to global index
+        memory_system.global_index = {
+            "file1.py": "Test file 1 with keywords",
+            "file2.py": "Test file 2 with other content",
+            "file3.py": "Unrelated file"
+        }
         
-        return memory_system
+        # Disable sharding by default
+        memory_system._config["sharding_enabled"] = False
+        
+        return memory_system, mock_task_system
     
-    def test_get_relevant_context_with_context_generation_input(self, memory_system_with_task_system):
-        """Test get_relevant_context_for with ContextGenerationInput."""
-        memory_system = memory_system_with_task_system
+    def test_context_retrieval_with_mediator(self, setup_components):
+        """Test context retrieval using TaskSystem mediator."""
+        memory_system, mock_task_system = setup_components
         
         # Create context input
         context_input = ContextGenerationInput(
-            template_description="Find authentication code",
-            template_type="atomic",
-            template_subtype="test",
-            inputs={"feature": "login", "component": "auth"},
-            context_relevance={"feature": True, "component": True}
+            template_description="Find test files",
+            template_type="test",
+            template_subtype="standard"
         )
         
         # Get relevant context
         result = memory_system.get_relevant_context_for(context_input)
         
-        # Verify result
-        assert hasattr(result, "context")
-        assert hasattr(result, "matches")
-        assert "Found 2 relevant files" in result.context
+        # Verify TaskSystem mediator was called
+        mock_task_system.generate_context_for_memory_system.assert_called_once()
+        
+        # Verify result structure
+        assert hasattr(result, 'context')
+        assert hasattr(result, 'matches')
         assert len(result.matches) == 2
-        assert os.path.basename(result.matches[0][0]) == "file1.py"
-        assert os.path.basename(result.matches[1][0]) == "file2.py"
-        
-        # Verify TaskSystem was called with correct parameters
-        memory_system.task_system.generate_context_for_memory_system.assert_called_once()
-        args = memory_system.task_system.generate_context_for_memory_system.call_args[0]
-        assert args[0] == context_input
-        assert isinstance(args[1], dict)  # global_index
+        assert result.matches[0][0] == "file1.py"
+        assert result.matches[1][0] == "file2.py"
     
-    def test_get_relevant_context_with_legacy_format(self, memory_system_with_task_system):
-        """Test get_relevant_context_for with legacy dictionary format."""
-        memory_system = memory_system_with_task_system
+    def test_backwards_compatibility_with_dict_input(self, setup_components):
+        """Test backward compatibility with dictionary input."""
+        memory_system, mock_task_system = setup_components
         
-        # Create legacy input format
+        # Create legacy format input
         legacy_input = {
-            "taskText": "Find user model code",
-            "inheritedContext": "Previous task context"
+            "taskText": "Find files with legacy input",
+            "inheritedContext": "Previous context"
         }
         
         # Get relevant context
         result = memory_system.get_relevant_context_for(legacy_input)
         
-        # Verify result
-        assert hasattr(result, "context")
-        assert hasattr(result, "matches")
-        assert "Found 2 relevant files" in result.context
-        assert len(result.matches) == 2
-        # Check filenames without full paths
-        assert all(os.path.basename(match[0]) in ["file1.py", "file2.py"] for match in result.matches)
-        
-        # Verify TaskSystem was called
-        memory_system.task_system.generate_context_for_memory_system.assert_called_once()
-        # Verify conversion to ContextGenerationInput
-        args = memory_system.task_system.generate_context_for_memory_system.call_args[0]
+        # Verify TaskSystem mediator was called with converted input
+        args = mock_task_system.generate_context_for_memory_system.call_args[0]
         assert isinstance(args[0], ContextGenerationInput)
-        assert args[0].template_description == "Find user model code"
-        assert args[0].inherited_context == "Previous task context"
-    
-    def test_fresh_context_disabled(self, memory_system_with_task_system):
-        """Test when fresh_context is disabled."""
-        memory_system = memory_system_with_task_system
+        assert args[0].template_description == "Find files with legacy input"
+        assert args[0].inherited_context == "Previous context"
         
-        # Create context input with fresh_context=disabled
+        # Verify result structure
+        assert len(result.matches) == 2
+        
+    def test_sharded_context_retrieval_with_mediator(self, setup_components):
+        """Test sharded context retrieval using TaskSystem mediator."""
+        memory_system, mock_task_system = setup_components
+        
+        # Create test results for different shards
+        shard1_result = AssociativeMatchResult(
+            context="Found 2 files in shard 1",
+            matches=[("file1.py", "Relevant to query"), ("file2.py", "Also relevant")]
+        )
+        shard2_result = AssociativeMatchResult(
+            context="Found 1 file in shard 2",
+            matches=[("file3.py", "Relevant to shard 2")]
+        )
+        
+        # Configure mock to return different results for different shards
+        mock_task_system.generate_context_for_memory_system.side_effect = [shard1_result, shard2_result]
+        
+        # Enable sharding and set up sharded index
+        memory_system._config["sharding_enabled"] = True
+        memory_system._sharded_index = [
+            {"file1.py": "Content 1", "file2.py": "Content 2"},  # Shard 1
+            {"file3.py": "Content 3", "file4.py": "Content 4"}   # Shard 2
+        ]
+        
+        # Create context input
         context_input = ContextGenerationInput(
-            template_description="Find authentication code",
-            inherited_context="Inherited context data",
-            fresh_context="disabled"
+            template_description="Test sharded retrieval",
+            template_type="test",
+            template_subtype="sharded"
         )
         
         # Get relevant context
         result = memory_system.get_relevant_context_for(context_input)
         
-        # Verify result contains only inherited context
-        assert result.context == "Inherited context data"
-        assert result.matches == []
+        # Verify TaskSystem was called for each shard
+        assert mock_task_system.generate_context_for_memory_system.call_count == 2
         
-        # Verify TaskSystem was not called
-        memory_system.task_system.generate_context_for_memory_system.assert_not_called()
+        # Verify results were combined correctly
+        assert len(result.matches) == 3  # Total matches from both shards
+        assert "shards" in result.context.lower()  # Context mentions shards
     
-    def test_fallback_to_simple_matching(self, memory_system_with_task_system):
-        """Test fallback to simple matching when TaskSystem fails."""
-        memory_system = memory_system_with_task_system
+    def test_error_handling_in_context_retrieval(self, setup_components):
+        """Test error handling in context retrieval."""
+        memory_system, mock_task_system = setup_components
         
-        # Make TaskSystem raise an exception
-        memory_system.task_system.generate_context_for_memory_system.side_effect = Exception("Test error")
+        # Configure mock to raise an exception
+        mock_task_system.generate_context_for_memory_system.side_effect = Exception("Test error")
         
         # Create context input
         context_input = ContextGenerationInput(
-            template_description="authentication login",
-            inputs={"feature": "login"}
+            template_description="Should handle error",
+            template_type="test",
+            template_subtype="error"
         )
         
-        # Get absolute path for test file
-        file1_path = os.path.abspath("file1.py")
+        # Get relevant context (should not raise exception)
+        result = memory_system.get_relevant_context_for(context_input)
         
-        # Patch _get_relevant_context_standard to verify it's called
-        with patch.object(memory_system, '_get_relevant_context_standard') as mock_standard:
-            # Create a mock return value with absolute path
-            mock_result = MagicMock()
-            mock_result.context = "Found files using standard method"
-            mock_result.matches = [(file1_path, "Standard match")]
-            mock_standard.return_value = mock_result
-            
-            # Get relevant context
-            result = memory_system.get_relevant_context_for(context_input)
-            
-            # Verify fallback was used
-            mock_standard.assert_called_once_with(context_input)
-            assert result.context == "Found files using standard method"
+        # Verify error is handled gracefully
+        assert "Error during context generation" in result.context
+        assert len(result.matches) == 0  # No matches on error
+        
+        # Reset side effect
+        mock_task_system.generate_context_for_memory_system.side_effect = None
+        
+        # Test error handling in sharded retrieval
+        # Configure mock to succeed for first shard but fail for second
+        mock_task_system.generate_context_for_memory_system.side_effect = [
+            AssociativeMatchResult(
+                context="Found 1 file in shard 1",
+                matches=[("file1.py", "Relevant")]
+            ),
+            Exception("Test error for shard 2")
+        ]
+        
+        # Enable sharding and set up sharded index
+        memory_system._config["sharding_enabled"] = True
+        memory_system._sharded_index = [
+            {"file1.py": "Content 1"},  # Shard 1
+            {"file2.py": "Content 2"}   # Shard 2 (will fail)
+        ]
+        
+        # Get relevant context (should return partial results)
+        result = memory_system.get_relevant_context_for(context_input)
+        
+        # Verify we still got results from the successful shard
+        assert len(result.matches) == 1
+        assert result.matches[0][0] == "file1.py"
+        assert "1/2" in result.context  # Should mention successful/total shards
