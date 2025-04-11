@@ -31,6 +31,10 @@ class TestTemplateAwareContextGeneration:
         task_system.register_template(SELECTIVE_CONTEXT_TEMPLATE)
         task_system.register_template(COMPLEX_CONTEXT_TEMPLATE)
         
+        # Print template registration status
+        print(f"Templates registered: {list(task_system.templates.keys())}")
+        print(f"Template index: {task_system.template_index}")
+        
         return task_system, memory_system, handler
     
     def test_inclusive_context_template(self, components):
@@ -41,12 +45,16 @@ class TestTemplateAwareContextGeneration:
         context_input_capture = {}
         def capture_context_input(input_data):
             nonlocal context_input_capture
+            print(f"CAPTURE CALLED: {type(input_data)}")
             if isinstance(input_data, RealContextGenerationInput):
                 context_input_capture = {
                     "template_description": input_data.template_description,
                     "inputs": input_data.inputs,
                     "context_relevance": input_data.context_relevance
                 }
+                print(f"CAPTURED DATA: {context_input_capture}")
+            else:
+                print(f"Input data is not RealContextGenerationInput: {type(input_data)}")
             # Return a mock result
             mock_result = MagicMock()
             mock_result.matches = [("file1.py", "metadata1")]
@@ -82,12 +90,16 @@ class TestTemplateAwareContextGeneration:
         context_input_capture = {}
         def capture_context_input(input_data):
             nonlocal context_input_capture
+            print(f"CAPTURE CALLED: {type(input_data)}")
             if isinstance(input_data, RealContextGenerationInput):
                 context_input_capture = {
                     "template_description": input_data.template_description,
                     "inputs": input_data.inputs,
                     "context_relevance": input_data.context_relevance
                 }
+                print(f"CAPTURED DATA: {context_input_capture}")
+            else:
+                print(f"Input data is not RealContextGenerationInput: {type(input_data)}")
             # Return a mock result
             mock_result = MagicMock()
             mock_result.matches = [("file1.py", "metadata1")]
@@ -126,12 +138,16 @@ class TestTemplateAwareContextGeneration:
         context_input_capture = {}
         def capture_context_input(input_data):
             nonlocal context_input_capture
+            print(f"CAPTURE CALLED: {type(input_data)}")
             if isinstance(input_data, RealContextGenerationInput):
                 context_input_capture = {
                     "template_description": input_data.template_description,
                     "inputs": input_data.inputs,
                     "context_relevance": input_data.context_relevance
                 }
+                print(f"CAPTURED DATA: {context_input_capture}")
+            else:
+                print(f"Input data is not RealContextGenerationInput: {type(input_data)}")
             # Return a mock result
             mock_result = MagicMock()
             mock_result.matches = [("file1.py", "metadata1")]
@@ -175,7 +191,10 @@ class TestTemplateAwareContextGeneration:
         context_input_capture = None
         def capture_handler_input(context_input, file_metadata):
             nonlocal context_input_capture
+            print(f"HANDLER CAPTURE CALLED: {type(context_input)}")
             context_input_capture = context_input
+            if hasattr(context_input, 'template_description'):
+                print(f"HANDLER CAPTURED: {context_input.template_description}")
             return [("file1.py", "metadata1")]
             
         handler.determine_relevant_files.side_effect = capture_handler_input

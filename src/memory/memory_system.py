@@ -193,12 +193,17 @@ class MemorySystem:
         Returns:
             Object containing context and file matches
         """
+        print(f"MEMORY SYSTEM get_relevant_context_for CALLED with: {type(input_data)}")
+        
         # Convert input to ContextGenerationInput if needed
         if isinstance(input_data, dict):
             # Handle legacy format with taskText
             context_input = ContextGenerationInput.from_legacy_format(input_data)
+            print(f"Converted dict to ContextGenerationInput: {context_input.template_description}")
         else:
             context_input = input_data
+            if hasattr(context_input, 'template_description'):
+                print(f"Using existing ContextGenerationInput: {context_input.template_description}")
         
         # Create result class - keep this for API compatibility
         class Result:

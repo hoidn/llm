@@ -642,6 +642,9 @@ class TaskSystem(TemplateLookupInterface):
         Returns:
             Task execution result
         """
+        print(f"EXECUTING _execute_atomic_task WITH: {template.get('name')}")
+        print(f"MEMORY SYSTEM: {memory_system}")
+        
         # Get a handler for this task
         handler = self._get_handler(
             model=template.get("model"),
