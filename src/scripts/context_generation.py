@@ -29,16 +29,19 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 from memory.memory_system import MemorySystem
 from memory.context_generation import ContextGenerationInput
 from task_system.task_system import TaskSystem
-from handler.base_handler import BaseHandler
+# Import the REAL handler that can make LLM calls
+from handler.passthrough_handler import PassthroughHandler
 # Import the template registration function
 from task_system.templates.associative_matching import register_template as register_associative_matching_template
+# Ensure model provider is available
+from handler.model_provider import ClaudeProvider
 
 
 console = Console()
 
 def initialize_components(project_dir: str):
     """
-    Initialize the TaskSystem, MemorySystem, and BaseHandler, and index the project.
+    Initialize the TaskSystem, MemorySystem, and PassthroughHandler, and index the project.
 
     Args:
         project_dir: The absolute path to your actual project directory.
@@ -48,16 +51,26 @@ def initialize_components(project_dir: str):
     """
     # Initialize task and memory systems.
     task_system = TaskSystem()
-    # ***** FIX 1: Pass task_system to MemorySystem constructor *****
+    # Pass task_system to MemorySystem constructor
     memory_system = MemorySystem(task_system=task_system)
-    handler = BaseHandler(task_system, memory_system)
-    # Pass handler reference to memory system if needed (current MemorySystem takes it)
+    
+    # Instantiate the real PassthroughHandler that can make LLM calls
+    try:
+        handler = PassthroughHandler(task_system, memory_system)
+        console.print("[green]Instantiated PassthroughHandler.[/green]")
+    except Exception as e:
+        console.print(f"[red]Error instantiating PassthroughHandler: {e}[/red]")
+        console.print("[yellow]Ensure necessary API keys (e.g., ANTHROPIC_API_KEY) are set.[/yellow]")
+        sys.exit(1)
+        
+    # Pass handler reference to memory system
     memory_system.handler = handler
+    # Allow TaskSystem to access MemorySystem if needed
+    task_system.memory_system = memory_system
 
-    # ***** FIX 2: Register the necessary template *****
+    # Register the necessary template
     register_associative_matching_template(task_system)
     console.print("[bold green]Registered associative matching template.[/bold green]")
-    # ***************************************************
 
     console.print(f"[bold]Indexing project files in:[/bold] {project_dir}")
 
@@ -66,7 +79,7 @@ def initialize_components(project_dir: str):
         # Ensure memory_system has the index_git_repository method or handle appropriately
         if hasattr(memory_system, 'index_git_repository'):
              memory_system.index_git_repository(project_dir, {
-                "include_patterns": ["**/*.py"], # Adjust as needed for your project
+                "include_patterns": ["**/*.py", "**/*.md"], # Include Python and Markdown files
                 "exclude_patterns": [
                     "**/__pycache__/**",
                     "**/.git/**",
@@ -234,6 +247,10 @@ def main():
     parser.add_argument("--query", help="Query to search for relevant files",
                         default="Implement data processing feature")
     args = parser.parse_args()
+
+    # Check for API key early if using ClaudeProvider
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+         console.print("[yellow]Warning: ANTHROPIC_API_KEY environment variable not set. LLM calls may fail.[/yellow]")
 
     project_dir = os.path.abspath(args.project_dir)
     # Basic validation for project_dir
