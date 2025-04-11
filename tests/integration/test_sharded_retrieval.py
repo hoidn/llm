@@ -131,9 +131,9 @@ See individual modules for detailed documentation.
         )
         memory_system.enable_sharding(True)
         
-        # Create mock handler
-        mock_handler = MagicMock()
-        memory_system.handler = mock_handler
+        # We don't want to use the handler's determine_relevant_files method
+        # as we're testing the sharded retrieval directly
+        memory_system.handler = None
         
         # Create a repository indexer
         indexer = GitRepositoryIndexer(large_mock_repo)
