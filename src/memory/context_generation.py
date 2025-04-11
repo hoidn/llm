@@ -1,5 +1,5 @@
 """Context generation input structures for Memory System."""
-from typing import Dict, List, Any, Optional, Union, Set
+from typing import Dict, List, Any, Optional, Union, Set, Tuple
 
 
 class ContextGenerationInput:
@@ -17,7 +17,8 @@ class ContextGenerationInput:
         inputs: Optional[Dict[str, Any]] = None,
         context_relevance: Optional[Dict[str, bool]] = None,
         inherited_context: str = "",
-        previous_outputs: Optional[List[str]] = None
+        previous_outputs: Optional[List[str]] = None,
+        fresh_context: str = "enabled"
     ):
         """Initialize a ContextGenerationInput instance.
         
@@ -29,6 +30,7 @@ class ContextGenerationInput:
             context_relevance: Dictionary mapping input names to boolean include/exclude
             inherited_context: Context inherited from parent tasks
             previous_outputs: Previous task outputs for context accumulation
+            fresh_context: Whether to generate fresh context or use inherited only
         """
         self.template_description = template_description
         self.template_type = template_type
@@ -37,6 +39,7 @@ class ContextGenerationInput:
         self.context_relevance = context_relevance or {}
         self.inherited_context = inherited_context
         self.previous_outputs = previous_outputs or []
+        self.fresh_context = fresh_context
         
         # Default to including all inputs if not specified
         if not self.context_relevance and self.inputs:
@@ -57,3 +60,39 @@ class ContextGenerationInput:
             inherited_context=input_data.get("inheritedContext", ""),
             previous_outputs=input_data.get("previousOutputs", [])
         )
+
+
+class AssociativeMatchResult:
+    """Result structure for context retrieval operations.
+    
+    This class provides a standardized format for context retrieval results,
+    including a context summary and list of file matches.
+    """
+    
+    def __init__(self, context: str, matches: List[Tuple[str, str]]):
+        """Initialize an AssociativeMatchResult instance.
+        
+        Args:
+            context: Context summary text
+            matches: List of (file_path, relevance) tuples
+        """
+        self.context = context
+        self.matches = matches
+    
+    def __repr__(self) -> str:
+        """Get string representation of the result."""
+        return f"AssociativeMatchResult(context='{self.context}', matches={len(self.matches)} files)"
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'AssociativeMatchResult':
+        """Create an instance from dictionary format.
+        
+        Args:
+            data: Dictionary with 'context' and 'matches' keys
+            
+        Returns:
+            New AssociativeMatchResult instance
+        """
+        context = data.get("context", "No context available")
+        matches = data.get("matches", [])
+        return cls(context=context, matches=matches)

@@ -308,6 +308,97 @@ class TaskSystem(TemplateLookupInterface):
         print(f"Template not found: {identifier}")
         return None
     
+    def generate_context_for_memory_system(self, context_input, global_index):
+        """Generate context for Memory System using LLM capabilities.
+        
+        This method serves as a mediator between Memory System and Handler,
+        maintaining proper architectural boundaries.
+        
+        Args:
+            context_input: Context generation input from Memory System
+            global_index: Global file metadata index
+            
+        Returns:
+            Object containing context and file matches
+        """
+        # Check if fresh context is disabled
+        if context_input.fresh_context == "disabled":
+            from memory.context_generation import AssociativeMatchResult
+            print("Fresh context disabled, returning inherited context only")
+            return AssociativeMatchResult(
+                context=context_input.inherited_context or "No context available",
+                matches=[]
+            )
+            
+        # Execute specialized context generation task
+        result = self._execute_context_generation_task(context_input, global_index)
+        
+        # Extract relevant files from result
+        file_matches = []
+        try:
+            import json
+            content = result.get("content", "[]")
+            matches_data = json.loads(content) if isinstance(content, str) else content
+            
+            if isinstance(matches_data, list):
+                # Process file matches
+                for item in matches_data:
+                    if isinstance(item, dict) and "path" in item:
+                        path = item["path"]
+                        relevance = item.get("relevance", "Relevant to query")
+                        if path in global_index:
+                            file_matches.append((path, relevance))
+        except Exception as e:
+            print(f"Error processing context generation result: {str(e)}")
+        
+        # Create standardized result
+        from memory.context_generation import AssociativeMatchResult
+        context = f"Found {len(file_matches)} relevant files."
+        return AssociativeMatchResult(context=context, matches=file_matches)
+
+    def _execute_context_generation_task(self, context_input, global_index):
+        """Execute specialized context generation task using LLM.
+        
+        This creates a specialized task for context generation and executes it
+        using the appropriate Handler.
+        
+        Args:
+            context_input: Context generation input
+            global_index: Global file metadata index
+            
+        Returns:
+            Task result with relevant file information
+        """
+        # Create metadata list for templates that expect simplified format
+        file_metadata_list = {}
+        for path, metadata in global_index.items():
+            file_metadata_list[path] = metadata
+        
+        # Create specialized inputs for context generation
+        inputs = {
+            "query": context_input.template_description,
+            "metadata": file_metadata_list,
+            "additional_context": {}
+        }
+        
+        # Add relevant inputs to additional context
+        for name, value in context_input.inputs.items():
+            if context_input.context_relevance.get(name, True):
+                inputs["additional_context"][name] = value
+        
+        if context_input.inherited_context:
+            inputs["inherited_context"] = context_input.inherited_context
+            
+        if context_input.previous_outputs:
+            inputs["previous_outputs"] = context_input.previous_outputs
+        
+        # Execute task to find relevant files
+        return self.execute_task(
+            task_type="atomic",
+            task_subtype="associative_matching",
+            inputs=inputs
+        )
+        
     def resolve_file_paths(self, template: Dict[str, Any], memory_system, handler) -> Tuple[List[str], Optional[str]]:
         """Resolve file paths from various sources.
         

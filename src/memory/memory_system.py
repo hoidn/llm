@@ -13,16 +13,18 @@ class MemorySystem:
     while delegating actual file operations to Handler tools.
     """
     
-    def __init__(self, handler=None, config: Optional[Dict[str, Any]] = None):
+    def __init__(self, handler=None, task_system=None, config: Optional[Dict[str, Any]] = None):
         """
         Initialize the Memory System.
         
         Args:
             handler: Optional handler component for LLM operations
+            task_system: Optional task system for mediating context generation
             config: Optional configuration dictionary
         """
         self.global_index = {}  # Global file metadata index
         self.handler = handler  # Reference to the handler for LLM operations
+        self.task_system = task_system  # Reference to the task system for mediation
         
         # Initialize configuration with defaults
         self._config = {
@@ -205,13 +207,20 @@ class MemorySystem:
             if hasattr(context_input, 'template_description'):
                 print(f"Using existing ContextGenerationInput: {context_input.template_description}")
         
-        # Create result class - keep this for API compatibility
-        class Result:
-            def __init__(self, context, matches):
-                self.context = context
-                self.matches = matches
+        # If the task_system is available, use it as a mediator for context generation
+        if hasattr(self, 'task_system') and self.task_system:
+            try:
+                # Use task_system as mediator to maintain architectural boundaries
+                result = self.task_system.generate_context_for_memory_system(
+                    context_input, 
+                    self.get_global_index()
+                )
+                return result
+            except Exception as e:
+                print(f"Error using task_system mediator for context generation: {e}")
+                # Fall back to handler or basic matching
         
-        # If the handler is available, use it to determine relevant files
+        # For backward compatibility - if handler is available, use it directly
         if self.handler and hasattr(self.handler, 'determine_relevant_files'):
             try:
                 # Get file metadata
@@ -221,8 +230,9 @@ class MemorySystem:
                 relevant_matches = self.handler.determine_relevant_files(context_input, file_metadata)
                 
                 if relevant_matches:
+                    from memory.context_generation import AssociativeMatchResult
                     context = f"Found {len(relevant_matches)} relevant files."
-                    return Result(context=context, matches=relevant_matches)
+                    return AssociativeMatchResult(context=context, matches=relevant_matches)
             except Exception as e:
                 print(f"Error using handler for file relevance: {e}")
                 # Fall back to basic matching

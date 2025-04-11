@@ -285,6 +285,11 @@ class BaseHandler:
             query = query_input
             self.log_debug(f"Determining relevant files for query string: '{query}'")
         elif isinstance(query_input, ContextGenerationInput):
+            # Check if fresh context is disabled
+            if hasattr(query_input, 'fresh_context') and query_input.fresh_context == "disabled":
+                self.log_debug("Fresh context disabled, skipping file relevance determination")
+                return []
+                
             query = query_input.template_description
             self.log_debug(f"Determining relevant files for template: '{query}'")
             
