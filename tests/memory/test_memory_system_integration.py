@@ -18,12 +18,17 @@ class TestMemorySystemIntegration:
         # Create mock TaskSystem
         task_system = MagicMock()
         
-        # Mock generate_context_for_memory_system method
+        # Get absolute paths for test files
+        file1_path = os.path.abspath("file1.py")
+        file2_path = os.path.abspath("file2.py")
+        file3_path = os.path.abspath("file3.py")
+        
+        # Mock generate_context_for_memory_system method with absolute paths
         task_system.generate_context_for_memory_system.return_value = AssociativeMatchResult(
             context="Found 2 relevant files",
             matches=[
-                ("file1.py", "Contains authentication logic"),
-                ("file2.py", "Contains user model")
+                (file1_path, "Contains authentication logic"),
+                (file2_path, "Contains user model")
             ]
         )
         
@@ -33,11 +38,11 @@ class TestMemorySystemIntegration:
         # Set task_system attribute
         memory_system.task_system = task_system
         
-        # Add some test data to global index
+        # Add some test data to global index with absolute paths
         memory_system.update_global_index({
-            "file1.py": "Authentication module for user login",
-            "file2.py": "User model definition with profile data",
-            "file3.py": "Unrelated utility functions"
+            file1_path: "Authentication module for user login",
+            file2_path: "User model definition with profile data",
+            file3_path: "Unrelated utility functions"
         })
         
         return memory_system
@@ -63,8 +68,8 @@ class TestMemorySystemIntegration:
         assert hasattr(result, "matches")
         assert "Found 2 relevant files" in result.context
         assert len(result.matches) == 2
-        assert result.matches[0][0] == "file1.py"
-        assert result.matches[1][0] == "file2.py"
+        assert os.path.basename(result.matches[0][0]) == "file1.py"
+        assert os.path.basename(result.matches[1][0]) == "file2.py"
         
         # Verify TaskSystem was called with correct parameters
         memory_system.task_system.generate_context_for_memory_system.assert_called_once()
@@ -90,6 +95,8 @@ class TestMemorySystemIntegration:
         assert hasattr(result, "matches")
         assert "Found 2 relevant files" in result.context
         assert len(result.matches) == 2
+        # Check filenames without full paths
+        assert all(os.path.basename(match[0]) in ["file1.py", "file2.py"] for match in result.matches)
         
         # Verify TaskSystem was called
         memory_system.task_system.generate_context_for_memory_system.assert_called_once()
@@ -133,12 +140,15 @@ class TestMemorySystemIntegration:
             inputs={"feature": "login"}
         )
         
+        # Get absolute path for test file
+        file1_path = os.path.abspath("file1.py")
+        
         # Patch _get_relevant_context_standard to verify it's called
         with patch.object(memory_system, '_get_relevant_context_standard') as mock_standard:
-            # Create a mock return value
+            # Create a mock return value with absolute path
             mock_result = MagicMock()
             mock_result.context = "Found files using standard method"
-            mock_result.matches = [("file1.py", "Standard match")]
+            mock_result.matches = [(file1_path, "Standard match")]
             mock_standard.return_value = mock_result
             
             # Get relevant context
