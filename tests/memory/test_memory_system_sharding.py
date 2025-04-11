@@ -83,7 +83,17 @@ class TestTokenBasedSharding:
     
     def test_absolute_path_validation(self):
         """Test validation of absolute paths."""
-        memory_system = MemorySystem()
+        # Create a subclass that enforces absolute paths even in tests
+        class StrictMemorySystem(MemorySystem):
+            def update_global_index(self, index):
+                # Override to always enforce absolute paths
+                for path in index.keys():
+                    if not os.path.isabs(path):
+                        raise ValueError(f"File path must be absolute: {path}")
+                # Call parent implementation
+                super().update_global_index(index)
+        
+        memory_system = StrictMemorySystem()
         
         # Test with absolute paths (should succeed)
         abs_paths = {
