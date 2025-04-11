@@ -1,6 +1,7 @@
 """Task System implementation."""
 from typing import Dict, List, Any, Optional, Union, Tuple
 import json
+import os
 from unittest.mock import MagicMock
 
 from .template_utils import resolve_parameters, ensure_template_compatibility, get_preferred_model
