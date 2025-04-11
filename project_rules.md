@@ -88,6 +88,37 @@ project_root/
 └── README.md                # Project documentation
 ```
 
+## Script Conventions
+
+### Script Organization
+
+1. **Script Structure**:
+   - All scripts should have a shebang line: `#!/usr/bin/env python`
+   - Include a descriptive docstring at the top of the file
+   - Add usage examples in the docstring
+   - Use `if __name__ == "__main__":` pattern for executable scripts
+
+2. **Path Management**:
+   - Always add the project root to the Python path at the beginning of scripts:
+     ```python
+     # Add the project root to the Python path
+     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+     ```
+   - Use absolute paths when working with files
+   - Handle path resolution consistently across different operating systems
+
+3. **Command-line Arguments**:
+   - Use `argparse` for scripts that require command-line arguments
+   - Provide helpful descriptions for each argument
+   - Include default values where appropriate
+   - Add `--help` output that explains script usage
+
+4. **Error Handling**:
+   - Include appropriate error handling for file operations
+   - Provide clear error messages for common failure scenarios
+   - Use try/except blocks to gracefully handle exceptions
+   - Exit with appropriate status codes
+
 ## Coding Guidelines
 
 ### General Principles
