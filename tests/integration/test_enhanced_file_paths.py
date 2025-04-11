@@ -190,44 +190,43 @@ class TestEnhancedFilePathsIntegration:
         """Test the execute_task method with file path resolution."""
         task_system, memory_system, handler, temp_dir = components
         
-        # Mock the task_system methods to avoid actual execution
-        with patch.object(task_system, 'resolve_file_paths') as mock_resolve:
-            # Setup mock to return test file paths
-            mock_resolve.return_value = (
-                [os.path.join(temp_dir, "test0.py"), os.path.join(temp_dir, "test1.py")],
-                None
-            )
+        # Create a simple test template
+        template = {
+            "type": "atomic",
+            "subtype": "test",
+            "name": "atomic_test",
+            "description": "Test template",
+            "file_paths_source": {
+                "type": "command",
+                "value": "find . -name '*.py'"
+            }
+        }
+        
+        # Register the template
+        task_system.register_template(template)
+        
+        # Mock the resolve_file_paths method
+        def mock_resolve_file_paths(template, memory_system, handler):
+            return [os.path.join(temp_dir, "test0.py"), os.path.join(temp_dir, "test1.py")], None
             
-            # Create a simple test template
-            template = {
-                "type": "atomic",
-                "subtype": "test",
-                "file_paths_source": {
-                    "type": "command",
-                    "value": "find . -name '*.py'"
-                }
+        task_system.resolve_file_paths = mock_resolve_file_paths
+        
+        # Execute the task
+        with patch.object(handler, 'execute_prompt') as mock_execute_prompt:
+            mock_execute_prompt.return_value = {
+                "status": "COMPLETE",
+                "content": "Task executed",
+                "notes": {}
             }
             
-            # Register the template
-            task_system.register_template(template)
+            result = task_system.execute_task("atomic", "test", {}, memory_system, handler=handler)
             
-            # Create a mock execute_task implementation
-            original_execute_task = task_system.execute_task
-            def mock_execute_task(*args, **kwargs):
-                result = {
-                    "status": "COMPLETE",
-                    "content": "Task executed",
-                    "notes": {}
-                }
-                return result
-                
-            # Patch execute_task temporarily
-            with patch.object(task_system, 'execute_task', side_effect=mock_execute_task):
-                # Execute the task
-                result = original_execute_task("atomic", "test", {}, memory_system, handler=handler)
-                
-                # Verify result
-                assert result["status"] == "COMPLETE"
-                
-                # Verify resolve_file_paths was called
-                mock_resolve.assert_called_once()
+            # Verify result
+            assert result["status"] == "COMPLETE"
+            
+            # Verify execute_prompt was called with file context
+            mock_execute_prompt.assert_called_once()
+            args = mock_execute_prompt.call_args[0]
+            assert "Files:" in args[2]  # Third argument is file_context
+            assert "test0.py" in args[2]
+            assert "test1.py" in args[2]

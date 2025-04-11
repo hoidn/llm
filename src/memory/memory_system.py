@@ -197,8 +197,7 @@ class MemorySystem:
         return result
     
     def get_relevant_context_for(self, input_data: Union[Dict[str, Any], ContextGenerationInput]) -> Any:
-        """
-        Get relevant context for a task using TaskSystem mediator exclusively.
+        """Get relevant context for a task using TaskSystem mediator exclusively.
         
         Args:
             input_data: The input data containing task context, either as a
@@ -233,28 +232,26 @@ class MemorySystem:
                 matches=[]
             )
         
-        # If TaskSystem is available, use it as mediator (preferred approach)
-        try:
-            if hasattr(self, 'task_system') and self.task_system:
-                # If sharding is disabled or global index is small enough, use standard approach
-                if not self._config["sharding_enabled"] or len(self._sharded_index) <= 1:
-                    return self._get_relevant_context_with_mediator(context_input)
-                
-                # Otherwise, use sharded approach with mediator
-                return self._get_relevant_context_sharded_with_mediator(context_input)
-            else:
-                print("WARNING: TaskSystem not available for context generation")
-                return Result(
-                    context="TaskSystem not available for context generation",
-                    matches=[]
-                )
-        except Exception as e:
-            print(f"Error in get_relevant_context_for: {str(e)}")
-            # Fall back to empty result with error message
+        # Verify TaskSystem is available
+        if not hasattr(self, 'task_system') or self.task_system is None:
+            print("WARNING: TaskSystem not available for context generation")
             return Result(
-                context=f"Error during context generation: {str(e)}",
+                context="TaskSystem not available for context generation",
                 matches=[]
             )
+        
+        try:
+            # If sharding is disabled or global index is small enough, use standard approach
+            if not self._config["sharding_enabled"] or len(self._sharded_index) <= 1:
+                return self._get_relevant_context_with_mediator(context_input)
+            
+            # Otherwise, use sharded approach
+            return self._get_relevant_context_sharded_with_mediator(context_input)
+        except Exception as e:
+            # Improved error handling - return empty result with error message
+            error_msg = f"Error during context generation: {str(e)}"
+            print(error_msg)
+            return Result(context=error_msg, matches=[])
     
     def _get_relevant_context_with_mediator(self, context_input: ContextGenerationInput) -> Any:
         """

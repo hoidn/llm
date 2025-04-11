@@ -49,6 +49,12 @@ class TestTokenBasedSharding:
     def test_shard_all_matches_returned(self):
         """Test that ALL matches are returned without filtering."""
         memory_system = MemorySystem()
+        
+        # Create and configure mock TaskSystem
+        mock_task_system = MagicMock(spec=TaskSystem)
+        memory_system.task_system = mock_task_system
+        
+        # Configure sharding
         memory_system.configure_sharding(token_size_per_shard=10)
         memory_system.enable_sharding(True)
         
@@ -66,20 +72,36 @@ class TestTokenBasedSharding:
         # Should have multiple shards
         assert len(memory_system._sharded_index) > 1
         
+        # Configure mock to simulate finding files containing "user"
+        def mock_generate_context(context_input, file_metadata):
+            from memory.context_generation import AssociativeMatchResult
+            
+            query = "user"  # Hard-coded for this test
+            matches = []
+            
+            for path, metadata in file_metadata.items():
+                if query in metadata.lower():
+                    matches.append((path, f"Relevant to '{query}'"))
+            
+            return AssociativeMatchResult(
+                context=f"Found {len(matches)} relevant files",
+                matches=matches
+            )
+        
+        mock_task_system.generate_context_for_memory_system.side_effect = mock_generate_context
+        
         # Search for "user" which should match 3 files
         result = memory_system.get_relevant_context_for({"taskText": "user"})
         
         # Count matches in raw index
-        user_files_count = sum(1 for metadata in test_index.values() 
+        user_files_count = sum(1 for metadata in test_index.values()
                               if "user" in metadata.lower())
         
         # Verify ALL matches are returned (not limited)
         assert len(result.matches) == user_files_count, "All matching files should be returned"
         
-        # Verify matches contain expected files
-        user_files = [path for path, metadata in result.matches 
-                      if "user" in metadata.lower()]
-        assert len(user_files) == user_files_count
+        # Verify each shard was processed
+        assert mock_task_system.generate_context_for_memory_system.call_count == len(memory_system._sharded_index)
     
     def test_absolute_path_validation(self):
         """Test validation of absolute paths."""

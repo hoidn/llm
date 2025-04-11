@@ -58,8 +58,8 @@ class TestTemplateAwareContextGeneration:
         assert result.matches[0][0] == "file1.py"
         assert result.matches[1][0] == "file2.py"
     
-    def test_memory_system_falls_back_to_standard_approach(self):
-        """Test that MemorySystem falls back to standard approach if TaskSystem fails."""
+    def test_memory_system_handles_task_system_errors(self):
+        """Test that MemorySystem handles TaskSystem errors gracefully."""
         # Create mock TaskSystem that raises an exception
         mock_task_system = MagicMock(spec=TaskSystem)
         mock_task_system.generate_context_for_memory_system.side_effect = Exception("Test error")
@@ -89,8 +89,9 @@ class TestTemplateAwareContextGeneration:
         # Verify TaskSystem.generate_context_for_memory_system was called
         mock_task_system.generate_context_for_memory_system.assert_called_once()
         
-        # Verify result contains matching file
-        assert any("auth.py" in match[0] for match in result.matches)
+        # Verify result contains error message
+        assert "Error during context generation" in result.context
+        assert len(result.matches) == 0  # No matches on error
         
     def test_context_input_fresh_context_disabled(self):
         """Test that MemorySystem respects fresh_context=disabled."""

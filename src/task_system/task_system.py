@@ -544,6 +544,70 @@ class TaskSystem(TemplateLookupInterface):
                 }
             }
             
+        # Check for specialized task subtypes FIRST
+        if task_type == "atomic":
+            # Check for specialized handlers based on subtype
+            if task_subtype == "associative_matching":
+                print(f"Calling _execute_associative_matching with template: {template.get('name')}")
+                return self._execute_associative_matching(template, resolved_inputs, memory_system)
+                    
+            # For format_json subtype
+            elif task_subtype == "format_json":
+                # Execute the format_json template directly
+                try:
+                    from .templates.function_examples import execute_format_json
+                    value = resolved_inputs.get("value", {})
+                    indent = resolved_inputs.get("indent", 2)
+                    result = execute_format_json(value, indent)
+                    return {
+                        "status": "COMPLETE",
+                        "content": result,
+                        "notes": {}
+                    }
+                except Exception as e:
+                    return {
+                        "status": "FAILED", 
+                        "content": f"Error formatting JSON: {str(e)}",
+                        "notes": {"error": str(e)}
+                    }
+                
+            # For math operation subtypes
+            elif task_subtype == "math_add":
+                try:
+                    from .templates.function_examples import execute_add
+                    x = resolved_inputs.get("x", 0)
+                    y = resolved_inputs.get("y", 0)
+                    result = execute_add(x, y)
+                    return {
+                        "status": "COMPLETE",
+                        "content": str(result),
+                        "notes": {}
+                    }
+                except Exception as e:
+                    return {
+                        "status": "FAILED",
+                        "content": f"Error executing add: {str(e)}",
+                        "notes": {"error": str(e)}
+                    }
+                        
+            elif task_subtype == "math_subtract":
+                try:
+                    from .templates.function_examples import execute_subtract
+                    x = resolved_inputs.get("x", 0)
+                    y = resolved_inputs.get("y", 0)
+                    result = execute_subtract(x, y)
+                    return {
+                        "status": "COMPLETE",
+                        "content": str(result),
+                        "notes": {}
+                    }
+                except Exception as e:
+                    return {
+                        "status": "FAILED",
+                        "content": f"Error executing subtract: {str(e)}",
+                        "notes": {"error": str(e)}
+                    }
+            
         # Extract context management settings
         context_mgmt = template.get("context_management", {})
         inherit_context = context_mgmt.get("inherit_context", "none")
@@ -596,15 +660,29 @@ class TaskSystem(TemplateLookupInterface):
         handler_config = kwargs.get("handler_config", {})
         if selected_model:
             handler_config["model"] = selected_model
-        
-        handler = self._get_handler(
+    
+        handler = kwargs.get("handler") or self._get_handler(
             model=resolved_template.get("model"),
             config=handler_config
         )
-        
-        # Create file context through Memory System if available
+    
+        # Resolve file paths using the coordinator
+        file_paths = []
         file_context = None
-        if memory_system and fresh_context != "disabled":
+        error_message = None
+    
+        if hasattr(self, 'resolve_file_paths'):
+            file_paths, error_message = self.resolve_file_paths(resolved_template, memory_system, handler)
+        
+            # Create file context if paths are available
+            if file_paths:
+                file_context = f"Files: {', '.join(file_paths)}"
+            
+                # Store file paths in result metadata for testing
+                resolved_template["_context_file_paths"] = file_paths
+    
+        # Create file context through Memory System if file_context is None and fresh_context is enabled
+        if file_context is None and memory_system and fresh_context != "disabled":
             # Create context generation input
             from memory.context_generation import ContextGenerationInput
             context_input = ContextGenerationInput(
@@ -617,24 +695,24 @@ class TaskSystem(TemplateLookupInterface):
                 previous_outputs=previous_outputs,
                 fresh_context=fresh_context
             )
-            
+        
             try:
                 # Get relevant context
                 context_result = memory_system.get_relevant_context_for(context_input)
-                
+            
                 # Extract file paths if available
                 if hasattr(context_result, 'matches'):
                     file_paths = [match[0] for match in context_result.matches]
-                    
+                
                     # Create file context if paths are available
                     if file_paths:
-                        # This would be replaced with actual file content loading
                         file_context = f"Files: {', '.join(file_paths)}"
-                        
+                    
                         # Store file paths in result metadata for testing
                         resolved_template["_context_file_paths"] = file_paths
             except Exception as e:
                 print(f"Error retrieving context: {str(e)}")
+                error_message = f"Error retrieving context: {str(e)}"
                 # Continue without context rather than failing the task
         
         # Extract file context if available from inputs (fallback)
