@@ -3,17 +3,17 @@
 Demonstration script for token-based sharded context retrieval.
 
 This script shows how the sharded context retrieval works with a real repository.
-Usage: python -m src.scripts.demo_sharded_retrieval [repository_path] [query]
+Usage: python src/scripts/demo_sharded_retrieval.py [repository_path] [query]
 
 Example:
-    python -m src.scripts.demo_sharded_retrieval /path/to/repo "user authentication"
+    python src/scripts/demo_sharded_retrieval.py /path/to/repo "user authentication"
 """
 
 import os
 import sys
 import time
-from src.memory.memory_system import MemorySystem
-from src.memory.indexers.git_repository_indexer import GitRepositoryIndexer
+from memory.memory_system import MemorySystem
+from memory.indexers.git_repository_indexer import GitRepositoryIndexer
 
 def main():
     # Get repository path and query from arguments
