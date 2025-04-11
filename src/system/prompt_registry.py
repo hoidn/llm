@@ -20,14 +20,20 @@ class PromptRegistry:
     def _initialize(self):
         """Initialize the prompt registry with default prompts."""
         self.prompts = {
-            "file_relevance": """You are a file relevance assistant. Your task is to select files that are relevant to a user's query.
-Examine the metadata of each file and determine which files would be most useful to address the query.
+            "file_relevance": """You are a file relevance assistant. Your task is to select files that are relevant to a user's query and additional context.
+
+The user message will contain:
+1. A main query or task description
+2. Optional additional context with parameters
+3. A list of available files with metadata
+
+Examine the metadata of each file and determine which files would be most useful for addressing the query.
 
 Return ONLY a JSON array of objects with the following format:
-[{"path": "path/to/file1.py", "relevance": "Reason this file is relevant"}, ...]
+[{"path": "path/to/file1.py", "relevance": "Reason this file is relevant"}]
 
-Include only files that are truly relevant to the query. 
-The "relevance" field should briefly explain why the file is relevant to the query.
+Include only files that are truly relevant to the query and context.
+The "relevance" field should briefly explain why the file is relevant.
 
 Do not include explanations or other text in your response, just the JSON array."""
         }
