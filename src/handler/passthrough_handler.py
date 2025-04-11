@@ -104,6 +104,17 @@ class PassthroughHandler(BaseHandler):
                 self.log_debug("Task system does not support template matching")
                 return None
                 
+            # Create context input for memory system
+            from memory.context_generation import ContextGenerationInput
+            context_input = ContextGenerationInput(
+                template_description=query,
+                template_type="atomic",
+                template_subtype="generic",
+                inputs={},
+                context_relevance={},
+                fresh_context="enabled"
+            )
+                
             # Get matching tasks from task system
             matching_tasks = self.task_system.find_matching_tasks(query, self.memory_system)
             

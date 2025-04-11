@@ -191,11 +191,18 @@ class AiderBridge:
             List of relevant file paths
         """
         try:
-            # Use memory system to find relevant context
-            context_input = {
-                "taskText": query,
-                "inheritedContext": "",
-            }
+            # Use memory system with ContextGenerationInput
+            from memory.context_generation import ContextGenerationInput
+            
+            context_input = ContextGenerationInput(
+                template_description=query,
+                template_type="atomic",
+                template_subtype="associative_matching",
+                inputs={},
+                context_relevance={},
+                inherited_context="",
+                fresh_context="enabled"
+            )
             
             context_result = self.memory_system.get_relevant_context_for(context_input)
             

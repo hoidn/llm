@@ -1,149 +1,207 @@
-"""Tests for template-aware context generation."""
+"""Tests for the Template-Aware Context Generation architecture."""
 import pytest
 from unittest.mock import patch, MagicMock
 
-from memory.context_generation import ContextGenerationInput
 from memory.memory_system import MemorySystem
-from handler.base_handler import BaseHandler
-from system.prompt_registry import registry as prompt_registry
+from memory.context_generation import ContextGenerationInput, AssociativeMatchResult
+from task_system.task_system import TaskSystem
 
-class TestContextGeneration:
-    """Tests for template-aware context generation."""
-    
-    def test_context_generation_input_creation(self):
-        """Test creating a ContextGenerationInput object."""
-        # Create a basic input
-        context_input = ContextGenerationInput(
-            template_description="Test template",
-            template_type="atomic",
-            template_subtype="test",
-            inputs={"query": "test query", "max_results": 10},
-            context_relevance={"query": True, "max_results": False}
+
+class TestTemplateAwareContextGeneration:
+    """Tests for the Template-Aware Context Generation architecture."""
+
+    def test_memory_system_uses_task_system_mediator(self):
+        """Test that MemorySystem uses TaskSystem as a mediator for context generation."""
+        # Create mock TaskSystem
+        mock_task_system = MagicMock(spec=TaskSystem)
+        mock_task_system.generate_context_for_memory_system.return_value = AssociativeMatchResult(
+            context="Found 2 relevant files.",
+            matches=[("file1.py", "Relevant to query"), ("file2.py", "Relevant to query")]
         )
         
-        # Verify fields
-        assert context_input.template_description == "Test template"
-        assert context_input.template_type == "atomic"
-        assert context_input.template_subtype == "test"
-        assert context_input.inputs["query"] == "test query"
-        assert context_input.inputs["max_results"] == 10
-        assert context_input.context_relevance["query"] is True
-        assert context_input.context_relevance["max_results"] is False
-    
-    def test_from_legacy_format(self):
-        """Test creating from legacy format."""
-        legacy_input = {
-            "taskText": "legacy query",
-            "inheritedContext": "inherited context"
-        }
+        # Create MemorySystem with mock TaskSystem
+        memory_system = MemorySystem(task_system=mock_task_system)
         
-        context_input = ContextGenerationInput.from_legacy_format(legacy_input)
-        
-        assert context_input.template_description == "legacy query"
-        assert context_input.inherited_context == "inherited context"
-    
-    def test_memory_system_context_retrieval(self):
-        """Test context retrieval with ContextGenerationInput."""
-        # Create mocks
-        mock_handler = MagicMock()
-        mock_handler.determine_relevant_files.return_value = [
-            ("file1.py", "Relevant to query"),
-            ("file2.py", "Contains related functionality")
-        ]
-        
-        # Create memory system with mock handler
-        memory_system = MemorySystem(handler=mock_handler)
+        # Create mock global index
         memory_system.global_index = {
-            "file1.py": "metadata1", 
-            "file2.py": "metadata2"
+            "file1.py": "File metadata 1",
+            "file2.py": "File metadata 2",
+            "file3.py": "File metadata 3"
         }
         
         # Create context input
         context_input = ContextGenerationInput(
-            template_description="Test query",
-            inputs={"param1": "value1", "param2": "value2"},
-            context_relevance={"param1": True, "param2": False}
+            template_description="Find auth code",
+            template_type="atomic",
+            template_subtype="test",
+            inputs={"feature": "login"},
+            context_relevance={"feature": True}
         )
         
-        # Get relevant context
+        # Call get_relevant_context_for
         result = memory_system.get_relevant_context_for(context_input)
         
-        # Verify handler was called with context input
-        mock_handler.determine_relevant_files.assert_called_once()
-        args = mock_handler.determine_relevant_files.call_args[0]
-        assert args[0] == context_input  # First arg should be context_input
+        # Verify TaskSystem.generate_context_for_memory_system was called
+        mock_task_system.generate_context_for_memory_system.assert_called_once()
+        
+        # Verify first argument was the context_input
+        args, _ = mock_task_system.generate_context_for_memory_system.call_args
+        assert args[0] is context_input
+        
+        # Verify second argument was the global index
+        assert args[1] == memory_system.global_index
         
         # Verify result
-        assert hasattr(result, "matches")
+        assert result.context == "Found 2 relevant files."
         assert len(result.matches) == 2
         assert result.matches[0][0] == "file1.py"
+        assert result.matches[1][0] == "file2.py"
     
-    def test_base_handler_determine_relevant_files(self):
-        """Test determine_relevant_files with ContextGenerationInput."""
-        # Create mocks
-        mock_task_system = MagicMock()
-        mock_memory_system = MagicMock()
-        mock_provider = MagicMock()
+    def test_memory_system_falls_back_to_standard_approach(self):
+        """Test that MemorySystem falls back to standard approach if TaskSystem fails."""
+        # Create mock TaskSystem that raises an exception
+        mock_task_system = MagicMock(spec=TaskSystem)
+        mock_task_system.generate_context_for_memory_system.side_effect = Exception("Test error")
         
-        # Setup provider response
-        mock_provider.send_message.return_value = """[
-            {"path": "file1.py", "relevance": "Relevant to query"},
-            {"path": "file2.py", "relevance": "Contains related code"}
-        ]"""
+        # Create MemorySystem with mock TaskSystem
+        memory_system = MemorySystem(task_system=mock_task_system)
         
-        # Create handler
-        with patch('system.prompt_registry.registry') as mock_registry:
-            # Setup mock registry
-            mock_registry.get_prompt.return_value = "Test prompt"
-            
-            # Create handler with mocks
-            handler = BaseHandler(mock_task_system, mock_memory_system)
-            handler.model_provider = mock_provider
-            
-            # Create context input
-            context_input = ContextGenerationInput(
-                template_description="Test query",
-                inputs={"param1": "value1", "param2": "value2"},
-                context_relevance={"param1": True, "param2": False}
-            )
-            
-            # Create file metadata
-            file_metadata = {
-                "file1.py": "metadata1",
-                "file2.py": "metadata2",
-                "file3.py": "metadata3"
+        # Create mock global index with files that match query
+        memory_system.global_index = {
+            "auth.py": "Authentication module for login feature",
+            "file2.py": "Unrelated file",
+            "file3.py": "Unrelated file"
+        }
+        
+        # Create context input with terms that match the file metadata
+        context_input = ContextGenerationInput(
+            template_description="Find authentication code",
+            template_type="atomic",
+            template_subtype="test",
+            inputs={"feature": "login"},
+            context_relevance={"feature": True}
+        )
+        
+        # Call get_relevant_context_for
+        result = memory_system.get_relevant_context_for(context_input)
+        
+        # Verify TaskSystem.generate_context_for_memory_system was called
+        mock_task_system.generate_context_for_memory_system.assert_called_once()
+        
+        # Verify result contains matching file
+        assert any("auth.py" in match[0] for match in result.matches)
+        
+    def test_context_input_fresh_context_disabled(self):
+        """Test that MemorySystem respects fresh_context=disabled."""
+        # Create mock TaskSystem
+        mock_task_system = MagicMock(spec=TaskSystem)
+        
+        # Create MemorySystem with mock TaskSystem
+        memory_system = MemorySystem(task_system=mock_task_system)
+        
+        # Create context input with fresh_context=disabled
+        context_input = ContextGenerationInput(
+            template_description="Find auth code",
+            template_type="atomic",
+            template_subtype="test",
+            inputs={"feature": "login"},
+            context_relevance={"feature": True},
+            inherited_context="Previous context",
+            fresh_context="disabled"
+        )
+        
+        # Call get_relevant_context_for
+        result = memory_system.get_relevant_context_for(context_input)
+        
+        # Verify TaskSystem.generate_context_for_memory_system was NOT called
+        mock_task_system.generate_context_for_memory_system.assert_not_called()
+        
+        # Verify result contains inherited context and no matches
+        assert result.context == "Previous context"
+        assert len(result.matches) == 0
+
+    def test_aider_bridge_uses_context_generation_input(self):
+        """Test that AiderBridge uses ContextGenerationInput for context retrieval."""
+        # Import here to avoid circular imports
+        from aider_bridge.bridge import AiderBridge
+        
+        # Create mock memory system
+        mock_memory_system = MagicMock(spec=MemorySystem)
+        mock_memory_system.get_relevant_context_for.return_value = MagicMock(
+            matches=[("file1.py", "Relevant to query"), ("file2.py", "Relevant to query")]
+        )
+        
+        # Create AiderBridge with mock memory system
+        bridge = AiderBridge(mock_memory_system)
+        
+        # Call get_context_for_query
+        result = bridge.get_context_for_query("Find auth code")
+        
+        # Verify memory_system.get_relevant_context_for was called with ContextGenerationInput
+        mock_memory_system.get_relevant_context_for.assert_called_once()
+        args, _ = mock_memory_system.get_relevant_context_for.call_args
+        
+        # Check that the argument is a ContextGenerationInput
+        assert isinstance(args[0], ContextGenerationInput)
+        
+        # Check ContextGenerationInput properties
+        context_input = args[0]
+        assert context_input.template_description == "Find auth code"
+        assert context_input.template_type == "atomic"
+        assert context_input.fresh_context == "enabled"
+        
+    def test_task_system_mediator_integration(self):
+        """Integration test for the TaskSystem mediator pattern."""
+        # Create real components with mocked LLM interaction
+        task_system = TaskSystem()
+        memory_system = MemorySystem(task_system=task_system)
+        task_system.set_test_mode(True)  # Use MockHandler for tests
+        
+        # Create mock global index
+        memory_system.global_index = {
+            "auth.py": "Authentication module for login feature",
+            "user.py": "User management module",
+            "config.py": "Configuration module"
+        }
+        
+        # Register associative matching template
+        from task_system.templates.associative_matching import register_template
+        register_template(task_system)
+        
+        # Create context input
+        context_input = ContextGenerationInput(
+            template_description="Find authentication code",
+            template_type="atomic",
+            template_subtype="test",
+            inputs={"feature": "login"},
+            context_relevance={"feature": True}
+        )
+        
+        # Patch TaskSystem.execute_task to return a predetermined result
+        with patch.object(task_system, 'execute_task') as mock_execute_task:
+            # Create a mock result with file matches
+            mock_execute_task.return_value = {
+                "status": "COMPLETE",
+                "content": '[{"path": "auth.py", "relevance": "Matches authentication query"}, '
+                           '{"path": "user.py", "relevance": "Related to user management"}]'
             }
             
-            # Call determine_relevant_files
-            result = handler.determine_relevant_files(context_input, file_metadata)
+            # Call get_relevant_context_for
+            result = memory_system.get_relevant_context_for(context_input)
             
-            # Verify registry was used
-            mock_registry.get_prompt.assert_called_once_with("file_relevance")
+            # Verify task_system.execute_task was called
+            mock_execute_task.assert_called_once()
             
-            # Verify provider was called with correctly formatted message
-            mock_provider.send_message.assert_called_once()
-            args = mock_provider.send_message.call_args[0]
-            assert len(args) == 0  # No positional args
-            kwargs = mock_provider.send_message.call_args[1]
-            messages = kwargs["messages"]
-            assert len(messages) == 1
-            assert messages[0]["role"] == "user"
+            # Verify task_type and task_subtype arguments
+            args, kwargs = mock_execute_task.call_args
+            assert args[0] == "atomic"
+            assert args[1] == "associative_matching"
             
-            # Verify message includes query and relevant input (param1)
-            message_content = messages[0]["content"]
-            assert "Test query" in message_content
-            assert "param1: value1" in message_content
-            assert "param2" not in message_content
-            
-            # Verify system prompt was used
-            assert kwargs["system_prompt"] == "Test prompt"
-            
-            # Verify result parsing
-            assert len(result) == 2
-            assert result[0][0] == "file1.py"
-            assert result[0][1] == "Relevant to query"
-            assert result[1][0] == "file2.py"
-            assert result[1][1] == "Contains related code"
+            # Verify result
+            assert result.context.startswith("Found 2 relevant files")
+            assert len(result.matches) == 2
+            assert result.matches[0][0] == "auth.py"
+            assert result.matches[1][0] == "user.py"
 """Tests for context generation classes."""
 import pytest
 from typing import Dict, Any, List, Tuple

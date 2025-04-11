@@ -235,36 +235,6 @@ class BaseHandler:
         self.log_debug(f"Built system prompt with {len(system_prompt)} characters")
         return system_prompt
         
-    def _build_file_relevance_message(self, query: str, inputs: Dict[str, Any], file_metadata: Dict[str, str]) -> str:
-        """Build user message for file relevance determination.
-        
-        Args:
-            query: Main query or template description
-            inputs: Dictionary of relevant input parameters
-            file_metadata: Dictionary of file metadata
-            
-        Returns:
-            Formatted user message
-        """
-        # Build context with query
-        message = f"Query: {query}\n\n"
-        
-        # Add inputs if available
-        if inputs:
-            message += "Additional context:\n"
-            for name, value in inputs.items():
-                message += f"{name}: {value}\n"
-            message += "\n"
-        
-        # Add file metadata
-        message += "Available files:\n\n"
-        for i, (path, metadata) in enumerate(file_metadata.items(), 1):
-            message += f"File {i}: {path}\n"
-            message += f"Metadata: {metadata}\n\n"
-        
-        message += "Select the files most relevant to this context."
-        return message
-        
     def determine_relevant_files(self, query_input: Union[str, ContextGenerationInput], file_metadata: Dict[str, str]) -> List[Tuple[str, str]]:
         """Determine relevant files for a query using LLM.
         

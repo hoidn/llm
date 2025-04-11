@@ -233,21 +233,23 @@ class MemorySystem:
                 matches=[]
             )
         
-        # If the handler is available, use it to determine relevant files
-        if self.handler and hasattr(self.handler, 'determine_relevant_files'):
-            try:
+        # If TaskSystem is available, use it as mediator (preferred approach)
+        try:
+            if hasattr(self, 'task_system') and self.task_system:
                 # Get file metadata
                 file_metadata = self.get_global_index()
                 
-                # Use the handler to determine relevant files based on context input
-                relevant_matches = self.handler.determine_relevant_files(context_input, file_metadata)
+                # Use TaskSystem mediator pattern
+                from memory.context_generation import AssociativeMatchResult
+                associative_result = self.task_system.generate_context_for_memory_system(
+                    context_input, file_metadata
+                )
                 
-                if relevant_matches:
-                    context = f"Found {len(relevant_matches)} relevant files."
-                    return Result(context=context, matches=relevant_matches)
-            except Exception as e:
-                print(f"Error using handler for file relevance: {e}")
-                # Fall back to basic matching
+                # Convert to legacy Result object for backward compatibility
+                return Result(context=associative_result.context, matches=associative_result.matches)
+        except Exception as e:
+            print(f"Error using TaskSystem mediator: {e}")
+            # Fall back to basic matching
         
         # If TaskSystem is available, use it as mediator (preferred approach)
         try:
