@@ -9,38 +9,34 @@ from memory.context_generation import ContextGenerationInput
 class TestMemorySystemContext:
     """Tests for the Memory System's context generation functionality."""
     
-    def test_build_query_from_input(self):
-        """Test building query from context input."""
+    def test_context_input_handling(self):
+        """Test handling of context input objects."""
         memory_system = MemorySystem()
         
-        # Test with template description only
+        # Create test input
         input1 = ContextGenerationInput(
-            template_description="Find files for authentication"
+            template_description="Find files for authentication",
+            inputs={"query": "auth", "max_results": 10},
+            context_relevance={"query": True, "max_results": False}
         )
-        query1 = memory_system._build_query_from_input(input1)
-        assert query1 == "Find files for authentication"
         
-        # Test with relevant inputs
-        input2 = ContextGenerationInput(
-            template_description="Find files",
-            inputs={"feature": "authentication", "exclude_tests": True},
-            context_relevance={"feature": True, "exclude_tests": True}
-        )
-        query2 = memory_system._build_query_from_input(input2)
-        assert "Find files" in query2
-        assert "feature: authentication" in query2
-        assert "exclude_tests: True" in query2
+        # Mock the handler for this test
+        mock_handler = MagicMock()
+        mock_handler.determine_relevant_files.return_value = [("file1.py", "Relevant")]
+        memory_system.handler = mock_handler
         
-        # Test with some inputs marked as not relevant
-        input3 = ContextGenerationInput(
-            template_description="Find files",
-            inputs={"feature": "authentication", "format": "json"},
-            context_relevance={"feature": True, "format": False}
-        )
-        query3 = memory_system._build_query_from_input(input3)
-        assert "Find files" in query3
-        assert "feature: authentication" in query3
-        assert "format: json" not in query3
+        # Test get_relevant_context_for with ContextGenerationInput
+        result = memory_system.get_relevant_context_for(input1)
+        
+        # Verify handler was called with the right input
+        mock_handler.determine_relevant_files.assert_called_once()
+        args = mock_handler.determine_relevant_files.call_args[0]
+        assert args[0] == input1
+        
+        # Verify result
+        assert hasattr(result, "matches")
+        assert len(result.matches) == 1
+        assert result.matches[0][0] == "file1.py"
     
     @patch('memory.memory_system.MemorySystem._get_relevant_context_standard')
     def test_get_relevant_context_for_with_context_input(self, mock_standard):

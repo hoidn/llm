@@ -240,14 +240,14 @@ class MemorySystem:
         Returns:
             Object containing context and file matches
         """
-        # Extract query from input data
-        query = self._build_query_from_input(input_data)
-        
         # Create result class
         class Result:
             def __init__(self, context, matches):
                 self.context = context
                 self.matches = matches
+        
+        # For simple matching without LLM, use template_description directly
+        query = input_data.template_description
         
         # Perform basic keyword matching - return ALL matches
         matches = []
@@ -274,9 +274,6 @@ class MemorySystem:
         Returns:
             Object containing context and file matches
         """
-        # Extract query from input data
-        query = self._build_query_from_input(input_data)
-        
         # Create result class
         class Result:
             def __init__(self, context, matches):
@@ -286,6 +283,10 @@ class MemorySystem:
         # Process each shard independently
         all_matches = []
         for shard in self._sharded_index:
+            # In a real implementation with LLM, we would pass the whole input_data
+            # For this simple matching, use template_description directly
+            query = input_data.template_description
+            
             # Basic keyword matching for this shard
             for path, metadata in shard.items():
                 if any(keyword.lower() in metadata.lower() for keyword in query.lower().split()):
