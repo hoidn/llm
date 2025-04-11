@@ -304,9 +304,9 @@ class MemorySystem:
         
         # Create context message
         if unique_matches:
-            context = f"Found {len(unique_matches)} relevant files for '{task_text}'."
+            context = f"Found {len(unique_matches)} relevant files."
         else:
-            context = f"No relevant files found for '{task_text}'."
+            context = f"No relevant files found."
         
         return Result(context=context, matches=unique_matches)
     
