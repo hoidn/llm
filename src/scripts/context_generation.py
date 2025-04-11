@@ -16,6 +16,7 @@ Example:
 import os
 import sys
 import argparse
+import logging
 from pathlib import Path
 from rich.console import Console
 from rich.table import Table
@@ -24,6 +25,9 @@ from typing import Any
 
 # Add project root to Python path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+# Import logging configuration
+from config.logging_config import setup_logging
 
 # Import required components from your application.
 from memory.memory_system import MemorySystem
@@ -252,11 +256,17 @@ def main():
     parser.add_argument("project_dir", help="Path to your project directory (must be a git repository)")
     parser.add_argument("--query", help="Query to search for relevant files",
                         default="Implement data processing feature")
+    parser.add_argument("--log-level", help="Logging level", choices=["DEBUG", "INFO", "WARNING", "ERROR"], default="INFO")
+    parser.add_argument("--log-file", help="Log to file instead of stdout")
     args = parser.parse_args()
+    
+    # Setup logging
+    setup_logging(level=args.log_level, log_file=args.log_file)
 
     # Check for API key early if using ClaudeProvider
     if not os.environ.get("ANTHROPIC_API_KEY"):
          console.print("[yellow]Warning: ANTHROPIC_API_KEY environment variable not set. LLM calls may fail.[/yellow]")
+         logging.warning("ANTHROPIC_API_KEY environment variable not set. LLM calls may fail.")
 
     project_dir = os.path.abspath(args.project_dir)
     # Basic validation for project_dir

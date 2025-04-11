@@ -4,6 +4,7 @@ import re
 import os
 import math
 import json
+import logging
 from task_system.template_utils import Environment
 
 # Template definition as a Python dictionary
@@ -141,7 +142,7 @@ def execute_template(inputs: Dict[str, Any], memory_system, handler) -> List[Dic
     Returns:
         List of relevant file objects [{'path': str, 'relevance': str}]
     """
-    print(f"DEBUG: Executing associative matching template via handler.model_provider (Handler type: {type(handler).__name__})")
+    logging.debug("Executing associative matching template via handler.model_provider (Handler type: %s)", type(handler).__name__)
 
     # --- 1. Extract resolved inputs ---
     query = inputs.get("query", "")
@@ -151,10 +152,10 @@ def execute_template(inputs: Dict[str, Any], memory_system, handler) -> List[Dic
     inherited_context = inputs.get("inherited_context", "")
 
     if not query:
-        print("Warning: No query provided for associative matching.")
+        logging.warning("No query provided for associative matching.")
         return []
     if not metadata_str:
-        print("Warning: No file metadata provided for associative matching.")
+        logging.warning("No file metadata provided for associative matching.")
         return []
 
     # --- 2. Prepare System Prompt using BaseHandler's method ---
@@ -185,7 +186,7 @@ def execute_template(inputs: Dict[str, Any], memory_system, handler) -> List[Dic
         final_system_prompt = processed_system_prompt
 
     except Exception as e:
-        print(f"Error processing system prompt template: {e}")
+        logging.error("Error processing system prompt template: %s", e)
         final_system_prompt = f"Error processing prompt template: {e}" # Fallback
 
     # --- 3. Prepare Messages for the LLM Call ---
@@ -200,10 +201,10 @@ def execute_template(inputs: Dict[str, Any], memory_system, handler) -> List[Dic
         # Access the provider from the handler
         provider = handler.model_provider
         if not provider:
-            print("Error: Handler does not have a model_provider.")
+            logging.error("Handler %s does not have a model_provider.", type(handler).__name__)
             return []
 
-        print(f"DEBUG: Calling provider.send_message() directly.")
+        logging.debug("Calling provider.send_message() directly.")
         # Call the provider's send_message directly
         raw_response = provider.send_message(
             messages=messages_for_api,
@@ -213,18 +214,17 @@ def execute_template(inputs: Dict[str, Any], memory_system, handler) -> List[Dic
 
         # Check for API error strings returned by send_message
         if isinstance(raw_response, str) and raw_response.startswith("Error"):
-             print(f"API Error received from provider: {raw_response}")
+             logging.error("API Error received from provider: %s", raw_response)
              return [] # Return empty list on error
 
         # Extract the content from the response using the provider's own method
         # This standardizes handling across different provider response structures
         extracted_data = provider.extract_tool_calls(raw_response) # Also extracts content
         response_content = extracted_data.get("content", "[]")
-        print(f"DEBUG: Raw LLM Response Content: {response_content}")
+        logging.debug("Raw LLM Response Content: %s", response_content)
 
     except Exception as e:
-        import traceback
-        print(f"Error during direct provider call: {e}\n{traceback.format_exc()}")
+        logging.exception("Error during direct provider call:")
         return []
 
 
@@ -239,17 +239,17 @@ def execute_template(inputs: Dict[str, Any], memory_system, handler) -> List[Dic
         if cleaned_response.lower().startswith("json"):
              cleaned_response = cleaned_response[4:].strip()
 
-        print(f"DEBUG: Cleaned Response for JSON parsing:\n{cleaned_response}\n---")
+        logging.debug("Cleaned Response for JSON parsing:\n%s\n---", cleaned_response)
 
         # Handle empty or non-JSON responses gracefully
         if not cleaned_response:
-            print("Warning: LLM returned empty response content.")
+            logging.warning("LLM returned empty response content.")
             return []
 
         parsed_files = json.loads(cleaned_response)
 
         if not isinstance(parsed_files, list):
-             print(f"Warning: LLM response for file matching was not a JSON list. Got: {type(parsed_files)}")
+             logging.warning("LLM response for file matching was not a JSON list. Got: %s", type(parsed_files).__name__)
              return []
 
         # Validate format
@@ -260,25 +260,28 @@ def execute_template(inputs: Dict[str, Any], memory_system, handler) -> List[Dic
              if isinstance(item, dict) and "path" in item and "relevance" in item:
                  # if item["path"] in global_paths: # Optional validation
                  validated_files.append(item)
-                 # else: print(f"Warning: Skipping hallucinated path from LLM: {item['path']}")
+                 # else: logging.warning("Skipping hallucinated path from LLM: %s", item['path'])
              else:
-                 print(f"Warning: Skipping invalid item in LLM response: {item}")
+                 logging.warning("Skipping invalid item in LLM response: %s", item)
 
-        print(f"Selected {len(validated_files)} relevant files")
-        for i, item in enumerate(validated_files[:5], 1):
-            print(f"  {i}. {item['path']} - {item['relevance'][:50]}...")
-        if len(validated_files) > 5:
-            print(f"  ... and {len(validated_files) - 5} more")
+        if validated_files:
+            logging.info("LLM selected %d relevant files", len(validated_files))
+            # Log first few paths at DEBUG level
+            for i, item in enumerate(validated_files[:3], 1):
+                logging.debug("  Relevant file %d: %s - %s...", i, item['path'], item['relevance'][:50])
+            if len(validated_files) > 3:
+                logging.debug("  ... and %d more", len(validated_files) - 3)
+        else:
+            logging.info("LLM selected 0 relevant files")
 
         return validated_files
 
     except json.JSONDecodeError as e:
-        print(f"Error decoding JSON response from LLM: {e}")
-        print(f"LLM Raw Response Content was: >>>\n{response_content}\n<<<")
+        logging.error("Error decoding JSON response from LLM: %s", e)
+        logging.debug("LLM Raw Response Content was: >>>\n%s\n<<<", response_content)
         return []
     except Exception as e:
-        import traceback
-        print(f"Unexpected error processing LLM response: {e}\n{traceback.format_exc()}")
+        logging.exception("Unexpected error processing LLM response:")
         return []
 
 

@@ -2,6 +2,7 @@
 from typing import Dict, List, Any, Optional, Union, Tuple
 import json
 import os
+import logging
 from unittest.mock import MagicMock
 
 from .template_utils import resolve_parameters, ensure_template_compatibility, get_preferred_model
@@ -342,17 +343,17 @@ class TaskSystem(TemplateLookupInterface):
         # Extract relevant files from result
         file_matches = []
         try:
-            print(f"DEBUG: Content received from task execution: {result.get('content', 'No content')[:200]}...") # Log received content
+            logging.debug("Content received from task execution: %s...", result.get('content', 'No content')[:200]) # Log received content
             import json
             content = result.get("content", "[]")
             matches_data = json.loads(content) if isinstance(content, str) else content
             
             if isinstance(matches_data, list):
-                print(f"DEBUG: Parsed {len(matches_data)} items from LLM JSON response.")
+                logging.debug("Parsed %d items from LLM JSON response", len(matches_data))
                 for item in matches_data:
                     # Ensure item is a dictionary before accessing keys
                     if not isinstance(item, dict):
-                        print(f"WARNING: Skipping non-dict item in matches: {item}")
+                        logging.warning("Skipping non-dict item in matches: %s", item)
                         continue
                         
                     if "path" in item:
@@ -375,18 +376,17 @@ class TaskSystem(TemplateLookupInterface):
                                     break
                             
                             if not matched:
-                                print(f"WARNING: Path not found in index: {path}")
+                                logging.warning("Path not found in index: %s", path)
             else:
-                print(f"WARNING: Expected list but got {type(matches_data)}: {matches_data}")
+                logging.warning("Expected list but got %s: %s", type(matches_data).__name__, matches_data)
         except Exception as e:
-            import traceback
-            print(f"Error processing context generation result: {str(e)}")
-            print(traceback.format_exc())
+            logging.exception("Error processing context generation result:")
         
         # Create standardized result
         from memory.context_generation import AssociativeMatchResult
         context = f"Found {len(file_matches)} relevant files."
-        print(f"DEBUG: Returning AssociativeMatchResult with {len(file_matches)} matches. First match: {file_matches[0] if file_matches else 'None'}")
+        logging.debug("Returning AssociativeMatchResult with %d matches. First match: %s", 
+                     len(file_matches), file_matches[0] if file_matches else 'None')
         return AssociativeMatchResult(context=context, matches=file_matches)
 
     def _execute_context_generation_task(self, context_input, global_index, memory_system=None):
@@ -434,10 +434,10 @@ class TaskSystem(TemplateLookupInterface):
         # Prioritize handler linked via memory_system IF memory_system was provided
         if memory_system and hasattr(memory_system, 'handler') and memory_system.handler:
             handler_instance = memory_system.handler
-            print(f"DEBUG: Using handler from MemorySystem: {type(handler_instance).__name__}")
+            logging.debug("Using handler from MemorySystem: %s", type(handler_instance).__name__)
         else:
             # Fallback ONLY if no handler found via memory_system
-            print(f"DEBUG: Falling back to TaskSystem._get_handler()")
+            logging.debug("Falling back to TaskSystem._get_handler()")
             handler_instance = self._get_handler()  # Use the default handler getter
         
         # Execute task to find relevant files
@@ -561,15 +561,15 @@ class TaskSystem(TemplateLookupInterface):
         Returns:
             Task result
         """
-        print(f"Executing task: {task_type}:{task_subtype}")
+        logging.info("Executing task: %s:%s", task_type, task_subtype)
         
         # Check if task type and subtype are registered
         task_key = f"{task_type}:{task_subtype}"
-        print(f"Looking up template with key: {task_key}")
+        logging.debug("Looking up template with key: %s", task_key)
         template_name = self.template_index.get(task_key)
 
         if not template_name or template_name not in self.templates:
-            print(f"Template not found for key: {task_key}")
+            logging.warning("Template not found for key: %s", task_key)
             return {
                 "status": "FAILED",
                 "content": f"Unknown task type: {task_key}",
@@ -580,7 +580,7 @@ class TaskSystem(TemplateLookupInterface):
 
         # Get the template
         template = self.templates[template_name]
-        print(f"Found template: {template.get('name')}")
+        logging.debug("Found template: %s", template.get('name'))
 
         # Resolve parameters
         try:
@@ -618,7 +618,8 @@ class TaskSystem(TemplateLookupInterface):
         if task_type == "atomic":
             # Check for specialized handlers based on subtype
             if task_subtype == "associative_matching":
-                print(f"DEBUG: Calling _execute_associative_matching with template: {template.get('name')} and handler: {type(handler).__name__}")
+                logging.debug("Calling _execute_associative_matching with template: %s and handler: %s", 
+                             template.get('name'), type(handler).__name__)
                 result = self._execute_associative_matching(template, resolved_inputs, memory_system, handler=handler)
                 
                 # Ensure result has notes field
@@ -948,10 +949,10 @@ class TaskSystem(TemplateLookupInterface):
         
         # Get the handler - prioritize passed handler, fallback if needed
         if not handler:
-            print("CRITICAL WARNING: No handler passed to _execute_associative_matching, using fallback _get_handler(). This might be wrong.")
+            logging.error("No handler passed to _execute_associative_matching, using fallback _get_handler(). This indicates a potential configuration issue.")
             handler = self._get_handler()  # Use the TaskSystem's default handler getter
             
-        print(f"DEBUG: _execute_associative_matching received handler: {type(handler).__name__}")
+        logging.debug("_execute_associative_matching received handler: %s", type(handler).__name__)
         
         # Execute the template
         try:
@@ -971,9 +972,7 @@ class TaskSystem(TemplateLookupInterface):
                 }
             }
         except Exception as e:
-            import traceback
-            error_details = traceback.format_exc()
-            print(f"Error in _execute_associative_matching: {error_details}")
+            logging.exception("Error in _execute_associative_matching:")
             
             # For backward compatibility tests
             # Always return COMPLETE for associative_matching tasks, regardless of name

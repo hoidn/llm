@@ -3,6 +3,7 @@ from typing import Dict, List, Any, Optional, Tuple, Union
 import os
 import math
 import sys
+import logging
 
 from memory.context_generation import ContextGenerationInput
 from memory.context_generation import AssociativeMatchResult  # Import the standard result type
@@ -207,21 +208,21 @@ class MemorySystem:
         Returns:
             Object containing context and file matches
         """
-        print(f"MEMORY SYSTEM get_relevant_context_for CALLED with: {type(input_data)}")
+        logging.debug("MemorySystem.get_relevant_context_for called with input type: %s", type(input_data).__name__)
         
         # Convert input to ContextGenerationInput if needed
         if isinstance(input_data, dict):
             # Handle legacy format with taskText
             context_input = ContextGenerationInput.from_legacy_format(input_data)
-            print(f"Converted dict to ContextGenerationInput: {context_input.template_description}")
+            logging.debug("Converted dict to ContextGenerationInput: %s", context_input.template_description)
         else:
             context_input = input_data
             if hasattr(context_input, 'template_description'):
-                print(f"Using existing ContextGenerationInput: {context_input.template_description}")
+                logging.debug("Using existing ContextGenerationInput: %s", context_input.template_description)
         
         # Check if fresh context is disabled
         if hasattr(context_input, 'fresh_context') and context_input.fresh_context == "disabled":
-            print("Fresh context disabled, returning inherited context only")
+            logging.info("Fresh context disabled, returning inherited context only")
             return AssociativeMatchResult(  # Return standard type
                 context=context_input.inherited_context or "No context available",
                 matches=[]
@@ -229,7 +230,7 @@ class MemorySystem:
         
         # Verify TaskSystem is available
         if not hasattr(self, 'task_system') or self.task_system is None:
-            print("WARNING: TaskSystem not available for context generation")
+            logging.warning("TaskSystem not available for context generation")
             return AssociativeMatchResult(  # Return standard type
                 context="TaskSystem not available for context generation",
                 matches=[]
@@ -245,7 +246,7 @@ class MemorySystem:
         except Exception as e:
             # Improved error handling - return empty result with error message
             error_msg = f"Error during context generation: {str(e)}"
-            print(error_msg)
+            logging.error(error_msg)
             return AssociativeMatchResult(context=error_msg, matches=[])  # Return standard type
     
     def _get_relevant_context_with_mediator(self, context_input: ContextGenerationInput) -> AssociativeMatchResult:  # Update return type hint
@@ -267,11 +268,11 @@ class MemorySystem:
             file_metadata = self.get_global_index()
             
             # Add debug logging
-            print(f"Global index contains {len(file_metadata)} files")
+            logging.debug("Global index contains %d files", len(file_metadata))
             
             if not file_metadata:
                 # Make this a clear log message for debugging
-                print("EARLY RETURN: No files in index")
+                logging.info("No files in index for context generation")
                 return AssociativeMatchResult(context="No files in index", matches=[])  # Return standard type
             
             # Use TaskSystem mediator pattern
@@ -281,14 +282,12 @@ class MemorySystem:
             )
             
             # Return the AssociativeMatchResult directly
-            print(f"DEBUG: Returning AssociativeMatchResult directly (matches={len(associative_result.matches)})")
+            logging.debug("Returning AssociativeMatchResult directly (matches=%d)", len(associative_result.matches))
             return associative_result
         except Exception as e:
             # Improved error handling with detailed logging
             error_msg = f"Error during context generation with mediator: {str(e)}"
-            print(f"EXCEPTION: {error_msg}")
-            import traceback
-            print(traceback.format_exc())
+            logging.exception("Error during context generation with mediator:")
             return AssociativeMatchResult(context=error_msg, matches=[])  # Return standard type
 
     def _get_relevant_context_sharded_with_mediator(self, context_input: ContextGenerationInput) -> AssociativeMatchResult:  # Update return type hint
@@ -316,7 +315,7 @@ class MemorySystem:
                 if not shard:
                     continue
                     
-                print(f"Processing shard {shard_index+1}/{total_shards} with {len(shard)} files")
+                logging.debug("Processing shard %d/%d with %d files", shard_index + 1, total_shards, len(shard))
                 
                 # Create a copy of the context input for this shard
                 shard_context_input = ContextGenerationInput(
@@ -340,7 +339,7 @@ class MemorySystem:
                 all_matches.extend(shard_result.matches)
                 successful_shards += 1
             except Exception as e:
-                print(f"Error processing shard {shard_index}: {str(e)}")
+                logging.error("Error processing shard %d: %s", shard_index, e)
                 # Continue with other shards even if one fails
         
         # Remove duplicates while preserving order
@@ -399,4 +398,4 @@ class MemorySystem:
         if hasattr(self, 'update_global_index'):
             self.update_global_index(file_metadata)
         
-        print(f"Updated global index with {len(file_metadata)} files from repository")
+        logging.info("Updated global index with %d files from repository", len(file_metadata))
