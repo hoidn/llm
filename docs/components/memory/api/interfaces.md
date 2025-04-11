@@ -49,14 +49,16 @@ interface MemorySystem {
      * It only provides associative matching based on the input structure.
      * It does NOT read file contents - it only returns file paths and metadata.
      *
-     * @param input - The ContextGenerationInput containing task context
-     * @param contextDescription - Optional separate description specifically for context matching
+     * The implementation should consider both template information and all relevant
+     * inputs when performing associative matching, with template description typically
+     * serving as the primary matching factor.
+     *
+     * @param input - The ContextGenerationInput containing template info and inputs
      * @returns Promise resolving to associative match result
      * @throws {INVALID_INPUT} If the input structure is malformed or missing required fields
      */
     getRelevantContextFor(
-        input: ContextGenerationInput, 
-        contextDescription?: string
+        input: ContextGenerationInput
     ): Promise<AssociativeMatchResult>;
     
     /**

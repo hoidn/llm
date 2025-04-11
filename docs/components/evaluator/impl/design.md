@@ -223,6 +223,55 @@ The Evaluator manages all dimensions of the context management model:
 2. **Accumulated Data**: The step-by-step outputs collected during sequential execution, controlled by `accumulate_data` setting.
 3. **Fresh Context**: New context generated via associative matching, controlled by `fresh_context` setting.
 
+### Template-Aware Context Assembly
+
+```typescript
+function assembleContextForTask(task, parentContext, previousOutputs, taskInputs) {
+  // 1. Construct template-aware context input
+  const contextInput: ContextGenerationInput = {
+    // Template information
+    templateDescription: task.description,
+    templateType: task.type,
+    templateSubtype: task.subtype,
+    
+    // All task inputs
+    inputs: taskInputs || {},
+  };
+  
+  // 2. Add parent context based on inheritance setting
+  if (task.contextManagement.inheritContext !== 'none') {
+    contextInput.inheritedContext = parentContext;
+  }
+  
+  // 3. Add accumulated outputs if applicable
+  if (task.contextManagement.accumulateData === true) {
+    contextInput.previousOutputs = formatAccumulatedOutputs(
+      previousOutputs,
+      task.contextManagement.accumulationFormat
+    );
+  }
+  
+  // 4. Ensure mutual exclusivity constraint is respected
+  if (task.contextManagement.inheritContext !== 'none' && 
+      task.contextManagement.freshContext === 'enabled') {
+    console.warn('Context constraint violation: fresh_context="enabled" cannot be combined with inherit_context="full" or inherit_context="subset"');
+    // Default to disabling fresh context when in conflict
+    task.contextManagement.freshContext = 'disabled';
+  }
+  
+  // 5. Perform associative matching if fresh context is enabled
+  if (task.contextManagement.freshContext === 'enabled') {
+    return memorySystem.getRelevantContextFor(contextInput);
+  } else {
+    // 6. Otherwise, just use the assembled context without matching
+    return {
+      context: contextInput.inheritedContext || '',
+      matches: []
+    };
+  }
+}
+```
+
 ### Explicit File Inclusion
 In addition to the standard model, the Evaluator supports explicit file inclusion through the `file_paths` feature:
 - Files specified via `file_paths` are always included in context

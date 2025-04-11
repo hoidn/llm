@@ -150,6 +150,31 @@ The task template schema defines the structure for XML task template files and m
             </xs:sequence>
           </xs:complexType>
         </xs:element>
+        
+        <!-- Context relevance indicators for inputs -->
+        <xs:element name="context_relevance" minOccurs="0">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="input" maxOccurs="unbounded">
+                <xs:complexType>
+                  <xs:attribute name="name" type="xs:string" use="required"/>
+                  <xs:attribute name="include" type="xs:boolean" use="required"/>
+                </xs:complexType>
+              </xs:element>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
+
+        <!-- Context assembly guidance -->
+        <xs:element name="context_assembly" minOccurs="0">
+          <xs:complexType>
+            <xs:sequence>
+              <xs:element name="primary_elements" type="xs:string" minOccurs="0"/>
+              <xs:element name="secondary_elements" type="xs:string" minOccurs="0"/>
+              <xs:element name="excluded_elements" type="xs:string" minOccurs="0"/>
+            </xs:sequence>
+          </xs:complexType>
+        </xs:element>
         <xs:element name="manual_xml" type="xs:boolean" minOccurs="0" default="false"/>      <!-- Maps to isManualXML -->
         <xs:element name="disable_reparsing" type="xs:boolean" minOccurs="0" default="false"/> <!-- Maps to disableReparsing -->
       </xs:sequence>

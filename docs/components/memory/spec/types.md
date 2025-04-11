@@ -48,21 +48,31 @@ interface AssociativeMatchResult {
 
 /**
  * Input structure for Memory System context requests
- * [Type:Memory:ContextGenerationInput:3.0]
+ * [Type:Memory:ContextGenerationInput:4.0]
  */
 interface ContextGenerationInput {
     /**
-     * The primary task description or request
+     * Template information
      */
-    taskText: string;
+    templateDescription: string;      // The template's description field
+    templateType: string;             // Type of template (atomic, sequential, etc.)
+    templateSubtype?: string;         // Optional subtype information
+    
+    /**
+     * All inputs to the template with their values
+     * Can include arbitrary parameters of any type
+     */
+    inputs: Record<string, any>;
     
     /**
      * Optional context inherited from parent tasks
+     * Included based on inherit_context setting
      */
     inheritedContext?: string;
     
     /**
      * Optional string summarizing outputs accumulated from previous steps
+     * Included if accumulate_data is true
      */
     previousOutputs?: string;
 }

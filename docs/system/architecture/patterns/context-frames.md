@@ -194,7 +194,14 @@ flowchart TD
 Example ContextGenerationInput:
 ```json
 {
-  "taskText": "analyze experimental data",
+  "templateDescription": "analyze experimental data",
+  "templateType": "atomic",
+  "templateSubtype": "data_analysis",
+  "inputs": {
+    "data_source": "experiments/results.csv",
+    "analysis_type": "statistical",
+    "output_format": "json"
+  },
   "inheritedContext": "context string if available",
   "previousOutputs": "summarized outputs if any"
 }

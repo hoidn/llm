@@ -187,6 +187,65 @@ This document contains examples of context management in the Task System.
 </task>
 ```
 
+### Template-Aware Context Generation
+
+```xml
+<!-- Example: Template with Context Relevance and Assembly -->
+<task type="atomic">
+    <description>Analyze repository structure</description>
+    <inputs>
+        <input name="repository_path">
+            <description>Path to the repository</description>
+        </input>
+        <input name="analysis_type">
+            <description>Type of analysis to perform</description>
+        </input>
+        <input name="output_format">
+            <description>Output format</description>
+        </input>
+    </inputs>
+    <context_relevance>
+        <input name="repository_path" include="true"/>
+        <input name="analysis_type" include="true"/>
+        <input name="output_format" include="false"/>
+    </context_relevance>
+    <context_assembly>
+        <primary_elements>description,repository_path</primary_elements>
+        <secondary_elements>analysis_type</secondary_elements>
+        <excluded_elements>output_format</excluded_elements>
+    </context_assembly>
+    <context_management>
+        <inherit_context>none</inherit_context>
+        <fresh_context>enabled</fresh_context>
+    </context_management>
+</task>
+```
+
+```typescript
+// Example of template-aware context generation
+const templateAwareContextInput: ContextGenerationInput = {
+  // Template information
+  templateDescription: "Analyze repository structure",
+  templateType: "atomic",
+  
+  // All inputs
+  inputs: {
+    repository_path: "/path/to/repo",
+    analysis_type: "code complexity",
+    output_format: "json"
+  },
+  
+  // Context management
+  inheritedContext: "",  // None in this example
+  previousOutputs: ""    // None in this example
+};
+
+// The Memory System would use both template information and inputs
+// for more accurate context matching, with context_relevance and
+// context_assembly providing guidance on which inputs matter most
+const contextResult = await memorySystem.getRelevantContextFor(templateAwareContextInput);
+```
+
 ### Description-Based File Paths
 
 ```xml
