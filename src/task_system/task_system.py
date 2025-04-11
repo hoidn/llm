@@ -10,6 +10,7 @@ from system.errors import TaskError, create_task_failure, format_error_result
 from evaluator.interfaces import EvaluatorInterface, TemplateLookupInterface
 from .template_processor import TemplateProcessor
 from .mock_handler import MockHandler
+from memory.context_generation import ContextGenerationInput
 
 class TaskSystem(TemplateLookupInterface):
     """Task System for task execution and management.
