@@ -4,8 +4,8 @@ from unittest.mock import patch, MagicMock
 import os
 import tempfile
 
-from memory.context_generation import ContextGenerationInput
-from task_system.templates.context_examples import (
+from src.memory.context_generation import ContextGenerationInput
+from src.task_system.templates.context_examples import (
     INCLUDE_ALL_TEMPLATE,
     SELECTIVE_CONTEXT_TEMPLATE,
     COMPLEX_CONTEXT_TEMPLATE
@@ -17,9 +17,9 @@ class TestTemplateAwareContextGeneration:
     @pytest.fixture
     def components(self):
         """Set up components for testing."""
-        from memory.memory_system import MemorySystem
-        from task_system.task_system import TaskSystem
-        from handler.base_handler import BaseHandler
+        from src.memory.memory_system import MemorySystem
+        from src.task_system.task_system import TaskSystem
+        from src.handler.base_handler import BaseHandler
         
         # Create components
         task_system = TaskSystem()
