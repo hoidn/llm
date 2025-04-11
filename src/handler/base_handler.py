@@ -275,6 +275,8 @@ class BaseHandler:
         Returns:
             List of tuples containing (file_path, relevance_context)
         """
+        from system.prompt_registry import registry as prompt_registry
+        
         # Extract query and relevant inputs based on input type
         query = ""
         relevant_inputs = {}
@@ -306,6 +308,7 @@ class BaseHandler:
         # Get system prompt from registry
         system_prompt = prompt_registry.get_prompt("file_relevance")
         if not system_prompt:
+            self.log_debug("Warning: file_relevance prompt not found in registry")
             system_prompt = "You are a file relevance assistant. Select files relevant to the query."
         
         try:

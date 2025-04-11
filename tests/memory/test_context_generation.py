@@ -5,6 +5,7 @@ from unittest.mock import patch, MagicMock
 from memory.context_generation import ContextGenerationInput
 from memory.memory_system import MemorySystem
 from handler.base_handler import BaseHandler
+from system.prompt_registry import registry as prompt_registry
 
 class TestContextGeneration:
     """Tests for template-aware context generation."""
