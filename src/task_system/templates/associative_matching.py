@@ -3,6 +3,8 @@ from typing import Dict, List, Any, Tuple
 import re
 import os
 import math
+import json
+from task_system.template_utils import Environment
 
 # Template definition as a Python dictionary
 ASSOCIATIVE_MATCHING_TEMPLATE = {
@@ -129,21 +131,21 @@ def create_xml_template() -> str:
 
 def execute_template(inputs: Dict[str, Any], memory_system, handler) -> List[Dict[str, Any]]:
     """
-    Execute the associative matching template logic using the LLM via the handler.
+    Execute the associative matching template logic using the LLM via the handler's provider.
 
     Args:
         inputs: Dictionary of resolved input parameters for the template.
-        memory_system: The Memory System instance (unused in this version, but kept for signature compatibility).
-        handler: The Handler instance to execute the LLM call.
+        memory_system: The Memory System instance (unused in this version).
+        handler: The Handler instance (expected to have model_provider and _build_system_prompt).
 
     Returns:
         List of relevant file objects [{'path': str, 'relevance': str}]
     """
-    print(f"Executing associative matching template directly via handler")
+    print(f"DEBUG: Executing associative matching template via handler.model_provider (Handler type: {type(handler).__name__})")
 
     # --- 1. Extract resolved inputs ---
     query = inputs.get("query", "")
-    metadata_str = inputs.get("metadata", "")  # Expecting formatted string now
+    metadata_str = inputs.get("metadata", "")
     additional_context = inputs.get("additional_context", {})
     max_results = inputs.get("max_results", 20)
     inherited_context = inputs.get("inherited_context", "")
@@ -155,17 +157,18 @@ def execute_template(inputs: Dict[str, Any], memory_system, handler) -> List[Dic
         print("Warning: No file metadata provided for associative matching.")
         return []
 
-    # --- 2. Prepare prompt for the handler ---
-    # Create a minimal environment for substituting variables in the system prompt
-    from task_system.template_utils import Environment
+    # --- 2. Prepare System Prompt using BaseHandler's method ---
+    # Need the template definition itself to get the system_prompt template string
+    template_definition = ASSOCIATIVE_MATCHING_TEMPLATE
+
+    # Create environment for prompt processing
     prompt_env = Environment(inputs)
     try:
-        # Substitute variables in the system prompt template string
-        system_prompt_template = ASSOCIATIVE_MATCHING_TEMPLATE.get("system_prompt", "")
-        # Handle the Jinja-like syntax in prompt
+        system_prompt_template = template_definition.get("system_prompt", "")
         import jinja2
         jinja_env = jinja2.Environment()
         template = jinja_env.from_string(system_prompt_template)
+        # Render the system prompt using the inputs
         processed_system_prompt = template.render(
             query=query,
             additional_context=additional_context,
@@ -173,71 +176,109 @@ def execute_template(inputs: Dict[str, Any], memory_system, handler) -> List[Dic
             max_results=max_results,
             metadata=metadata_str
         )
+        # Use BaseHandler's _build_system_prompt to combine with base prompt if desired,
+        # although for this specific task, the template prompt *is* the full instruction.
+        # We'll pass the processed prompt directly to the provider.
+        # If hierarchical prompts were desired here, you'd call:
+        # final_system_prompt = handler._build_system_prompt(template={"system_prompt": processed_system_prompt})
+        # But for clarity, let's use the processed prompt directly:
+        final_system_prompt = processed_system_prompt
+
     except Exception as e:
         print(f"Error processing system prompt template: {e}")
-        processed_system_prompt = f"Error processing prompt template: {e}"  # Fallback
+        final_system_prompt = f"Error processing prompt template: {e}" # Fallback
 
-    # The main prompt for the LLM
-    main_prompt = "Based on the system prompt, provide the JSON list of relevant files."
+    # --- 3. Prepare Messages for the LLM Call ---
+    # Minimal message list required by the API
+    messages_for_api = [
+        {"role": "user", "content": "Based on the system prompt, provide the JSON list of relevant files."}
+    ]
 
-    # --- 3. Execute using the handler ---
-    # Try to use _send_to_model if available
-    if hasattr(handler, '_send_to_model'):
-        print(f"DEBUG: Using handler._send_to_model() for {type(handler).__name__}")
-        llm_response = handler._send_to_model(
-            query=main_prompt,
-            file_context=None,  # File context is already in the system prompt
-            template={"system_prompt": processed_system_prompt}
-        )
-        response_content = llm_response
-    else:
-        # Fallback: If _send_to_model isn't suitable, use execute_prompt
-        print(f"DEBUG: Using fallback handler.execute_prompt() for {type(handler).__name__}")
-        # Execute using the standard interface
-        result_dict = handler.execute_prompt(
-            prompt=main_prompt,
-            template_system_prompt=processed_system_prompt,
-            file_context=None  # File context is already in the system prompt
-        )
-        response_content = result_dict.get("content", "[]")
-
-    # --- 4. Parse the LLM response ---
+    # --- 4. Execute using the handler's model_provider ---
+    response_content = "[]" # Default empty JSON array string
     try:
-        # Clean the response: LLMs sometimes add markdown backticks
-        import json
+        # Access the provider from the handler
+        provider = handler.model_provider
+        if not provider:
+            print("Error: Handler does not have a model_provider.")
+            return []
+
+        print(f"DEBUG: Calling provider.send_message() directly.")
+        # Call the provider's send_message directly
+        raw_response = provider.send_message(
+            messages=messages_for_api,
+            system_prompt=final_system_prompt,
+            tools=None # No tools needed for this specific task
+        )
+
+        # Check for API error strings returned by send_message
+        if isinstance(raw_response, str) and raw_response.startswith("Error"):
+             print(f"API Error received from provider: {raw_response}")
+             return [] # Return empty list on error
+
+        # Extract the content from the response using the provider's own method
+        # This standardizes handling across different provider response structures
+        extracted_data = provider.extract_tool_calls(raw_response) # Also extracts content
+        response_content = extracted_data.get("content", "[]")
+        print(f"DEBUG: Raw LLM Response Content: {response_content}")
+
+    except Exception as e:
+        import traceback
+        print(f"Error during direct provider call: {e}\n{traceback.format_exc()}")
+        return []
+
+
+    # --- 5. Parse the LLM response ---
+    try:
+        # Clean the response
         cleaned_response = response_content.strip()
-        if cleaned_response.startswith("```") and cleaned_response.endswith("```"):
-            cleaned_response = cleaned_response[3:-3].strip()
-        if cleaned_response.startswith("json"):
-            cleaned_response = cleaned_response[4:].strip()
+        if cleaned_response.startswith("```json") and cleaned_response.endswith("```"):
+             cleaned_response = cleaned_response[7:-3].strip()
+        elif cleaned_response.startswith("```") and cleaned_response.endswith("```"):
+             cleaned_response = cleaned_response[3:-3].strip()
+        if cleaned_response.lower().startswith("json"):
+             cleaned_response = cleaned_response[4:].strip()
+
+        print(f"DEBUG: Cleaned Response for JSON parsing:\n{cleaned_response}\n---")
+
+        # Handle empty or non-JSON responses gracefully
+        if not cleaned_response:
+            print("Warning: LLM returned empty response content.")
+            return []
 
         parsed_files = json.loads(cleaned_response)
+
         if not isinstance(parsed_files, list):
-            print(f"Warning: LLM response for file matching was not a JSON list. Got: {type(parsed_files)}")
-            return []
+             print(f"Warning: LLM response for file matching was not a JSON list. Got: {type(parsed_files)}")
+             return []
 
         # Validate format
         validated_files = []
+        # TODO: Consider passing global_index keyset for validation against hallucinated paths
+        # Example: global_paths = set(get_global_index(memory_system).keys())
         for item in parsed_files:
-            if isinstance(item, dict) and "path" in item and "relevance" in item:
-                validated_files.append(item)
-            else:
-                print(f"Warning: Skipping invalid item in LLM response: {item}")
-        
+             if isinstance(item, dict) and "path" in item and "relevance" in item:
+                 # if item["path"] in global_paths: # Optional validation
+                 validated_files.append(item)
+                 # else: print(f"Warning: Skipping hallucinated path from LLM: {item['path']}")
+             else:
+                 print(f"Warning: Skipping invalid item in LLM response: {item}")
+
         print(f"Selected {len(validated_files)} relevant files")
         for i, item in enumerate(validated_files[:5], 1):
             print(f"  {i}. {item['path']} - {item['relevance'][:50]}...")
         if len(validated_files) > 5:
             print(f"  ... and {len(validated_files) - 5} more")
-            
+
         return validated_files
 
     except json.JSONDecodeError as e:
         print(f"Error decoding JSON response from LLM: {e}")
-        print(f"LLM Raw Response was: {response_content}")
+        print(f"LLM Raw Response Content was: >>>\n{response_content}\n<<<")
         return []
     except Exception as e:
-        print(f"Unexpected error processing LLM response: {e}")
+        import traceback
+        print(f"Unexpected error processing LLM response: {e}\n{traceback.format_exc()}")
         return []
 
 
