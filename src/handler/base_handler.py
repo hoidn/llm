@@ -11,7 +11,15 @@ class BaseHandler:
     """Base class for all handlers with common functionality.
     
     Provides shared capabilities for system prompts, tool management,
-    conversation state, and LLM interaction.
+    conversation state, and LLM interaction. Context generation is handled
+    through the Memory System with TaskSystem acting as mediator.
+    
+    Context Generation Flow:
+    1. BaseHandler calls memory_system.get_relevant_context_for()
+    2. MemorySystem delegates to TaskSystem.generate_context_for_memory_system()
+    3. TaskSystem uses specialized templates via Handler for LLM-based matching
+    
+    This flow ensures clean separation of concerns and more accurate context matching.
     """
     
     def __init__(self, task_system, memory_system, model_provider: Optional[ProviderAdapter] = None, config: Optional[Dict[str, Any]] = None):
@@ -126,6 +134,9 @@ class BaseHandler:
     def _get_relevant_files(self, query: str, inputs: Optional[Dict[str, Any]] = None,
                           context_relevance: Optional[Dict[str, bool]] = None) -> List[str]:
         """Get relevant files from memory system based on query and context.
+        
+        This is the preferred method for retrieving relevant files, using the
+        Memory System with TaskSystem mediator for accurate context matching.
         
         Args:
             query: User's query
@@ -254,3 +265,80 @@ class BaseHandler:
         self.log_debug(f"Built system prompt with {len(system_prompt)} characters")
         return system_prompt
         
+def determine_relevant_files(self, query_input: Union[str, ContextGenerationInput], file_metadata: Dict[str, str]) -> List[Tuple[str, str]]:
+    """DEPRECATED: Use Memory System with TaskSystem mediator instead.
+    
+    This method is maintained for backward compatibility only.
+    Please use MemorySystem.get_relevant_context_for() with a TaskSystem mediator.
+    
+    Args:
+        query_input: Query string or ContextGenerationInput
+        file_metadata: Dictionary mapping file paths to metadata
+        
+    Returns:
+        List of (file_path, relevance) tuples
+    """
+    import warnings
+    warnings.warn(
+        "determine_relevant_files is deprecated. Use MemorySystem.get_relevant_context_for() with a TaskSystem mediator instead.",
+        DeprecationWarning, 
+        stacklevel=2
+    )
+    
+    # Create a basic result for backward compatibility
+    matches = []
+    
+    try:
+        # Handle string vs ContextGenerationInput
+        if isinstance(query_input, str):
+            query = query_input
+            context_input = ContextGenerationInput(
+                template_description=query,
+                inputs={"query": query},
+                context_relevance={"query": True}
+            )
+        else:
+            query = query_input.template_description
+            context_input = query_input
+            
+        # Call memory system if available
+        if hasattr(self, 'memory_system') and self.memory_system:
+            result = self.memory_system.get_relevant_context_for(context_input)
+            if hasattr(result, 'matches'):
+                matches = result.matches
+                
+        # Log result
+        self.log_debug(f"DEPRECATED determine_relevant_files found {len(matches)} matches for '{query}'")
+    except Exception as e:
+        self.log_debug(f"Error in deprecated determine_relevant_files: {str(e)}")
+        
+    return matches
+
+def _build_file_relevance_message(self, query: str, inputs: Dict[str, Any], file_metadata: Dict[str, str]) -> str:
+    """DEPRECATED: Use Memory System with TaskSystem mediator instead.
+    
+    This method is maintained for backward compatibility only.
+    Please use MemorySystem.get_relevant_context_for() with a TaskSystem mediator.
+    
+    Args:
+        query: User query
+        inputs: Additional inputs
+        file_metadata: Dictionary mapping file paths to metadata
+        
+    Returns:
+        Message for LLM to determine file relevance
+    """
+    import warnings
+    warnings.warn(
+        "_build_file_relevance_message is deprecated. Use MemorySystem.get_relevant_context_for() with a TaskSystem mediator instead.",
+        DeprecationWarning, 
+        stacklevel=2
+    )
+    
+    # Return a minimal message for backward compatibility
+    return f"""Find files relevant to: {query}
+    
+Available files:
+{", ".join(file_metadata.keys())}
+
+Return only the file paths that are most relevant."""

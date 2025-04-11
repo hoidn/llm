@@ -495,8 +495,8 @@ class TaskSystem(TemplateLookupInterface):
     def execute_task(self, task_type: str, task_subtype: str, inputs: Dict[str, Any], 
                     memory_system=None, available_models: Optional[List[str]] = None,
                     call_depth: int = 0, **kwargs) -> Dict[str, Any]:
-        """Execute a task with parameter validation, variable resolution, and function calls.
-    
+        """Execute a task with proper context management and parameter validation.
+
         Args:
             task_type: Type of task
             task_subtype: Subtype of task
@@ -504,7 +504,9 @@ class TaskSystem(TemplateLookupInterface):
             memory_system: Optional Memory System instance
             available_models: Optional list of available model names
             call_depth: Current call depth for function calls
-            **kwargs: Additional execution options
+            **kwargs: Additional execution options, including:
+                - inherited_context: Context from parent tasks
+                - previous_outputs: Outputs from previous steps
         
         Returns:
             Task result
@@ -515,7 +517,7 @@ class TaskSystem(TemplateLookupInterface):
         task_key = f"{task_type}:{task_subtype}"
         print(f"Looking up template with key: {task_key}")
         template_name = self.template_index.get(task_key)
-    
+
         if not template_name or template_name not in self.templates:
             print(f"Template not found for key: {task_key}")
             return {
@@ -525,11 +527,11 @@ class TaskSystem(TemplateLookupInterface):
                     "error": "Task type not registered"
                 }
             }
-    
+
         # Get the template
         template = self.templates[template_name]
         print(f"Found template: {template.get('name')}")
-    
+
         # Resolve parameters
         try:
             resolved_inputs = resolve_parameters(template, inputs)
@@ -542,39 +544,54 @@ class TaskSystem(TemplateLookupInterface):
                 }
             }
             
+        # Extract context management settings
+        context_mgmt = template.get("context_management", {})
+        inherit_context = context_mgmt.get("inherit_context", "none")
+        accumulate_data = context_mgmt.get("accumulate_data", False)
+        fresh_context = context_mgmt.get("fresh_context", "enabled")
+        
+        # Apply context management settings
+        inherited_context = ""
+        previous_outputs = []
+        
+        # Handle inherited context based on setting
+        if inherit_context != "none" and "inherited_context" in kwargs:
+            if inherit_context == "required" and not kwargs.get("inherited_context"):
+                return {
+                    "status": "FAILED",
+                    "content": "This task requires inherited context, but none was provided",
+                    "notes": {
+                        "error": "MISSING_CONTEXT"
+                    }
+                }
+            inherited_context = kwargs.get("inherited_context", "")
+        
+        # Handle accumulated data
+        if accumulate_data and "previous_outputs" in kwargs:
+            previous_outputs = kwargs.get("previous_outputs", [])
+            
         # Extract context relevance from template
         context_relevance = template.get("context_relevance", {})
         if not context_relevance:
             # Default all parameters to relevant if not specified
             context_relevance = {param: True for param in resolved_inputs}
         
-        # Create context generation input for memory system
-        if memory_system:
-            context_input = ContextGenerationInput(
-                template_description=template.get("description", ""),
-                template_type=template.get("type", ""),
-                template_subtype=template.get("subtype", ""),
-                inputs=resolved_inputs,
-                context_relevance=context_relevance,
-                inherited_context=kwargs.get("inherited_context", ""),
-                previous_outputs=kwargs.get("previous_outputs", [])
-            )
-            
-            # Store for later use in file path resolution
-            template["_context_input"] = context_input
-    
         # Create environment from resolved parameters
         from .template_utils import Environment
         env = Environment(resolved_inputs)
-    
+
         # Process the template (resolve variables and function calls)
-        resolved_template = self.template_processor.process_template(template, env)
-    
+        if hasattr(self, 'template_processor'):
+            resolved_template = self.template_processor.process_template(template, env)
+        else:
+            resolved_template = template
+
         # Select model if available_models provided
         selected_model = None
         if available_models:
+            from .template_utils import get_preferred_model
             selected_model = get_preferred_model(resolved_template, available_models)
-    
+
         # Get appropriate handler
         handler_config = kwargs.get("handler_config", {})
         if selected_model:
@@ -585,26 +602,50 @@ class TaskSystem(TemplateLookupInterface):
             config=handler_config
         )
         
-        # Resolve file paths using the coordinator
-        file_paths, error_message = self.resolve_file_paths(resolved_template, memory_system, handler)
-        
-        # Create file context if paths are available
+        # Create file context through Memory System if available
         file_context = None
-        if file_paths:
-            # In a real implementation, this would load file contents
-            file_context = f"Files: {', '.join(file_paths)}"
+        if memory_system and fresh_context != "disabled":
+            # Create context generation input
+            from memory.context_generation import ContextGenerationInput
+            context_input = ContextGenerationInput(
+                template_description=resolved_template.get("description", ""),
+                template_type=resolved_template.get("type", ""),
+                template_subtype=resolved_template.get("subtype", ""),
+                inputs=resolved_inputs,
+                context_relevance=context_relevance,
+                inherited_context=inherited_context,
+                previous_outputs=previous_outputs,
+                fresh_context=fresh_context
+            )
+            
+            try:
+                # Get relevant context
+                context_result = memory_system.get_relevant_context_for(context_input)
+                
+                # Extract file paths if available
+                if hasattr(context_result, 'matches'):
+                    file_paths = [match[0] for match in context_result.matches]
+                    
+                    # Create file context if paths are available
+                    if file_paths:
+                        # This would be replaced with actual file content loading
+                        file_context = f"Files: {', '.join(file_paths)}"
+                        
+                        # Store file paths in result metadata for testing
+                        resolved_template["_context_file_paths"] = file_paths
+            except Exception as e:
+                print(f"Error retrieving context: {str(e)}")
+                # Continue without context rather than failing the task
+        
+        # Extract file context if available from inputs (fallback)
+        if file_context is None and "file_paths" in resolved_inputs and resolved_inputs["file_paths"]:
+            file_context = f"Files: {', '.join(resolved_inputs['file_paths'])}"
         
         # Initialize result dictionary to store error message
         result = {
             "status": "PENDING",
             "notes": {}
         }
-        
-        # Add error message to notes if present
-        if error_message:
-            if "notes" not in result:
-                result["notes"] = {}
-            result["notes"]["file_paths_error"] = error_message
             
         # Check for mock handlers (used in tests)
         is_associative_mock = (
@@ -625,100 +666,29 @@ class TaskSystem(TemplateLookupInterface):
                 
             return result
             
-        # Check for specialized task subtypes FIRST
-        if task_type == "atomic":
-            # Check for specialized handlers based on subtype
-            if task_subtype == "associative_matching":
-                print(f"Calling _execute_associative_matching with template: {resolved_template.get('name')}")
-                return self._execute_associative_matching(resolved_template, resolved_inputs, memory_system)
-                
-            # For format_json subtype
-            elif task_subtype == "format_json":
-                # Execute the format_json template directly
-                try:
-                    from .templates.function_examples import execute_format_json
-                    value = resolved_inputs.get("value", {})
-                    indent = resolved_inputs.get("indent", 2)
-                    result = execute_format_json(value, indent)
-                    return {
-                        "status": "COMPLETE",
-                        "content": result,
-                        "notes": {}
-                    }
-                except Exception as e:
-                    return {
-                        "status": "FAILED", 
-                        "content": f"Error formatting JSON: {str(e)}",
-                        "notes": {"error": str(e)}
-                    }
+        # Execute task using handler
+        result = handler.execute_prompt(
+            resolved_template.get("description", ""),  # Task description
+            resolved_template.get("system_prompt", ""),  # System prompt
+            file_context  # File context
+        )
             
-            # For math operation subtypes
-            elif task_subtype == "math_add":
-                try:
-                    from .templates.function_examples import execute_add
-                    x = resolved_inputs.get("x", 0)
-                    y = resolved_inputs.get("y", 0)
-                    result = execute_add(x, y)
-                    return {
-                        "status": "COMPLETE",
-                        "content": str(result),
-                        "notes": {}
-                    }
-                except Exception as e:
-                    return {
-                        "status": "FAILED",
-                        "content": f"Error executing add: {str(e)}",
-                        "notes": {"error": str(e)}
-                    }
-                    
-            elif task_subtype == "math_subtract":
-                try:
-                    from .templates.function_examples import execute_subtract
-                    x = resolved_inputs.get("x", 0)
-                    y = resolved_inputs.get("y", 0)
-                    result = execute_subtract(x, y)
-                    return {
-                        "status": "COMPLETE",
-                        "content": str(result),
-                        "notes": {}
-                    }
-                except Exception as e:
-                    return {
-                        "status": "FAILED",
-                        "content": f"Error executing subtract: {str(e)}",
-                        "notes": {"error": str(e)}
-                    }
-        
-        # Handle general task types (this should remain as it was)
-        if task_type == "atomic":
-            print(f"Calling _execute_atomic_task with template: {resolved_template.get('name')}")
-            # Use the atomic task execution method
-            result = self._execute_atomic_task(
-                resolved_template, 
-                resolved_inputs,
-                memory_system=memory_system,
-                inherited_context=kwargs.get("inherited_context", ""),
-                previous_outputs=kwargs.get("previous_outputs", [])
-            )
-        
-            # Add model info if selected
-            if selected_model:
-                if "notes" not in result:
-                    result["notes"] = {}
-                result["notes"]["selected_model"] = selected_model
+        # Add model info if selected
+        if selected_model:
+            if "notes" not in result:
+                result["notes"] = {}
+            result["notes"]["selected_model"] = selected_model
                 
-            return result
-        
-        # Default fallback for unimplemented task types
-        return {
-            "status": "FAILED",
-            "content": "Task execution not implemented for this task type",
-            "notes": {
-                "task_type": task_type,
-                "task_subtype": task_subtype,
-                "selected_model": selected_model
-            }
+        # Include context management info in result for debugging
+        if "notes" not in result:
+            result["notes"] = {}
+        result["notes"]["context_management"] = {
+            "inherit_context": inherit_context,
+            "accumulate_data": accumulate_data,
+            "fresh_context": fresh_context
         }
+            
+        return result
     
     def _execute_atomic_task(self, template: Dict[str, Any], inputs: Dict[str, Any], memory_system=None, **kwargs) -> Dict[str, Any]:
         """
