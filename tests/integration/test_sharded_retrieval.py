@@ -96,7 +96,7 @@ def function_{i}(param1, param2, param3=None):
 
 def utilities_{i}():
     \"\"\"Additional utilities for {category}.\"\"\"
-    return {}
+    return {{}}
                     """)
         
         # Create a README.md in docs
