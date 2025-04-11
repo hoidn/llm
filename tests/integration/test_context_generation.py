@@ -4,7 +4,7 @@ from unittest.mock import patch, MagicMock
 import os
 import tempfile
 
-from src.memory.context_generation import ContextGenerationInput
+from src.memory.context_generation import ContextGenerationInput as RealContextGenerationInput
 from src.task_system.templates.context_examples import (
     INCLUDE_ALL_TEMPLATE,
     SELECTIVE_CONTEXT_TEMPLATE,
@@ -41,7 +41,7 @@ class TestTemplateAwareContextGeneration:
         context_input_capture = {}
         def capture_context_input(input_data):
             nonlocal context_input_capture
-            if isinstance(input_data, ContextGenerationInput):
+            if isinstance(input_data, RealContextGenerationInput):
                 context_input_capture = {
                     "template_description": input_data.template_description,
                     "inputs": input_data.inputs,
@@ -199,6 +199,6 @@ class TestTemplateAwareContextGeneration:
         
         # Verify handler received ContextGenerationInput
         assert context_input_capture is not None
-        assert isinstance(context_input_capture, ContextGenerationInput)
+        assert isinstance(context_input_capture, RealContextGenerationInput)
         assert context_input_capture.template_description == INCLUDE_ALL_TEMPLATE["description"]
         assert context_input_capture.inputs["query"] == "authentication"

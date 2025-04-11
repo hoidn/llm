@@ -602,7 +602,13 @@ class TaskSystem(TemplateLookupInterface):
         if task_type == "atomic":
             print(f"Calling _execute_atomic_task with template: {resolved_template.get('name')}")
             # Use the atomic task execution method
-            result = self._execute_atomic_task(resolved_template, resolved_inputs)
+            result = self._execute_atomic_task(
+                resolved_template, 
+                resolved_inputs,
+                memory_system=memory_system,
+                inherited_context=kwargs.get("inherited_context", ""),
+                previous_outputs=kwargs.get("previous_outputs", [])
+            )
         
             # Add model info if selected
             if selected_model:
@@ -623,13 +629,15 @@ class TaskSystem(TemplateLookupInterface):
             }
         }
     
-    def _execute_atomic_task(self, template: Dict[str, Any], inputs: Dict[str, Any]) -> Dict[str, Any]:
+    def _execute_atomic_task(self, template: Dict[str, Any], inputs: Dict[str, Any], memory_system=None, **kwargs) -> Dict[str, Any]:
         """
         Execute an atomic task.
         
         Args:
             template: Processed template definition
             inputs: Task inputs
+            memory_system: Optional Memory System instance
+            **kwargs: Additional execution options
             
         Returns:
             Task execution result
@@ -640,10 +648,37 @@ class TaskSystem(TemplateLookupInterface):
             config={"task_type": "atomic", "task_subtype": template.get("subtype")}
         )
         
-        # Extract file context if available
+        # Extract context relevance from template
+        context_relevance = template.get("context_relevance", {})
+        if not context_relevance and inputs:
+            # Default all parameters to relevant if not specified
+            context_relevance = {param: True for param in inputs}
+        
+        # Create context generation input and get relevant context if memory_system is available
         file_context = None
-        if "file_paths" in inputs and inputs["file_paths"]:
-            # In a real implementation, this would load file contents
+        if memory_system:
+            context_input = ContextGenerationInput(
+                template_description=template.get("description", ""),
+                template_type=template.get("type", ""),
+                template_subtype=template.get("subtype", ""),
+                inputs=inputs,
+                context_relevance=context_relevance,
+                inherited_context=kwargs.get("inherited_context", ""),
+                previous_outputs=kwargs.get("previous_outputs", [])
+            )
+            
+            # Get relevant context
+            context_result = memory_system.get_relevant_context_for(context_input)
+            
+            # Extract file paths if available
+            if hasattr(context_result, 'matches'):
+                file_paths = [match[0] for match in context_result.matches]
+                # Create file context
+                if file_paths:
+                    file_context = f"Files: {', '.join(file_paths)}"
+        
+        # Extract file context if available from inputs (fallback)
+        if file_context is None and "file_paths" in inputs and inputs["file_paths"]:
             file_context = f"Files: {', '.join(inputs['file_paths'])}"
         
         # Create environment from inputs for variable resolution
