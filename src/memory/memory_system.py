@@ -5,6 +5,7 @@ import math
 import sys
 
 from memory.context_generation import ContextGenerationInput
+from memory.context_generation import AssociativeMatchResult  # Import the standard result type
 from system.prompt_registry import registry as prompt_registry
 
 class MemorySystem:
@@ -196,7 +197,7 @@ class MemorySystem:
                 
         return result
     
-    def get_relevant_context_for(self, input_data: Union[Dict[str, Any], ContextGenerationInput]) -> Any:
+    def get_relevant_context_for(self, input_data: Union[Dict[str, Any], ContextGenerationInput]) -> AssociativeMatchResult:  # Update return type hint
         """Get relevant context for a task using TaskSystem mediator exclusively.
         
         Args:
@@ -218,16 +219,10 @@ class MemorySystem:
             if hasattr(context_input, 'template_description'):
                 print(f"Using existing ContextGenerationInput: {context_input.template_description}")
         
-        # Create result class - keep this for API compatibility
-        class Result:
-            def __init__(self, context, matches):
-                self.context = context
-                self.matches = matches
-        
         # Check if fresh context is disabled
         if hasattr(context_input, 'fresh_context') and context_input.fresh_context == "disabled":
             print("Fresh context disabled, returning inherited context only")
-            return Result(
+            return AssociativeMatchResult(  # Return standard type
                 context=context_input.inherited_context or "No context available",
                 matches=[]
             )
@@ -235,7 +230,7 @@ class MemorySystem:
         # Verify TaskSystem is available
         if not hasattr(self, 'task_system') or self.task_system is None:
             print("WARNING: TaskSystem not available for context generation")
-            return Result(
+            return AssociativeMatchResult(  # Return standard type
                 context="TaskSystem not available for context generation",
                 matches=[]
             )
@@ -251,9 +246,9 @@ class MemorySystem:
             # Improved error handling - return empty result with error message
             error_msg = f"Error during context generation: {str(e)}"
             print(error_msg)
-            return Result(context=error_msg, matches=[])
+            return AssociativeMatchResult(context=error_msg, matches=[])  # Return standard type
     
-    def _get_relevant_context_with_mediator(self, context_input: ContextGenerationInput) -> Any:
+    def _get_relevant_context_with_mediator(self, context_input: ContextGenerationInput) -> AssociativeMatchResult:  # Update return type hint
         """
         Get relevant context using TaskSystem mediator.
         
@@ -263,16 +258,10 @@ class MemorySystem:
         Returns:
             Object containing context and file matches
         """
-        # Create result class
-        class Result:
-            def __init__(self, context, matches):
-                self.context = context
-                self.matches = matches
-        
         try:
             # Check if task_system is available (should have been checked in get_relevant_context_for)
             if not hasattr(self, 'task_system') or self.task_system is None:
-                return Result(context="TaskSystem not available for context generation", matches=[])
+                return AssociativeMatchResult(context="TaskSystem not available for context generation", matches=[])  # Return standard type
             
             # Get file metadata
             file_metadata = self.get_global_index()
@@ -283,25 +272,26 @@ class MemorySystem:
             if not file_metadata:
                 # Make this a clear log message for debugging
                 print("EARLY RETURN: No files in index")
-                return Result(context="No files in index", matches=[])
+                return AssociativeMatchResult(context="No files in index", matches=[])  # Return standard type
             
             # Use TaskSystem mediator pattern
-            from memory.context_generation import AssociativeMatchResult
+            # TaskSystem returns AssociativeMatchResult
             associative_result = self.task_system.generate_context_for_memory_system(
                 context_input, file_metadata
             )
             
-            # Convert to legacy Result object for backward compatibility
-            return Result(context=associative_result.context, matches=associative_result.matches)
+            # Return the AssociativeMatchResult directly
+            print(f"DEBUG: Returning AssociativeMatchResult directly (matches={len(associative_result.matches)})")
+            return associative_result
         except Exception as e:
             # Improved error handling with detailed logging
             error_msg = f"Error during context generation with mediator: {str(e)}"
             print(f"EXCEPTION: {error_msg}")
             import traceback
             print(traceback.format_exc())
-            return Result(context=error_msg, matches=[])
+            return AssociativeMatchResult(context=error_msg, matches=[])  # Return standard type
 
-    def _get_relevant_context_sharded_with_mediator(self, context_input: ContextGenerationInput) -> Any:
+    def _get_relevant_context_sharded_with_mediator(self, context_input: ContextGenerationInput) -> AssociativeMatchResult:  # Update return type hint
         """
         Get relevant context using sharded approach with TaskSystem mediator.
         
@@ -311,15 +301,9 @@ class MemorySystem:
         Returns:
             Object containing context and file matches
         """
-        # Create result class
-        class Result:
-            def __init__(self, context, matches):
-                self.context = context
-                self.matches = matches
-        
         # Check if task_system is available (should have been checked in get_relevant_context_for)
         if not hasattr(self, 'task_system') or self.task_system is None:
-            return Result(context="TaskSystem not available for context generation", matches=[])
+            return AssociativeMatchResult(context="TaskSystem not available for context generation", matches=[])  # Return standard type
         
         # Process each shard independently
         all_matches = []
@@ -374,7 +358,7 @@ class MemorySystem:
         else:
             context = f"No relevant files found across {successful_shards}/{total_shards} shards."
         
-        return Result(context=context, matches=unique_matches)
+        return AssociativeMatchResult(context=context, matches=unique_matches)  # Return standard type
     
     def index_git_repository(self, repo_path: str, options: Optional[Dict[str, Any]] = None) -> None:
         """Index a git repository and update the global index.
