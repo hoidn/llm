@@ -207,20 +207,21 @@ class MemorySystem:
             if hasattr(context_input, 'template_description'):
                 print(f"Using existing ContextGenerationInput: {context_input.template_description}")
         
-        # If the task_system is available, use it as a mediator for context generation
-        if hasattr(self, 'task_system') and self.task_system:
-            try:
-                # Use task_system as mediator to maintain architectural boundaries
-                result = self.task_system.generate_context_for_memory_system(
-                    context_input, 
-                    self.get_global_index()
-                )
-                return result
-            except Exception as e:
-                print(f"Error using task_system mediator for context generation: {e}")
-                # Fall back to handler or basic matching
+        # Create result class - keep this for API compatibility
+        class Result:
+            def __init__(self, context, matches):
+                self.context = context
+                self.matches = matches
         
-        # For backward compatibility - if handler is available, use it directly
+        # Check if fresh context is disabled
+        if hasattr(context_input, 'fresh_context') and context_input.fresh_context == "disabled":
+            print("Fresh context disabled, returning inherited context only")
+            return Result(
+                context=context_input.inherited_context or "No context available",
+                matches=[]
+            )
+        
+        # If the handler is available, use it to determine relevant files
         if self.handler and hasattr(self.handler, 'determine_relevant_files'):
             try:
                 # Get file metadata
@@ -230,12 +231,29 @@ class MemorySystem:
                 relevant_matches = self.handler.determine_relevant_files(context_input, file_metadata)
                 
                 if relevant_matches:
-                    from memory.context_generation import AssociativeMatchResult
                     context = f"Found {len(relevant_matches)} relevant files."
-                    return AssociativeMatchResult(context=context, matches=relevant_matches)
+                    return Result(context=context, matches=relevant_matches)
             except Exception as e:
                 print(f"Error using handler for file relevance: {e}")
                 # Fall back to basic matching
+        
+        # If TaskSystem is available, use it as mediator (preferred approach)
+        try:
+            if hasattr(self, 'task_system') and self.task_system:
+                # Get file metadata
+                file_metadata = self.get_global_index()
+                
+                # Use TaskSystem mediator pattern
+                from memory.context_generation import AssociativeMatchResult
+                associative_result = self.task_system.generate_context_for_memory_system(
+                    context_input, file_metadata
+                )
+                
+                # Convert to legacy Result object for backward compatibility
+                return Result(context=associative_result.context, matches=associative_result.matches)
+        except Exception as e:
+            print(f"Error using TaskSystem mediator: {e}")
+            # Fall back to basic matching
         
         # If sharding is disabled or global index is small enough, use standard approach
         if not self._config["sharding_enabled"] or len(self._sharded_index) <= 1:
@@ -264,12 +282,26 @@ class MemorySystem:
         # For simple matching without LLM, use template_description directly
         query = input_data.template_description
         
+        # Build additional context string from relevant inputs
+        additional_context = ""
+        for name, value in input_data.inputs.items():
+            if input_data.context_relevance.get(name, True):
+                additional_context += f"{name}: {value}\n"
+        
+        # Combine query with additional context if available
+        if additional_context:
+            query = f"{query}\n\n{additional_context}"
+        
+        # Include inherited context if available and applicable
+        if input_data.inherited_context:
+            query = f"{query}\n\n{input_data.inherited_context}"
+        
         # Perform basic keyword matching - return ALL matches
         matches = []
         for path, metadata in self.global_index.items():
             # Check if any keywords from the query appear in the metadata
             if any(keyword.lower() in metadata.lower() for keyword in query.lower().split()):
-                matches.append((path, metadata))
+                matches.append((path, "Relevant to query"))
         
         if matches:
             context = f"Found {len(matches)} relevant files."
@@ -302,10 +334,24 @@ class MemorySystem:
             # For this simple matching, use template_description directly
             query = input_data.template_description
             
+            # Build additional context from relevant inputs
+            additional_context = ""
+            for name, value in input_data.inputs.items():
+                if input_data.context_relevance.get(name, True):
+                    additional_context += f"{name}: {value}\n"
+            
+            # Include additional context in query
+            if additional_context:
+                query = f"{query}\n\n{additional_context}"
+                
+            # Include inherited context if available
+            if input_data.inherited_context:
+                query = f"{query}\n\n{input_data.inherited_context}"
+            
             # Basic keyword matching for this shard
             for path, metadata in shard.items():
                 if any(keyword.lower() in metadata.lower() for keyword in query.lower().split()):
-                    all_matches.append((path, metadata))
+                    all_matches.append((path, "Relevant to query"))
         
         # Remove duplicates while preserving order (deduplication is acceptable)
         seen = set()

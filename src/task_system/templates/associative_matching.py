@@ -4,7 +4,7 @@ import re
 import os
 import math
 
-# Template definition as a Python dictionary to be converted to XML
+# Template definition as a Python dictionary
 ASSOCIATIVE_MATCHING_TEMPLATE = {
     "type": "atomic",
     "subtype": "associative_matching",
@@ -16,15 +16,39 @@ ASSOCIATIVE_MATCHING_TEMPLATE = {
             "description": "The user query or task to find relevant files for",
             "required": True
         },
+        "metadata": {
+            "type": "object",
+            "description": "File metadata dictionary mapping paths to metadata",
+            "required": True
+        },
+        "additional_context": {
+            "type": "object",
+            "description": "Additional context parameters to consider",
+            "default": {}
+        },
         "max_results": {
             "type": "integer",
             "description": "Maximum number of files to return",
             "default": 20
+        },
+        "inherited_context": {
+            "type": "string",
+            "description": "Context inherited from parent tasks",
+            "default": ""
+        },
+        "previous_outputs": {
+            "type": "array",
+            "description": "Outputs from previous steps",
+            "default": []
         }
     },
     "context_relevance": {
-        "query": True,        # Include query in context matching
-        "max_results": False  # Exclude max_results from context matching
+        "query": True,          # Include query in context matching
+        "metadata": True,       # Include metadata in context matching
+        "additional_context": True,  # Include additional context in matching
+        "max_results": False,   # Exclude max_results from context matching
+        "inherited_context": True,   # Include inherited context in matching
+        "previous_outputs": True     # Include previous outputs in matching
     },
     "model": {  # Model preferences
         "preferred": "claude-3-5-sonnet",
@@ -32,25 +56,43 @@ ASSOCIATIVE_MATCHING_TEMPLATE = {
     },
     "returns": {  # Return type definition
         "type": "array",
-        "items": {"type": "string"},
-        "description": "List of relevant file paths"
+        "items": {"type": "object"},
+        "description": "List of relevant file objects with path and relevance"
     },
     "context_management": {
-        "inherit_context": "none",
-        "accumulate_data": False,
-        "fresh_context": "disabled"
+        "inherit_context": "optional",  # Use inherited context if available
+        "accumulate_data": True,       # Accumulate data across steps
+        "fresh_context": "disabled"    # Don't generate fresh context (would cause recursion)
     },
     "output_format": {
         "type": "json",
-        "schema": "string[]"
+        "schema": "array"
     },
-    "system_prompt": """When finding relevant files for '{{query}}', consider:
-- Direct keyword matches in file names and content
-- Semantically similar terms to the query
-- Related programming concepts
-- File types appropriate for the task
+    "system_prompt": """You are a context retrieval assistant. Your task is to find the most relevant files for a given query.
 
-Return up to {{max_results}} relevant files that would be helpful for addressing the user's query."""
+Examine the provided metadata and determine which files would be most useful for addressing the query.
+
+Consider the following in your analysis:
+1. The main query: {{query}}
+2. Additional context parameters:
+{% for key, value in additional_context.items() %}
+   - {{key}}: {{value}}
+{% endfor %}
+3. Inherited context (if any): {{inherited_context}}
+4. File metadata content
+
+Focus on files that contain:
+- Direct keyword matches
+- Semantically similar content
+- Relevant functionality
+- Associated concepts
+
+RETURN ONLY a JSON array of objects with this format:
+[{"path": "path/to/file1.py", "relevance": "Reason this file is relevant"}, ...]
+
+Include up to {{max_results}} files, prioritizing the most relevant ones.
+The "relevance" field should briefly explain why the file is relevant.
+"""
 }
 
 def register_template(task_system) -> None:
@@ -111,16 +153,16 @@ def execute_template(query: str, memory_system, max_results: int = 20) -> List[s
     
     print(f"Found {len(file_metadata)} indexed files")
     
-    # The actual file relevance determination is now handled by the memory_system,
-    # which delegates to its handler (using LLM) when available.
-    # Here we just need to call the right method and extract the paths.
+    # Create context input
+    from memory.context_generation import ContextGenerationInput
+    context_input = ContextGenerationInput(
+        template_description=query,
+        template_type="atomic",
+        template_subtype="associative_matching",
+        inputs={"query": query}
+    )
     
-    # Use memory_system's existing API to get relevant files
-    context_input = {
-        "taskText": query,
-        "inheritedContext": ""
-    }
-    
+    # The actual file relevance determination is now handled by the memory_system
     context_result = memory_system.get_relevant_context_for(context_input)
     
     # Extract file paths from matches
