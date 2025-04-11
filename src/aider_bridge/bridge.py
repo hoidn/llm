@@ -179,7 +179,7 @@ class AiderBridge:
     
     def get_context_for_query(self, query: str) -> List[str]:
         """
-        Get relevant file context for a query using associative matching.
+        Get relevant file context for a query using ContextGenerationInput.
         
         Uses the memory system to find files relevant to the given query
         and updates the internal file context state.
@@ -198,8 +198,8 @@ class AiderBridge:
                 template_description=query,
                 template_type="atomic",
                 template_subtype="associative_matching",
-                inputs={},
-                context_relevance={},
+                inputs={"query": query},  # Include query in inputs
+                context_relevance={"query": True},  # Mark query as relevant
                 inherited_context="",
                 fresh_context="enabled"
             )

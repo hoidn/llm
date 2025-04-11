@@ -135,25 +135,44 @@ class BaseHandler:
         Returns:
             List of relevant file paths
         """
-        # Create context generation input
-        context_input = ContextGenerationInput(
-            template_description=query,
-            inputs=inputs or {},
-            context_relevance=context_relevance
-        )
-        
-        # Use memory system to find relevant files
-        context_result = self.memory_system.get_relevant_context_for(context_input)
-        
-        # Extract file paths from matches (maintain backward compatibility)
-        if hasattr(context_result, 'matches'):
-            # Object-style result
-            relevant_files = [match[0] for match in context_result.matches]
-        else:
-            # Dict-style result
-            relevant_files = [match[0] for match in context_result.get('matches', [])]
-        
-        return relevant_files
+        try:
+            # Initialize input dictionaries if not provided
+            if inputs is None:
+                inputs = {"query": query}
+            elif "query" not in inputs:
+                # Add query to inputs if not already present
+                inputs["query"] = query
+                
+            if context_relevance is None:
+                context_relevance = {"query": True}
+                # Add relevance for all inputs if not specified
+                for key in inputs:
+                    if key != "query":  # Skip query as we already set it
+                        context_relevance[key] = True
+            
+            # Create context generation input
+            context_input = ContextGenerationInput(
+                template_description=query,
+                inputs=inputs,
+                context_relevance=context_relevance
+            )
+            
+            # Use memory system to find relevant files
+            context_result = self.memory_system.get_relevant_context_for(context_input)
+            
+            # Extract file paths from matches (maintain backward compatibility)
+            if hasattr(context_result, 'matches'):
+                # Object-style result
+                relevant_files = [match[0] for match in context_result.matches]
+            else:
+                # Dict-style result
+                relevant_files = [match[0] for match in context_result.get('matches', [])]
+            
+            self.log_debug(f"Found {len(relevant_files)} relevant files for query: '{query}'")
+            return relevant_files
+        except Exception as e:
+            self.log_debug(f"Error getting relevant files: {str(e)}")
+            return []  # Return empty list on error to avoid breaking callers
     
     def _create_file_context(self, file_paths: List[str]) -> str:
         """Create a context string from file paths.

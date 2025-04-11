@@ -91,7 +91,7 @@ class PassthroughHandler(BaseHandler):
         return result
     
     def _find_matching_template(self, query: str):
-        """Find a matching template for the query.
+        """Find a matching template for the query using ContextGenerationInput.
         
         Args:
             query: User query
@@ -110,22 +110,26 @@ class PassthroughHandler(BaseHandler):
                 template_description=query,
                 template_type="atomic",
                 template_subtype="generic",
-                inputs={},
-                context_relevance={},
+                inputs={"query": query},  # Include query in inputs
+                context_relevance={"query": True},  # Mark query as relevant
                 fresh_context="enabled"
             )
                 
             # Get matching tasks from task system
-            matching_tasks = self.task_system.find_matching_tasks(query, self.memory_system)
-            
-            if not matching_tasks:
-                self.log_debug("No matching templates found")
-                return None
+            try:
+                matching_tasks = self.task_system.find_matching_tasks(query, self.memory_system)
                 
-            # Get highest scoring template
-            best_match = matching_tasks[0]
-            self.log_debug(f"Found matching template: {best_match['taskType']}:{best_match['subtype']} (score: {best_match['score']:.2f})")
-            return best_match["task"]
+                if not matching_tasks:
+                    self.log_debug("No matching templates found")
+                    return None
+                    
+                # Get highest scoring template
+                best_match = matching_tasks[0]
+                self.log_debug(f"Found matching template: {best_match['taskType']}:{best_match['subtype']} (score: {best_match['score']:.2f})")
+                return best_match["task"]
+            except Exception as e:
+                self.log_debug(f"Error finding matching tasks: {str(e)}")
+                return None
         except Exception as e:
             self.log_debug(f"Error finding matching template: {str(e)}")
             return None
