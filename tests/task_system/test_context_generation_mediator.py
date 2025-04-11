@@ -52,12 +52,14 @@ class TestTaskSystemMediator:
         
         # Verify execute_task was called with correct parameters
         task_system.execute_task.assert_called_once()
-        call_args = task_system.execute_task.call_args[0]
-        assert call_args[0] == "atomic"  # task_type
-        assert call_args[1] == "associative_matching"  # task_subtype
+        
+        # Fix: Check keyword arguments instead of positional arguments
+        call_kwargs = task_system.execute_task.call_args.kwargs
+        assert call_kwargs["task_type"] == "atomic"
+        assert call_kwargs["task_subtype"] == "associative_matching"
         
         # Check inputs
-        inputs = call_args[2]
+        inputs = call_kwargs["inputs"]
         assert inputs["query"] == "Find auth code"
         assert "metadata" in inputs
         assert inputs["additional_context"] == {"feature": "login"}
