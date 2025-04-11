@@ -119,11 +119,15 @@ class TestBaseHandler:
         assert "file1.py" in relevant_files
         assert "file2.py" in relevant_files
         
-        # Check that memory system was called with correct input
-        mock_memory_system.get_relevant_context_for.assert_called_once_with({
-            "taskText": "test query",
-            "inheritedContext": ""
-        })
+        # Check that memory system was called with a ContextGenerationInput object
+        mock_memory_system.get_relevant_context_for.assert_called_once()
+        # Get the actual call argument
+        call_arg = mock_memory_system.get_relevant_context_for.call_args[0][0]
+        # Verify it's a ContextGenerationInput with correct values
+        from memory.context_generation import ContextGenerationInput
+        assert isinstance(call_arg, ContextGenerationInput)
+        assert call_arg.template_description == "test query"
+        assert call_arg.inherited_context == ""
 
     def test_reset_conversation(self, mock_task_system, mock_memory_system):
         """Test conversation reset."""
