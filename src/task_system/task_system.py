@@ -751,6 +751,12 @@ class TaskSystem(TemplateLookupInterface):
             file_context  # File context
         )
             
+        # Add file path error message if present
+        if error_message:
+            if "notes" not in result:
+                result["notes"] = {}
+            result["notes"]["file_paths_error"] = error_message
+        
         # Add model info if selected
         if selected_model:
             if "notes" not in result:
