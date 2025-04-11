@@ -183,6 +183,7 @@ def execute_template(inputs: Dict[str, Any], memory_system, handler) -> List[Dic
     # --- 3. Execute using the handler ---
     # Try to use _send_to_model if available
     if hasattr(handler, '_send_to_model'):
+        print(f"DEBUG: Using handler._send_to_model() for {type(handler).__name__}")
         llm_response = handler._send_to_model(
             query=main_prompt,
             file_context=None,  # File context is already in the system prompt
@@ -190,17 +191,14 @@ def execute_template(inputs: Dict[str, Any], memory_system, handler) -> List[Dic
         )
         response_content = llm_response
     else:
-        # Fallback: If _send_to_model isn't suitable, use handle_query
-        print("Warning: Using fallback handler execution method for associative matching.")
-        # Temporarily set a specific system prompt for this call
-        original_base_prompt = getattr(handler, 'base_system_prompt', None)
-        if hasattr(handler, 'base_system_prompt'):
-            handler.base_system_prompt = processed_system_prompt
-        # Execute
-        result_dict = handler.handle_query(main_prompt)
-        # Restore original prompt if needed
-        if hasattr(handler, 'base_system_prompt') and original_base_prompt is not None:
-            handler.base_system_prompt = original_base_prompt
+        # Fallback: If _send_to_model isn't suitable, use execute_prompt
+        print(f"DEBUG: Using fallback handler.execute_prompt() for {type(handler).__name__}")
+        # Execute using the standard interface
+        result_dict = handler.execute_prompt(
+            prompt=main_prompt,
+            template_system_prompt=processed_system_prompt,
+            file_context=None  # File context is already in the system prompt
+        )
         response_content = result_dict.get("content", "[]")
 
     # --- 4. Parse the LLM response ---

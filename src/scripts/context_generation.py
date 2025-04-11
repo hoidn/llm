@@ -67,6 +67,12 @@ def initialize_components(project_dir: str):
     memory_system.handler = handler
     # Allow TaskSystem to access MemorySystem if needed
     task_system.memory_system = memory_system
+    
+    # Ensure TaskSystem knows about the memory_system
+    if hasattr(task_system, 'memory_system'):
+        print("[green]TaskSystem has memory_system reference.[/green]")
+    else:
+        print("[yellow]Warning: TaskSystem does not have memory_system attribute.[/yellow]")
 
     # Register the necessary template
     register_associative_matching_template(task_system)

@@ -18,12 +18,13 @@ class TaskSystem(TemplateLookupInterface):
     Manages task templates, execution, and context management.
     """
     
-    def __init__(self, evaluator: Optional[EvaluatorInterface] = None):
+    def __init__(self, evaluator: Optional[EvaluatorInterface] = None, memory_system=None):
         """
         Initialize the Task System.
         
         Args:
             evaluator: Optional Evaluator instance for AST evaluation
+            memory_system: Optional Memory System instance
         """
         self.templates = {}  # Templates by name
         self.template_index = {}  # Maps type:subtype to template name
@@ -40,6 +41,9 @@ class TaskSystem(TemplateLookupInterface):
         
         # Flag to determine if we're in test mode
         self._test_mode = False
+        
+        # Store memory system reference
+        self.memory_system = memory_system
     
     def _ensure_evaluator(self):
         """
@@ -331,7 +335,8 @@ class TaskSystem(TemplateLookupInterface):
             )
             
         # Execute specialized context generation task
-        result = self._execute_context_generation_task(context_input, global_index)
+        # Pass self.memory_system explicitly if available
+        result = self._execute_context_generation_task(context_input, global_index, self.memory_system)
         
         # Extract relevant files from result
         file_matches = []
@@ -356,7 +361,7 @@ class TaskSystem(TemplateLookupInterface):
         context = f"Found {len(file_matches)} relevant files."
         return AssociativeMatchResult(context=context, matches=file_matches)
 
-    def _execute_context_generation_task(self, context_input, global_index):
+    def _execute_context_generation_task(self, context_input, global_index, memory_system=None):
         """Execute specialized context generation task using LLM.
         
         This creates a specialized task for context generation and executes it
@@ -365,6 +370,7 @@ class TaskSystem(TemplateLookupInterface):
         Args:
             context_input: Context generation input
             global_index: Global file metadata index
+            memory_system: Optional Memory System instance
             
         Returns:
             Task result with relevant file information
@@ -394,11 +400,24 @@ class TaskSystem(TemplateLookupInterface):
         if context_input.previous_outputs:
             inputs["previous_outputs"] = context_input.previous_outputs
         
+        # --- Determine Handler Instance ---
+        handler_instance = None
+        # Prioritize handler linked via memory_system IF memory_system was provided
+        if memory_system and hasattr(memory_system, 'handler') and memory_system.handler:
+            handler_instance = memory_system.handler
+            print(f"DEBUG: Using handler from MemorySystem: {type(handler_instance).__name__}")
+        else:
+            # Fallback ONLY if no handler found via memory_system
+            print(f"DEBUG: Falling back to TaskSystem._get_handler()")
+            handler_instance = self._get_handler()  # Use the default handler getter
+        
         # Execute task to find relevant files
         return self.execute_task(
             task_type="atomic",
             task_subtype="associative_matching",
-            inputs=inputs
+            inputs=inputs,
+            handler=handler_instance,  # Pass the explicitly determined handler
+            memory_system=memory_system  # Pass memory_system along if needed by downstream
         )
         
     def resolve_file_paths(self, template: Dict[str, Any], memory_system, handler) -> Tuple[List[str], Optional[str]]:
@@ -570,7 +589,7 @@ class TaskSystem(TemplateLookupInterface):
         if task_type == "atomic":
             # Check for specialized handlers based on subtype
             if task_subtype == "associative_matching":
-                print(f"Calling _execute_associative_matching with template: {template.get('name')}")
+                print(f"DEBUG: Calling _execute_associative_matching with template: {template.get('name')} and handler: {type(handler).__name__}")
                 result = self._execute_associative_matching(template, resolved_inputs, memory_system, handler=handler)
                 
                 # Ensure result has notes field
@@ -900,8 +919,10 @@ class TaskSystem(TemplateLookupInterface):
         
         # Get the handler - prioritize passed handler, fallback if needed
         if not handler:
-            print("Warning: No handler passed to _execute_associative_matching, attempting fallback.")
+            print("CRITICAL WARNING: No handler passed to _execute_associative_matching, using fallback _get_handler(). This might be wrong.")
             handler = self._get_handler()  # Use the TaskSystem's default handler getter
+            
+        print(f"DEBUG: _execute_associative_matching received handler: {type(handler).__name__}")
         
         # Execute the template
         try:
