@@ -1,4 +1,5 @@
 # src/scripts/demo_sharded_retrieval.py
+#!/usr/bin/env python
 """
 Demonstration script for token-based sharded context retrieval.
 
@@ -12,6 +13,10 @@ Example:
 import os
 import sys
 import time
+
+# Add the project root to the Python path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 from memory.memory_system import MemorySystem
 from memory.indexers.git_repository_indexer import GitRepositoryIndexer
 
