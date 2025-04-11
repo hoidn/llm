@@ -4,6 +4,8 @@ from typing import Dict, List, Optional, Any, Callable, Tuple
 from handler.model_provider import ProviderAdapter, ClaudeProvider
 from handler.file_access import FileAccessManager
 from handler.command_executor import execute_command_safely, parse_file_paths_from_output
+from memory.context_generation import ContextGenerationInput
+from system.prompt_registry import registry as prompt_registry
 
 class BaseHandler:
     """Base class for all handlers with common functionality.
@@ -121,30 +123,36 @@ class BaseHandler:
         
         return file_paths
     
-    def _get_relevant_files(self, query: str) -> List[str]:
-        """Get relevant files from memory system based on query.
+    def _get_relevant_files(self, query: str, inputs: Optional[Dict[str, Any]] = None,
+                          context_relevance: Optional[Dict[str, bool]] = None) -> List[str]:
+        """Get relevant files from memory system based on query and context.
         
         Args:
             query: User's query
+            inputs: Optional dictionary of additional inputs
+            context_relevance: Optional mapping of input names to relevance
             
         Returns:
             List of relevant file paths
         """
-        # Use memory system to find relevant files
-        context_input = {
-            "taskText": query,
-            "inheritedContext": "",  # No inherited context for fresh queries
-        }
+        # Create context generation input
+        context_input = ContextGenerationInput(
+            template_description=query,
+            inputs=inputs or {},
+            context_relevance=context_relevance
+        )
         
+        # Use memory system to find relevant files
         context_result = self.memory_system.get_relevant_context_for(context_input)
         
-        # Extract file paths from matches
+        # Extract file paths from matches (maintain backward compatibility)
         if hasattr(context_result, 'matches'):
             # Object-style result
             relevant_files = [match[0] for match in context_result.matches]
         else:
             # Dict-style result
             relevant_files = [match[0] for match in context_result.get('matches', [])]
+        
         return relevant_files
     
     def _create_file_context(self, file_paths: List[str]) -> str:
@@ -245,17 +253,12 @@ class BaseHandler:
             file_context += f"File {i}: {path}\n"
             file_context += f"Metadata: {metadata}\n\n"
         
-        system_prompt = """You are a file relevance assistant. Your task is to select files that are relevant to a user's query.
-        Examine the metadata of each file and determine which files would be most useful to address the query.
-        
-        Return ONLY a JSON array of objects with the following format:
-        [{"path": "path/to/file1.py", "relevance": "Reason this file is relevant"}, ...]
-        
-        Include only files that are truly relevant to the query. 
-        The "relevance" field should briefly explain why the file is relevant to the query.
-        
-        Do not include explanations or other text in your response, just the JSON array.
-        """
+        # Get system prompt from registry
+        system_prompt = prompt_registry.get_prompt("file_relevance")
+        if not system_prompt:
+            system_prompt = """You are a file relevance assistant. Your task is to select files that are relevant to a user's query.
+            Return ONLY a JSON array of objects with the following format:
+            [{"path": "path/to/file1.py", "relevance": "Reason"}]"""
         
         user_message = f"Query: {query}\n\n{file_context}\n\nSelect the files most relevant to this query."
         

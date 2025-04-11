@@ -1,7 +1,10 @@
 """Memory System implementation."""
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Dict, List, Any, Optional, Tuple, Union
 import os
 import math
+
+from memory.context_generation import ContextGenerationInput
+from system.prompt_registry import registry as prompt_registry
 
 class MemorySystem:
     """Memory System for metadata management and associative matching.
@@ -179,17 +182,23 @@ class MemorySystem:
                 
         return result
     
-    def get_relevant_context_for(self, input_data: Dict[str, Any]) -> Any:
+    def get_relevant_context_for(self, input_data: Union[Dict[str, Any], ContextGenerationInput]) -> Any:
         """
         Get relevant context for a task.
         
         Args:
-            input_data: The input data containing task context
-            
+            input_data: The input data containing task context, either as a
+                      legacy dict format or ContextGenerationInput instance
+        
         Returns:
             Object containing context and file matches
         """
-        task_text = input_data.get("taskText", "")
+        # Convert input to ContextGenerationInput if needed
+        if isinstance(input_data, dict):
+            # Handle legacy format with taskText
+            context_input = ContextGenerationInput.from_legacy_format(input_data)
+        else:
+            context_input = input_data
         
         # Create result class - keep this for API compatibility
         class Result:
@@ -203,11 +212,13 @@ class MemorySystem:
                 # Get file metadata
                 file_metadata = self.get_global_index()
                 
-                # Use the handler to determine relevant files
-                relevant_matches = self.handler.determine_relevant_files(task_text, file_metadata)
+                # Use the handler to determine relevant files based on template description
+                # and relevant inputs
+                query_text = self._build_query_from_input(context_input)
+                relevant_matches = self.handler.determine_relevant_files(query_text, file_metadata)
                 
                 if relevant_matches:
-                    context = f"Found {len(relevant_matches)} relevant files for '{task_text}'."
+                    context = f"Found {len(relevant_matches)} relevant files."
                     return Result(context=context, matches=relevant_matches)
             except Exception as e:
                 print(f"Error using handler for file relevance: {e}")
@@ -215,23 +226,24 @@ class MemorySystem:
         
         # If sharding is disabled or global index is small enough, use standard approach
         if not self._config["sharding_enabled"] or len(self._sharded_index) <= 1:
-            return self._get_relevant_context_standard(input_data)
+            return self._get_relevant_context_standard(context_input)
         
         # Otherwise, use sharded approach (internal implementation)
-        return self._get_relevant_context_sharded(input_data)
+        return self._get_relevant_context_sharded(context_input)
     
-    def _get_relevant_context_standard(self, input_data: Dict[str, Any]) -> Any:
+    def _get_relevant_context_standard(self, input_data: ContextGenerationInput) -> Any:
         """
         Get relevant context using standard approach.
         This is an internal method.
         
         Args:
-            input_data: The input data containing task context
+            input_data: The ContextGenerationInput instance
             
         Returns:
             Object containing context and file matches
         """
-        task_text = input_data.get("taskText", "")
+        # Extract query from input data
+        query = self._build_query_from_input(input_data)
         
         # Create result class
         class Result:
@@ -243,28 +255,29 @@ class MemorySystem:
         matches = []
         for path, metadata in self.global_index.items():
             # Check if any keywords from the query appear in the metadata
-            if any(keyword.lower() in metadata.lower() for keyword in task_text.lower().split()):
+            if any(keyword.lower() in metadata.lower() for keyword in query.lower().split()):
                 matches.append((path, metadata))
         
         if matches:
-            context = f"Found {len(matches)} relevant files for '{task_text}'."
+            context = f"Found {len(matches)} relevant files."
         else:
-            context = f"No relevant files found for '{task_text}'."
+            context = f"No relevant files found."
             
         return Result(context=context, matches=matches)
 
-    def _get_relevant_context_sharded(self, input_data: Dict[str, Any]) -> Any:
+    def _get_relevant_context_sharded(self, input_data: ContextGenerationInput) -> Any:
         """
         Get relevant context using sharded approach.
         This is an internal method.
         
         Args:
-            input_data: The input data containing task context
+            input_data: The ContextGenerationInput instance
             
         Returns:
             Object containing context and file matches
         """
-        task_text = input_data.get("taskText", "")
+        # Extract query from input data
+        query = self._build_query_from_input(input_data)
         
         # Create result class
         class Result:
@@ -277,7 +290,7 @@ class MemorySystem:
         for shard in self._sharded_index:
             # Basic keyword matching for this shard
             for path, metadata in shard.items():
-                if any(keyword.lower() in metadata.lower() for keyword in task_text.lower().split()):
+                if any(keyword.lower() in metadata.lower() for keyword in query.lower().split()):
                     all_matches.append((path, metadata))
         
         # Remove duplicates while preserving order (deduplication is acceptable)
@@ -337,3 +350,33 @@ class MemorySystem:
             self.update_global_index(file_metadata)
         
         print(f"Updated global index with {len(file_metadata)} files from repository")
+    def _build_query_from_input(self, context_input: ContextGenerationInput) -> str:
+        """
+        Build a query string from context input by combining template description 
+        and relevant inputs.
+        
+        Args:
+            context_input: The context generation input
+            
+        Returns:
+            Query string for relevance matching
+        """
+        # Start with template description
+        query_parts = [context_input.template_description]
+        
+        # Add relevant inputs
+        for name, value in context_input.inputs.items():
+            # Only include inputs marked as relevant
+            if name in context_input.context_relevance and context_input.context_relevance[name]:
+                # Convert input value to string if needed
+                if value is not None:
+                    if not isinstance(value, str):
+                        value = str(value)
+                    query_parts.append(f"{name}: {value}")
+        
+        # Add inherited context if available
+        if context_input.inherited_context:
+            query_parts.append(context_input.inherited_context)
+        
+        # Join all parts with spaces
+        return " ".join(query_parts)
