@@ -548,7 +548,7 @@ class TaskSystem(TemplateLookupInterface):
         selected_model = None
         if available_models:
             from .template_utils import get_preferred_model
-            selected_model = get_preferred_model(resolved_template, available_models)
+            selected_model = get_preferred_model(template, available_models)
 
         # Check for specialized task subtypes FIRST
         if task_type == "atomic":
