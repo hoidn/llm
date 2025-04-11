@@ -5,6 +5,7 @@ from unittest.mock import patch, MagicMock
 
 from memory.context_generation import ContextGenerationInput
 from memory.memory_system import MemorySystem
+from task_system.task_system import TaskSystem
 
 class TestContextPerformance:
     """Tests for context generation performance."""

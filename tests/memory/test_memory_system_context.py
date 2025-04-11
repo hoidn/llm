@@ -4,6 +4,7 @@ from unittest.mock import patch, MagicMock
 
 from memory.memory_system import MemorySystem
 from memory.context_generation import ContextGenerationInput
+from task_system.task_system import TaskSystem
 
 
 class TestMemorySystemContext:

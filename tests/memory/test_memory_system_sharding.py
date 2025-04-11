@@ -1,7 +1,9 @@
 """Tests for token-based sharded context retrieval."""
 import pytest
 import os
+from unittest.mock import MagicMock
 from src.memory.memory_system import MemorySystem
+from src.task_system.task_system import TaskSystem
 
 class TestTokenBasedSharding:
     """Tests for token-based sharded context retrieval."""

@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 
 from src.memory.memory_system import MemorySystem
 from src.memory.indexers.git_repository_indexer import GitRepositoryIndexer
+from src.task_system.task_system import TaskSystem
 
 class TestShardedRetrieval:
     """Integration tests for sharded context retrieval."""
