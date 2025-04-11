@@ -251,24 +251,6 @@ class MemorySystem:
             print(f"Error using TaskSystem mediator: {e}")
             # Fall back to basic matching
         
-        # If TaskSystem is available, use it as mediator (preferred approach)
-        try:
-            if hasattr(self, 'task_system') and self.task_system:
-                # Get file metadata
-                file_metadata = self.get_global_index()
-                
-                # Use TaskSystem mediator pattern
-                from memory.context_generation import AssociativeMatchResult
-                associative_result = self.task_system.generate_context_for_memory_system(
-                    context_input, file_metadata
-                )
-                
-                # Convert to legacy Result object for backward compatibility
-                return Result(context=associative_result.context, matches=associative_result.matches)
-        except Exception as e:
-            print(f"Error using TaskSystem mediator: {e}")
-            # Fall back to basic matching
-        
         # If sharding is disabled or global index is small enough, use standard approach
         if not self._config["sharding_enabled"] or len(self._sharded_index) <= 1:
             return self._get_relevant_context_standard(context_input)
