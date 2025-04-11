@@ -369,15 +369,17 @@ class TaskSystem(TemplateLookupInterface):
         Returns:
             Task result with relevant file information
         """
-        # Create metadata list for templates that expect simplified format
-        file_metadata_list = {}
-        for path, metadata in global_index.items():
-            file_metadata_list[path] = metadata
+        # Format metadata as a string
+        metadata_items = []
+        for path, meta in global_index.items():
+            # Basic formatting
+            metadata_items.append(f"--- File: {path} ---\n{meta}\n")
+        formatted_metadata = "\n".join(metadata_items)
         
         # Create specialized inputs for context generation
         inputs = {
             "query": context_input.template_description,
-            "metadata": file_metadata_list,
+            "metadata": formatted_metadata,
             "additional_context": {}
         }
         
@@ -494,7 +496,7 @@ class TaskSystem(TemplateLookupInterface):
         
     def execute_task(self, task_type: str, task_subtype: str, inputs: Dict[str, Any], 
                     memory_system=None, available_models: Optional[List[str]] = None,
-                    call_depth: int = 0, **kwargs) -> Dict[str, Any]:
+                    call_depth: int = 0, handler=None, **kwargs) -> Dict[str, Any]:
         """Execute a task with proper context management and parameter validation.
 
         Args:
@@ -550,12 +552,26 @@ class TaskSystem(TemplateLookupInterface):
             from .template_utils import get_preferred_model
             selected_model = get_preferred_model(template, available_models)
 
+        # Determine the handler if not provided
+        if handler is None:
+            # Select model if available_models provided
+            selected_model = None
+            if available_models:
+                from .template_utils import get_preferred_model
+                selected_model = get_preferred_model(template, available_models)
+
+            # Get appropriate handler
+            handler_config = kwargs.get("handler_config", {})
+            if selected_model:
+                handler_config["model"] = selected_model
+            handler = self._get_handler(model=selected_model, config=handler_config)
+
         # Check for specialized task subtypes FIRST
         if task_type == "atomic":
             # Check for specialized handlers based on subtype
             if task_subtype == "associative_matching":
                 print(f"Calling _execute_associative_matching with template: {template.get('name')}")
-                result = self._execute_associative_matching(template, resolved_inputs, memory_system)
+                result = self._execute_associative_matching(template, resolved_inputs, memory_system, handler=handler)
                 
                 # Ensure result has notes field
                 if "notes" not in result:
@@ -666,21 +682,7 @@ class TaskSystem(TemplateLookupInterface):
         else:
             resolved_template = template
 
-        # Select model if available_models provided
-        selected_model = None
-        if available_models:
-            from .template_utils import get_preferred_model
-            selected_model = get_preferred_model(resolved_template, available_models)
-
-        # Get appropriate handler
-        handler_config = kwargs.get("handler_config", {})
-        if selected_model:
-            handler_config["model"] = selected_model
-    
-        handler = kwargs.get("handler") or self._get_handler(
-            model=resolved_template.get("model"),
-            config=handler_config
-        )
+        # Handler is already determined above
     
         # Resolve file paths using the coordinator
         file_paths = []
@@ -882,45 +884,39 @@ class TaskSystem(TemplateLookupInterface):
             
         return result
     
-    def _execute_associative_matching(self, task, inputs, memory_system):
+    def _execute_associative_matching(self, task, inputs, memory_system, handler=None):
         """Execute an associative matching task.
         
         Args:
             task: The task definition
             inputs: Task inputs
             memory_system: The Memory System instance
+            handler: The Handler instance (passed from execute_task)
             
         Returns:
             Task result with relevant files
         """
         from .templates.associative_matching import execute_template
         
-        # Get query from inputs
-        query = inputs.get("query", "")
-        if not query:
-            return {
-                "content": "[]",
-                "status": "COMPLETE",
-                "notes": {  # Always include notes
-                    "error": "No query provided",
-                    "system_prompt": task.get("system_prompt", "")
-                }
-            }
+        # Get the handler - prioritize passed handler, fallback if needed
+        if not handler:
+            print("Warning: No handler passed to _execute_associative_matching, attempting fallback.")
+            handler = self._get_handler()  # Use the TaskSystem's default handler getter
         
         # Execute the template
         try:
-            max_results = inputs.get("max_results", 20)
-            relevant_files = execute_template(query, memory_system, max_results)
+            # Pass handler to execute_template
+            relevant_file_objects = execute_template(inputs, memory_system, handler)
             
             # Convert to JSON string
             import json
-            file_list_json = json.dumps(relevant_files)
+            file_list_json = json.dumps(relevant_file_objects)
             
             return {
                 "content": file_list_json,
                 "status": "COMPLETE",
                 "notes": {  # Always include notes
-                    "file_count": len(relevant_files),
+                    "file_count": len(relevant_file_objects),
                     "system_prompt": task.get("system_prompt", "")
                 }
             }

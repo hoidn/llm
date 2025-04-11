@@ -17,8 +17,8 @@ ASSOCIATIVE_MATCHING_TEMPLATE = {
             "required": True
         },
         "metadata": {
-            "type": "object",
-            "description": "File metadata dictionary mapping paths to metadata",
+            "type": "string",
+            "description": "Formatted string of file metadata",
             "required": True
         },
         "additional_context": {
@@ -44,7 +44,7 @@ ASSOCIATIVE_MATCHING_TEMPLATE = {
     },
     "context_relevance": {
         "query": True,          # Include query in context matching
-        "metadata": True,       # Include metadata in context matching
+        "metadata": False,      # Metadata is now part of the prompt, not separate context
         "additional_context": True,  # Include additional context in matching
         "max_results": False,   # Exclude max_results from context matching
         "inherited_context": True,   # Include inherited context in matching
@@ -68,30 +68,28 @@ ASSOCIATIVE_MATCHING_TEMPLATE = {
         "type": "json",
         "schema": "array"
     },
-    "system_prompt": """You are a context retrieval assistant. Your task is to find the most relevant files for a given query.
+    "system_prompt": """You are a file relevance assistant. Your task is to select files that are relevant to a user's query and additional context.
 
-Examine the provided metadata and determine which files would be most useful for addressing the query.
-
-Consider the following in your analysis:
+The user message will contain:
 1. The main query: {{query}}
 2. Additional context parameters:
 {% for key, value in additional_context.items() %}
    - {{key}}: {{value}}
 {% endfor %}
 3. Inherited context (if any): {{inherited_context}}
-4. File metadata content
+4. A list of available files with metadata below.
 
-Focus on files that contain:
-- Direct keyword matches
-- Semantically similar content
-- Relevant functionality
-- Associated concepts
+Examine the metadata of each file and determine which files would be most useful for addressing the query.
 
-RETURN ONLY a JSON array of objects with this format:
+RETURN ONLY a JSON array of objects with the following format:
 [{"path": "path/to/file1.py", "relevance": "Reason this file is relevant"}, ...]
 
-Include up to {{max_results}} files, prioritizing the most relevant ones.
+Include only files that are truly relevant to the query and context.
 The "relevance" field should briefly explain why the file is relevant.
+Prioritize the most relevant files, up to a maximum of {{max_results}}.
+
+Available Files Metadata:
+{{metadata}}
 """
 }
 
@@ -129,55 +127,120 @@ def create_xml_template() -> str:
     """
     return xml
 
-def execute_template(query: str, memory_system, max_results: int = 20) -> List[str]:
-    """Execute the associative matching template logic.
-    
-    This function passes the file metadata to memory_system, which then determines
-    which files are most relevant to the given query (delegated to the handler's LLM).
-    
-    Args:
-        query: The user query or task
-        memory_system: The Memory System instance
-        max_results: Maximum number of files to return
-        
-    Returns:
-        List of relevant file paths selected by the LLM via the handler
+def execute_template(inputs: Dict[str, Any], memory_system, handler) -> List[Dict[str, Any]]:
     """
-    print(f"Executing associative matching for query: '{query}'")
-    
-    # Get global index from memory system
-    file_metadata = get_global_index(memory_system)
-    if not file_metadata:
-        print("No indexed files found. Run index_git_repository first.")
+    Execute the associative matching template logic using the LLM via the handler.
+
+    Args:
+        inputs: Dictionary of resolved input parameters for the template.
+        memory_system: The Memory System instance (unused in this version, but kept for signature compatibility).
+        handler: The Handler instance to execute the LLM call.
+
+    Returns:
+        List of relevant file objects [{'path': str, 'relevance': str}]
+    """
+    print(f"Executing associative matching template directly via handler")
+
+    # --- 1. Extract resolved inputs ---
+    query = inputs.get("query", "")
+    metadata_str = inputs.get("metadata", "")  # Expecting formatted string now
+    additional_context = inputs.get("additional_context", {})
+    max_results = inputs.get("max_results", 20)
+    inherited_context = inputs.get("inherited_context", "")
+
+    if not query:
+        print("Warning: No query provided for associative matching.")
         return []
-    
-    print(f"Found {len(file_metadata)} indexed files")
-    
-    # Create context input
-    from memory.context_generation import ContextGenerationInput
-    context_input = ContextGenerationInput(
-        template_description=query,
-        template_type="atomic",
-        template_subtype="associative_matching",
-        inputs={"query": query}
-    )
-    
-    # The actual file relevance determination is now handled by the memory_system
-    context_result = memory_system.get_relevant_context_for(context_input)
-    
-    # Extract file paths from matches
-    relevant_files = [match[0] for match in context_result.matches]
-    
-    # Limit to max_results
-    relevant_files = relevant_files[:max_results]
-    
-    print(f"Selected {len(relevant_files)} relevant files")
-    for i, path in enumerate(relevant_files[:5], 1):
-        print(f"  {i}. {path}")
-    if len(relevant_files) > 5:
-        print(f"  ... and {len(relevant_files) - 5} more")
-    
-    return relevant_files
+    if not metadata_str:
+        print("Warning: No file metadata provided for associative matching.")
+        return []
+
+    # --- 2. Prepare prompt for the handler ---
+    # Create a minimal environment for substituting variables in the system prompt
+    from task_system.template_utils import Environment
+    prompt_env = Environment(inputs)
+    try:
+        # Substitute variables in the system prompt template string
+        system_prompt_template = ASSOCIATIVE_MATCHING_TEMPLATE.get("system_prompt", "")
+        # Handle the Jinja-like syntax in prompt
+        import jinja2
+        jinja_env = jinja2.Environment()
+        template = jinja_env.from_string(system_prompt_template)
+        processed_system_prompt = template.render(
+            query=query,
+            additional_context=additional_context,
+            inherited_context=inherited_context,
+            max_results=max_results,
+            metadata=metadata_str
+        )
+    except Exception as e:
+        print(f"Error processing system prompt template: {e}")
+        processed_system_prompt = f"Error processing prompt template: {e}"  # Fallback
+
+    # The main prompt for the LLM
+    main_prompt = "Based on the system prompt, provide the JSON list of relevant files."
+
+    # --- 3. Execute using the handler ---
+    # Try to use _send_to_model if available
+    if hasattr(handler, '_send_to_model'):
+        llm_response = handler._send_to_model(
+            query=main_prompt,
+            file_context=None,  # File context is already in the system prompt
+            template={"system_prompt": processed_system_prompt}
+        )
+        response_content = llm_response
+    else:
+        # Fallback: If _send_to_model isn't suitable, use handle_query
+        print("Warning: Using fallback handler execution method for associative matching.")
+        # Temporarily set a specific system prompt for this call
+        original_base_prompt = getattr(handler, 'base_system_prompt', None)
+        if hasattr(handler, 'base_system_prompt'):
+            handler.base_system_prompt = processed_system_prompt
+        # Execute
+        result_dict = handler.handle_query(main_prompt)
+        # Restore original prompt if needed
+        if hasattr(handler, 'base_system_prompt') and original_base_prompt is not None:
+            handler.base_system_prompt = original_base_prompt
+        response_content = result_dict.get("content", "[]")
+
+    # --- 4. Parse the LLM response ---
+    try:
+        # Clean the response: LLMs sometimes add markdown backticks
+        import json
+        cleaned_response = response_content.strip()
+        if cleaned_response.startswith("```") and cleaned_response.endswith("```"):
+            cleaned_response = cleaned_response[3:-3].strip()
+        if cleaned_response.startswith("json"):
+            cleaned_response = cleaned_response[4:].strip()
+
+        parsed_files = json.loads(cleaned_response)
+        if not isinstance(parsed_files, list):
+            print(f"Warning: LLM response for file matching was not a JSON list. Got: {type(parsed_files)}")
+            return []
+
+        # Validate format
+        validated_files = []
+        for item in parsed_files:
+            if isinstance(item, dict) and "path" in item and "relevance" in item:
+                validated_files.append(item)
+            else:
+                print(f"Warning: Skipping invalid item in LLM response: {item}")
+        
+        print(f"Selected {len(validated_files)} relevant files")
+        for i, item in enumerate(validated_files[:5], 1):
+            print(f"  {i}. {item['path']} - {item['relevance'][:50]}...")
+        if len(validated_files) > 5:
+            print(f"  ... and {len(validated_files) - 5} more")
+            
+        return validated_files
+
+    except json.JSONDecodeError as e:
+        print(f"Error decoding JSON response from LLM: {e}")
+        print(f"LLM Raw Response was: {response_content}")
+        return []
+    except Exception as e:
+        print(f"Unexpected error processing LLM response: {e}")
+        return []
 
 
 def get_global_index(memory_system) -> Dict[str, str]:
