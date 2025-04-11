@@ -341,27 +341,55 @@ class TaskSystem(TemplateLookupInterface):
         # Extract relevant files from result
         file_matches = []
         try:
+            print(f"DEBUG: Content received from task execution: {result.get('content', 'No content')[:200]}...") # Log received content
             import json
             content = result.get("content", "[]")
             matches_data = json.loads(content) if isinstance(content, str) else content
             
             if isinstance(matches_data, list):
-                # Process file matches
+                print(f"DEBUG: Parsed {len(matches_data)} items from LLM JSON response.")
                 for item in matches_data:
-                    if isinstance(item, dict) and "path" in item:
+                    # Ensure item is a dictionary before accessing keys
+                    if not isinstance(item, dict):
+                        print(f"WARNING: Skipping non-dict item in matches: {item}")
+                        continue
+                        
+                    if "path" in item:
                         path = item["path"]
                         relevance = item.get("relevance", "Relevant to query")
+                        
+                        # Try exact match first
                         if path in global_index:
                             file_matches.append((path, relevance))
+                        else:
+                            # Try to match by basename if exact match fails
+                            # This helps with relative vs absolute path differences
+                            path_basename = os.path.basename(path)
+                            matched = False
+                            
+                            for index_path in global_index.keys():
+                                if os.path.basename(index_path) == path_basename:
+                                    file_matches.append((index_path, relevance))
+                                    matched = True
+                                    break
+                            
+                            if not matched:
+                                print(f"WARNING: Path not found in index: {path}")
+            else:
+                print(f"WARNING: Expected list but got {type(matches_data)}: {matches_data}")
         except Exception as e:
+            import traceback
             print(f"Error processing context generation result: {str(e)}")
+            print(traceback.format_exc())
         
         # Create standardized result
         from memory.context_generation import AssociativeMatchResult
         context = f"Found {len(file_matches)} relevant files."
+        print(f"DEBUG: Returning AssociativeMatchResult with {len(file_matches)} matches. First match: {file_matches[0] if file_matches else 'None'}")
         return AssociativeMatchResult(context=context, matches=file_matches)
 
     def _execute_context_generation_task(self, context_input, global_index, memory_system=None):
+        import os  # Add import for os.path functions
         """Execute specialized context generation task using LLM.
         
         This creates a specialized task for context generation and executes it
