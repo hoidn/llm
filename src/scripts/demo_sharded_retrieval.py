@@ -13,14 +13,23 @@ Example:
 import os
 import sys
 import time
+import logging
 
 # Add the project root to the Python path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from memory.memory_system import MemorySystem
 from memory.indexers.git_repository_indexer import GitRepositoryIndexer
+from task_system.task_system import TaskSystem
+from task_system.templates.associative_matching import register_template as register_associative_matching_template
+from handler.passthrough_handler import PassthroughHandler
+from config.logging_config import get_logger
 
 def main():
+    # Setup logging
+    logger = get_logger(__name__)
+    logger.setLevel(logging.INFO)
+    
     # Get repository path and query from arguments
     if len(sys.argv) < 3:
         print("Usage: python -m src.scripts.demo_sharded_retrieval [repository_path] [query]")
@@ -38,8 +47,17 @@ def main():
     print(f"Query: {query}")
     print("-" * 50)
     
-    # Create memory system with sharding enabled
-    memory_system = MemorySystem()
+    # Instantiate TaskSystem and register necessary templates
+    task_system = TaskSystem()
+    register_associative_matching_template(task_system)
+    
+    # Create memory system with TaskSystem
+    memory_system = MemorySystem(task_system=task_system)
+    
+    # Create a handler and link components
+    handler = PassthroughHandler(task_system=task_system, memory_system=memory_system)
+    memory_system.handler = handler
+    task_system.memory_system = memory_system
     
     # Configure for demonstration
     memory_system.configure_sharding(
