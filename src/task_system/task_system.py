@@ -365,7 +365,7 @@ class TaskSystem(TemplateLookupInterface):
         # Execute specialized context generation task, passing the correct handler
         result = self._execute_context_generation_task(context_input, global_index, handler_instance)
         
-        # Extract relevant files from result
+        # Extract relevant files from result (which now includes scores)
         file_matches = []
         try:
             logging.debug("Content received from context gen task: %s...", result.get('content', 'No content')[:200]) # Log received content
@@ -389,10 +389,18 @@ class TaskSystem(TemplateLookupInterface):
                     if "path" in item:
                         path = item["path"]
                         relevance = item.get("relevance", "Relevant to query")
+                        score = item.get("score")
+                        
+                        # Convert score to float if present
+                        if score is not None:
+                            try:
+                                score = float(score)
+                            except (ValueError, TypeError):
+                                score = None
                         
                         # Try exact match first
                         if path in global_index:
-                            file_matches.append((path, relevance))
+                            file_matches.append((path, relevance, score))
                         else:
                             # Try to match by basename if exact match fails
                             # This helps with relative vs absolute path differences
@@ -401,7 +409,7 @@ class TaskSystem(TemplateLookupInterface):
                             
                             for index_path in global_index.keys():
                                 if os.path.basename(index_path) == path_basename:
-                                    file_matches.append((index_path, relevance))
+                                    file_matches.append((index_path, relevance, score))
                                     matched = True
                                     break
                             

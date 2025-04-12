@@ -160,29 +160,44 @@ def run_scenario(scenario_name: str, query: str, inputs: dict, context_relevance
 
     console.print(param_table)
 
-    # Display matched files; assume each match is a tuple: (file_path, relevance_string)
+    # Display matched files; assume each match is a tuple: (file_path, relevance_string, score)
     files_table = Table(title="Relevant Files", header_style="bold cyan")
+    files_table.add_column("Score", style="magenta", justify="right", width=7) # Added Score column
     files_table.add_column("File", min_width=30)
     files_table.add_column("Relevance Reason", min_width=50) # Updated column name
 
     # Check if result has 'matches' and it's iterable
     if hasattr(result, 'matches') and result.matches:
-        for match in result.matches:
+        # Sort matches by score (descending) before displaying
+        # Handle cases where score might be None by defaulting to 0.0 for sorting
+        sorted_matches = sorted(result.matches, 
+                               key=lambda m: m[2] if len(m) > 2 and m[2] is not None else 0.0, 
+                               reverse=True)
+        
+        for match in sorted_matches:
              # Check if match is a tuple/list with at least 2 elements
             if isinstance(match, (list, tuple)) and len(match) >= 2:
                  file_path = match[0]
                  relevance = match[1]
+                 # Get score if available (3rd element)
+                 score = match[2] if len(match) > 2 else None
+                 
+                 # Format score
+                 score_str = f"{score:.2f}" if score is not None else "-"
+                 
                  # Convert file path to a relative path (for cleaner output)
                  try:
                     rel_path = os.path.relpath(file_path, project_dir)
                  except ValueError:
                     rel_path = file_path # Keep absolute if relpath fails (e.g., different drive on Windows)
-                 files_table.add_row(rel_path, relevance)
+                 
+                 # Add row with score
+                 files_table.add_row(score_str, rel_path, relevance)
             else:
                 console.print(f"[yellow]Warning: Unexpected match format: {match}[/yellow]")
     else:
         # Add a row indicating no files were found if the table would be empty
-         files_table.add_row("[grey]No relevant files found[/grey]", "[grey]-[/grey]")
+         files_table.add_row("-", "[grey]No relevant files found[/grey]", "[grey]-[/grey]")
 
 
     console.print(files_table)
