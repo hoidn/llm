@@ -154,10 +154,18 @@ class TestTemplateAwareContextGeneration:
         
     def test_task_system_mediator_integration(self):
         """Integration test for the TaskSystem mediator pattern."""
-        # Create real components with mocked LLM interaction
+        # Create real components
         task_system = TaskSystem()
         memory_system = MemorySystem(task_system=task_system)
-        task_system.set_test_mode(True)  # Use MockHandler for tests
+        
+        # Wire TaskSystem <-> MemorySystem (critical for mediator pattern)
+        task_system.memory_system = memory_system
+        
+        # Create mock handler with model_provider (needed by associative_matching)
+        from handler.base_handler import BaseHandler
+        mock_handler = MagicMock(spec=BaseHandler)
+        mock_handler.model_provider = MagicMock()  # Must have model_provider
+        memory_system.handler = mock_handler  # Assign to memory system
         
         # Create mock global index
         memory_system.global_index = {
@@ -170,48 +178,42 @@ class TestTemplateAwareContextGeneration:
         from task_system.templates.associative_matching import register_template
         register_template(task_system)
         
-        # Create context input
+        # Create context input with correct subtype and required inputs
         context_input = ContextGenerationInput(
             template_description="Find authentication code",
             template_type="atomic",
-            template_subtype="test",
-            inputs={"feature": "login"},
-            context_relevance={"feature": True}
+            template_subtype="associative_matching",  # Use actual subtype
+            inputs={"query": "Find authentication code", "metadata": "...", "max_results": 5},
+            context_relevance={"query": True}
         )
         
-        # Patch TaskSystem.execute_task to return a predetermined result
-        with patch.object(task_system, 'execute_task') as mock_execute_task:
-            # Create a mock result with file matches
-            mock_execute_task.return_value = {
-                "status": "COMPLETE",
-                "content": '[{"path": "auth.py", "relevance": "Matches authentication query"}, '
-                           '{"path": "user.py", "relevance": "Related to user management"}]'
-            }
+        # Mock the template execution function (simulates LLM call)
+        with patch('task_system.templates.associative_matching.execute_template') as mock_execute_template:
+            # Configure mock to return the expected list of dicts format
+            mock_execute_template.return_value = [
+                {"path": "auth.py", "relevance": "Matches authentication query"},
+                {"path": "user.py", "relevance": "Related to user management"}
+            ]
             
             # Call get_relevant_context_for
             result = memory_system.get_relevant_context_for(context_input)
             
-            # Verify task_system.execute_task was called
-            mock_execute_task.assert_called_once()
+            # Verify the mock was called
+            mock_execute_template.assert_called_once()
             
-            # Verify task_type and task_subtype arguments
-            # Print the call arguments for debugging
-            args, kwargs = mock_execute_task.call_args
-            print(f"execute_task args: {args}, kwargs: {kwargs}")
-            
-            # Check with positional args or kwargs depending on how it was called
-            if args and len(args) >= 2:
-                assert args[0] == "atomic"
-                assert args[1] == "associative_matching"
-            else:
-                assert kwargs.get('task_type') == "atomic"
-                assert kwargs.get('task_subtype') == "associative_matching"
+            # Verify arguments passed to the mocked function
+            call_args, call_kwargs = mock_execute_template.call_args
+            passed_inputs = call_args[0]  # First arg is 'inputs' dict
+            passed_handler = call_args[2]  # Third arg is handler
+            assert passed_inputs['query'] == "Find authentication code"
+            assert passed_handler is mock_handler  # Ensure correct handler was passed
             
             # Verify result
+            assert isinstance(result, AssociativeMatchResult)
             assert result.context.startswith("Found 2 relevant files")
             assert len(result.matches) == 2
-            assert result.matches[0][0] == "auth.py"
-            assert result.matches[1][0] == "user.py"
+            assert result.matches[0] == ("auth.py", "Matches authentication query")
+            assert result.matches[1] == ("user.py", "Related to user management")
 """Tests for context generation classes."""
 import pytest
 from typing import Dict, Any, List, Tuple
