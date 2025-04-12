@@ -4,6 +4,7 @@ import os
 import math
 import sys
 import logging
+import concurrent.futures
 
 from memory.context_generation import ContextGenerationInput
 from memory.context_generation import AssociativeMatchResult  # Import the standard result type
@@ -34,7 +35,8 @@ class MemorySystem:
             "sharding_enabled": False,
             "token_size_per_shard": 4000,   # Target tokens per shard (~1/4 of context window)
             "max_shards": 8,                # Maximum number of shards
-            "token_estimation_ratio": 0.25  # Character to token ratio (4 chars per token)
+            "token_estimation_ratio": 0.25, # Character to token ratio (4 chars per token)
+            "max_parallel_shards": min(8, (os.cpu_count() or 1) * 2)  # Limit parallel processing
         }
         
         # Update configuration if provided
@@ -140,10 +142,68 @@ class MemorySystem:
         if enabled:
             self._update_shards()
 
+    def _process_single_shard(self,
+                             shard_index: int,
+                             shard_data: Dict[str, str],
+                             context_input_base: ContextGenerationInput,
+                             total_shards: int) -> Tuple[int, Union[AssociativeMatchResult, Exception]]:
+        """
+        Processes a single shard to find relevant context.
+
+        Args:
+            shard_index: The index of the shard being processed.
+            shard_data: The metadata dictionary for this shard.
+            context_input_base: The base ContextGenerationInput to be adapted for the shard.
+            total_shards: The total number of shards.
+
+        Returns:
+            A tuple containing the shard index and either the AssociativeMatchResult or an Exception.
+        """
+        try:
+            # Defensive check, should not happen if called correctly
+            if not self.task_system:
+                raise RuntimeError("TaskSystem not available during shard processing.")
+
+            logging.debug("Processing shard %d/%d with %d files (Thread)", shard_index + 1, total_shards, len(shard_data))
+
+            # Create a copy of the context input for this shard
+            # Ensure all relevant fields from the original context_input are copied
+            shard_context_input = ContextGenerationInput(
+                template_description=context_input_base.template_description,
+                template_type=context_input_base.template_type,
+                template_subtype=context_input_base.template_subtype,
+                inputs=context_input_base.inputs,
+                context_relevance=context_input_base.context_relevance,
+                inherited_context=context_input_base.inherited_context,
+                previous_outputs=context_input_base.previous_outputs,
+                fresh_context=context_input_base.fresh_context
+            )
+
+            # Use TaskSystem mediator for this shard
+            # This call is still synchronous within this thread, but multiple threads run this concurrently.
+            shard_result = self.task_system.generate_context_for_memory_system(
+                shard_context_input, shard_data
+            )
+
+            # Ensure the result is the expected type
+            if not isinstance(shard_result, AssociativeMatchResult):
+                logging.warning("Shard %d mediator returned unexpected type: %s", shard_index, type(shard_result))
+                # Handle unexpected return type, maybe return an error or empty result
+                return shard_index, AssociativeMatchResult(context=f"Unexpected result type from shard {shard_index}", matches=[])
+
+            logging.debug("Shard %d finished processing, found %d matches.", shard_index + 1, len(shard_result.matches))
+            return shard_index, shard_result # Return index and result
+
+        except Exception as e:
+            # Log the exception specific to this shard's processing
+            logging.error("Error processing shard %d: %s", shard_index, e, exc_info=True)
+            return shard_index, e # Return index and exception for handling in the main loop
+            
     def configure_sharding(self, 
                           token_size_per_shard: Optional[int] = None,
                           max_shards: Optional[int] = None,
-                          token_estimation_ratio: Optional[float] = None) -> None:
+                          token_estimation_ratio: Optional[float] = None,
+                          max_parallel_shards: Optional[int] = None) -> None:
         """
         Configure sharded context retrieval parameters.
         
@@ -151,6 +211,7 @@ class MemorySystem:
             token_size_per_shard: Maximum estimated tokens per shard
             max_shards: Maximum number of shards
             token_estimation_ratio: Ratio for converting characters to tokens
+            max_parallel_shards: Maximum number of parallel threads for shard processing
         """
         # Update configuration
         if token_size_per_shard is not None:
@@ -161,6 +222,9 @@ class MemorySystem:
             
         if token_estimation_ratio is not None:
             self._config["token_estimation_ratio"] = token_estimation_ratio
+            
+        if max_parallel_shards is not None:
+            self._config["max_parallel_shards"] = max_parallel_shards
         
         # Update shards if sharding is enabled
         if self._config["sharding_enabled"]:
@@ -290,9 +354,9 @@ class MemorySystem:
             logging.exception("Error during context generation with mediator:")
             return AssociativeMatchResult(context=error_msg, matches=[])  # Return standard type
 
-    def _get_relevant_context_sharded_with_mediator(self, context_input: ContextGenerationInput) -> AssociativeMatchResult:  # Update return type hint
+    def _get_relevant_context_sharded_with_mediator(self, context_input: ContextGenerationInput) -> AssociativeMatchResult:
         """
-        Get relevant context using sharded approach with TaskSystem mediator.
+        Get relevant context using sharded approach with TaskSystem mediator, processed in parallel.
         
         Args:
             context_input: The ContextGenerationInput instance
@@ -302,62 +366,88 @@ class MemorySystem:
         """
         # Check if task_system is available (should have been checked in get_relevant_context_for)
         if not hasattr(self, 'task_system') or self.task_system is None:
-            return AssociativeMatchResult(context="TaskSystem not available for context generation", matches=[])  # Return standard type
+            # This path should ideally not be reached if get_relevant_context_for checks first
+            logging.warning("TaskSystem not available for context generation (sharded).")
+            return AssociativeMatchResult(context="TaskSystem not available for context generation", matches=[])
         
-        # Process each shard independently
         all_matches = []
         successful_shards = 0
         total_shards = len(self._sharded_index)
-        
-        for shard_index, shard in enumerate(self._sharded_index):
-            try:
+        futures = []
+
+        # Determine a reasonable number of workers
+        # Limit threads to avoid overwhelming resources, especially the LLM API
+        max_parallel_shards = self._config.get("max_parallel_shards")
+        num_workers = min(total_shards, max_parallel_shards)
+        logging.info("Processing %d shards with %d worker threads.", total_shards, num_workers)
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=num_workers) as executor:
+            for shard_index, shard in enumerate(self._sharded_index):
                 # Skip empty shards
                 if not shard:
+                    logging.debug("Skipping empty shard %d", shard_index)
                     continue
-                    
-                logging.debug("Processing shard %d/%d with %d files", shard_index + 1, total_shards, len(shard))
-                
-                # Create a copy of the context input for this shard
-                shard_context_input = ContextGenerationInput(
-                    template_description=context_input.template_description,
-                    template_type=context_input.template_type,
-                    template_subtype=context_input.template_subtype,
-                    inputs=context_input.inputs,
-                    context_relevance=context_input.context_relevance,
-                    inherited_context=context_input.inherited_context,
-                    previous_outputs=context_input.previous_outputs,
-                    fresh_context=context_input.fresh_context
+
+                # Submit the processing of this shard to the thread pool
+                # Pass necessary arguments to the helper function
+                future = executor.submit(
+                    self._process_single_shard,
+                    shard_index,
+                    shard,
+                    context_input, # Pass the original context_input
+                    total_shards
                 )
-                
-                # Use TaskSystem mediator for this shard
-                from memory.context_generation import AssociativeMatchResult
-                shard_result = self.task_system.generate_context_for_memory_system(
-                    shard_context_input, shard
-                )
-                
-                # Add matches from this shard
-                all_matches.extend(shard_result.matches)
-                successful_shards += 1
-            except Exception as e:
-                logging.error("Error processing shard %d: %s", shard_index, e)
-                # Continue with other shards even if one fails
+                futures.append(future)
+
+            # Process results as they complete
+            for future in concurrent.futures.as_completed(futures):
+                try:
+                    # Retrieve the result (or exception) from the future
+                    shard_idx, result_or_error = future.result()
+
+                    # Check if an exception occurred during shard processing
+                    if isinstance(result_or_error, Exception):
+                        # Error was already logged within _process_single_shard
+                        logging.warning("Shard %d processing failed.", shard_idx)
+                    # Check if the result is the expected type
+                    elif isinstance(result_or_error, AssociativeMatchResult):
+                        # Add matches from this shard
+                        all_matches.extend(result_or_error.matches)
+                        successful_shards += 1
+                    else:
+                        # Log unexpected return type
+                        logging.warning("Received unexpected result type from shard %d: %s",
+                                        shard_idx, type(result_or_error))
+
+                except Exception as exc:
+                    # Catch exceptions raised *during* future.result() itself (less common)
+                    # This might happen if the future was cancelled, etc.
+                    logging.error("Error retrieving result from future: %s", exc, exc_info=True)
         
-        # Remove duplicates while preserving order
+        # Remove duplicates while preserving order (based on file path)
         seen = set()
         unique_matches = []
         for match in all_matches:
-            path = match[0]
-            if path not in seen:
-                seen.add(path)
-                unique_matches.append(match)
-        
+            # Ensure match is a tuple/list and has at least one element (the path)
+            if isinstance(match, (list, tuple)) and len(match) > 0:
+                path = match[0]
+                if path not in seen:
+                    seen.add(path)
+                    unique_matches.append(match)
+            else:
+                logging.warning("Skipping malformed match item during deduplication: %s", match)
+
         # Create context message
-        if unique_matches:
+        if successful_shards < total_shards:
+            context = (f"Found {len(unique_matches)} relevant files. "
+                      f"Processed {successful_shards}/{total_shards} shards successfully (some failed).")
+        elif unique_matches:
             context = f"Found {len(unique_matches)} relevant files across {successful_shards}/{total_shards} shards."
         else:
             context = f"No relevant files found across {successful_shards}/{total_shards} shards."
-        
-        return AssociativeMatchResult(context=context, matches=unique_matches)  # Return standard type
+
+        logging.info("Sharded context retrieval complete. %s", context)
+        return AssociativeMatchResult(context=context, matches=unique_matches)
     
     def index_git_repository(self, repo_path: str, options: Optional[Dict[str, Any]] = None) -> None:
         """Index a git repository and update the global index.

@@ -63,7 +63,8 @@ def main():
     memory_system.configure_sharding(
         token_size_per_shard=4000,
         max_shards=8,
-        token_estimation_ratio=0.25
+        token_estimation_ratio=0.25,
+        max_parallel_shards=4  # Limit to 4 parallel threads for the demo
     )
     
     # Index the repository
@@ -86,8 +87,8 @@ def main():
     
     # Now run with sharding enabled
     memory_system.enable_sharding(True)
-    print("\nRunning query with sharding ENABLED...")
-    print(f"Created {len(memory_system._sharded_index)} shards")
+    print("\nRunning query with sharding ENABLED (parallel processing)...")
+    print(f"Created {len(memory_system._sharded_index)} shards with {memory_system._config['max_parallel_shards']} parallel workers")
     start_time = time.time()
     result_sharded = memory_system.get_relevant_context_for({"taskText": query})
     sharded_time = time.time() - start_time
