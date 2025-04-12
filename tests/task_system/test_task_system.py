@@ -311,3 +311,49 @@ class TestTaskSystemExecution:
         
         assert result["status"] == "FAILED"
         assert "Unknown task type" in result["content"]
+        
+    def test_execute_task_with_context_relevance(self):
+        """Test execute_task with context relevance settings."""
+        # Create TaskSystem in test mode
+        task_system = TaskSystem()
+        task_system.set_test_mode(True)
+        
+        # Create a template with context_relevance settings
+        template = {
+            "type": "test",
+            "subtype": "relevance",
+            "name": "test_relevance",
+            "description": "Test template with context relevance",
+            "parameters": {
+                "important_param": {"type": "string", "required": True},
+                "unimportant_param": {"type": "string", "required": False, "default": "default"}
+            },
+            "context_relevance": {
+                "important_param": True,
+                "unimportant_param": False
+            }
+        }
+        
+        # Register the template
+        task_system.register_template(template)
+        
+        # Create mock memory system
+        mock_memory = MagicMock()
+        
+        # Execute task
+        result = task_system.execute_task(
+            "test", "relevance", 
+            {"important_param": "important value", "unimportant_param": "not important"},
+            memory_system=mock_memory
+        )
+        
+        # Verify memory system was called with correct context relevance
+        mock_memory.get_relevant_context_for.assert_called_once()
+        args = mock_memory.get_relevant_context_for.call_args[0]
+        
+        # Verify context relevance was passed correctly
+        assert args[0].context_relevance["important_param"] is True
+        assert args[0].context_relevance["unimportant_param"] is False
+        
+        # Verify result is successful
+        assert result["status"] == "COMPLETE"

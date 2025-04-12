@@ -179,7 +179,7 @@ class AiderBridge:
     
     def get_context_for_query(self, query: str) -> List[str]:
         """
-        Get relevant file context for a query using associative matching.
+        Get relevant file context for a query using ContextGenerationInput.
         
         Uses the memory system to find files relevant to the given query
         and updates the internal file context state.
@@ -191,11 +191,18 @@ class AiderBridge:
             List of relevant file paths
         """
         try:
-            # Use memory system to find relevant context
-            context_input = {
-                "taskText": query,
-                "inheritedContext": "",
-            }
+            # Use memory system with ContextGenerationInput
+            from memory.context_generation import ContextGenerationInput
+            
+            context_input = ContextGenerationInput(
+                template_description=query,
+                template_type="atomic",
+                template_subtype="associative_matching",
+                inputs={"query": query},  # Include query in inputs
+                context_relevance={"query": True},  # Mark query as relevant
+                inherited_context="",
+                fresh_context="enabled"
+            )
             
             context_result = self.memory_system.get_relevant_context_for(context_input)
             
