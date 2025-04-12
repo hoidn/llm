@@ -26,20 +26,48 @@ class Application:
         # Initialize task system first
         self.task_system = TaskSystem()
         
-        # Initialize handler with task system reference
+        # Initialize memory system with task_system reference
+        self.memory_system = MemorySystem(
+            task_system=self.task_system,
+            handler=None  # We'll set the handler reference after Handler is fully initialized
+        )
+        
+        # Initialize handler with both task_system and memory_system references
         self.passthrough_handler = PassthroughHandler(
             task_system=self.task_system,
-            memory_system=None  # Will set this after MemorySystem is initialized
+            memory_system=self.memory_system
         )
         
-        # Initialize memory system with both handler and task_system references
-        self.memory_system = MemorySystem(
-            handler=self.passthrough_handler,
-            task_system=self.task_system
-        )
+        # Complete the loop: Give MemorySystem the Handler reference
+        self.memory_system.handler = self.passthrough_handler
         
-        # Complete handler initialization with memory system reference
-        self.passthrough_handler.memory_system = self.memory_system
+        # Ensure TaskSystem has the MemorySystem reference
+        self.task_system.memory_system = self.memory_system
+        
+        # Sanity checks for debugging
+        print(f"INIT: TaskSystem instance: {id(self.task_system)}")
+        print(f"INIT: MemorySystem instance: {id(self.memory_system)}")
+        print(f"INIT: PassthroughHandler instance: {id(self.passthrough_handler)}")
+        if self.task_system.memory_system:
+            print(f"INIT: TaskSystem.memory_system instance: {id(self.task_system.memory_system)}")
+        else:
+            print("INIT: TaskSystem.memory_system is None")
+        if self.memory_system.task_system:
+            print(f"INIT: MemorySystem.task_system instance: {id(self.memory_system.task_system)}")
+        else:
+            print("INIT: MemorySystem.task_system is None")
+        if self.memory_system.handler:
+            print(f"INIT: MemorySystem.handler instance: {id(self.memory_system.handler)}")
+        else:
+            print("INIT: MemorySystem.handler is None")
+        if self.passthrough_handler.memory_system:
+            print(f"INIT: Handler.memory_system instance: {id(self.passthrough_handler.memory_system)}")
+        else:
+            print("INIT: Handler.memory_system is None")
+        if self.passthrough_handler.task_system:
+            print(f"INIT: Handler.task_system instance: {id(self.passthrough_handler.task_system)}")
+        else:
+            print("INIT: Handler.task_system is None")
         
         # Register templates
         register_template(self.task_system)

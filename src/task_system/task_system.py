@@ -337,19 +337,28 @@ class TaskSystem(TemplateLookupInterface):
             )
             
         # Get the correct handler from the MemorySystem
+        logging.debug("TaskSystem (%s) generating context. Checking for memory_system...", id(self))
+        
         handler_instance = None
-        if hasattr(self, 'memory_system') and self.memory_system and hasattr(self.memory_system, 'handler'):
-            handler_instance = self.memory_system.handler
-            if handler_instance:
-                logging.debug("Retrieved handler (%s) from memory_system for context generation.", type(handler_instance).__name__)
+        # Check 1: Does TaskSystem have memory_system?
+        if hasattr(self, 'memory_system') and self.memory_system:
+            logging.debug("TaskSystem (%s) found memory_system: %s (id: %s)", id(self), self.memory_system, id(self.memory_system))
+            
+            # Check 2: Does memory_system have a handler?
+            if hasattr(self.memory_system, 'handler') and self.memory_system.handler:
+                handler_instance = self.memory_system.handler
+                logging.debug("MemorySystem (%s) provided handler: %s (id: %s)", 
+                             id(self.memory_system), type(handler_instance).__name__, id(handler_instance))
             else:
-                logging.warning("memory_system.handler is None. Context generation LLM call might fail.")
+                # Log specifically that memory_system lacks handler
+                logging.warning("MemorySystem instance (id: %s) lacks 'handler' attribute or it is None.", id(self.memory_system))
         else:
-            logging.warning("TaskSystem does not have memory_system or memory_system lacks handler. Context generation LLM call might fail.")
-
-        # If no handler found via memory_system, we cannot proceed with LLM-based matching
+            # Log specifically that TaskSystem lacks memory_system
+            logging.warning("TaskSystem instance (id: %s) lacks 'memory_system' attribute or it is None.", id(self))
+        
+        # Check 3: Was a handler found?
         if not handler_instance:
-            logging.error("Cannot perform associative matching: No valid handler found.")
+            logging.error("Cannot perform associative matching: No valid handler instance found.")
             from memory.context_generation import AssociativeMatchResult
             return AssociativeMatchResult(context="Error: Handler not available for context generation", matches=[])
 
