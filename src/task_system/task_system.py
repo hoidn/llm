@@ -336,17 +336,38 @@ class TaskSystem(TemplateLookupInterface):
                 matches=[]
             )
             
-        # Execute specialized context generation task
-        # Pass self.memory_system explicitly if available
-        result = self._execute_context_generation_task(context_input, global_index, self.memory_system)
+        # Get the correct handler from the MemorySystem
+        handler_instance = None
+        if hasattr(self, 'memory_system') and self.memory_system and hasattr(self.memory_system, 'handler'):
+            handler_instance = self.memory_system.handler
+            if handler_instance:
+                logging.debug("Retrieved handler (%s) from memory_system for context generation.", type(handler_instance).__name__)
+            else:
+                logging.warning("memory_system.handler is None. Context generation LLM call might fail.")
+        else:
+            logging.warning("TaskSystem does not have memory_system or memory_system lacks handler. Context generation LLM call might fail.")
+
+        # If no handler found via memory_system, we cannot proceed with LLM-based matching
+        if not handler_instance:
+            logging.error("Cannot perform associative matching: No valid handler found.")
+            from memory.context_generation import AssociativeMatchResult
+            return AssociativeMatchResult(context="Error: Handler not available for context generation", matches=[])
+
+        # Execute specialized context generation task, passing the correct handler
+        result = self._execute_context_generation_task(context_input, global_index, handler_instance)
         
         # Extract relevant files from result
         file_matches = []
         try:
-            logging.debug("Content received from task execution: %s...", result.get('content', 'No content')[:200]) # Log received content
+            logging.debug("Content received from context gen task: %s...", result.get('content', 'No content')[:200]) # Log received content
             import json
             content = result.get("content", "[]")
-            matches_data = json.loads(content) if isinstance(content, str) else content
+            # Add check for error status before attempting parse
+            if result.get("status") == "FAILED":
+                logging.error("Context generation task failed: %s", content)
+                matches_data = []
+            else:
+                matches_data = json.loads(content) if isinstance(content, str) and content.strip() else content
             
             if isinstance(matches_data, list):
                 logging.debug("Parsed %d items from LLM JSON response", len(matches_data))
@@ -384,12 +405,12 @@ class TaskSystem(TemplateLookupInterface):
         
         # Create standardized result
         from memory.context_generation import AssociativeMatchResult
-        context = f"Found {len(file_matches)} relevant files."
+        context = f"Found {len(file_matches)} relevant files." if file_matches else result.get("content", "Context generation failed")
         logging.debug("Returning AssociativeMatchResult with %d matches. First match: %s", 
                      len(file_matches), file_matches[0] if file_matches else 'None')
         return AssociativeMatchResult(context=context, matches=file_matches)
 
-    def _execute_context_generation_task(self, context_input, global_index, memory_system=None):
+    def _execute_context_generation_task(self, context_input, global_index, handler):
         import os  # Add import for os.path functions
         """Execute specialized context generation task using LLM.
         
@@ -399,7 +420,7 @@ class TaskSystem(TemplateLookupInterface):
         Args:
             context_input: Context generation input
             global_index: Global file metadata index
-            memory_system: Optional Memory System instance
+            handler: The handler instance to use for LLM calls
             
         Returns:
             Task result with relevant file information
@@ -429,24 +450,20 @@ class TaskSystem(TemplateLookupInterface):
         if context_input.previous_outputs:
             inputs["previous_outputs"] = context_input.previous_outputs
         
-        # --- Determine Handler Instance ---
-        handler_instance = None
-        # Prioritize handler linked via memory_system IF memory_system was provided
-        if memory_system and hasattr(memory_system, 'handler') and memory_system.handler:
-            handler_instance = memory_system.handler
-            logging.debug("Using handler from MemorySystem: %s", type(handler_instance).__name__)
-        else:
-            # Fallback ONLY if no handler found via memory_system
-            logging.debug("Falling back to TaskSystem._get_handler()")
-            handler_instance = self._get_handler()  # Use the default handler getter
+        # Use the passed handler instance
+        if not handler:
+            logging.error("No handler provided to _execute_context_generation_task.")
+            return {"status": "FAILED", "content": "Internal error: Handler missing for context generation."}
+
+        logging.debug("Executing associative_matching task using handler: %s", type(handler).__name__)
         
-        # Execute task to find relevant files
+        # Execute task to find relevant files, passing the correct handler explicitly
         return self.execute_task(
             task_type="atomic",
             task_subtype="associative_matching",
             inputs=inputs,
-            handler=handler_instance,  # Pass the explicitly determined handler
-            memory_system=memory_system  # Pass memory_system along if needed by downstream
+            handler=handler,  # Pass the explicitly determined handler
+            memory_system=self.memory_system  # Pass memory_system along if needed by downstream
         )
         
     def resolve_file_paths(self, template: Dict[str, Any], memory_system, handler) -> Tuple[List[str], Optional[str]]:
@@ -933,7 +950,7 @@ class TaskSystem(TemplateLookupInterface):
             
         return result
     
-    def _execute_associative_matching(self, task, inputs, memory_system, handler=None):
+    def _execute_associative_matching(self, task, inputs, memory_system, handler):
         """Execute an associative matching task.
         
         Args:
@@ -947,10 +964,15 @@ class TaskSystem(TemplateLookupInterface):
         """
         from .templates.associative_matching import execute_template
         
-        # Get the handler - prioritize passed handler, fallback if needed
+        # We now receive the handler directly
         if not handler:
-            logging.error("No handler passed to _execute_associative_matching, using fallback _get_handler(). This indicates a potential configuration issue.")
-            handler = self._get_handler()  # Use the TaskSystem's default handler getter
+            # This case should ideally not happen if called correctly
+            logging.error("CRITICAL: No handler passed to _execute_associative_matching.")
+            return {
+                "content": "[]",
+                "status": "FAILED",
+                "notes": {"error": "Internal configuration error: Handler missing"}
+            }
             
         logging.debug("_execute_associative_matching received handler: %s", type(handler).__name__)
         

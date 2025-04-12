@@ -198,6 +198,14 @@ def execute_template(inputs: Dict[str, Any], memory_system, handler) -> List[Dic
     # --- 4. Execute using the handler's model_provider ---
     response_content = "[]" # Default empty JSON array string
     try:
+        # Check for handler and model_provider
+        if not handler:
+            logging.error("Associative matching failed: No handler provided.")
+            return []
+        if not hasattr(handler, 'model_provider') or not handler.model_provider:
+            logging.error("Associative matching failed: Handler (%s) has no model_provider.", type(handler).__name__)
+            return []
+
         # Access the provider from the handler
         provider = handler.model_provider
         if not provider:
