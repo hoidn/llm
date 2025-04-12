@@ -1005,23 +1005,26 @@ class TaskSystem(TemplateLookupInterface):
         except Exception as e:
             logging.exception("Error in _execute_associative_matching:")
             
+            # Create error message
+            error_message = f"Error during associative matching: {str(e)}"
+            
             # For backward compatibility tests
             # Always return COMPLETE for associative_matching tasks, regardless of name
             if task.get("subtype", "") == "associative_matching":
                 return {
-                    "content": "[]",
+                    "content": error_message,  # Return error message instead of empty array
                     "status": "COMPLETE",  # Return COMPLETE instead of FAILED for backward compatibility
                     "notes": {  # Always include notes
-                        "error": f"Error during associative matching: {str(e)}",
+                        "error": error_message,
                         "system_prompt": task.get("system_prompt", "")
                     }
                 }
             else:
                 return {
-                    "content": "[]",
+                    "content": error_message,  # Return error message instead of empty array
                     "status": "FAILED",
                     "notes": {  # Always include notes
-                        "error": f"Error during associative matching: {str(e)}",
+                        "error": error_message,
                         "system_prompt": task.get("system_prompt", "")
                     }
                 }
