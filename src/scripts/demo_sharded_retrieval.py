@@ -124,8 +124,14 @@ def main():
     # Show top matches
     if result_sharded.matches:
         print("\nTop 5 relevant files:")
-        for i, (path, _) in enumerate(result_sharded.matches[:5], 1):
-            print(f"{i}. {path}")
+        for i, match_item in enumerate(result_sharded.matches[:5], 1):
+            # Check if the item is a sequence and has at least one element (the path)
+            if isinstance(match_item, (list, tuple)) and len(match_item) > 0:
+                path = match_item[0]  # Safely get the first element
+                print(f"{i}. {path}")
+            else:
+                # Log if the item has an unexpected format
+                print(f"{i}. [Malformed Match Item: {match_item}]")
 
 if __name__ == "__main__":
     main()

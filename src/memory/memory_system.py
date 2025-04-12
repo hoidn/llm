@@ -190,6 +190,26 @@ class MemorySystem:
                 logging.warning("Shard %d mediator returned unexpected type: %s", shard_index, type(shard_result))
                 # Handle unexpected return type, maybe return an error or empty result
                 return shard_index, AssociativeMatchResult(context=f"Unexpected result type from shard {shard_index}", matches=[])
+            
+            # Validate the matches format
+            validated_matches = []
+            for match in shard_result.matches:
+                if isinstance(match, (list, tuple)):
+                    if len(match) >= 2:
+                        # Keep the first two elements as a tuple
+                        validated_matches.append((match[0], match[1]))
+                    elif len(match) == 1:
+                        # Add a default relevance score
+                        validated_matches.append((match[0], "1.0"))
+                elif isinstance(match, dict) and "path" in match:
+                    # Handle dictionary format (from some templates)
+                    relevance = match.get("relevance", "1.0")
+                    validated_matches.append((match["path"], relevance))
+                else:
+                    logging.warning("Shard %d contains invalid match format: %s", shard_index, match)
+            
+            # Replace the matches with validated ones
+            shard_result.matches = validated_matches
 
             logging.debug("Shard %d finished processing, found %d matches.", shard_index + 1, len(shard_result.matches))
             return shard_index, shard_result # Return index and result
@@ -411,9 +431,10 @@ class MemorySystem:
                         logging.warning("Shard %d processing failed.", shard_idx)
                     # Check if the result is the expected type
                     elif isinstance(result_or_error, AssociativeMatchResult):
-                        # Add matches from this shard
+                        # Add matches from this shard (already validated in _process_single_shard)
                         all_matches.extend(result_or_error.matches)
                         successful_shards += 1
+                        logging.debug("Added %d matches from shard %d", len(result_or_error.matches), shard_idx)
                     else:
                         # Log unexpected return type
                         logging.warning("Received unexpected result type from shard %d: %s",
@@ -433,7 +454,13 @@ class MemorySystem:
                 path = match[0]
                 if path not in seen:
                     seen.add(path)
-                    unique_matches.append(match)
+                    # Ensure we always store a 2-element tuple for consistency
+                    if len(match) >= 2:
+                        unique_matches.append((path, match[1]))
+                    else:
+                        # If there's only one element, add a default second element
+                        unique_matches.append((path, "1.0"))  # Default relevance score
+                        logging.debug("Added default relevance score for match: %s", path)
             else:
                 logging.warning("Skipping malformed match item during deduplication: %s", match)
 
