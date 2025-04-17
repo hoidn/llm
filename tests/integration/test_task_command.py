@@ -9,10 +9,10 @@ from memory.context_generation import ContextGenerationInput, AssociativeMatchRe
 @pytest.fixture
 def app_instance():
     """Create a mocked application instance for testing."""
-    with patch('main.AiderBridge') as MockAiderBridge, \
-         patch('main.PassthroughHandler') as MockHandler, \
-         patch('main.TaskSystem') as MockTaskSystem, \
-         patch('main.MemorySystem') as MockMemorySystem:
+    with patch('aider_bridge.bridge.AiderBridge') as MockAiderBridge, \
+         patch('handler.passthrough_handler.PassthroughHandler') as MockHandler, \
+         patch('task_system.task_system.TaskSystem') as MockTaskSystem, \
+         patch('memory.memory_system.MemorySystem') as MockMemorySystem:
         
         # Configure mocks
         mock_aider_bridge_instance = MockAiderBridge.return_value
