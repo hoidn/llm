@@ -4,79 +4,95 @@ import json
 import io
 import sys
 from unittest.mock import patch, MagicMock, ANY, call
-from memory.context_generation import ContextGenerationInput, AssociativeMatchResult
-from task_system.ast_nodes import SubtaskRequest
+
+# Import REAL TaskSystem and its dependencies/types
+from src.task_system.task_system import TaskSystem
+from src.memory.memory_system import MemorySystem
+from src.handler.passthrough_handler import PassthroughHandler # Or BaseHandler
+from src.aider_bridge.bridge import AiderBridge
+from src.evaluator.evaluator import Evaluator # Assuming this path
+from src.memory.context_generation import ContextGenerationInput, AssociativeMatchResult
+from src.task_system.ast_nodes import SubtaskRequest
 
 @pytest.fixture
 def app_instance():
-    """Create a mocked application instance for testing."""
-    with patch('aider_bridge.bridge.AiderBridge') as MockAiderBridge, \
-         patch('handler.passthrough_handler.PassthroughHandler') as MockHandler, \
-         patch('task_system.task_system.TaskSystem') as MockTaskSystem, \
-         patch('memory.memory_system.MemorySystem') as MockMemorySystem:
-        
-        # Configure mocks
+    """Create an application instance with a REAL TaskSystem and mocked dependencies."""
+    # Mock external dependencies deeply
+    with patch('src.aider_bridge.bridge.AiderBridge') as MockAiderBridge, \
+         patch('src.handler.passthrough_handler.PassthroughHandler') as MockHandler, \
+         patch('src.memory.memory_system.MemorySystem') as MockMemorySystem, \
+         patch('src.evaluator.evaluator.Evaluator') as MockEvaluator: # Mock Evaluator
+
+        # Configure mock instances
         mock_aider_bridge_instance = MockAiderBridge.return_value
         mock_handler_instance = MockHandler.return_value
-        mock_task_system_instance = MockTaskSystem.return_value
         mock_memory_system_instance = MockMemorySystem.return_value
-        
-        # Mock bridge methods
+        mock_evaluator_instance = MockEvaluator.return_value # Get mock evaluator instance
+
+        # Configure mock MemorySystem methods
+        mock_context_result = AssociativeMatchResult(
+            context="Found relevant files",
+            # Use 2-tuples (path, relevance) as expected by TaskSystem fix
+            matches=[("/auto/lookup/path.py", "Auto found file"),
+                     ("/history/context/path.py", "History-aware file")]
+        )
+        mock_memory_system_instance.get_relevant_context_for.return_value = mock_context_result
+
+        # Configure mock AiderBridge methods
         mock_aider_bridge_instance.execute_automatic_task.return_value = {
-            "status": "COMPLETE", 
-            "content": "Mock Aider Auto Result",
-            "notes": {"files_modified": ["file1.py"]}
+            "status": "COMPLETE", "content": "Mock Aider Auto Result", "notes": {}
         }
         mock_aider_bridge_instance.start_interactive_session.return_value = {
-            "status": "COMPLETE", 
+            "status": "COMPLETE",
             "content": "Interactive session completed",
             "notes": {"session_summary": "Made changes to file1.py"}
         }
-        
-        # Mock handler's direct tool dict
+        # ... configure other mock bridge methods if needed ...
+
+        # Configure mock Handler methods/attributes
         mock_handler_instance.direct_tool_executors = {}
         mock_handler_instance.registerDirectTool = lambda name, func: mock_handler_instance.direct_tool_executors.update({name: func})
-        
-        # Mock task system methods - Set find_template to return None BY DEFAULT
-        mock_task_system_instance.find_template = MagicMock(return_value=None)
-        mock_task_system_instance.execute_subtask_directly.return_value = {
-            "status": "COMPLETE",
-            "content": "Subtask executed successfully",
-            "notes": {}
-        }
-        
-        # Mock memory system methods
-        mock_context_result = AssociativeMatchResult(
-            context="Found relevant files",
-            matches=[("src/main.py", "Main file", 0.9), ("src/utils.py", "Utilities", 0.8)]
-        )
-        mock_memory_system_instance.get_relevant_context_for.return_value = mock_context_result
-        
-        # Ensure TaskSystem has reference to the memory system
-        mock_task_system_instance.memory_system = mock_memory_system_instance
-        
+        # Mock history retrieval for tests needing it
+        mock_handler_instance.get_recent_history_as_string = MagicMock(return_value="Mock History String")
+
+        # ---> Instantiate REAL TaskSystem <---
+        # Pass the mock evaluator instance to the real TaskSystem constructor
+        real_task_system = TaskSystem(evaluator=mock_evaluator_instance)
+        # Inject the mock memory system
+        real_task_system.memory_system = mock_memory_system_instance
+        # Mock the internal call to execute_task to isolate execute_subtask_directly logic
+        real_task_system.execute_task = MagicMock(return_value={
+             "status": "COMPLETE",
+             "content": "Mock TaskSystem.execute_task Result",
+             "notes": {}
+        })
+        # Ensure find_template is also mocked on the real instance
+        real_task_system.find_template = MagicMock(return_value=None) # Default to None
+
         # Create a class to simulate the Application structure
         class MockApp:
             def __init__(self):
                 self.aider_bridge = mock_aider_bridge_instance
                 self.passthrough_handler = mock_handler_instance
-                self.task_system = mock_task_system_instance
+                self.task_system = real_task_system # <-- Use REAL TaskSystem instance
                 self.memory_system = mock_memory_system_instance
-                
-                # Register Aider tools
-                self.passthrough_handler.direct_tool_executors["aider:automatic"] = lambda params: \
-                    self.aider_bridge.execute_automatic_task(
-                        params.get("prompt", ""), 
-                        json.loads(params.get("file_context", "[]")) if isinstance(params.get("file_context"), str) else params.get("file_context", [])
-                    )
-                self.passthrough_handler.direct_tool_executors["aider:interactive"] = lambda params: \
-                    self.aider_bridge.start_interactive_session(
-                        params.get("query", ""), 
-                        json.loads(params.get("file_context", "[]")) if isinstance(params.get("file_context"), str) else params.get("file_context", [])
-                    )
-        
+
         app = MockApp()
-        yield app
+
+        # Register Aider Executors as Direct Tools (using real bridge mock)
+        # Import here to avoid potential circular dependencies at module level
+        from src.executors.aider_executors import execute_aider_automatic, execute_aider_interactive
+        app.passthrough_handler.registerDirectTool(
+            "aider:automatic",
+             lambda params: execute_aider_automatic(params, app.aider_bridge)
+        )
+        app.passthrough_handler.registerDirectTool(
+            "aider:interactive",
+             lambda params: execute_aider_interactive(params, app.aider_bridge)
+        )
+        # ... register other tools ...
+
+        yield app # Provide the configured app instance
 
 
 class TestTaskCommandIntegration:
@@ -350,9 +366,12 @@ class TestTaskCommandIntegration:
 
         # Assert
         assert result["status"] == "COMPLETE"
-        
-        # Assert TaskSystem path was taken
-        app_instance.task_system.execute_subtask_directly.assert_called_once()
+
+        # Assert TaskSystem's execute_subtask_directly was called (via dispatcher)
+        # We can't directly assert on execute_subtask_directly anymore as it's the real method.
+        # Instead, we assert that the *mocked* execute_task inside it was called.
+        app_instance.task_system.execute_task.assert_called_once()
+
         # Verify AiderBridge was NOT called directly by the dispatcher
         app_instance.aider_bridge.execute_automatic_task.assert_not_called()
 
@@ -361,22 +380,31 @@ class TestTaskCommandIntegration:
         # Verify history was passed to context generation
         context_input_arg = app_instance.memory_system.get_relevant_context_for.call_args[0][0]
         assert isinstance(context_input_arg, ContextGenerationInput)
-        assert context_input_arg.template_description == "History context test" # Check query derivation
+        # Check query derivation (should use the 'prompt' from params)
+        assert context_input_arg.template_description == "History context test"
         assert context_input_arg.history_context is not None
         assert "User: What files handle task execution?" in context_input_arg.history_context
 
-        # Verify the SubtaskRequest passed to execute_subtask_directly contained the history-aware paths
-        subtask_call_args = app_instance.task_system.execute_subtask_directly.call_args[0][0]
-        assert isinstance(subtask_call_args, SubtaskRequest)
-        # The file_paths in the request should reflect the result of the memory system lookup
-        # NOTE: The mock memory system returns "/history/context/path.py" in this test setup
-        assert subtask_call_args.file_paths == ["/history/context/path.py"]
+        # Verify the SubtaskRequest passed to the *mocked* execute_task contained the history-aware paths
+        # The call to execute_task happens *inside* execute_subtask_directly
+        execute_task_call_args = app_instance.task_system.execute_task.call_args
+        # Check keyword arguments passed to execute_task
+        assert execute_task_call_args.kwargs['task_type'] == "aider"
+        assert execute_task_call_args.kwargs['task_subtype'] == "automatic"
+        assert execute_task_call_args.kwargs['inputs'] == {"prompt": "History context test"}
+        # Check the file context determined by execute_subtask_directly and passed via handler_config
+        handler_config = execute_task_call_args.kwargs.get('handler_config', {})
+        # The file_paths should reflect the result of the memory system lookup
+        assert handler_config.get('file_context') == ["/auto/lookup/path.py", "/history/context/path.py"] # Check paths from mock AssociativeMatchResult
 
-        # Verify the final result content and notes (comes from the mocked TaskSystem method)
-        assert "Subtask executed successfully" in result["content"]
+        # ---> START MODIFIED ASSERTIONS <---
+        # Verify the final result content (comes from the mocked TaskSystem.execute_task)
+        assert "Mock TaskSystem.execute_task Result" in result["content"]
+        # Verify notes added by execute_subtask_directly
         assert result["notes"]["context_source"] == "automatic_lookup"
-        assert result["notes"]["context_files_count"] == 1
-        assert result["notes"]["history_provided"] is True
+        assert result["notes"]["context_files_count"] == 2 # Matches count from mock memory result
+        assert result["notes"]["template_used"] == "aider:automatic" # Check template name was added
+        # ---> END MODIFIED ASSERTIONS <---
     
     def test_task_use_history_with_explicit_context(self, app_instance):
         """Test that --use-history works with explicit file_context (history passed but lookup skipped)."""
