@@ -444,11 +444,22 @@ class TestTaskCommandIntegration:
         app_instance.memory_system.get_relevant_context_for.assert_called_once()
         # Verify history was passed to context generation
         context_input_arg = app_instance.memory_system.get_relevant_context_for.call_args[0][0]
-        assert isinstance(context_input_arg, ContextGenerationInput)
+        
+        # Assert based on type name and attributes instead of direct isinstance
+        assert hasattr(context_input_arg, '__class__'), "Argument should have a __class__ attribute"
+        assert context_input_arg.__class__.__name__ == 'ContextGenerationInput', f"Expected class name 'ContextGenerationInput', got '{context_input_arg.__class__.__name__}'"
+        # Check for key attributes to be extra sure it's the right kind of object
+        assert hasattr(context_input_arg, 'template_description'), "Context input should have 'template_description'"
+        assert hasattr(context_input_arg, 'history_context'), "Context input should have 'history_context'"
+
         # Check query derivation (should use the 'prompt' from params)
         assert context_input_arg.template_description == "History context test"
         assert context_input_arg.history_context is not None
         assert "User: What files handle task execution?" in context_input_arg.history_context
+        
+        # Verify the history context was actually passed correctly
+        expected_history = "User: What files handle task execution?\nAssistant: The dispatcher.py file."
+        assert context_input_arg.history_context == expected_history, f"History context mismatch. Expected:\n{expected_history}\nGot:\n{context_input_arg.history_context}"
 
         # Verify the SubtaskRequest passed to the *mocked* execute_task contained the history-aware paths
         # The call to execute_task happens *inside* execute_subtask_directly
