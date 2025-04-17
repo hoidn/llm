@@ -492,9 +492,9 @@ class TestTaskCommandIntegration:
         assert execute_task_call_args.kwargs['task_type'] == "template"
         assert execute_task_call_args.kwargs['task_subtype'] == "auto_context"
         assert execute_task_call_args.kwargs['inputs'] == {"input": "Auto context test"}
-        # Check the file context determined by execute_subtask_directly (using auto lookup)
+        # Check the file context determined by execute_subtask_directly (should be empty for deferred lookup in Phase 1)
         handler_config = execute_task_call_args.kwargs.get('handler_config', {})
-        assert handler_config.get('file_context') == ["/auto/path1.py", "/auto/path2.py"] # Auto paths used
+        assert handler_config.get('file_context') == [] # Empty list for deferred lookup in Phase 1
 
         # Verify AiderBridge (or other direct tools) were NOT called directly
         app_instance.aider_bridge.execute_automatic_task.assert_not_called()
