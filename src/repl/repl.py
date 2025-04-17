@@ -374,19 +374,19 @@ class Repl:
                 help_text = f"Help for '{identifier}':\n"
                 found_help = False
                 template_info = None
-                tool_spec = None # Placeholder for potential future tool spec help
+                tool_spec = None # Use tool_spec for clarity
 
                 # Check TaskSystem Templates first (preferred source for help)
                 if hasattr(self.application.task_system, 'find_template'):
                      template_info = self.application.task_system.find_template(identifier)
                      if template_info:
+                         # ---> START TEMPLATE HELP FORMATTING <---
                          help_text += f"\n* Task Template Details:\n"
                          help_text += f"  Description: {template_info.get('description', 'N/A')}\n"
                          params_def = template_info.get('parameters', {})
                          if params_def:
                              help_text += f"  Parameters:\n"
                              for name, schema in params_def.items():
-                                 # Format parameter help string
                                  req_str = "(required)" if schema.get('required') else ""
                                  type_str = f" (type: {schema.get('type', 'any')})"
                                  # Safely format default value using json.dumps
@@ -400,16 +400,37 @@ class Repl:
                                  help_text += f"    - {name}{type_str}{def_str}: {desc} {req_str}\n"
                          else:
                              help_text += "    Parameters: Not defined in template.\n"
-                         found_help = True
+                         # ---> END TEMPLATE HELP FORMATTING <---
+                         found_help = True # Found detailed help via template
 
-                # Fallback: Check Handler Direct Tool registration (less detailed)
-                # Check if the identifier exists as a direct tool key
-                if not found_help and hasattr(self.application.passthrough_handler, 'direct_tool_executors') and identifier in self.application.passthrough_handler.direct_tool_executors:
-                     # Currently, we don't have separate specs for direct tools,
-                     # but we can indicate it was found.
-                     help_text += f"\n* Found Direct Tool registration for '{identifier}'.\n"
-                     help_text += "  (Parameter details are typically defined in corresponding Task Templates if available)."
-                     found_help = True
+                # Fallback: Check Handler Direct Tool registration ONLY if template wasn't found
+                # Use registered_tools which holds the spec from register_tool
+                if not found_help and hasattr(self.application.passthrough_handler, 'registered_tools'):
+                     tool_spec = self.application.passthrough_handler.registered_tools.get(identifier)
+                     if tool_spec:
+                         # ---> START TOOL SPEC HELP FORMATTING <---
+                         help_text += f"\n* Direct Tool Specification:\n"
+                         help_text += f"  Description: {tool_spec.get('description', 'N/A')}\n"
+                         # Attempt to display params from input_schema if present
+                         schema = tool_spec.get('input_schema', {}).get('properties', {})
+                         if schema:
+                             help_text += f"  Parameters (from schema):\n"
+                             required = tool_spec.get('input_schema', {}).get('required', [])
+                             for name, prop_schema in schema.items():
+                                 req_str = "(required)" if name in required else ""
+                                 type_str = f" (type: {prop_schema.get('type', 'any')})"
+                                 desc = prop_schema.get('description', 'N/A')
+                                 help_text += f"    - {name}{type_str}: {desc} {req_str}\n"
+                         else:
+                              help_text += "  Parameters: Not defined in tool schema.\n"
+                         # ---> END TOOL SPEC HELP FORMATTING <---
+                         found_help = True # Found some help via tool spec
+
+                if not found_help:
+                    # Check if it's a known direct tool executor even without a spec
+                    if hasattr(self.application.passthrough_handler, 'direct_tool_executors') and identifier in self.application.passthrough_handler.direct_tool_executors:
+                         help_text += f"\n* Found Direct Tool registration for '{identifier}', but no detailed template or specification was found for help display."
+                         found_help = True
 
                 if not found_help:
                     help_text = f"No help found for identifier: {identifier}. Check spelling and registration."

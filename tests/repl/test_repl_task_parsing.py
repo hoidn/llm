@@ -24,10 +24,16 @@ def mock_app():
 @pytest.fixture
 def repl_instance(mock_app):
     """Creates a Repl instance with mocked dependencies."""
-    # Mock the dispatcher function import within the Repl module
-    with patch('src.repl.repl.execute_programmatic_task', new_callable=MagicMock) as mock_dispatcher:
+    # Mock the dispatcher function import at its source location
+    # BEFORE the Repl class tries to import it.
+    with patch('src.dispatcher.execute_programmatic_task', new_callable=MagicMock) as mock_dispatcher:
+        # Now import Repl AFTER the patch is active
+        from src.repl.repl import Repl
         repl = Repl(mock_app)
-        repl.dispatcher_func = mock_dispatcher # Assign mock to instance attribute
+        # The Repl instance will now import the *mocked* dispatcher
+        # No need to manually assign repl.dispatcher_func if the import works
+        # Verify the mock was imported (optional check)
+        assert repl.dispatcher_func is mock_dispatcher
         yield repl # Provide the repl instance to the test
 
 # --- Test Cases ---

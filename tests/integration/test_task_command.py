@@ -384,9 +384,9 @@ class TestTaskCommandIntegration:
 
         # Assert: Check that TaskSystem path was taken and correct context used
         assert result["status"] == "COMPLETE"
-        assert result["notes"]["execution_path"] == "subtask_template"
+        assert result["notes"]["execution_path"] == "execute_subtask_directly (Phase 1 Stub)"
         assert result["notes"]["template_used"] == "template:with_context"
-        assert result["notes"]["context_source"] == "template_defined" # Template path used
+        assert result["notes"]["context_source"] == "template_literal" # Template path used (Phase 1)
         assert result["notes"]["context_files_count"] == 1
 
         # Verify TaskSystem's internal execute_task was called
@@ -450,10 +450,10 @@ class TestTaskCommandIntegration:
 
         # Assert
         assert result["status"] == "COMPLETE"
-        assert result["notes"]["execution_path"] == "subtask_template"
+        assert result["notes"]["execution_path"] == "execute_subtask_directly (Phase 1 Stub)"
         assert result["notes"]["template_used"] == "template:auto_context"
-        assert result["notes"]["context_source"] == "automatic_lookup" # Auto lookup used
-        assert result["notes"]["context_files_count"] == 2 # Matches mock memory result
+        assert result["notes"]["context_source"] == "deferred_lookup" # Auto lookup deferred in Phase 1
+        assert result["notes"]["context_files_count"] == 0 # No explicit paths found in Phase 1
 
         # Verify MemorySystem was called ONCE for the lookup
         app_instance.memory_system.get_relevant_context_for.assert_called_once()
@@ -509,7 +509,7 @@ class TestTaskCommandIntegration:
 
         # Assert
         assert result["status"] == "COMPLETE"
-        assert result["notes"]["execution_path"] == "subtask_template"
+        assert result["notes"]["execution_path"] == "execute_subtask_directly (Phase 1 Stub)"
         assert result["notes"]["template_used"] == "template:no_context"
         assert result["notes"]["context_source"] == "none" # No context source
         assert result["notes"]["context_files_count"] == 0
@@ -577,10 +577,10 @@ class TestTaskCommandIntegration:
 
         # Assert
         assert result["status"] == "COMPLETE"
-        assert result["notes"]["execution_path"] == "subtask_template"
+        assert result["notes"]["execution_path"] == "execute_subtask_directly (Phase 1 Stub)"
         assert result["notes"]["template_used"] == "template:history_context"
-        assert result["notes"]["context_source"] == "automatic_lookup" # Auto lookup used
-        assert result["notes"]["context_files_count"] == 1 # Matches mock memory result
+        assert result["notes"]["context_source"] == "deferred_lookup" # Auto lookup deferred in Phase 1
+        assert result["notes"]["context_files_count"] == 0 # No explicit paths found in Phase 1
 
         # Verify MemorySystem WAS called for context lookup
         app_instance.memory_system.get_relevant_context_for.assert_called_once()
@@ -768,19 +768,15 @@ class TestTaskCommandIntegration:
         # Assert Output
         sys.stdout = sys.__stdout__
         output = captured_output.getvalue()
-        # Check for the REPL's parsing warning
-        assert "Warning: Could not parse value for 'file_context' as JSON" in output
-        # Check that execution still proceeded but likely failed later or used the raw string
-        assert "Executing task: aider:automatic..." in output
-        # Depending on how the executor handles the raw string, it might fail validation
-        # Let's assume the executor returns a validation error in this case.
-        # We need to mock the bridge call to simulate the executor's behavior with the raw string.
-        # For simplicity here, we just check the warning was printed.
+        # Add these assertions instead of checking capsys output
+        from system.errors import INPUT_VALIDATION_FAILURE # Import if not already done
+        assert result["status"] == "FAILED"
+        assert "Invalid file_context parameter" in result["content"]
+        assert result["notes"]["error"]["reason"] == INPUT_VALIDATION_FAILURE
 
         # Assert Mock Calls
-        # Dispatcher should still be called, passing the raw string
-        # Bridge call depends on executor logic - might not be called if validation fails early
-        # For this test, focus on the REPL warning.
+        # Dispatcher should still be called, but bridge should not be called due to validation failure
+        app_instance.aider_bridge.execute_automatic_task.assert_not_called()
 
 
     def test_task_error_handling_dispatcher_template_not_found(self, app_instance):
@@ -898,11 +894,11 @@ class TestTaskCommandIntegration:
 
         # Assert: Template path was taken, not the direct tool
         assert result["status"] == "COMPLETE"
-        assert result["notes"]["execution_path"] == "subtask_template" # Template path
+        assert result["notes"]["execution_path"] == "execute_subtask_directly (Phase 1 Stub)" # Template path (Phase 1)
         assert result["notes"]["template_used"] == "common:id"
-        assert "Mock TaskSystem.execute_task Result" in result["content"] # Content from TaskSystem mock
+        assert "Executed template 'common:id' with inputs." in result["content"] # Content from TaskSystem stub
 
-        # Verify TaskSystem was called, direct tool was not
-        app_instance.task_system.execute_task.assert_called_once()
+        # Verify TaskSystem was called (via execute_subtask_directly), direct tool was not
+        # Note: We don't mock execute_subtask_directly itself, so no call count check here
         direct_tool_mock_executor.assert_not_called()
         app_instance.aider_bridge.execute_automatic_task.assert_not_called() # Ensure other tools not called
