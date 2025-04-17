@@ -43,27 +43,31 @@ def mock_app():
 
 # --- CORRECTED FIXTURE ---
 @pytest.fixture
-def repl_instance(mock_app, capsys):
+def repl_instance(mock_app):
     """Creates a Repl instance and mocks its dispatcher_func."""
-    # Create the real Repl instance first, using sys.stdout to ensure capsys captures output
-    repl = Repl(mock_app, output_stream=sys.stdout)
+    # Initialize with a dummy stream first to avoid capsys conflicts
+    dummy_stream = io.StringIO()
+    repl = Repl(mock_app, output_stream=dummy_stream)
+    
     # Create a mock function to replace the dispatcher call target
     mock_dispatcher = MagicMock(name="mock_execute_programmatic_task")
     # Set default return value for the mock
     mock_dispatcher.return_value = {"status": "COMPLETE", "content": "Mock Result", "notes": {}}
-    # Patch the dispatcher_func *on the instance* using unittest.mock.patch.object
-    # This ensures the specific instance uses the mock, avoiding import timing issues.
-    with patch.object(repl, 'dispatcher_func', mock_dispatcher):
-        logging.debug(f"Patched repl.dispatcher_func on instance {id(repl)} with mock {id(mock_dispatcher)}")
-        # Store mock for tests to access easily IF NEEDED. Tests should ideally use the mock directly via the patcher if possible.
-        repl.mock_dispatcher_for_test = mock_dispatcher
-        yield repl # Use yield for fixtures
+    
+    # Patch the dispatcher_func on the instance
+    repl.dispatcher_func = mock_dispatcher
+    # Store mock for tests to access easily
+    repl.mock_dispatcher_for_test = mock_dispatcher
+    
+    return repl
 # --- END CORRECTED FIXTURE ---
 
 # --- CORRECTED TEST FUNCTIONS ---
 
-def test_cmd_task_no_args(repl_instance, capsys): # Keep capsys
+def test_cmd_task_no_args(repl_instance, capsys):
     """Test that calling /task with no arguments prints usage."""
+    # Set output to sys.stdout for capsys to capture
+    repl_instance.output = sys.stdout
     repl_instance._cmd_task("")
     captured = capsys.readouterr()
     # This test *should* check output because it doesn't call the dispatcher
@@ -142,8 +146,10 @@ def test_cmd_task_json_dict_param(repl_instance):
         optional_history_str=None
     )
 
-def test_cmd_task_invalid_json_param(repl_instance, capsys): # Keep capsys
+def test_cmd_task_invalid_json_param(repl_instance, capsys):
     """Test calling /task with invalid JSON - should pass as string and print warning."""
+    # Set output to sys.stdout for capsys to capture
+    repl_instance.output = sys.stdout
     repl_instance._cmd_task('my:task data=\'{"key": invalid}\'') # Invalid JSON syntax
     # Assert dispatcher was called with the *string* value
     repl_instance.mock_dispatcher_for_test.assert_called_once_with(
@@ -184,8 +190,11 @@ def test_cmd_task_multiple_params_and_flags(repl_instance):
 
 # --- Help Flag Tests (Check Output) ---
 
-def test_cmd_task_help_flag_template_found(repl_instance, capsys): # Keep capsys
+def test_cmd_task_help_flag_template_found(repl_instance, capsys):
     """Test --help when a matching template is found."""
+    # Set output to sys.stdout for capsys to capture
+    repl_instance.output = sys.stdout
+    
     mock_template = {
         "name": "test:help", "description": "Test Help Template",
         "parameters": {
@@ -207,8 +216,11 @@ def test_cmd_task_help_flag_template_found(repl_instance, capsys): # Keep capsys
     assert 'param2 (type: integer) (default: 10): Second param' in captured.out
     repl_instance.mock_dispatcher_for_test.assert_not_called() # Dispatcher shouldn't be called for help
 
-def test_cmd_task_help_flag_direct_tool_found(repl_instance, capsys): # Keep capsys
+def test_cmd_task_help_flag_direct_tool_found(repl_instance, capsys):
     """Test --help when no template but a direct tool spec is found."""
+    # Set output to sys.stdout for capsys to capture
+    repl_instance.output = sys.stdout
+    
     # No template found
     repl_instance.application.task_system.find_template.return_value = None
     # Direct tool *spec* exists in registered_tools
@@ -228,8 +240,11 @@ def test_cmd_task_help_flag_direct_tool_found(repl_instance, capsys): # Keep cap
     assert "arg1 (type: string): Tool Arg (required)" in captured.out # Check formatting
     repl_instance.mock_dispatcher_for_test.assert_not_called()
 
-def test_cmd_task_help_flag_direct_tool_no_spec(repl_instance, capsys): # Keep capsys
+def test_cmd_task_help_flag_direct_tool_no_spec(repl_instance, capsys):
     """Test --help when only a direct tool executor (no spec) is found."""
+    # Set output to sys.stdout for capsys to capture
+    repl_instance.output = sys.stdout
+    
     repl_instance.application.task_system.find_template.return_value = None
     repl_instance.application.passthrough_handler.registered_tools = {} # No spec
     repl_instance.application.passthrough_handler.direct_tool_executors = {'test:direct_only': lambda x: x} # Executor exists
@@ -241,8 +256,11 @@ def test_cmd_task_help_flag_direct_tool_no_spec(repl_instance, capsys): # Keep c
     repl_instance.mock_dispatcher_for_test.assert_not_called()
 
 
-def test_cmd_task_help_flag_not_found(repl_instance, capsys): # Keep capsys
+def test_cmd_task_help_flag_not_found(repl_instance, capsys):
     """Test --help when neither template nor tool is found."""
+    # Set output to sys.stdout for capsys to capture
+    repl_instance.output = sys.stdout
+    
     repl_instance.application.task_system.find_template.return_value = None
     repl_instance.application.passthrough_handler.registered_tools = {}
     repl_instance.application.passthrough_handler.direct_tool_executors = {}
@@ -256,8 +274,11 @@ def test_cmd_task_help_flag_not_found(repl_instance, capsys): # Keep capsys
 
 # --- Error Handling Tests (Check Output) ---
 
-def test_cmd_task_dispatcher_error(repl_instance, capsys): # Keep capsys
+def test_cmd_task_dispatcher_error(repl_instance, capsys):
     """Test REPL handling when the dispatcher call raises an unexpected error."""
+    # Set output to sys.stdout for capsys to capture
+    repl_instance.output = sys.stdout
+    
     # Configure the mock dispatcher to raise an exception
     repl_instance.mock_dispatcher_for_test.side_effect = Exception("Dispatcher boom!")
 
@@ -269,8 +290,11 @@ def test_cmd_task_dispatcher_error(repl_instance, capsys): # Keep capsys
     # Verify dispatcher was called (even though it failed)
     repl_instance.mock_dispatcher_for_test.assert_called_once() # Check call was made
 
-def test_cmd_task_shlex_error(repl_instance, capsys): # Keep capsys
+def test_cmd_task_shlex_error(repl_instance, capsys):
     """Test REPL handling of shlex parsing errors."""
+    # Set output to sys.stdout for capsys to capture
+    repl_instance.output = sys.stdout
+    
     repl_instance._cmd_task("my:task param='unclosed quote") # Input that causes shlex error
     captured = capsys.readouterr()
     assert "Error parsing command: No closing quotation" in captured.out
@@ -278,8 +302,11 @@ def test_cmd_task_shlex_error(repl_instance, capsys): # Keep capsys
 
 # --- Result Display Tests (Check Output) ---
 
-def test_cmd_task_result_display_simple(repl_instance, capsys): # Keep capsys
+def test_cmd_task_result_display_simple(repl_instance, capsys):
     """Test REPL displays simple string content correctly."""
+    # Set output to sys.stdout for capsys to capture
+    repl_instance.output = sys.stdout
+    
     repl_instance.mock_dispatcher_for_test.return_value = {"status": "COMPLETE", "content": "Simple result"}
     repl_instance._cmd_task("my:task") # Call dispatcher via REPL command
     captured = capsys.readouterr()
@@ -289,8 +316,11 @@ def test_cmd_task_result_display_simple(repl_instance, capsys): # Keep capsys
     assert "Content:\nSimple result" in captured.out # Check content formatting
     assert "\nNotes:" not in captured.out # No notes to display
 
-def test_cmd_task_result_display_json_content(repl_instance, capsys): # Keep capsys
+def test_cmd_task_result_display_json_content(repl_instance, capsys):
     """Test REPL pretty-prints JSON content."""
+    # Set output to sys.stdout for capsys to capture
+    repl_instance.output = sys.stdout
+    
     json_content_str = json.dumps({"data": [1, 2], "valid": True})
     repl_instance.mock_dispatcher_for_test.return_value = {"status": "COMPLETE", "content": json_content_str}
     repl_instance._cmd_task("my:task")
@@ -302,8 +332,11 @@ def test_cmd_task_result_display_json_content(repl_instance, capsys): # Keep cap
     assert '"valid": true' in captured.out
     assert "\nNotes:" not in captured.out
 
-def test_cmd_task_result_display_with_notes(repl_instance, capsys): # Keep capsys
+def test_cmd_task_result_display_with_notes(repl_instance, capsys):
     """Test REPL displays notes correctly."""
+    # Set output to sys.stdout for capsys to capture
+    repl_instance.output = sys.stdout
+    
     notes_content = {"info": "some details", "files": ["a.txt"], "nested": {"key": 1}}
     repl_instance.mock_dispatcher_for_test.return_value = {
         "status": "COMPLETE",
