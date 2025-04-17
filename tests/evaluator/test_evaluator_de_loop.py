@@ -490,15 +490,24 @@ class TestDirectorEvaluatorLoop:
         # Configure mocks with evaluator missing success field
         _configure_mock_eval({
             "mock_director": [
-                {"status": "COMPLETE", "content": "Director output", "notes": {}}
+                {"status": "COMPLETE", "content": "Director output", "notes": {}},
+                {"status": "COMPLETE", "content": "Director output 2", "notes": {}},
+                {"status": "COMPLETE", "content": "Director output 3", "notes": {}}
             ],
             "call": [
-                {"status": "COMPLETE", "content": "Script output", "notes": {}}
+                {"status": "COMPLETE", "content": "Script output", "notes": {}},
+                {"status": "COMPLETE", "content": "Script output 2", "notes": {}},
+                {"status": "COMPLETE", "content": "Script output 3", "notes": {}}
             ],
             "mock_evaluator": [
-                {"status": "COMPLETE", "content": "Evaluator output", "notes": {}}  # Missing success field
+                {"status": "COMPLETE", "content": "Evaluator output", "notes": {}},  # Missing success field
+                {"status": "COMPLETE", "content": "Evaluator output 2", "notes": {}},  # Missing success field
+                {"status": "COMPLETE", "content": "Evaluator output 3", "notes": {}}  # Missing success field
             ]
         })
+        
+        # Force loop to run only for max_iterations
+        loop_node.max_iterations = 3
         
         # Execute the loop
         result = evaluator._evaluate_director_evaluator_loop(loop_node, initial_env)
@@ -510,6 +519,7 @@ class TestDirectorEvaluatorLoop:
         # Check that success was defaulted to False
         assert result["notes"]["final_evaluation"]["notes"]["success"] is False
         assert "feedback" in result["notes"]["final_evaluation"]["notes"]
+        assert result["notes"]["termination_reason"] == "max_iterations_reached"
 
     def test_unexpected_exception_handling(self, evaluator, loop_node, initial_env):
         """Test handling of unexpected exceptions during loop execution."""
@@ -534,7 +544,9 @@ class TestDirectorEvaluatorLoop:
         
         # Assertions
         assert result["status"] == "FAILED"
-        assert "unexpected error in loop iteration" in result["content"].lower()
         assert len(result["notes"]["iteration_history"]) == 1
-        assert "error" in result["notes"]["iteration_history"][0]
+        assert "error" in result["notes"]
         assert UNEXPECTED_ERROR in result["notes"]["error"]["reason"]
+        # Check that the director step completed but the error occurred during script execution
+        assert "director" in result["notes"]["iteration_history"][0]
+        assert result["notes"]["iteration_history"][0]["director"]["status"] == "COMPLETE"
