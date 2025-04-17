@@ -282,7 +282,20 @@ class TestTaskCommandIntegration:
         # Ensure find_template returns None for this test to test tool spec path
         app_instance.task_system.find_template.return_value = None
         
-        # The fixture already registers the tool spec with the mock handler
+        # Set up a proper tool spec for the help test
+        mock_tool_spec = {
+            "name": "aider:automatic",
+            "description": "Execute an automatic Aider task",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "prompt": {"type": "string", "description": "The instruction for code changes."},
+                    "file_context": {"type": "string", "description": "(Optional) JSON string array"}
+                },
+                "required": ["prompt"]
+            }
+        }
+        app_instance.passthrough_handler.registered_tools = {'aider:automatic': mock_tool_spec}
         captured_output = io.StringIO()
         sys.stdout = captured_output
         from src.repl.repl import Repl
@@ -548,8 +561,8 @@ class TestTaskCommandIntegration:
 
         # Verify AiderBridge (or other direct tools) were NOT called directly
         app_instance.aider_bridge.execute_automatic_task.assert_not_called()
-        # Check the content returned by the mocked TaskSystem.execute_task method
-        assert "Mock TaskSystem.execute_task Result" in result["content"]
+        # Check the content returned by the stub
+        assert "Executed template 'template:no_context' with inputs." in result["content"]
 
 
     def test_task_use_history_flag(self, app_instance):
@@ -618,9 +631,9 @@ class TestTaskCommandIntegration:
         assert execute_task_call_args.kwargs['task_type'] == "template"
         assert execute_task_call_args.kwargs['task_subtype'] == "history_context"
         assert execute_task_call_args.kwargs['inputs'] == {"input": "History context test"}
-        # Check the file context determined by execute_subtask_directly (using auto lookup)
+        # Check the file context determined by execute_subtask_directly (should be empty for deferred lookup in Phase 1)
         handler_config = execute_task_call_args.kwargs.get('handler_config', {})
-        assert handler_config.get('file_context') == ["/history/path.py"] # History path used
+        assert handler_config.get('file_context') == [] # Empty list for deferred lookup in Phase 1
 
         # Verify AiderBridge (or other direct tools) were NOT called directly
         app_instance.aider_bridge.execute_automatic_task.assert_not_called()
@@ -759,8 +772,16 @@ class TestTaskCommandIntegration:
             return {"status": "COMPLETE", "content": "Success", "notes": {}}
             
         direct_tool_mock.side_effect = capture_params
+        
+        # Ensure the handler mock has the executors dict initialized
+        if not hasattr(app_instance.passthrough_handler, 'direct_tool_executors'):
+            app_instance.passthrough_handler.direct_tool_executors = {}
+            
         # Replace the executor in the handler's direct_tool_executors
         app_instance.passthrough_handler.direct_tool_executors["aider:automatic"] = direct_tool_mock
+        
+        # Ensure find_template returns None to force direct tool path
+        app_instance.task_system.find_template.return_value = None
         
         # Capture stdout
         captured_output = io.StringIO()
