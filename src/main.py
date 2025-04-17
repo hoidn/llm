@@ -2,18 +2,17 @@
 import sys
 import os
 import json
-"""Main entry point for the application."""
-import sys
-import os
-import json
-import logging # Add logging import if not present
+import logging
 from typing import Dict, List, Optional, Any
 
 # Import executor functions at the top level for use in initialize_aider
 # Ensure the path is correct relative to src/
 from executors.aider_executors import execute_aider_automatic, execute_aider_interactive
-# Import the template registration function
+# Import the template registration functions
 from task_system.templates.aider_templates import register_aider_templates
+from task_system.templates.debug_templates import register_debug_templates
+# Import system executors
+from executors.system_executors import execute_get_context, execute_read_files
 
 class Application:
     """
@@ -64,15 +63,22 @@ class Application:
         register_assoc_template(self.task_system)
         # Register optional Aider metadata templates (for help)
         register_aider_templates(self.task_system)
+        # Register debug templates
+        register_debug_templates(self.task_system)
 
         # Initialize Aider bridge
         self.aider_bridge = None
-        
+            
         # Initialize Aider if available
         self.initialize_aider()
-        
+            
+        # Register System Direct Tools
+        self._register_system_tools()
+            
         # Track indexed repositories
         self.indexed_repositories = []
+            
+        logging.info("Application initialized with Debug Loop primitives registered.")
     
     def index_repository(self, repo_path: str) -> bool:
         """
@@ -199,6 +205,43 @@ class Application:
             logging.warning("Aider bridge not available, skipping Aider direct tool registration.")
 
         logging.info("Application initialized.")
+        
+    def _register_system_tools(self):
+        """
+        Registers system-level Direct Tools used across features.
+        
+        These tools provide core functionality like context retrieval and file reading
+        that can be used by various templates and features.
+        """
+        logging.info("Registering system tools...")
+        try:
+            if not hasattr(self.passthrough_handler, 'registerDirectTool'):
+                logging.error("Handler does not support registerDirectTool. Cannot register system tools.")
+                return
+
+            # system:get_context
+            # Uses lambda to pass the necessary component instance when the tool is called
+            reg_gc = self.passthrough_handler.registerDirectTool(
+                "system:get_context",
+                lambda params: execute_get_context(params, self.memory_system)
+            )
+
+            # system:read_files
+            # Uses lambda to pass the handler's file_manager instance
+            reg_rf = self.passthrough_handler.registerDirectTool(
+                "system:read_files",
+                lambda params: execute_read_files(params, self.passthrough_handler.file_manager)
+            )
+
+            if reg_gc and reg_rf:
+                logging.info("System tools 'system:get_context' and 'system:read_files' registered successfully.")
+            else:
+                logging.warning("Failed to register one or more system tools (check handler capabilities).")
+
+        except AttributeError as e:
+            logging.error(f"Failed to register system tools. Missing attribute likely in Handler or MemorySystem. Error: {e}", exc_info=True)
+        except Exception as e:
+            logging.error(f"Unexpected error registering system tools: {e}", exc_info=True)
 
 
 def main():
