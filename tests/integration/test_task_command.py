@@ -52,6 +52,9 @@ def app_instance():
         )
         mock_memory_system_instance.get_relevant_context_for.return_value = mock_context_result
         
+        # Ensure TaskSystem has reference to the memory system
+        mock_task_system_instance.memory_system = mock_memory_system_instance
+        
         # Create a class to simulate the Application structure
         class MockApp:
             def __init__(self):
