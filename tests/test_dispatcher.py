@@ -1,6 +1,7 @@
 import pytest
 import json
 from unittest.mock import MagicMock, patch, ANY, PropertyMock
+from typing import Dict, Any # Add missing imports
 
 # Import the function/classes to test
 from src.dispatcher import execute_programmatic_task
