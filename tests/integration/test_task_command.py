@@ -351,15 +351,32 @@ class TestTaskCommandIntegration:
         # Assert
         assert result["status"] == "COMPLETE"
         
+        # Assert TaskSystem path was taken
+        app_instance.task_system.execute_subtask_directly.assert_called_once()
+        # Verify AiderBridge was NOT called directly by the dispatcher
+        app_instance.aider_bridge.execute_automatic_task.assert_not_called()
+
+        # Verify MemorySystem WAS called for context lookup
+        app_instance.memory_system.get_relevant_context_for.assert_called_once()
         # Verify history was passed to context generation
         context_input_arg = app_instance.memory_system.get_relevant_context_for.call_args[0][0]
         assert isinstance(context_input_arg, ContextGenerationInput)
+        assert context_input_arg.template_description == "History context test" # Check query derivation
         assert context_input_arg.history_context is not None
         assert "User: What files handle task execution?" in context_input_arg.history_context
-        
-        app_instance.aider_bridge.execute_automatic_task.assert_called_once_with(
-            "History context test", ["/history/context/path.py"]  # History-aware path used
-        )
+
+        # Verify the SubtaskRequest passed to execute_subtask_directly contained the history-aware paths
+        subtask_call_args = app_instance.task_system.execute_subtask_directly.call_args[0][0]
+        assert isinstance(subtask_call_args, SubtaskRequest)
+        # The file_paths in the request should reflect the result of the memory system lookup
+        # NOTE: The mock memory system returns "/history/context/path.py" in this test setup
+        assert subtask_call_args.file_paths == ["/history/context/path.py"]
+
+        # Verify the final result content and notes (comes from the mocked TaskSystem method)
+        assert "Subtask executed successfully" in result["content"]
+        assert result["notes"]["context_source"] == "automatic_lookup"
+        assert result["notes"]["context_files_count"] == 1
+        assert result["notes"]["history_provided"] is True
     
     def test_task_use_history_with_explicit_context(self, app_instance):
         """Test that --use-history works with explicit file_context (history passed but lookup skipped)."""
