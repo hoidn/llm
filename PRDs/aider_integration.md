@@ -222,3 +222,279 @@ Long version
 *   **Dependency:** While plan *generation* can work without Phase 2, making the plan *actionable* (e.g., executing steps) heavily relies on Phase 2 (Multi-Step Tool Calling).
 *   **Benefit:** Adds a valuable planning capability to the conversational interface.
 
+
+---
+
+Notes
+
+In the context of the **chat interface** (Use Case 1, addressed in Phases 3 & 4), the `/aider <text>` command is intended to be an **LLM-initiated tool call**.
+
+Here's the breakdown of that flow:
+
+1.  **User Input:** The user types `/aider Refactor the login function...` into the REPL.
+2.  **REPL to Handler:** The REPL treats this as regular user input (not a special internal command like `/help` or `/mode`) and passes the *entire string* `" /aider Refactor the login function..."` to the `PassthroughHandler.handle_query`.
+3.  **Handler to LLM:** The `PassthroughHandler` adds this user message to the `conversation_history`. When it calls `_send_to_model`, it sends:
+    *   The full conversation history (including the message starting with `/aider`).
+    *   The *definitions* of the registered tools (`aiderInteractive`, `aiderAutomatic`).
+4.  **LLM Decision:** The LLM processes the conversation. Seeing the user's latest message (`/aider Refactor...`) and knowing about the available Aider tools (from their descriptions), the **LLM decides** that the user's intent is best served by using either the `aiderInteractive` or `aiderAutomatic` tool. The `/aider` prefix acts as a very strong hint, making this decision highly probable.
+5.  **LLM Response (Tool Call):** The LLM sends back a response indicating it wants to call, for example, the `aiderInteractive` tool, passing `"Refactor the login function..."` as the `query` parameter.
+6.  **Handler Executes Tool:** The `PassthroughHandler` detects this tool call request, extracts the tool name and parameters, and calls `_execute_tool`.
+7.  **Executor Runs:** The specific executor function registered for `aiderInteractive` runs. As per the Phase 3 plan, this executor then performs the specialized context retrieval (using the passed query and chat history) *before* calling the `AiderBridge` method to actually start Aider.
+
+**Why this approach?**
+
+*   **Leverages LLM Capabilities:** It uses the LLM's understanding to map the user's natural language (even if prefixed with `/aider`) to the appropriate tool and parameters.
+*   **Flexibility:** The user doesn't *have* to use the `/aider` prefix. They could potentially say "Use Aider to refactor the login function," and the LLM *should* still be able to figure out which tool to call. The prefix just makes it more explicit.
+*   **Consistency:** It treats Aider interactions initiated from the chat the same way any other potential tool would be invoked – via the LLM's tool-use mechanism.
+
+**Contrast with Programmatic Invocation (Phase 1):**
+
+The plan *also* includes setting up programmatic invocation via the Task System (e.g., using a hypothetical `/task aider:automatic ...` REPL command or direct API calls). In *that* scenario:
+
+1.  A specific `TaskSystem` template (`aider:automatic`) is explicitly targeted.
+2.  `TaskSystem.execute_task` is called.
+3.  The registered *programmatic executor* function is run directly.
+4.  This executor calls the `AiderBridge` method.
+5.  The LLM is **not involved** in deciding *to start* the Aider task (though Aider itself uses an LLM internally).
+
+So, `/aider <text>` in the chat is designed as an **LLM-initiated tool call prompted by the user**, while `/task aider:automatic ...` (or equivalent API call) is a **direct programmatic invocation** bypassing the LLM's decision-making step for initiating the task.
+
+---
+
+**Addendum: Code and Specification References**
+
+This addendum provides specific references to the project's conventions, existing code, and relevant concepts discussed during planning to clarify the implementation details for each phase.
+
+**Phase 1: Solidify Programmatic Aider via Task System**
+
+*   **Goal Clarification:** The aim is to execute Aider via `TaskSystem.execute_task`, making it a structured, repeatable action triggered by code, not by the chat LLM's decision.
+*   **Key Concept:** Programmatic vs. LLM-based Template Execution (as discussed)
+    *   **Reference:** See discussion on "Representing Programmatic vs. LLM-Based Templates" and the recommendation for **Option C (Explicit Programmatic Executors)**.
+    *   **Code Impact (`task_system/task_system.py` - `execute_task`):** The logic needs to be added *before* the generic fallback to `handler.execute_prompt`.
+        ```python
+        # Inside TaskSystem.execute_task, after parameter resolution:
+        task_key = f"{task_type}:{task_subtype}"
+
+        # ---> NEW LOGIC START <---
+        if task_key in self.PROGRAMMATIC_EXECUTORS: # Assuming PROGRAMMATIC_EXECUTORS dict exists
+            # Requires access to aider_bridge instance, potentially passed via Application
+            aider_bridge = self.application.aider_bridge # Example access pattern
+            try:
+                 # Execute the registered Python function directly
+                 result = self.PROGRAMMATIC_EXECUTORS[task_key](resolved_inputs, aider_bridge)
+                 # Ensure result is wrapped correctly if executor doesn't return full TaskResult
+                 if not isinstance(result, dict) or "status" not in result:
+                     # Basic wrapping, refine as needed
+                     return {"status": "COMPLETE", "content": str(result), "notes": {}}
+                 return result
+            except Exception as e:
+                 # Handle errors from the programmatic executor
+                 return format_error_result(create_task_failure(f"Error executing programmatic task {task_key}: {e}", ...))
+        # ---> NEW LOGIC END <---
+
+        elif task_key == "atomic:associative_matching":
+            # Existing specialized LLM logic for associative matching
+            return self._execute_associative_matching(...)
+        else:
+            # Fallback to generic handler/LLM prompting
+            handler = self._get_handler(...) # Or get handler passed in
+            return handler.execute_prompt(...)
+        ```
+*   **Template Definition:** The new `aider:automatic` and `aider:interactive` templates should be simple dictionaries registered with `task_system.register_template`. They primarily define the `type`, `subtype`, `name`, and `parameters`.
+    *   **Reference:** Similar structure to `FORMAT_JSON_TEMPLATE` in `task_system/templates/function_examples.py`, but without a `system_prompt` if purely programmatic.
+*   **Executor Functions:** These are standard Python functions.
+    *   **Reference:** Similar in concept to `execute_format_json` in `task_system/templates/function_examples.py`, but these will call methods on the `AiderBridge` instance.
+
+**Phase 2: Implement Multi-Step Tool Calling**
+
+*   **Goal Clarification:** Enhance the *chat handler* (`PassthroughHandler`) to manage sequences where the LLM requests a tool, the tool runs, and the result is sent *back* to the LLM for a follow-up response, all within one user turn.
+*   **Key Concept:** LLM Tool Use Workflow (LLM -> Tool -> LLM)
+    *   **Reference:** The `awaiting_tool_response` flag in `handler/model_provider.py` (`ClaudeProvider.extract_tool_calls`) and the explicit note in `PassthroughHandler._send_to_model`: `"The model is requesting to use a tool, but multi-step tool interactions are not fully implemented yet."` This phase implements that missing logic.
+*   **Code Impact (`handler/passthrough_handler.py` - `_send_to_model`):** The core change involves replacing the simple `send -> extract -> maybe execute -> return` logic with a loop.
+    ```python
+    # Inside PassthroughHandler._send_to_model (Conceptual Structure)
+    current_messages = formatted_messages # Start with history up to user query
+    max_tool_calls = 5 # Example limit
+    calls_made = 0
+
+    while calls_made < max_tool_calls:
+        response = self.model_provider.send_message(
+            messages=current_messages,
+            system_prompt=system_prompt,
+            tools=tools
+        )
+        extracted = self.model_provider.extract_tool_calls(response)
+        llm_content = extracted.get("content", "")
+        tool_calls = extracted.get("tool_calls", [])
+        awaiting_response = extracted.get("awaiting_tool_response", False)
+
+        # Append LLM's turn (potentially requesting tools)
+        # Need to reconstruct the actual message format the provider expects
+        current_messages.append({"role": "assistant", "content": llm_content, "tool_calls": tool_calls}) # Simplified example
+
+        if not tool_calls and not awaiting_response:
+            # LLM provided final answer, break loop
+            final_content = llm_content
+            break # Exit loop
+
+        if tool_calls:
+            calls_made += len(tool_calls)
+            tool_results_messages = [] # Collect results for next LLM call
+            final_content = "" # Reset final content, expecting LLM follow-up
+
+            for tool_call in tool_calls:
+                tool_name = tool_call.get("name")
+                tool_params = tool_call.get("parameters")
+                tool_result = self._execute_tool(tool_name, tool_params) # Existing method
+
+                # ---> NEW: Format tool_result for LLM <---
+                # This depends heavily on the LLM provider (e.g., Anthropic's format)
+                tool_result_message = self.model_provider.format_tool_result(tool_call, tool_result) # Assumes provider has this helper
+                tool_results_messages.append(tool_result_message)
+                # Store or log the immediate tool result if needed
+                # final_content += f"\n[Tool {tool_name} Result: {tool_result.get('content', 'No content')}]" # Example for logging
+
+            current_messages.extend(tool_results_messages) # Add tool results for next LLM call
+            # Continue loop to send results back to LLM
+        else:
+             # No tool calls, but might be waiting? Or just finished?
+             # Handle edge cases like awaiting_response=True but no calls
+             final_content = llm_content # Use the last LLM content if no tools executed
+             break # Exit loop
+
+    # After loop: Process final_content, update main conversation_history
+    # ... rest of the original function ...
+    return final_content # Or the last tool result if that's the final action? Needs definition.
+
+    ```
+*   **Provider Interface (`handler/model_provider.py`):** May need a new method like `format_tool_result(tool_call_request, tool_execution_result)` in the `ProviderAdapter` and its implementations to create the correctly structured message for the specific LLM API (e.g., Anthropic uses a `tool_result` role).
+
+**Phase 3: Refine LLM-Driven `/aider <text>` Invocation Context**
+
+*   **Goal Clarification:** Make the Aider tools, *when invoked by the LLM during chat*, use context derived from both the specific instruction (`<text>`) and the prior chat history.
+*   **Key Concept:** Contextualizing Tool Execution.
+    *   **Reference:** The plan's discussion point #2 about how the tool executor gets `conversation_history`.
+    *   **Code Impact (`aider_bridge/tools.py` - Tool Executors):** The executor functions need access to the handler state. Using closures (Option A) is recommended.
+        ```python
+        # Inside aider_bridge/tools.py -> register_automatic_tool
+        def register_automatic_tool(handler: Any, aider_bridge: Any): # handler is available here
+             tool_spec = ...
+             # Define executor closure
+             def aider_automatic_executor(input_data: Dict[str, Any]) -> Dict[str, Any]:
+                 prompt = input_data["prompt"] # This is the <text> from the user's /aider command
+                 # ---> NEW: Access handler state via closure <---
+                 history = handler.conversation_history
+                 memory = handler.memory_system
+                 # ---> NEW: Construct specialized context input <---
+                 # Combine prompt and history intelligently here
+                 combined_query_for_context = f"Instruction: {prompt}\n\nRelevant History:\n{json.dumps(history[-5:])}" # Example
+                 context_input = ContextGenerationInput(
+                     template_description=combined_query_for_context,
+                     # Add other fields as needed, maybe prioritize prompt via context_relevance
+                     inputs = {"query": prompt}, # Pass original prompt maybe?
+                     context_relevance = {"query": True} # Example relevance
+                 )
+                 logging.debug(f"Aider tool getting context for: {combined_query_for_context[:100]}...")
+                 context_result = memory.get_relevant_context_for(context_input)
+                 file_paths = [m[0] for m in context_result.matches] if hasattr(context_result, 'matches') else []
+                 logging.debug(f"Aider tool determined file paths: {file_paths}")
+                 # ---> Call bridge with determined files <---
+                 return aider_bridge.execute_automatic_task(prompt, file_paths) # Pass determined paths
+
+             success = handler.register_tool(tool_spec, aider_automatic_executor)
+             # ... rest of function ...
+        ```
+
+**Phase 4: Implement `/plan` Command**
+
+*   **Goal Clarification:** Allow users to type `/plan <request>` in the chat to get an LLM-generated plan wrapped in `<plan>` tags.
+*   **Code Impact (`handler/passthrough_handler.py`):** Modify prompt construction logic.
+    *   **Reference:** The specification for `PassthroughHandler` mentions extending the `base_system_prompt`. This phase might involve further additions or conditional logic based on user input.
+    ```python
+    # Inside PassthroughHandler.handle_query or _send_to_model
+
+    user_query = query # Original user input e.g., "/plan do something"
+    final_query_to_llm = user_query
+    additional_system_instructions = ""
+
+    if user_query.lower().startswith("/plan "):
+        plan_request = user_query[len("/plan "):].strip()
+        # Modify the query/prompt sent to the LLM
+        final_query_to_llm = f"Generate a step-by-step plan for the following request: {plan_request}"
+        # Inject instruction into system prompt (or append to user query)
+        additional_system_instructions = "\n\nIMPORTANT: Enclose the generated plan within <plan> and </plan> XML tags."
+        # This instruction needs to be added to the system_prompt sent to the model_provider
+        # E.g., Modify how system_prompt is built or passed in _send_to_model
+
+    # ... rest of the logic to build system_prompt and call model_provider ...
+    # Make sure 'additional_system_instructions' gets included in the final system prompt if needed.
+    # E.g., system_prompt = self._build_system_prompt(...) + additional_system_instructions
+    response = self.model_provider.send_message(messages=..., system_prompt=..., ...)
+    ```
+*   **Dependency:** Relies heavily on Phase 2 if the plan needs to be executed step-by-step using tools later. Plan *generation* itself does not strictly require Phase 2.
+
+---
+
+This addendum provides specific code touchpoints and references the prior discussion to ensure the developer understands the *how* and *why* behind each phase, connecting the plan back to the existing codebase and architectural decisions.
+
+---
+
+**Addendum 2: Clarification on Task Invocation Flows**
+
+This addendum clarifies the distinct pathways for initiating tasks and tool usage within the system, based on the architecture defined in the referenced `.md` files. Understanding these pathways is crucial for implementing both user-driven interactions and potential autonomous agent workflows.
+
+**1. LLM-Initiated Actions: Tool Calls**
+
+*   **Specification:** The primary mechanism for the LLM to request actions during a conversation (e.g., via `PassthroughHandler`) is **standard tool calling**.
+    *   **Reference:** [Pattern:ToolInterface:1.0](./system/architecture/patterns/tool-interface.md) - Describes the unified interface presented to the LLM.
+    *   **Reference:** [Interface:Handler:1.0](./components/handler/spec/interfaces.md) - Defines `register_tool`, `registerDirectTool`, `registerSubtaskTool` methods for exposing capabilities *to the LLM* as tools.
+    *   **Reference:** `PassthroughHandler._send_to_model` implementation detail - Logic focuses on detecting `tool_calls` in the LLM response.
+*   **Flow:**
+    1.  User query (e.g., `/aider <text>` or natural language like "Use Aider to...") is sent to the LLM along with registered tool definitions.
+    2.  The **LLM decides** which tool to use (e.g., `aiderAutomatic`) and specifies parameters (e.g., `prompt`).
+    3.  The `Handler` detects this tool call request.
+    4.  The `Handler` calls `_execute_tool`, running the corresponding registered Python executor function.
+*   **Key Point:** The LLM interacts via a predefined set of tools, initiating actions through this specific mechanism. It does not directly request `TaskSystem` template execution.
+
+**2. Programmatic Task Execution**
+
+*   **Specification:** The `TaskSystem` is designed for structured task execution initiated *programmatically*.
+    *   **Reference:** [Interface:TaskSystem:1.0](./components/task-system/api/interfaces.md) - Defines `executeTask` and `executeCall` as the public API for programmatic execution.
+    *   **Reference:** Plan Phase 1 ("Solidify Programmatic Aider via Task System") - Explicitly aims to enable *programmatic* Aider invocation via `TaskSystem`.
+    *   **Reference:** Discussion on "Representing Programmatic vs. LLM-Based Templates" & Recommendation C - Proposes distinguishing programmatic execution logic within `TaskSystem.execute_task`.
+*   **Flow:**
+    1.  External code (e.g., a script, test, REPL command handler for `/task`, or future autonomous agent logic) identifies a specific task template (`type:subtype`).
+    2.  This code calls `TaskSystem.execute_task(...)` or `TaskSystem.executeCall(...)` directly, providing the necessary inputs.
+    3.  The `TaskSystem` finds the template and executes its associated logic (either a registered programmatic Python function or LLM-based prompting via a Handler).
+*   **Key Point:** This path bypasses the conversational LLM's decision-making *for initiating the task*. The choice of task is made by the calling code.
+
+**3. Subtasks: An Internal Mechanism (Often Triggered by Tools)**
+
+*   **Specification:** Subtasks, as defined by the `CONTINUATION` status and `subtask_request` ([Protocol:SubtaskSpawning:1.0](./system/contracts/protocols.md)), are an *internal* mechanism for chaining operations, often initiated *as a result* of an LLM tool call.
+    *   **Reference:** [Pattern:ToolInterface:1.0](./system/architecture/patterns/tool-interface.md) - Explicitly links "Subtask Tools" (registered with the Handler) to the `CONTINUATION` mechanism managed by the Task System/Evaluator.
+    *   **Reference:** [ADR 11: Subtask Spawning Mechanism](./system/architecture/decisions/completed/011-subtask-spawning.md) - Details the flow where a parent task (often the executor function for an LLM-invoked tool) returns `CONTINUATION` to trigger a subtask.
+*   **Flow (Example with LLM calling a Subtask Tool):**
+    1.  LLM calls Tool `X`.
+    2.  Handler executes the executor function for Tool `X`.
+    3.  Executor function determines a subtask is needed and returns `status: "CONTINUATION"` with `notes: {subtask_request: {...}}`.
+    4.  The `TaskSystem`/`Evaluator` handles this continuation, finds the appropriate template for the subtask, and executes it (potentially involving *another* LLM call for the subtask itself).
+    5.  The subtask result is eventually passed back to the Handler.
+    6.  The Handler formats this as the *result of the original Tool X call* and sends it back to the LLM (requires multi-step, Phase 2).
+*   **Key Point:** Subtasks are not *directly* initiated by the LLM's primary response. They are an implementation detail hidden behind the tool interface, enabling complex operations to be performed in response to a single tool call from the LLM's perspective.
+
+**Implications for Autonomous LLM Agent (Scenario C):**
+
+*   If the agent LLM decides to perform an action corresponding to a registered *tool* (like `aiderAutomatic`), the agent code should trigger the `Handler`'s tool call flow (as in User-Driven Scenario A).
+*   If the agent LLM decides to perform a complex operation defined *only* as a `TaskSystem` template (e.g., a custom multi-step refactoring template), the agent code must parse this intent and make a *programmatic* call to `TaskSystem.execute_task` (as in Scenario B).
+
+**Open Questions (Regarding Invocation and Tooling):**
+
+1.  **LLM Tool Calling Conventions:** How reliably can current LLMs (Claude, GPT-4, etc.) *consistently* choose the correct tool (`aiderInteractive` vs. `aiderAutomatic`) and provide *perfectly formatted* parameters based *only* on natural language instructions and tool descriptions? How much prompt engineering around the tool descriptions and user input handling (like the `/aider` prefix) is needed?
+2.  **Error Handling for Failed Tool Calls:** If the LLM makes a tool call with invalid parameters (e.g., wrong type, missing required field), how should this be handled? Should the Handler attempt to fix it, return an error *to the LLM* for correction (requires multi-step), or fail the turn?
+3.  **Granularity of Tools vs. Tasks:** What is the right balance? Should complex operations be exposed as single, complex "subtask tools" (simpler for the LLM to call, complex internal logic), or should they be broken down into sequences of simpler "direct tools" that the LLM needs to chain together (requires robust multi-step handling and more complex reasoning from the LLM)?
+4.  **Discoverability:** How does the LLM (or an autonomous agent) discover *which* Task System templates are available for programmatic execution if it needs to request one? Does the agent need a "list\_available\_tasks" tool?
+5.  **Unified Invocation Interface?** Is there value in creating a single entry point (e.g., in `Application`) that could accept either a raw chat query (goes to `PassthroughHandler`) or a structured task request (goes to `TaskSystem`), simplifying the interface for external callers or agents?
+
+Addressing these questions will be important as the multi-step capabilities and potentially more autonomous workflows are developed.
+
+---
