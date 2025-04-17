@@ -85,59 +85,8 @@ def execute_programmatic_task(
                 details={"identifier": identifier}
             ))
 
-        # --- Context Determination (Applies primarily if executing a TEMPLATE) ---
-        # For Direct Tools, context is usually passed explicitly in params,
-        # but we determine potential context here for logging/consistency.
-        determined_file_paths = []
-        context_source = "none"
-        
-        if "file_context" in params and params["file_context"]:
-            # Use explicit context from params (already parsed if JSON string)
-            if isinstance(params["file_context"], list):
-                determined_file_paths = params["file_context"]
-                context_source = "explicit_request"
-                logging.debug(f"Using explicit file_context from params: {len(determined_file_paths)} files")
-            else:
-                logging.warning("file_context parameter provided but is not a list. Ignoring.")
-        
-        # Check template ONLY IF no explicit context was given AND it's a template path
-        elif template_definition and template_definition.get("file_paths"):
-            determined_file_paths = template_definition["file_paths"]
-            context_source = "template_defined"
-            logging.debug(f"Using template file_paths: {len(determined_file_paths)} files")
-        
-        # Automatic lookup ONLY IF no explicit/template context AND fresh_context enabled
-        elif (template_definition and not determined_file_paths and
-              template_definition.get("context_management", {}).get("fresh_context") != "disabled"):
-            # We need to do automatic context lookup
-            try:
-                # Get memory system from task_system_instance
-                memory_system = getattr(task_system_instance, "memory_system", None)
-                if memory_system:
-                    # Create context generation input
-                    context_input = ContextGenerationInput(
-                        template_description=template_definition.get("description", ""),
-                        template_type=template_definition.get("type", ""),
-                        template_subtype=template_definition.get("subtype", ""),
-                        inputs=params,
-                        history_context=optional_history_str if flags.get("use-history") else None
-                    )
-                    
-                    # Get relevant context
-                    logging.debug("Performing automatic context lookup via MemorySystem")
-                    context_result = memory_system.get_relevant_context_for(context_input)
-                    
-                    # Extract file paths from matches
-                    if hasattr(context_result, 'matches'):
-                        determined_file_paths = [match[0] for match in context_result.matches]
-                        context_source = "automatic"
-                        logging.debug(f"Automatic context lookup found {len(determined_file_paths)} files")
-                else:
-                    logging.warning("Cannot perform automatic context lookup: memory_system not available")
-            except Exception as e:
-                # Log but continue - we'll just use empty context
-                logging.error(f"Error during automatic context lookup: {e}", exc_info=True)
-                # We don't fail the task, just proceed with empty context
+        # --- Context Determination for Direct Tools Only ---
+        # For Template execution, context determination is now fully handled by TaskSystem
         
         # --- Execution Logic ---
         if is_direct_tool:
@@ -184,13 +133,19 @@ def execute_programmatic_task(
                 task_subtype = ""
                 logging.warning(f"Identifier '{identifier}' doesn't follow type:subtype format, using '{task_type}' as type and empty subtype")
             
-            # Create SubtaskRequest, passing the *determined* file paths
-            # (which could be from explicit request, template, or automatic lookup)
+            # Check for explicit file_context ONLY from the original params
+            explicit_file_context = None
+            if "file_context" in params and isinstance(params["file_context"], list):
+                explicit_file_context = params["file_context"]  # Already parsed list
+            
+            # Create SubtaskRequest, passing original params, history, and ONLY explicit files.
+            # Let TaskSystem handle context determination based on template/params.
             subtask_request = SubtaskRequest(
                 type=task_type,
                 subtype=task_subtype,
                 inputs=params,
-                file_paths=determined_file_paths,  # Pass the final determined paths
+                # Pass explicit files ONLY if they came from the original params['file_context']
+                file_paths=explicit_file_context,
                 history_context=optional_history_str if flags.get("use-history") else None  # Pass history if flag is set
             )
             
@@ -204,21 +159,11 @@ def execute_programmatic_task(
             # Always add/update execution_path (Dispatcher's responsibility)
             result["notes"]["execution_path"] = "subtask_template"
 
-            # *Conditionally* add context info if not already provided by TaskSystem
+            # Log warnings if TaskSystem didn't report context notes, but don't add fallbacks
             if "context_source" not in result["notes"]:
-                # TaskSystem didn't report source, use Dispatcher's calculation
-                result["notes"]["context_source"] = context_source
-                logging.debug("Dispatcher added fallback context_source: %s", context_source)
-            else:
-                # TaskSystem already reported source, log what Dispatcher calculated vs what TaskSystem reported
-                logging.debug("TaskSystem reported context_source '%s', Dispatcher calculated '%s'. Using TaskSystem's value.",
-                              result["notes"]["context_source"], context_source)
-
-            if "context_file_count" not in result["notes"]:
-                 # TaskSystem didn't report count, use Dispatcher's calculation
-                 result["notes"]["context_file_count"] = len(determined_file_paths)
-                 logging.debug("Dispatcher added fallback context_file_count: %d", len(determined_file_paths))
-            # else: Trust TaskSystem's count if it provided one.
+                logging.warning("TaskSystem did not report context_source.")
+            if "context_files_count" not in result["notes"]:
+                logging.warning("TaskSystem did not report context_files_count.")
 
         logging.info(f"Execution complete for '{identifier}'. Status: {result.get('status')}")
         return result
