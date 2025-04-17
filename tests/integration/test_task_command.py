@@ -267,7 +267,7 @@ class TestTaskCommandIntegration:
         output = captured_output.getvalue()
         assert "Executing task: aider:automatic..." in output
         assert "Status: FAILED" in output # Should fail validation in executor
-        assert "Invalid file_context" in output # Check for error message
+        assert "Invalid file_context parameter: must be a JSON string array or already a list of strings. Error:" in output # Check start of message
         assert "JSON string array" in output
 
         # Assert Mock Calls
