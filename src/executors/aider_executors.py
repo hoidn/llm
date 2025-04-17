@@ -67,19 +67,10 @@ def execute_aider_automatic(params: Dict[str, Any], aider_bridge: AiderBridge) -
 
     logging.debug(f"Calling Aider Automatic with prompt='{prompt[:50]}...', file_paths={file_paths}")
     try:
-        # Call the AiderBridge method
+        # Call the AiderBridge method - IT should return TaskResult format directly
         result = aider_bridge.execute_automatic_task(prompt=prompt, file_context=file_paths)
         
-        # Ensure result has notes field
-        if "notes" not in result:
-            result["notes"] = {}
-            
-        # Add execution metadata
-        result["notes"]["execution_path"] = "direct_tool"
-        result["notes"]["context_source"] = "explicit_request" if file_paths else "none"
-        result["notes"]["context_file_count"] = len(file_paths) if file_paths else 0
-        
-        # AiderBridge methods should return TaskResult format directly
+        # Return the bridge result directly without adding notes
         return result
     except Exception as e:
         logging.exception("Error during Aider automatic execution:")
@@ -106,19 +97,10 @@ def execute_aider_interactive(params: Dict[str, Any], aider_bridge: AiderBridge)
 
     logging.debug(f"Calling Aider Interactive with query='{query[:50]}...', file_paths={file_paths}")
     try:
-        # Call the AiderBridge method
+        # Call the AiderBridge method - IT should return TaskResult format directly
         result = aider_bridge.start_interactive_session(query=query, file_context=file_paths)
         
-        # Ensure result has notes field
-        if "notes" not in result:
-            result["notes"] = {}
-            
-        # Add execution metadata
-        result["notes"]["execution_path"] = "direct_tool"
-        result["notes"]["context_source"] = "explicit_request" if file_paths else "none"
-        result["notes"]["context_file_count"] = len(file_paths) if file_paths else 0
-        
-        # AiderBridge methods should return TaskResult format directly
+        # Return the bridge result directly without adding notes
         return result
     except Exception as e:
         logging.exception("Error during Aider interactive session start:")

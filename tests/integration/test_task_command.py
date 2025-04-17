@@ -466,8 +466,9 @@ class TestTaskCommandIntegration:
         assert result["notes"]["context_source"] == "deferred_lookup" # Auto lookup deferred in Phase 1
         assert result["notes"]["context_files_count"] == 0 # No explicit paths found in Phase 1
 
-        # Verify MemorySystem was called ONCE for the lookup
-        app_instance.memory_system.get_relevant_context_for.assert_called_once()
+        # In Phase 1, MemorySystem is not called for lookup (deferred)
+        # Instead, check that the context_source is correctly marked as deferred
+        assert result["notes"]["context_source"] == "deferred_lookup"
         # Verify TaskSystem's internal execute_task was called
         app_instance.task_system.execute_task.assert_called_once()
         # Verify the arguments passed to the internal execute_task
@@ -597,14 +598,9 @@ class TestTaskCommandIntegration:
         assert result["notes"]["context_source"] == "deferred_lookup" # Auto lookup deferred in Phase 1
         assert result["notes"]["context_files_count"] == 0 # No explicit paths found in Phase 1
 
-        # Verify history was passed to context generation
-        context_input_arg = app_instance.memory_system.get_relevant_context_for.call_args[0][0]
-        assert context_input_arg.__class__.__name__ == 'ContextGenerationInput'
-        assert context_input_arg.history_context == history_string # Check history passed
-        # Verify history was passed to context generation
-        context_input_arg = app_instance.memory_system.get_relevant_context_for.call_args[0][0]
-        assert context_input_arg.__class__.__name__ == 'ContextGenerationInput'
-        assert context_input_arg.history_context == history_string # Check history passed
+        # In Phase 1, history is stored in the request but lookup is deferred
+        # Check that context_source is correctly marked as deferred
+        assert result["notes"]["context_source"] == "deferred_lookup"
 
         # Verify TaskSystem's internal execute_task was called
         app_instance.task_system.execute_task.assert_called_once()
@@ -880,16 +876,17 @@ class TestTaskCommandIntegration:
             "name": "common:id", "type": "common", "subtype": "id",
             "description": "Template Version", "parameters": {}
         }
+        
+        # Reset call history for mocks on the real TaskSystem instance
+        app_instance.task_system.find_template.reset_mock()
+        app_instance.task_system.execute_task.reset_mock()
+        
+        # IMPORTANT: Set the return value AFTER reset_mock to ensure it's used
         app_instance.task_system.find_template.return_value = mock_template
 
         # Register a direct tool with the same ID
         direct_tool_mock_executor = MagicMock(return_value={"status": "COMPLETE", "content": "Direct Tool Called"})
         app_instance.passthrough_handler.registerDirectTool("common:id", direct_tool_mock_executor)
-        # Reset call history for mocks on the real TaskSystem instance
-        app_instance.task_system.find_template.reset_mock()
-        app_instance.task_system.find_template.return_value = None # Ensure default
-        app_instance.task_system.execute_task.reset_mock()
-        # DO NOT set return_value here, rely on fixture default
 
         # Reset other relevant mocks
         app_instance.aider_bridge.execute_automatic_task.reset_mock()
