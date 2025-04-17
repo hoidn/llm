@@ -392,19 +392,12 @@ class TestTaskCommandIntegration:
 
         # Verify TaskSystem's internal execute_task was called
         app_instance.task_system.execute_task.assert_called_once()
-        # Check the file context determined by execute_subtask_directly (using template path)
-        handler_config = execute_task_call_args.kwargs.get('handler_config', {})
-        assert handler_config.get('file_context') == ["/template/path.py"] # Template path used
         # Verify the arguments passed to the internal execute_task
         execute_task_call_args = app_instance.task_system.execute_task.call_args
         assert execute_task_call_args.kwargs['task_type'] == "template"
         assert execute_task_call_args.kwargs['task_subtype'] == "with_context"
         assert execute_task_call_args.kwargs['inputs'] == {"input": "Template context test"}
         # Check the file context determined by execute_subtask_directly (using template path)
-        handler_config = execute_task_call_args.kwargs.get('handler_config', {})
-        assert handler_config.get('file_context') == ["/template/path.py"] # Template path used
-        handler_config = execute_task_call_args.kwargs.get('handler_config', {})
-        assert handler_config.get('file_context') == ["/template/path.py"] # Template path used
         handler_config = execute_task_call_args.kwargs.get('handler_config', {})
         assert handler_config.get('file_context') == ["/template/path.py"] # Template path used
 
