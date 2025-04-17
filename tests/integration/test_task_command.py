@@ -263,6 +263,18 @@ class TestTaskCommandIntegration:
         app_instance.task_system.find_template = MagicMock(return_value=mock_template)
         app_instance.memory_system.get_relevant_context_for.reset_mock()
         app_instance.aider_bridge.execute_automatic_task.reset_mock()
+        app_instance.task_system.execute_subtask_directly.reset_mock()  # Reset mock before configuring
+
+        # Configure the mock return value specifically for this test case
+        app_instance.task_system.execute_subtask_directly.return_value = {
+            "status": "COMPLETE",
+            "content": "Subtask executed successfully",
+            "notes": {
+                "template_used": "aider:automatic",
+                "context_source": "none",  # Expected source when lookup is skipped
+                "context_files_count": 0   # Expected count when lookup is skipped
+            }
+        }
 
         # Act: Call without explicit context
         from dispatcher import execute_programmatic_task
