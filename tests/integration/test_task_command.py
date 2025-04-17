@@ -478,7 +478,7 @@ class TestTaskCommandIntegration:
 
         # In Phase 1, MemorySystem is not called for lookup (deferred)
         # Check the content returned by the stub
-        assert "Executed template 'template:no_context' with inputs." in result["content"]
+        assert "Executed template 'template:auto_context' with inputs." in result["content"]
         
         # Verify the arguments passed to the internal execute_task
         execute_task_call_args = app_instance.task_system.execute_task.call_args
@@ -637,8 +637,8 @@ class TestTaskCommandIntegration:
 
         # Verify AiderBridge (or other direct tools) were NOT called directly
         app_instance.aider_bridge.execute_automatic_task.assert_not_called()
-        # Check the content returned by the mocked TaskSystem.execute_task method
-        assert "Mock TaskSystem.execute_task Result" in result["content"]
+        # Check the content returned by the stub
+        assert "Executed template 'template:history_context' with inputs." in result["content"]
 
 
     def test_task_use_history_with_explicit_context(self, app_instance):
