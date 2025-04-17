@@ -44,10 +44,13 @@ def execute_programmatic_task(
     try:
         # --- Parameter Processing ---
         # Handle file_context parameter if it's a JSON string
+        explicit_file_paths = None
         if "file_context" in params and isinstance(params["file_context"], str):
             try:
                 params["file_context"] = json.loads(params["file_context"])
                 logging.debug(f"Parsed file_context JSON: {len(params['file_context'])} files")
+                if isinstance(params["file_context"], list) and all(isinstance(p, str) for p in params["file_context"]):
+                    explicit_file_paths = params["file_context"]
             except json.JSONDecodeError as e:
                 logging.error(f"Invalid JSON in file_context parameter: {e}")
                 return format_error_result(create_task_failure(
@@ -55,6 +58,8 @@ def execute_programmatic_task(
                     reason=INPUT_VALIDATION_FAILURE,
                     details={"parameter": "file_context", "error": str(e)}
                 ))
+        elif "file_context" in params and isinstance(params["file_context"], list) and all(isinstance(p, str) for p in params["file_context"]):
+            explicit_file_paths = params["file_context"]
 
         # --- Routing Logic ---
         target_executor = None
