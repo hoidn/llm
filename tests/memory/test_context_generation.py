@@ -235,7 +235,8 @@ class TestContextGenerationInput:
         assert input1.inherited_context == ""
         assert input1.previous_outputs == []
         assert input1.fresh_context == "enabled"
-        
+        assert input1.history_context is None # Check new default
+
         # Test with complete args
         input2 = ContextGenerationInput(
             template_description="Process data",
@@ -245,9 +246,10 @@ class TestContextGenerationInput:
             context_relevance={"data": True, "mode": False},
             inherited_context="Previous context data",
             previous_outputs=["Previous output"],
-            fresh_context="disabled"
+            fresh_context="disabled",
+            history_context="User: Hi\nAssistant: Hello" # Add history
         )
-        
+
         assert input2.template_description == "Process data"
         assert input2.template_type == "atomic"
         assert input2.template_subtype == "data_processor"
@@ -256,7 +258,8 @@ class TestContextGenerationInput:
         assert input2.inherited_context == "Previous context data"
         assert input2.previous_outputs == ["Previous output"]
         assert input2.fresh_context == "disabled"
-    
+        assert input2.history_context == "User: Hi\nAssistant: Hello" # Check history
+
     def test_default_context_relevance(self):
         """Test that default context relevance includes all inputs."""
         inputs = {"feature": "login", "component": "auth"}
@@ -281,7 +284,16 @@ class TestContextGenerationInput:
         assert input_obj.template_description == "Find authentication code"
         assert input_obj.inherited_context == "Previous context"
         assert input_obj.previous_outputs == ["Output 1", "Output 2"]
-        
+        assert input_obj.history_context is None # Check history default
+
+        # Test with history in legacy
+        legacy_with_history = {
+            "taskText": "Find auth code",
+            "history_context": "User: Query\nAssistant: Response"
+        }
+        input_with_history = ContextGenerationInput.from_legacy_format(legacy_with_history)
+        assert input_with_history.history_context == "User: Query\nAssistant: Response"
+
         # Test with missing fields
         minimal_legacy = {"taskText": "Minimal test"}
         minimal_obj = ContextGenerationInput.from_legacy_format(minimal_legacy)
@@ -289,6 +301,7 @@ class TestContextGenerationInput:
         assert minimal_obj.template_description == "Minimal test"
         assert minimal_obj.inherited_context == ""
         assert minimal_obj.previous_outputs == []
+        assert minimal_obj.history_context is None
 
 
 class TestAssociativeMatchResult:
