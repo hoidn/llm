@@ -186,35 +186,129 @@ class TestTaskCommandIntegration:
              for tool_mock in app_instance.passthrough_handler.direct_tool_executors.values():
                  if isinstance(tool_mock, MagicMock):
                      tool_mock.reset_mock()
-        # ---> END MODIFIED RESET CODE <---
+        # Mock the return value for this specific call
+        app_instance.aider_bridge.execute_automatic_task.return_value = {
+            "status": "COMPLETE", "content": "Aider Auto Success", "notes": {"files_changed": ["src/main.py"]}
+        }
 
         # Capture stdout
         captured_output = io.StringIO()
         sys.stdout = captured_output
-        
+
         # Create REPL instance with the mocked app
-        from repl.repl import Repl
+        from src.repl.repl import Repl # Adjust import path if needed
         repl = Repl(app_instance, output_stream=captured_output)
-        
-        # Execute task command
+
+        # Act: Execute task command
         repl._cmd_task('aider:automatic prompt="Add docstrings" file_context=\'["src/main.py"]\'')
-        
+
         # Reset stdout
         sys.stdout = sys.__stdout__
-        
-        # Verify output contains success message
+
+        # Assert Output
         output = captured_output.getvalue()
+        assert "Executing task: aider:automatic..." in output
         assert "Status: COMPLETE" in output
-        assert "Mock Aider Auto Result" in output
-        
-        # Verify the correct method was called with correct parameters
+        assert "Aider Auto Success" in output # Check for content from mock
+        assert '"files_changed": [\n    "src/main.py"\n  ]' in output # Check notes
+
+        # Assert Mock Calls
+        # Verify the dispatcher routed to the direct tool executor, which called the bridge
         app_instance.aider_bridge.execute_automatic_task.assert_called_once_with(
-            "Add docstrings", ["src/main.py"]
+            prompt="Add docstrings", file_context=["src/main.py"]
         )
-    
+        # Verify TaskSystem wasn't involved for direct tool execution
+        app_instance.task_system.execute_task.assert_not_called()
+
+
+    def test_task_aider_interactive_simple(self, app_instance):
+        """Test basic aider:interactive task execution via /task."""
+        # Arrange
+        app_instance.aider_bridge.start_interactive_session.return_value = {
+            "status": "COMPLETE", "content": "Interactive Done", "notes": {"summary": "Session summary"}
+        }
+
+        captured_output = io.StringIO()
+        sys.stdout = captured_output
+        from src.repl.repl import Repl
+        repl = Repl(app_instance, output_stream=captured_output)
+
+        # Act
+        repl._cmd_task('aider:interactive query="Refactor this class" file_context=\'["src/utils.py"]\'')
+
+        # Assert Output
+        sys.stdout = sys.__stdout__
+        output = captured_output.getvalue()
+        assert "Executing task: aider:interactive..." in output
+        assert "Status: COMPLETE" in output
+        assert "Interactive Done" in output
+        assert '"summary": "Session summary"' in output
+
+        # Assert Mock Calls
+        app_instance.aider_bridge.start_interactive_session.assert_called_once_with(
+            query="Refactor this class", file_context=["src/utils.py"]
+        )
+        app_instance.task_system.execute_task.assert_not_called()
+
+
+    def test_task_aider_auto_invalid_json_context(self, app_instance):
+        """Test /task aider:automatic with invalid JSON in file_context."""
+        # Arrange
+        captured_output = io.StringIO()
+        sys.stdout = captured_output
+        from src.repl.repl import Repl
+        repl = Repl(app_instance, output_stream=captured_output)
+
+        # Act
+        repl._cmd_task('aider:automatic prompt="Test invalid context" file_context=\'["file1.py",\'') # Invalid JSON
+
+        # Assert Output
+        sys.stdout = sys.__stdout__
+        output = captured_output.getvalue()
+        assert "Executing task: aider:automatic..." in output
+        assert "Status: FAILED" in output # Should fail validation in executor
+        assert "Invalid file_context" in output # Check for error message
+        assert "JSON string array" in output
+
+        # Assert Mock Calls
+        app_instance.aider_bridge.execute_automatic_task.assert_not_called() # Bridge should not be called
+        app_instance.task_system.execute_task.assert_not_called()
+
+
+    def test_task_aider_auto_help(self, app_instance):
+        """Test /task aider:automatic --help."""
+        # Arrange
+        # The fixture already registers the template with the real TaskSystem
+        captured_output = io.StringIO()
+        sys.stdout = captured_output
+        from src.repl.repl import Repl
+        repl = Repl(app_instance, output_stream=captured_output)
+
+        # Act
+        repl._cmd_task('aider:automatic --help')
+
+        # Assert Output
+        sys.stdout = sys.__stdout__
+        output = captured_output.getvalue()
+        assert "Fetching help for task: aider:automatic..." in output
+        assert "Task Template Details" in output
+        assert "Execute an automatic Aider task" in output # Description
+        assert "prompt (type: string): The instruction for code changes. (required)" in output
+        assert "file_context (type: string): (Optional) JSON string array" in output
+
+        # Assert Mock Calls
+        app_instance.aider_bridge.execute_automatic_task.assert_not_called()
+        app_instance.task_system.execute_task.assert_not_called()
+        # Verify find_template was called on the real TaskSystem instance
+        app_instance.task_system.find_template.assert_called_once_with("aider:automatic")
+
+
+    # --- Context Precedence Tests (Copied & Adapted from previous phase) ---
+    # These tests now verify the interaction between REPL -> Dispatcher -> Direct Tool/TaskSystem
+
     def test_task_context_precedence_explicit_wins(self, app_instance):
-        """Test that explicit file_context takes precedence over template and auto context."""
-        # ---> START MODIFIED RESET CODE <---
+        """Test /task with explicit file_context overrides template/auto (Direct Tool path)."""
+        # Arrange: Use aider:automatic which is a Direct Tool
         # Reset call history for mocks on the real TaskSystem instance
         app_instance.task_system.find_template.reset_mock()
         app_instance.task_system.find_template.return_value = None # Ensure default
@@ -572,52 +666,33 @@ class TestTaskCommandIntegration:
              for tool_mock in app_instance.passthrough_handler.direct_tool_executors.values():
                  if isinstance(tool_mock, MagicMock):
                      tool_mock.reset_mock()
-        # ---> END MODIFIED RESET CODE <---
-
-        # Arrange: Template with detailed parameters
-        mock_template = {
-            "name": "aider:automatic", "type": "aider", "subtype": "automatic",
-            "description": "Execute Aider in automatic mode",
-            "parameters": {
-                "prompt": {
-                    "type": "string", 
-                    "description": "Task description", 
-                    "required": True
-                },
-                "file_context": {
-                    "type": "array", 
-                    "description": "Files to include", 
-                    "required": False
-                }
-            }
-        }
-        # Override the default None return value for this specific test
-        app_instance.task_system.find_template = MagicMock(return_value=mock_template)
-        
         # Capture stdout
         captured_output = io.StringIO()
         sys.stdout = captured_output
-        
-        # Create REPL instance with the mocked app
-        from repl.repl import Repl
+        from src.repl.repl import Repl
         repl = Repl(app_instance, output_stream=captured_output)
-        
-        # Execute task command with --help
+
+        # Act
         repl._cmd_task('aider:automatic --help')
-        
-        # Reset stdout
+
+        # Assert Output
         sys.stdout = sys.__stdout__
-        
-        # Verify output contains help information
         output = captured_output.getvalue()
-        assert "Help for 'aider:automatic'" in output
-        assert "Description: Execute Aider in automatic mode" in output
-        assert "prompt (type: string): Task description (required)" in output
-        assert "file_context (type: array): Files to include (optional)" in output
-    
+        assert "Fetching help for task: aider:automatic..." in output
+        assert "Task Template Details" in output
+        assert "Execute an automatic Aider task" in output # Description from template
+        assert "prompt (type: string): The instruction for code changes. (required)" in output
+        assert "file_context (type: string): (Optional) JSON string array" in output # Description from template
+
+        # Assert Mock Calls
+        app_instance.aider_bridge.execute_automatic_task.assert_not_called()
+        app_instance.task_system.execute_task.assert_not_called()
+        app_instance.task_system.find_template.assert_called_once_with("aider:automatic")
+
+
     def test_task_parameter_parsing_complex_json(self, app_instance):
-        """Test parsing of complex JSON parameters."""
-        # ---> START MODIFIED RESET CODE <---
+        """Test /task parsing of complex JSON parameters (Direct Tool path)."""
+        # Arrange: Use aider:automatic (Direct Tool)
         # Reset call history for mocks on the real TaskSystem instance
         app_instance.task_system.find_template.reset_mock()
         app_instance.task_system.find_template.return_value = None # Ensure default
@@ -764,40 +839,40 @@ class TestTaskCommandIntegration:
              for tool_mock in app_instance.passthrough_handler.direct_tool_executors.values():
                  if isinstance(tool_mock, MagicMock):
                      tool_mock.reset_mock()
-        # ---> END MODIFIED RESET CODE <---
+        app_instance.aider_bridge.execute_automatic_task.side_effect = Exception("Simulated bridge error")
 
-        # Arrange: Executor raises exception
-        app_instance.aider_bridge.execute_automatic_task.side_effect = Exception("Simulated executor error")
+        # Act: Call dispatcher for the direct tool
+        from src.dispatcher import execute_programmatic_task
+        result = execute_programmatic_task(
+            identifier="aider:automatic", # This is registered as a direct tool
+            params={"prompt": "This will fail"},
+            flags={},
+            handler_instance=app_instance.passthrough_handler,
+            task_system_instance=app_instance.task_system
+        )
 
-        # Capture stdout
-        captured_output = io.StringIO()
-        sys.stdout = captured_output
-        
-        # Create REPL instance with the mocked app
-        from repl.repl import Repl
-        repl = Repl(app_instance, output_stream=captured_output)
-        
-        # Execute task command that will cause an exception
-        repl._cmd_task('aider:automatic prompt="This should cause an error"')
-        
-        # Reset stdout
-        sys.stdout = sys.__stdout__
-        
-        # Verify output contains error message
-        output = captured_output.getvalue()
-        assert "Error" in output or "FAILED" in output
-        assert "Simulated executor error" in output
-    
+        # Assert: Check that the error from the executor/bridge was caught and formatted
+        assert result["status"] == "FAILED"
+        # The error message comes from the executor function's catch block
+        assert "Aider execution failed: Simulated bridge error" in result["content"]
+        assert result["notes"]["error"]["reason"] == "unexpected_error"
+
+        # Verify the bridge was called (and raised the error)
+        app_instance.aider_bridge.execute_automatic_task.assert_called_once()
+
+
     def test_task_template_precedence_over_direct_tool(self, app_instance):
-        """Test that templates take precedence over direct tools with the same name."""
-        # Arrange: Same identifier exists as both template and direct tool
+        """Test dispatcher routing: templates take precedence over direct tools."""
+        # Arrange: Define a template and a direct tool with the same identifier
         mock_template = {
-            "name": "duplicate:identifier", 
-            "type": "duplicate", 
-            "subtype": "identifier",
-            "description": "Template version"
+            "name": "common:id", "type": "common", "subtype": "id",
+            "description": "Template Version", "parameters": {}
         }
-        # ---> START MODIFIED RESET CODE <---
+        app_instance.task_system.find_template.return_value = mock_template
+
+        # Register a direct tool with the same ID
+        direct_tool_mock_executor = MagicMock(return_value={"status": "COMPLETE", "content": "Direct Tool Called"})
+        app_instance.passthrough_handler.registerDirectTool("common:id", direct_tool_mock_executor)
         # Reset call history for mocks on the real TaskSystem instance
         app_instance.task_system.find_template.reset_mock()
         app_instance.task_system.find_template.return_value = None # Ensure default
