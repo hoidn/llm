@@ -18,30 +18,26 @@ class TestExecuteSubtaskDirectly:
 
     @pytest.fixture
     def task_system_instance(self):
-        # Mock the Evaluator dependency if TaskSystem initializes it internally
-        # Or pass a mock Evaluator if it's injected
-        # Patching the import within the module where it's used
-        with patch('src.task_system.task_system.Evaluator', new_callable=MagicMock) as mock_eval_class:
-             # Mock the eval method of the Evaluator instance
-             mock_evaluator_instance = mock_eval_class.return_value
-             # Define a mock method for evaluate (or whatever the actual method is)
-             # For Phase 1, execute_subtask_directly doesn't call evaluator, it returns mock success
-             # So, we don't strictly need to mock the evaluator's methods here yet.
-             # mock_evaluator_instance.evaluate = MagicMock(return_value={
-             #     "status": "COMPLETE", "content": "Evaluator Result", "notes": {}
-             # })
+        # Directly create the mock evaluator instance
+        # No need to patch the class itself if we control instantiation
+        # Use spec=EvaluatorInterface if EvaluatorInterface is imported and defined
+        mock_evaluator_instance = MagicMock() # spec=EvaluatorInterface)
+        # Configure mock methods if needed for Phase 1 tests (likely not needed yet)
+        # mock_evaluator_instance.evaluate = MagicMock(...)
 
-             # Pass the mock evaluator instance during TaskSystem init
-             ts = TaskSystem(evaluator=mock_evaluator_instance)
-             ts.templates = {} # Reset templates for each test
-             ts.template_index = {}
-             # Mock find_template used by the method
-             ts.find_template = MagicMock(return_value=None) # Default mock for find_template
-             # Mock _ensure_evaluator to do nothing and return the mock evaluator
-             ts._ensure_evaluator = MagicMock()
-             # Assign the mock evaluator instance to the TaskSystem instance
-             ts.evaluator = mock_evaluator_instance
-             yield ts # Use yield to ensure cleanup if needed
+        # Pass the mock evaluator instance during TaskSystem init
+        # Ensure TaskSystem constructor accepts an evaluator argument
+        ts = TaskSystem(evaluator=mock_evaluator_instance)
+        ts.templates = {} # Reset templates for each test
+        ts.template_index = {}
+        # Mock find_template used by the method
+        ts.find_template = MagicMock(return_value=None) # Default mock for find_template
+        # Mock _ensure_evaluator to do nothing or return the mock
+        ts._ensure_evaluator = MagicMock()
+        # Assign the mock evaluator instance to the TaskSystem instance attribute
+        # (This might be redundant if the constructor sets it, but safe to ensure)
+        ts.evaluator = mock_evaluator_instance
+        yield ts # Use yield for fixtures
 
     @pytest.fixture
     def mock_evaluator(self, task_system_instance):

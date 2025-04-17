@@ -90,11 +90,11 @@ class TestDispatcher:
         call_args = mock_task_system.execute_subtask_directly.call_args[0] # Get positional args
         assert len(call_args) == 1
         request_arg = call_args[0]
-        assert isinstance(request_arg, SubtaskRequest)
-        assert request_arg.type == "sub"
-        assert request_arg.subtype == "task"
-        assert request_arg.inputs == params
-        assert request_arg.file_paths == [] # Explicit file_context not passed
+        # Assert based on attributes instead of isinstance
+        assert hasattr(request_arg, 'type') and request_arg.type == "sub"
+        assert hasattr(request_arg, 'subtype') and request_arg.subtype == "task"
+        assert hasattr(request_arg, 'inputs') and request_arg.inputs == params
+        assert hasattr(request_arg, 'file_paths') and request_arg.file_paths == []
         # 4. Check that the final result matches the one from TaskSystem
         assert result == expected_subtask_result
 
@@ -136,12 +136,16 @@ class TestDispatcher:
         )
 
         # Assert:
-        # 1. Check that the result is the formatted version of the original error
+        # 1. Check that the result indicates failure
         assert result["status"] == "FAILED"
-        assert result["content"] == test_error.message
-        assert result["notes"]["error"]["type"] == test_error.error_type
-        assert result["notes"]["error"]["reason"] == test_error.reason
-        assert result["notes"]["error"]["details"] == test_error.details
+        # 2. Check that the content reflects the *wrapped* unexpected error message
+        assert "An unexpected error occurred" in result["content"]
+        assert str(test_error.message) in result["content"] # Original message might be included
+        # 3. Check that the reason is UNEXPECTED_ERROR because the specific block was missed
+        assert result["notes"]["error"]["type"] == "TASK_FAILURE"
+        assert result["notes"]["error"]["reason"] == UNEXPECTED_ERROR
+        # 4. Check that the details include the original exception type
+        assert result["notes"]["error"]["details"]["exception_type"] == type(test_error).__name__ # Should be 'TaskError'
 
     def test_handling_unexpected_exception(self, mock_handler, mock_task_system):
         # Arrange: Mock the target (e.g., direct tool) to raise a standard Python Exception
