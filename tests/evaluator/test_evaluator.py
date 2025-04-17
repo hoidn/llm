@@ -1,10 +1,11 @@
 """Tests for the Evaluator component."""
 import pytest
+import json
 from unittest.mock import MagicMock, patch
 
 from task_system.ast_nodes import ArgumentNode, FunctionCallNode
 from task_system.template_utils import Environment
-from system.errors import TaskError, INPUT_VALIDATION_FAILURE
+from system.errors import TaskError, INPUT_VALIDATION_FAILURE, SUBTASK_FAILURE
 from evaluator.evaluator import Evaluator
 from evaluator.interfaces import TemplateLookupInterface
 
@@ -253,6 +254,340 @@ class TestEvaluator:
         
         # Verify task_system.execute_task was called
         task_system.execute_task.assert_called_once()
+        
+        
+class TestDirectorEvaluatorLoop:
+    """Tests for the Director-Evaluator loop functionality in Evaluator."""
+    
+    @pytest.fixture
+    def mock_template_provider(self):
+        """Create a mock template provider."""
+        return MagicMock(spec=TemplateLookupInterface)
+    
+    @pytest.fixture
+    def evaluator(self, mock_template_provider):
+        """Create an Evaluator instance with mocked dependencies."""
+        return Evaluator(mock_template_provider)
+    
+    @pytest.fixture
+    def base_environment(self):
+        """Create a base environment for testing."""
+        return Environment({
+            "test_var": "test_value",
+            "history": "previous conversation"
+        })
+    
+    @pytest.fixture
+    def mock_director_node(self):
+        """Create a mock director node."""
+        node = MagicMock()
+        node.type = "call"
+        node.template_name = "test:director"
+        return node
+    
+    @pytest.fixture
+    def mock_evaluator_node(self):
+        """Create a mock evaluator node."""
+        node = MagicMock()
+        node.type = "call"
+        node.template_name = "debug:analyze_test_results"
+        return node
+    
+    @pytest.fixture
+    def mock_script_node(self):
+        """Create a mock script execution node."""
+        node = MagicMock()
+        node.type = "call"
+        node.template_name = "system:run_script"
+        return node
+    
+    @pytest.fixture
+    def mock_loop_node(self, mock_director_node, mock_evaluator_node, mock_script_node):
+        """Create a mock director_evaluator_loop node."""
+        node = MagicMock()
+        node.type = "director_evaluator_loop"
+        node.description = "Test D-E Loop"
+        node.max_iterations = 3
+        node.director_node = mock_director_node
+        node.evaluator_node = mock_evaluator_node
+        node.script_execution_node = mock_script_node
+        node.termination_condition_node = None
+        return node
+    
+    def test_evaluator_step_success(self, evaluator, mock_loop_node, base_environment):
+        """Test D-E loop when evaluator step returns success."""
+        # Setup mocks for evaluate method
+        with patch.object(evaluator, 'evaluate') as mock_evaluate:
+            # Configure mock to return different results for different nodes
+            def mock_evaluate_side_effect(node, env):
+                if node == mock_loop_node.director_node:
+                    return {
+                        "status": "COMPLETE",
+                        "content": "Director output",
+                        "notes": {}
+                    }
+                elif node == mock_loop_node.script_execution_node:
+                    return {
+                        "status": "COMPLETE",
+                        "content": "Script executed",
+                        "notes": {
+                            "scriptOutput": {
+                                "stdout": "Test output",
+                                "stderr": "",
+                                "exit_code": 0
+                            }
+                        }
+                    }
+                elif node == mock_loop_node.evaluator_node:
+                    # Evaluator returns success
+                    return {
+                        "status": "COMPLETE",
+                        "content": json.dumps({
+                            "success": True,
+                            "feedback": "Tests passed."
+                        }),
+                        "notes": {
+                            "success": True,
+                            "feedback": "Tests passed."
+                        }
+                    }
+                return {}
+            
+            mock_evaluate.side_effect = mock_evaluate_side_effect
+            
+            # Call the method under test
+            result = evaluator._evaluate_director_evaluator_loop(mock_loop_node, base_environment)
+            
+            # Assertions
+            assert result["status"] == "COMPLETE"
+            assert "iteration_history" in result["notes"]
+            assert len(result["notes"]["iteration_history"]) == 1  # Should terminate after first iteration
+            assert result["notes"]["iterations_completed"] == 1
+            assert "final_evaluation" in result["notes"]
+            assert result["notes"]["final_evaluation"]["notes"]["success"] is True
+            
+            # Verify evaluate was called for each node
+            assert mock_evaluate.call_count == 3  # director, script, evaluator
+    
+    def test_evaluator_step_failure(self, evaluator, mock_loop_node, base_environment):
+        """Test D-E loop when evaluator step returns failure but loop continues."""
+        # Setup mocks for evaluate method
+        with patch.object(evaluator, 'evaluate') as mock_evaluate:
+            # Configure mock to return different results for different nodes
+            def mock_evaluate_side_effect(node, env):
+                if node == mock_loop_node.director_node:
+                    return {
+                        "status": "COMPLETE",
+                        "content": "Director output",
+                        "notes": {}
+                    }
+                elif node == mock_loop_node.script_execution_node:
+                    return {
+                        "status": "COMPLETE",
+                        "content": "Script executed",
+                        "notes": {
+                            "scriptOutput": {
+                                "stdout": "",
+                                "stderr": "Test failed",
+                                "exit_code": 1
+                            }
+                        }
+                    }
+                elif node == mock_loop_node.evaluator_node:
+                    # Evaluator returns failure
+                    return {
+                        "status": "COMPLETE",
+                        "content": json.dumps({
+                            "success": False,
+                            "feedback": "Tests failed."
+                        }),
+                        "notes": {
+                            "success": False,
+                            "feedback": "Tests failed."
+                        }
+                    }
+                return {}
+            
+            mock_evaluate.side_effect = mock_evaluate_side_effect
+            
+            # Set max_iterations to 1 to test single iteration
+            mock_loop_node.max_iterations = 1
+            
+            # Call the method under test
+            result = evaluator._evaluate_director_evaluator_loop(mock_loop_node, base_environment)
+            
+            # Assertions
+            assert result["status"] == "COMPLETE"
+            assert "iteration_history" in result["notes"]
+            assert len(result["notes"]["iteration_history"]) == 1
+            assert result["notes"]["iterations_completed"] == 1
+            assert "final_evaluation" in result["notes"]
+            assert result["notes"]["final_evaluation"]["notes"]["success"] is False
+            assert "max_iterations_reached" in result["notes"]["termination_reason"]
+    
+    def test_evaluator_step_invalid_json(self, evaluator, mock_loop_node, base_environment):
+        """Test D-E loop when evaluator step returns invalid JSON."""
+        # Setup mocks for evaluate method
+        with patch.object(evaluator, 'evaluate') as mock_evaluate:
+            # Configure mock to return different results for different nodes
+            def mock_evaluate_side_effect(node, env):
+                if node == mock_loop_node.director_node:
+                    return {
+                        "status": "COMPLETE",
+                        "content": "Director output",
+                        "notes": {}
+                    }
+                elif node == mock_loop_node.script_execution_node:
+                    return {
+                        "status": "COMPLETE",
+                        "content": "Script executed",
+                        "notes": {
+                            "scriptOutput": {
+                                "stdout": "",
+                                "stderr": "",
+                                "exit_code": 1
+                            }
+                        }
+                    }
+                elif node == mock_loop_node.evaluator_node:
+                    # Evaluator returns invalid JSON
+                    return {
+                        "status": "COMPLETE",
+                        "content": "invalid json",
+                        "notes": {}  # Missing success field
+                    }
+                return {}
+            
+            mock_evaluate.side_effect = mock_evaluate_side_effect
+            
+            # Set max_iterations to 1 to test single iteration
+            mock_loop_node.max_iterations = 1
+            
+            # Call the method under test
+            result = evaluator._evaluate_director_evaluator_loop(mock_loop_node, base_environment)
+            
+            # Assertions
+            assert result["status"] == "COMPLETE"
+            assert "iteration_history" in result["notes"]
+            assert len(result["notes"]["iteration_history"]) == 1
+            assert result["notes"]["iterations_completed"] == 1
+            assert "final_evaluation" in result["notes"]
+            # Should default to failure when success field is missing
+            assert result["notes"]["final_evaluation"]["notes"]["success"] is False
+    
+    def test_evaluator_step_task_failure(self, evaluator, mock_loop_node, base_environment):
+        """Test D-E loop when evaluator step returns a task failure."""
+        # Setup mocks for evaluate method
+        with patch.object(evaluator, 'evaluate') as mock_evaluate:
+            # Configure mock to return different results for different nodes
+            def mock_evaluate_side_effect(node, env):
+                if node == mock_loop_node.director_node:
+                    return {
+                        "status": "COMPLETE",
+                        "content": "Director output",
+                        "notes": {}
+                    }
+                elif node == mock_loop_node.script_execution_node:
+                    return {
+                        "status": "COMPLETE",
+                        "content": "Script executed",
+                        "notes": {
+                            "scriptOutput": {
+                                "stdout": "",
+                                "stderr": "",
+                                "exit_code": 0
+                            }
+                        }
+                    }
+                elif node == mock_loop_node.evaluator_node:
+                    # Evaluator returns FAILED status
+                    return {
+                        "status": "FAILED",
+                        "content": "LLM call failed",
+                        "notes": {
+                            "error": {
+                                "message": "Error in evaluator step",
+                                "reason": "llm_error"
+                            }
+                        }
+                    }
+                return {}
+            
+            mock_evaluate.side_effect = mock_evaluate_side_effect
+            
+            # Call the method under test
+            result = evaluator._evaluate_director_evaluator_loop(mock_loop_node, base_environment)
+            
+            # Assertions
+            assert result["status"] == "FAILED"
+            assert "iteration_history" in result["notes"]
+            assert len(result["notes"]["iteration_history"]) == 1
+            assert "error" in result["notes"]
+            assert result["notes"]["error"]["reason"] == SUBTASK_FAILURE
+            
+            # Verify the loop terminated immediately
+            assert mock_evaluate.call_count == 3  # director, script, evaluator
+    
+    def test_multiple_iterations_to_success(self, evaluator, mock_loop_node, base_environment):
+        """Test D-E loop with multiple iterations until success."""
+        # Setup mocks for evaluate method
+        with patch.object(evaluator, 'evaluate') as mock_evaluate:
+            # Use a counter to track iterations and change behavior
+            iteration_counter = [0]
+            
+            def mock_evaluate_side_effect(node, env):
+                if node == mock_loop_node.director_node:
+                    iteration_counter[0] += 1
+                    return {
+                        "status": "COMPLETE",
+                        "content": f"Director output iteration {iteration_counter[0]}",
+                        "notes": {}
+                    }
+                elif node == mock_loop_node.script_execution_node:
+                    return {
+                        "status": "COMPLETE",
+                        "content": "Script executed",
+                        "notes": {
+                            "scriptOutput": {
+                                "stdout": f"Test output iteration {iteration_counter[0]}",
+                                "stderr": "",
+                                "exit_code": 0
+                            }
+                        }
+                    }
+                elif node == mock_loop_node.evaluator_node:
+                    # Return success only on the second iteration
+                    success = iteration_counter[0] == 2
+                    return {
+                        "status": "COMPLETE",
+                        "content": json.dumps({
+                            "success": success,
+                            "feedback": "Tests passed." if success else "Tests failed."
+                        }),
+                        "notes": {
+                            "success": success,
+                            "feedback": "Tests passed." if success else "Tests failed."
+                        }
+                    }
+                return {}
+            
+            mock_evaluate.side_effect = mock_evaluate_side_effect
+            
+            # Set max_iterations to 3
+            mock_loop_node.max_iterations = 3
+            
+            # Call the method under test
+            result = evaluator._evaluate_director_evaluator_loop(mock_loop_node, base_environment)
+            
+            # Assertions
+            assert result["status"] == "COMPLETE"
+            assert "iteration_history" in result["notes"]
+            assert len(result["notes"]["iteration_history"]) == 2  # Should succeed on second iteration
+            assert result["notes"]["iterations_completed"] == 2
+            assert result["notes"]["final_evaluation"]["notes"]["success"] is True
+            
+            # Verify evaluate was called the expected number of times
+            assert mock_evaluate.call_count == 6  # 2 iterations * 3 nodes
         
     def test_json_output_parsing(self):
         """Test JSON output parsing for template results."""

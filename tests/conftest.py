@@ -18,6 +18,25 @@ def mock_memory_system():
     return memory
 
 @pytest.fixture
+def mock_context_generation_input():
+    """Create a mock ContextGenerationInput."""
+    from src.memory.context_generation import ContextGenerationInput
+    return ContextGenerationInput(
+        template_description="test query",
+        inputs={"query": "test query"},
+        history_context=None
+    )
+
+@pytest.fixture
+def mock_associative_match_result():
+    """Create a mock AssociativeMatchResult."""
+    from src.memory.context_generation import AssociativeMatchResult
+    return AssociativeMatchResult(
+        context="Test context summary",
+        matches=[("file1.py", "rel1", 0.9), ("file2.py", "rel2", 0.8)]
+    )
+
+@pytest.fixture
 def mock_task_system():
     """Create a mock task system."""
     task_system = MagicMock()
