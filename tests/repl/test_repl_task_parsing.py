@@ -1,5 +1,6 @@
 import pytest
 import sys
+import io
 from unittest.mock import patch, MagicMock, call # <-- Ensure 'call' is imported
 import logging
 import json # <-- Ensure 'json' is imported

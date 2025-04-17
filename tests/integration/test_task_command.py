@@ -783,23 +783,34 @@ class TestTaskCommandIntegration:
         # Ensure find_template returns None to force direct tool path
         app_instance.task_system.find_template.return_value = None
         
-        # Capture stdout
-        captured_output = io.StringIO()
-        sys.stdout = captured_output
-        from src.repl.repl import Repl
-        repl = Repl(app_instance, output_stream=captured_output)
+        # --- Act: Call the REAL dispatcher directly ---
+        from src.dispatcher import execute_programmatic_task
+        
+        identifier = "aider:automatic"
+        params_for_dispatcher = {
+            "prompt": "Complex JSON test",
+            # Simulate REPL parsing the JSON string into a list
+            "file_context": ["/f1"],
+            # Simulate REPL parsing the JSON string into a dict
+            "config": {"nested": {"value": 42}, "array": [1, 2, 3]}
+        }
+        flags_for_dispatcher = {}
 
-        # Act: Execute task command with complex JSON in a parameter
-        complex_command = 'aider:automatic prompt="Complex JSON test" file_context=\'["/f1"]\' config=\'{"nested": {"value": 42}, "array": [1, 2, 3]}\''
-        repl._cmd_task(complex_command)
+        result = execute_programmatic_task(
+            identifier=identifier,
+            params=params_for_dispatcher,
+            flags=flags_for_dispatcher,
+            handler_instance=app_instance.passthrough_handler, # Pass the mock handler
+            task_system_instance=app_instance.task_system, # Pass the mock task system
+            optional_history_str=None
+        )
+        # --- End Act ---
 
-        # Assert Output
-        sys.stdout = sys.__stdout__
-        output = captured_output.getvalue()
-        assert "Executing task: aider:automatic..." in output
-        assert "Status: COMPLETE" in output # From our mock return value
+        # Assert Result
+        assert result["status"] == "COMPLETE"
+        assert result["content"] == "Success" # From our mock return value
 
-        # Assert Mock Calls: Verify direct tool executor received correctly parsed params
+        # Assert Mock Calls: Verify direct tool executor was called
         direct_tool_mock.assert_called_once()
         
         # Check that all parameters were correctly parsed and passed to the executor
