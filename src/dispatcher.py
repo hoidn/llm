@@ -1,18 +1,18 @@
 from typing import Dict, List, Any, Optional
 import logging
 import json
-from memory.context_generation import ContextGenerationInput, AssociativeMatchResult
 
-logger = logging.getLogger(__name__)
-
-# Import necessary components and types
-from handler.base_handler import BaseHandler
+# Import necessary components and types (adjust paths based on final structure)
+from handler.base_handler import BaseHandler # Use BaseHandler type hint
 from task_system.task_system import TaskSystem
 from task_system.ast_nodes import SubtaskRequest
-from system.errors import TaskError, create_task_failure, format_error_result, UNEXPECTED_ERROR, INPUT_VALIDATION_FAILURE
+from task_system.template_utils import Environment # Needed for execute_subtask_directly call
+from system.errors import TaskError, create_task_failure, format_error_result, INPUT_VALIDATION_FAILURE, UNEXPECTED_ERROR
 
 # Define TaskResult type hint
 TaskResult = Dict[str, Any]
+
+logger = logging.getLogger(__name__)
 
 
 def execute_programmatic_task(

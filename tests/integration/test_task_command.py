@@ -787,7 +787,7 @@ class TestTaskCommandIntegration:
 
         # Assert Result
         assert result["status"] == "FAILED"
-        assert "Invalid JSON format in file_context parameter" in result["content"] # Check specific error
+        assert "Invalid file_context parameter: must be a JSON string array or already a list of strings. Error:" in result["content"] # Check specific error
         assert result["notes"]["error"]["reason"] == INPUT_VALIDATION_FAILURE
 
         # Assert Mock Calls
