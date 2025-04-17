@@ -1,5 +1,5 @@
 """REPL interface for interactive sessions."""
-from typing import Dict, Any, Optional, Callable, List
+from typing import Dict, Any, Optional, Callable, List, Tuple
 import sys
 import os
 import shlex # Add shlex import
@@ -336,6 +336,173 @@ class Repl:
             import traceback
             print(traceback.format_exc(), file=self.output)
 
+    def _parse_task_args(self, arg_list: List[str]) -> Tuple[Dict[str, Any], Dict[str, bool], Optional[str]]:
+        """
+        Parses task arguments and flags from a list of strings.
+        
+        Args:
+            arg_list: List of argument strings (from shlex.split)
+            
+        Returns:
+            Tuple of (params, flags, error_message)
+            error_message is None if parsing succeeded
+        """
+        params: Dict[str, Any] = {}
+        flags: Dict[str, bool] = {}
+        error_message = None
+
+        for item in arg_list:
+            if item.startswith("--"):
+                # Handle flags
+                flag_name = item[2:]
+                if not flag_name:
+                    error_message = f"Warning: Ignoring invalid flag format: {item}"
+                    continue
+                flags[flag_name] = True
+            elif "=" in item:
+                # Handle key=value parameters
+                key, value = item.split("=", 1)
+                key = key.strip()
+                value = value.strip() # Keep original value from shlex
+                if not key:
+                    error_message = f"Warning: Ignoring parameter with empty key: {item}"
+                    continue
+
+                # Attempt JSON parsing for values starting/ending with brackets/braces/quotes
+                # Check common JSON starts/ends
+                is_potential_json = (value.startswith("[") and value.endswith("]")) or \
+                                    (value.startswith("{") and value.endswith("}")) or \
+                                    (value.startswith('"') and value.endswith('"'))
+
+                if is_potential_json:
+                    try:
+                        # json.loads expects double quotes for strings within JSON.
+                        params[key] = json.loads(value)
+                    except json.JSONDecodeError:
+                        # If JSON parsing fails, treat as a plain string
+                        error_message = f"Warning: Could not parse value for '{key}' as JSON - treating as string."
+                        params[key] = value # Store the raw string value
+                else:
+                    # Plain string value (shlex handles quotes)
+                    params[key] = value
+            else:
+                error_message = f"Warning: Ignoring invalid parameter format (expected key=value or --flag): {item}"
+
+        return params, flags, error_message
+        
+    def _handle_task_help(self, identifier: str) -> bool:
+        """
+        Handles the --help flag for a given task identifier.
+        
+        Args:
+            identifier: The task identifier to get help for
+            
+        Returns:
+            True if help was successfully handled and displayed
+        """
+        print(f"Fetching help for task: {identifier}...", file=self.output)
+        logging.debug(f"REPL Help: Checking help for identifier: '{identifier}'")
+        help_text = f"Help for '{identifier}':\n"
+        found_help = False
+        template_info = None
+        tool_spec = None
+        
+        # 1. Check TaskSystem Templates FIRST (Strict Precedence)
+        logging.debug("REPL Help: Checking TaskSystem templates...")
+        if hasattr(self.application.task_system, 'find_template'):
+            template_info = self.application.task_system.find_template(identifier)
+            logging.debug(f"REPL Help: Template found: {bool(template_info)}")
+            if template_info:
+                logging.debug("REPL Help: Formatting help from template.")
+                help_text += f"\n* Task Template Details:\n"
+                help_text += f"  Description: {template_info.get('description', 'N/A')}\n"
+                params_def = template_info.get('parameters', {})
+                if params_def:
+                    help_text += f"  Parameters:\n"
+                    for name, schema in params_def.items():
+                        req_str = "(required)" if schema.get('required') else ""
+                        type_str = f" (type: {schema.get('type', 'any')})"
+                        def_str = ""
+                        if 'default' in schema:
+                            try:
+                                def_str = f" (default: {json.dumps(schema['default'])})"
+                            except TypeError:
+                                def_str = f" (default: <unserializable>)"
+                        desc = schema.get('description', 'N/A')
+                        help_text += f"    - {name}{type_str}{def_str}: {desc} {req_str}\n"
+                else:
+                    help_text += "    Parameters: Not defined in template.\n"
+                found_help = True
+
+        # 2. Check Handler Tool Spec ONLY IF template wasn't found
+        if not found_help and hasattr(self.application.passthrough_handler, 'registered_tools'):
+            logging.debug("REPL Help: Checking direct tool registry (template not found)...")
+            tool_spec = self.application.passthrough_handler.registered_tools.get(identifier)
+            logging.debug(f"REPL Help: Tool spec found: {bool(tool_spec)}")
+            if tool_spec:
+                logging.debug("REPL Help: Formatting help from tool spec.")
+                help_text += f"\n* Direct Tool Specification:\n"
+                help_text += f"  Description: {tool_spec.get('description', 'N/A')}\n"
+                schema = tool_spec.get('input_schema', {}).get('properties', {})
+                if schema:
+                    help_text += f"  Parameters (from schema):\n"
+                    required = tool_spec.get('input_schema', {}).get('required', [])
+                    for name, prop_schema in schema.items():
+                        req_str = "(required)" if name in required else ""
+                        type_str = f" (type: {prop_schema.get('type', 'any')})"
+                        desc = prop_schema.get('description', 'N/A')
+                        help_text += f"    - {name}{type_str}: {desc} {req_str}\n"
+                else:
+                    help_text += "  Parameters: Not defined in tool schema.\n"
+                found_help = True
+
+        # 3. Check Handler Direct Executor ONLY IF template and spec weren't found
+        if not found_help and hasattr(self.application.passthrough_handler, 'direct_tool_executors'):
+            logging.debug("REPL Help: Checking direct executor (template and spec not found)...")
+            if identifier in self.application.passthrough_handler.direct_tool_executors:
+                logging.debug("REPL Help: Found direct executor but no spec.")
+                help_text += f"\n* Found Direct Tool registration for '{identifier}', but no detailed specification was found for help display."
+                found_help = True
+
+        # 4. Not Found
+        if not found_help:
+            logging.debug("REPL Help: No template, tool spec, or executor found for help.")
+            help_text = f"No help found for identifier: {identifier}. Check spelling and registration."
+
+        print(help_text, file=self.output)
+        return True
+        
+    def _display_task_result(self, result: Dict[str, Any]) -> None:
+        """
+        Displays the formatted task result to the output stream.
+        
+        Args:
+            result: The task result dictionary to display
+        """
+        print("\nResult:", file=self.output)
+        print(f"Status: {result.get('status', 'UNKNOWN')}", file=self.output)
+
+        content = result.get('content', 'N/A')
+        print("Content:", file=self.output)
+        try:
+            # Pretty print if it's valid JSON and not just a simple string
+            if isinstance(content, str) and content.strip().startswith(('[', '{')):
+                parsed_content = json.loads(content)
+                print(json.dumps(parsed_content, indent=2), file=self.output)
+            else:
+                 print(content, file=self.output) # Print directly
+        except (json.JSONDecodeError, TypeError):
+             print(content, file=self.output) # Print raw content on error
+
+        if result.get('notes'):
+            print("\nNotes:", file=self.output)
+            try:
+                # Use json.dumps for consistent formatting of notes
+                print(json.dumps(result['notes'], indent=2), file=self.output)
+            except TypeError: # Handle non-serializable types gracefully
+                # Fallback to str() if notes contain non-serializable items
+                print(str(result['notes']), file=self.output)
+    
     def _cmd_task(self, args: str) -> None:
         """Handles the /task command for programmatic task execution."""
         if not self.dispatcher_func:
@@ -371,121 +538,16 @@ class Repl:
             identifier = parts[0]
             raw_params_and_flags = parts[1:]
 
-            # --- STRICT PRECEDENCE Help Flag Handling ---
+            # Check for help flag with strict precedence
             if "--help" in raw_params_and_flags:
-                print(f"Fetching help for task: {identifier}...", file=self.output)
-                logging.debug(f"REPL Help: Checking help for identifier: '{identifier}'")
-                help_text = f"Help for '{identifier}':\n"
-                found_help = False
-                template_info = None
-                tool_spec = None
-                
-                # 1. Check TaskSystem Templates FIRST (Strict Precedence)
-                logging.debug("REPL Help: Checking TaskSystem templates...")
-                if hasattr(self.application.task_system, 'find_template'):
-                    template_info = self.application.task_system.find_template(identifier)
-                    logging.debug(f"REPL Help: Template found: {bool(template_info)}")
-                    if template_info:
-                        logging.debug("REPL Help: Formatting help from template.")
-                        help_text += f"\n* Task Template Details:\n"
-                        help_text += f"  Description: {template_info.get('description', 'N/A')}\n"
-                        params_def = template_info.get('parameters', {})
-                        if params_def:
-                            help_text += f"  Parameters:\n"
-                            for name, schema in params_def.items():
-                                req_str = "(required)" if schema.get('required') else ""
-                                type_str = f" (type: {schema.get('type', 'any')})"
-                                def_str = ""
-                                if 'default' in schema:
-                                    try:
-                                        def_str = f" (default: {json.dumps(schema['default'])})"
-                                    except TypeError:
-                                        def_str = f" (default: <unserializable>)"
-                                desc = schema.get('description', 'N/A')
-                                help_text += f"    - {name}{type_str}{def_str}: {desc} {req_str}\n"
-                        else:
-                            help_text += "    Parameters: Not defined in template.\n"
-                        found_help = True
-
-                # 2. Check Handler Tool Spec ONLY IF template wasn't found
-                if not found_help and hasattr(self.application.passthrough_handler, 'registered_tools'):
-                    logging.debug("REPL Help: Checking direct tool registry (template not found)...")
-                    tool_spec = self.application.passthrough_handler.registered_tools.get(identifier)
-                    logging.debug(f"REPL Help: Tool spec found: {bool(tool_spec)}")
-                    if tool_spec:
-                        logging.debug("REPL Help: Formatting help from tool spec.")
-                        help_text += f"\n* Direct Tool Specification:\n"
-                        help_text += f"  Description: {tool_spec.get('description', 'N/A')}\n"
-                        schema = tool_spec.get('input_schema', {}).get('properties', {})
-                        if schema:
-                            help_text += f"  Parameters (from schema):\n"
-                            required = tool_spec.get('input_schema', {}).get('required', [])
-                            for name, prop_schema in schema.items():
-                                req_str = "(required)" if name in required else ""
-                                type_str = f" (type: {prop_schema.get('type', 'any')})"
-                                desc = prop_schema.get('description', 'N/A')
-                                help_text += f"    - {name}{type_str}: {desc} {req_str}\n"
-                        else:
-                            help_text += "  Parameters: Not defined in tool schema.\n"
-                        found_help = True
-
-                # 3. Check Handler Direct Executor ONLY IF template and spec weren't found
-                if not found_help and hasattr(self.application.passthrough_handler, 'direct_tool_executors'):
-                    logging.debug("REPL Help: Checking direct executor (template and spec not found)...")
-                    if identifier in self.application.passthrough_handler.direct_tool_executors:
-                        logging.debug("REPL Help: Found direct executor but no spec.")
-                        help_text += f"\n* Found Direct Tool registration for '{identifier}', but no detailed specification was found for help display."
-                        found_help = True
-
-                # 4. Not Found
-                if not found_help:
-                    logging.debug("REPL Help: No template, tool spec, or executor found for help.")
-                    help_text = f"No help found for identifier: {identifier}. Check spelling and registration."
-
-                print(help_text, file=self.output)
+                self._handle_task_help(identifier)
                 return # Stop processing after help
-            # --- END STRICT PRECEDENCE Help Flag Handling ---
 
-            # --- Parameter & Flag Parsing ---
-            params: Dict[str, Any] = {}
-            flags: Dict[str, bool] = {}
-
-            for item in raw_params_and_flags:
-                if item.startswith("--"):
-                    # Handle flags
-                    flag_name = item[2:]
-                    if not flag_name:
-                        print(f"Warning: Ignoring invalid flag format: {item}", file=self.output)
-                        continue
-                    flags[flag_name] = True
-                elif "=" in item:
-                    # Handle key=value parameters
-                    key, value = item.split("=", 1)
-                    key = key.strip()
-                    value = value.strip() # Keep original value from shlex
-                    if not key:
-                        print(f"Warning: Ignoring parameter with empty key: {item}", file=self.output)
-                        continue
-
-                    # Attempt JSON parsing for values starting/ending with brackets/braces/quotes
-                    # Check common JSON starts/ends
-                    is_potential_json = (value.startswith("[") and value.endswith("]")) or \
-                                        (value.startswith("{") and value.endswith("}")) or \
-                                        (value.startswith('"') and value.endswith('"'))
-
-                    if is_potential_json:
-                        try:
-                            # json.loads expects double quotes for strings within JSON.
-                            params[key] = json.loads(value)
-                        except json.JSONDecodeError:
-                            # If JSON parsing fails, treat as a plain string
-                            print(f"Warning: Could not parse value for '{key}' as JSON - treating as string.", file=self.output)
-                            params[key] = value # Store the raw string value
-                    else:
-                        # Plain string value (shlex handles quotes)
-                        params[key] = value
-                else:
-                    print(f"Warning: Ignoring invalid parameter format (expected key=value or --flag): {item}", file=self.output)
+            # Parse parameters and flags
+            params, flags, parse_error = self._parse_task_args(raw_params_and_flags)
+            if parse_error:
+                print(parse_error, file=self.output)
+                # Continue execution even with parse warnings
 
             # --- Call Dispatcher ---
             print(f"\nExecuting task: {identifier}...", file=self.output)
@@ -524,6 +586,9 @@ class Repl:
                     result["notes"]["execution_path"] = "direct_aider_bridge"
                     result["notes"]["context_source"] = "explicit_request" if file_context else "none"
                     result["notes"]["context_files_count"] = len(file_context) if file_context else 0
+                    
+                    # Display the result
+                    self._display_task_result(result)
                 except Exception as e:
                     print(f"\nError using Aider Bridge: {e}", file=self.output)
                     logging.exception("Aider Bridge error:")
@@ -539,40 +604,17 @@ class Repl:
                         task_system_instance=self.application.task_system,
                         optional_history_str=history_context # Pass None for now
                     )
+                    
+                    print("\r" + " " * 12 + "\r", end="", flush=True, file=self.output) # Clear thinking
+                    
+                    # Display the result
+                    self._display_task_result(result)
                 except Exception as e:
                     # Catch errors during dispatch call itself
                     print("\r" + " " * 12 + "\r", end="", flush=True, file=self.output) # Clear thinking
                     print(f"\nError calling dispatcher: {e}", file=self.output)
                     logging.exception("Dispatcher call error:")
                     return
-
-            print("\r" + " " * 12 + "\r", end="", flush=True, file=self.output) # Clear thinking
-
-            # --- Display Result ---
-            print("\nResult:", file=self.output)
-            print(f"Status: {result.get('status', 'UNKNOWN')}", file=self.output)
-
-            content = result.get('content', 'N/A')
-            print("Content:", file=self.output)
-            try:
-                # Pretty print if it's valid JSON and not just a simple string
-                if isinstance(content, str) and content.strip().startswith(('[', '{')):
-                    parsed_content = json.loads(content)
-                    print(json.dumps(parsed_content, indent=2), file=self.output)
-                else:
-                     print(content, file=self.output) # Print directly
-            except (json.JSONDecodeError, TypeError):
-                 print(content, file=self.output) # Print raw content on error
-
-            if result.get('notes'):
-                print("\nNotes:", file=self.output)
-                try:
-                    # Use json.dumps for consistent formatting of notes
-                    print(json.dumps(result['notes'], indent=2), file=self.output)
-                except TypeError: # Handle non-serializable types gracefully
-                    # Fallback to str() if notes contain non-serializable items
-                    print(str(result['notes']), file=self.output)
-
 
         except Exception as e:
             # Catch any unexpected errors during command processing

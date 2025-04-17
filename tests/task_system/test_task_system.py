@@ -435,6 +435,109 @@ def test_exec_direct_context_request_overrides_template(task_system_for_direct, 
     assert result["notes"]["context_files_count"] == 2
     assert result["notes"]["determined_context_files"] == request_files
 
+# --- Tests for _determine_context_for_direct_execution ---
+
+def test_determine_context_from_request(task_system_for_direct):
+    """Test context determination using file_paths from the SubtaskRequest."""
+    template = {"name": "test_req_ctx", "type": "atomic", "subtype": "req"}
+    request_files = ["req_file1.py", "req_file2.md"]
+    request = SubtaskRequest(type="atomic", subtype="req", inputs={}, file_paths=request_files)
+
+    file_paths, context_source, error = task_system_for_direct._determine_context_for_direct_execution(request, template)
+
+    assert file_paths == request_files
+    assert context_source == "explicit_request"
+    assert error is None
+
+def test_determine_context_from_template_literal(task_system_for_direct):
+    """Test context determination using literal file_paths from the template."""
+    template_files = ["tmpl_file1.py", "tmpl_file2.md"]
+    template = {"name": "test_tmpl_lit", "type": "atomic", "subtype": "lit", "file_paths": template_files}
+    request = SubtaskRequest(type="atomic", subtype="lit", inputs={})  # No paths in request
+
+    file_paths, context_source, error = task_system_for_direct._determine_context_for_direct_execution(request, template)
+
+    assert file_paths == template_files
+    assert context_source == "template_literal"
+    assert error is None
+
+def test_determine_context_from_template_command(task_system_for_direct):
+    """Test context determination using a command source from the template."""
+    command = "git ls-files *.py"
+    expected_cmd_files = ["cmd_file1.txt"]  # From mock handler setup
+    template = {
+        "name": "test_tmpl_cmd",
+        "type": "atomic",
+        "subtype": "cmd",
+        "file_paths_source": {"type": "command", "command": command}
+    }
+    
+    # Mock the handler's command execution method linked via memory_system
+    mock_handler = task_system_for_direct.memory_system.handler
+    mock_handler.execute_file_path_command.return_value = expected_cmd_files
+    
+    request = SubtaskRequest(type="atomic", subtype="cmd", inputs={})
+
+    file_paths, context_source, error = task_system_for_direct._determine_context_for_direct_execution(request, template)
+
+    assert file_paths == expected_cmd_files
+    assert context_source == "template_command"
+    assert error is None
+    mock_handler.execute_file_path_command.assert_called_once_with(command)
+
+def test_determine_context_command_error(task_system_for_direct):
+    """Test context determination when command execution fails."""
+    command = "invalid-command"
+    error_msg = "Command failed"
+    template = {
+        "name": "test_tmpl_cmd_err",
+        "type": "atomic",
+        "subtype": "cmd_err",
+        "file_paths_source": {"type": "command", "command": command}
+    }
+    
+    # Mock the handler's command execution method to raise an error
+    mock_handler = task_system_for_direct.memory_system.handler
+    mock_handler.execute_file_path_command.side_effect = Exception(error_msg)
+    
+    request = SubtaskRequest(type="atomic", subtype="cmd_err", inputs={})
+
+    file_paths, context_source, error = task_system_for_direct._determine_context_for_direct_execution(request, template)
+
+    assert file_paths == []
+    assert context_source == "template_command_error"
+    assert error is not None
+    assert error_msg in error
+    mock_handler.execute_file_path_command.assert_called_once_with(command)
+
+def test_determine_context_deferred_lookup(task_system_for_direct):
+    """Test context determination with deferred lookup."""
+    template = {
+        "name": "test_defer",
+        "type": "atomic",
+        "subtype": "defer",
+        "file_paths_source": {"type": "description"},  # Source type requiring lookup
+        "context_management": {"fresh_context": "enabled"}  # Auto lookup enabled
+    }
+    request = SubtaskRequest(type="atomic", subtype="defer", inputs={})
+
+    file_paths, context_source, error = task_system_for_direct._determine_context_for_direct_execution(request, template)
+
+    assert file_paths == []
+    assert context_source == "deferred_lookup"
+    assert error is None
+
+def test_determine_context_no_sources(task_system_for_direct):
+    """Test context determination with no sources available."""
+    template = {"name": "test_no_ctx", "type": "atomic", "subtype": "noctx"}
+    request = SubtaskRequest(type="atomic", subtype="noctx", inputs={})
+
+    file_paths, context_source, error = task_system_for_direct._determine_context_for_direct_execution(request, template)
+
+    assert file_paths == []
+    assert context_source == "none"
+    assert error is None
+
 def test_exec_direct_context_from_template_command_success(task_system_for_direct, base_env):
     """Test context determination using a command source from the template (success)."""
     command = "git ls-files *.py"

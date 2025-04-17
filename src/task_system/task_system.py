@@ -204,7 +204,7 @@ class TaskSystem(TemplateLookupInterface):
                 error_result["notes"]["system_prompt"] = "Error occurred during function execution"
             return error_result
 
-    def execute_subtask_directly(self, request: SubtaskRequest) -> TaskResult:
+    def execute_subtask_directly(self, request: SubtaskRequest, env: Environment) -> TaskResult:
         """
         Executes a Task System template workflow directly from a SubtaskRequest.
 
@@ -366,6 +366,81 @@ class TaskSystem(TemplateLookupInterface):
             )
             return format_error_result(error)
 
+    def _determine_context_for_direct_execution(self, request: SubtaskRequest, template: Dict[str, Any]) -> Tuple[List[str], str, Optional[str]]:
+        """
+        Determines file paths and context source for direct execution.
+        
+        Args:
+            request: The SubtaskRequest containing potential file paths
+            template: The template definition that might contain file paths or sources
+            
+        Returns:
+            Tuple of (determined_file_paths, context_source, error_message)
+        """
+        determined_file_paths: List[str] = []
+        context_source = "none"  # Default
+        error_message = None
+
+        # Priority 1: Use paths from the request itself
+        if request.file_paths:
+            determined_file_paths = request.file_paths
+            context_source = "explicit_request"
+            logging.debug(f"TaskSystem Stub: Using explicit file paths from request: {len(determined_file_paths)} files")
+        # Priority 2: Use literal paths from the template definition
+        elif template.get("file_paths"):
+            determined_file_paths = template["file_paths"]
+            context_source = "template_literal"
+            logging.debug(f"TaskSystem Stub: Using literal file paths from template: {len(determined_file_paths)} files")
+        # Priority 3: Use command source from template
+        elif template.get("file_paths_source"):
+            source_info = template["file_paths_source"]
+            source_type = source_info.get("type", "literal")
+            if source_type == "literal" and template.get("file_paths"):
+                determined_file_paths = template["file_paths"]
+                context_source = "template_literal"
+                logging.debug(f"TaskSystem Stub: Using literal file paths from template via source object: {len(determined_file_paths)} files")
+            elif source_type == "command" and source_info.get("command"):
+                command = source_info["command"]
+                logging.debug(f"TaskSystem Stub: Attempting to execute command for file paths: {command}")
+                handler = getattr(getattr(self, 'memory_system', None), 'handler', None)
+                if handler and hasattr(handler, "execute_file_path_command"):
+                    try:
+                        determined_file_paths = handler.execute_file_path_command(command)
+                        context_source = "template_command"
+                        logging.debug(f"TaskSystem Stub: Command executed, found {len(determined_file_paths)} files.")
+                    except Exception as cmd_err:
+                        error_message = f"Error executing file_paths command '{command}': {cmd_err}"
+                        logging.error(error_message)
+                        context_source = "template_command_error"
+                else:
+                    error_message = "Cannot execute file_paths command: Handler or method not available."
+                    logging.error(error_message)
+                    context_source = "template_command_error"
+            elif source_type in ["description", "context_description"]:
+                # Mark as deferred if fresh_context is enabled, otherwise none (Corrected Logic)
+                if template.get('context_management', {}).get('fresh_context') != "disabled" and self.memory_system:
+                    context_source = "deferred_lookup"  # Set correctly
+                    logging.debug("TaskSystem Stub: Marking context_source as deferred_lookup (Phase 1).")
+                else:
+                    context_source = "none"  # Stays none if fresh_context disabled
+                determined_file_paths = []  # No paths determined here in Phase 1
+            else:
+                logging.debug(f"TaskSystem Stub: Unknown or unhandled file_paths_source type '{source_type}' or missing value.")
+                context_source = "none"  # Fallback
+
+        # Priority 4: Check if automatic lookup is applicable (only if no explicit paths found yet) (Corrected Logic)
+        elif template.get('context_management', {}).get('fresh_context') != "disabled" and self.memory_system:
+            context_source = "deferred_lookup"  # Set correctly
+            logging.debug("TaskSystem Stub: Marking context_source as deferred_lookup (Phase 1 - no explicit paths).")
+            determined_file_paths = []  # No paths determined here in Phase 1
+        else:
+            # No explicit paths and fresh context disabled or no memory system
+            context_source = "none"
+            determined_file_paths = []
+            logging.debug("TaskSystem Stub: Setting context_source to none (no explicit paths, fresh_context disabled/unavailable).")
+
+        return determined_file_paths, context_source, error_message
+    
     def execute_subtask_directly(self, request: SubtaskRequest, env: Environment) -> TaskResult:
         """
         Executes a Task System template workflow directly from a SubtaskRequest.
@@ -385,69 +460,8 @@ class TaskSystem(TemplateLookupInterface):
                 return format_error_result(create_task_failure(msg, INPUT_VALIDATION_FAILURE))
             logging.debug(f"TaskSystem Stub: Found template: {template.get('name', identifier)}")
 
-            # 2. Explicit Context Determination (Phase 1 Logic)
-            determined_file_paths: List[str] = []
-            context_source = "none" # Default
-            error_message = None
-
-            # Priority 1: Use paths from the request itself
-            if request.file_paths:
-                determined_file_paths = request.file_paths
-                context_source = "explicit_request"
-                logging.debug(f"TaskSystem Stub: Using explicit file paths from request: {len(determined_file_paths)} files")
-            # Priority 2: Use literal paths from the template definition
-            elif template.get("file_paths"):
-                 determined_file_paths = template["file_paths"]
-                 context_source = "template_literal"
-                 logging.debug(f"TaskSystem Stub: Using literal file paths from template: {len(determined_file_paths)} files")
-            # Priority 3: Use command source from template
-            elif template.get("file_paths_source"):
-                 source_info = template["file_paths_source"]
-                 source_type = source_info.get("type", "literal")
-                 if source_type == "literal" and template.get("file_paths"):
-                     determined_file_paths = template["file_paths"]
-                     context_source = "template_literal"
-                     logging.debug(f"TaskSystem Stub: Using literal file paths from template via source object: {len(determined_file_paths)} files")
-                 elif source_type == "command" and source_info.get("command"):
-                     command = source_info["command"]
-                     logging.debug(f"TaskSystem Stub: Attempting to execute command for file paths: {command}")
-                     handler = getattr(getattr(self, 'memory_system', None), 'handler', None)
-                     if handler and hasattr(handler, "execute_file_path_command"):
-                         try:
-                             determined_file_paths = handler.execute_file_path_command(command)
-                             context_source = "template_command"
-                             logging.debug(f"TaskSystem Stub: Command executed, found {len(determined_file_paths)} files.")
-                         except Exception as cmd_err:
-                             error_message = f"Error executing file_paths command '{command}': {cmd_err}"
-                             logging.error(error_message)
-                             context_source = "template_command_error"
-                     else:
-                         error_message = "Cannot execute file_paths command: Handler or method not available."
-                         logging.error(error_message)
-                         context_source = "template_command_error"
-                 elif source_type in ["description", "context_description"]:
-                     # Mark as deferred if fresh_context is enabled, otherwise none (Corrected Logic)
-                     if template.get('context_management', {}).get('fresh_context') != "disabled" and self.memory_system:
-                         context_source = "deferred_lookup" # Set correctly
-                         logging.debug("TaskSystem Stub: Marking context_source as deferred_lookup (Phase 1).")
-                     else:
-                         context_source = "none" # Stays none if fresh_context disabled
-                     determined_file_paths = [] # No paths determined here in Phase 1
-                 else:
-                      logging.debug(f"TaskSystem Stub: Unknown or unhandled file_paths_source type '{source_type}' or missing value.")
-                      context_source = "none" # Fallback
-
-            # Priority 4: Check if automatic lookup is applicable (only if no explicit paths found yet) (Corrected Logic)
-            elif template.get('context_management', {}).get('fresh_context') != "disabled" and self.memory_system:
-                 context_source = "deferred_lookup" # Set correctly
-                 logging.debug("TaskSystem Stub: Marking context_source as deferred_lookup (Phase 1 - no explicit paths).")
-                 determined_file_paths = [] # No paths determined here in Phase 1
-            else:
-                 # No explicit paths and fresh context disabled or no memory system
-                 context_source = "none"
-                 determined_file_paths = []
-                 logging.debug("TaskSystem Stub: Setting context_source to none (no explicit paths, fresh_context disabled/unavailable).")
-
+            # 2. Determine context using the helper method
+            determined_file_paths, context_source, error_message = self._determine_context_for_direct_execution(request, template)
 
             # 3. Environment Setup (Placeholder for Phase 1)
             execution_env = env.extend(request.inputs or {})

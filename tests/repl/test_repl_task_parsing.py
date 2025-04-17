@@ -207,7 +207,7 @@ def test_cmd_task_help_flag_template_found(repl_instance, capsys):
     repl_instance.application.task_system.find_template.return_value = mock_template
     repl_instance.application.passthrough_handler.registered_tools = {} # Ensure no tool conflict
 
-    repl_instance._cmd_task("test:help --help")
+    repl_instance._handle_task_help("test:help")
     captured = capsys.readouterr()
 
     assert "Fetching help for task: test:help..." in captured.out
@@ -215,7 +215,6 @@ def test_cmd_task_help_flag_template_found(repl_instance, capsys):
     assert "Description: Test Help Template" in captured.out
     assert "param1 (type: string): First param (required)" in captured.out
     assert 'param2 (type: integer) (default: 10): Second param' in captured.out
-    repl_instance.mock_dispatcher_for_test.assert_not_called() # Dispatcher shouldn't be called for help
 
 def test_cmd_task_help_flag_direct_tool_found(repl_instance, capsys):
     """Test --help when no template but a direct tool spec is found."""
@@ -272,6 +271,121 @@ def test_cmd_task_help_flag_not_found(repl_instance, capsys):
     assert "Fetching help for task: unknown:task..." in captured.out
     assert "No help found for identifier: unknown:task." in captured.out
     repl_instance.mock_dispatcher_for_test.assert_not_called()
+
+# --- Tests for _parse_task_args ---
+
+def test_parse_task_args_empty(repl_instance):
+    """Test parsing empty argument list."""
+    params, flags, error = repl_instance._parse_task_args([])
+    assert params == {}
+    assert flags == {}
+    assert error is None
+
+def test_parse_task_args_only_flags(repl_instance):
+    """Test parsing only flags."""
+    params, flags, error = repl_instance._parse_task_args(["--flag1", "--flag2"])
+    assert params == {}
+    assert flags == {"flag1": True, "flag2": True}
+    assert error is None
+
+def test_parse_task_args_only_params(repl_instance):
+    """Test parsing only parameters."""
+    params, flags, error = repl_instance._parse_task_args(["key1=value1", "key2=value2"])
+    assert params == {"key1": "value1", "key2": "value2"}
+    assert flags == {}
+    assert error is None
+
+def test_parse_task_args_json_values(repl_instance):
+    """Test parsing JSON parameter values."""
+    params, flags, error = repl_instance._parse_task_args([
+        'list=["a", "b", "c"]',
+        'obj={"key": 42}'
+    ])
+    assert params["list"] == ["a", "b", "c"]
+    assert params["obj"] == {"key": 42}
+    assert flags == {}
+    assert error is None
+
+def test_parse_task_args_invalid_json(repl_instance):
+    """Test parsing invalid JSON parameter values."""
+    params, flags, error = repl_instance._parse_task_args(['invalid={"key": missing_quotes}'])
+    assert params["invalid"] == '{"key": missing_quotes}'  # Stored as string
+    assert flags == {}
+    assert "Could not parse value for 'invalid' as JSON" in error
+
+def test_parse_task_args_mixed(repl_instance):
+    """Test parsing mixed flags and parameters."""
+    params, flags, error = repl_instance._parse_task_args([
+        "--flag1", 
+        "key1=value1", 
+        "--flag2", 
+        'key2={"nested": true}'
+    ])
+    assert params == {"key1": "value1", "key2": {"nested": True}}
+    assert flags == {"flag1": True, "flag2": True}
+    assert error is None
+
+def test_parse_task_args_invalid_format(repl_instance):
+    """Test parsing invalid format."""
+    params, flags, error = repl_instance._parse_task_args(["not_a_param_or_flag"])
+    assert params == {}
+    assert flags == {}
+    assert "Ignoring invalid parameter format" in error
+
+# --- Tests for _display_task_result ---
+
+def test_display_task_result_simple(repl_instance, capsys):
+    """Test displaying a simple task result."""
+    repl_instance.output = sys.stdout
+    result = {
+        "status": "COMPLETE",
+        "content": "Simple result text"
+    }
+    repl_instance._display_task_result(result)
+    captured = capsys.readouterr()
+    
+    assert "Status: COMPLETE" in captured.out
+    assert "Content:" in captured.out
+    assert "Simple result text" in captured.out
+    assert "Notes:" not in captured.out  # No notes section
+
+def test_display_task_result_json_content(repl_instance, capsys):
+    """Test displaying a result with JSON content."""
+    repl_instance.output = sys.stdout
+    result = {
+        "status": "COMPLETE",
+        "content": '{"key": [1, 2, 3]}'
+    }
+    repl_instance._display_task_result(result)
+    captured = capsys.readouterr()
+    
+    assert "Status: COMPLETE" in captured.out
+    assert "Content:" in captured.out
+    assert '"key": [' in captured.out
+    assert "1," in captured.out  # Check indentation
+    assert "Notes:" not in captured.out
+
+def test_display_task_result_with_notes(repl_instance, capsys):
+    """Test displaying a result with notes."""
+    repl_instance.output = sys.stdout
+    result = {
+        "status": "COMPLETE",
+        "content": "Result with notes",
+        "notes": {
+            "execution_path": "test_path",
+            "files_modified": ["file1.py", "file2.py"]
+        }
+    }
+    repl_instance._display_task_result(result)
+    captured = capsys.readouterr()
+    
+    assert "Status: COMPLETE" in captured.out
+    assert "Content:" in captured.out
+    assert "Result with notes" in captured.out
+    assert "Notes:" in captured.out
+    assert '"execution_path": "test_path"' in captured.out
+    assert '"files_modified": [' in captured.out
+    assert '"file1.py"' in captured.out
 
 # --- Error Handling Tests (Check Output) ---
 
