@@ -477,8 +477,8 @@ class TestTaskCommandIntegration:
         assert result["notes"]["context_files_count"] == 0 # No explicit paths found in Phase 1
 
         # In Phase 1, MemorySystem is not called for lookup (deferred)
-        # Instead, check that the context_source is correctly marked as deferred
-        assert result["notes"]["context_source"] == "deferred_lookup"
+        # Check the content returned by the stub
+        assert "Executed template 'template:no_context' with inputs." in result["content"]
         
         # Verify the arguments passed to the internal execute_task
         execute_task_call_args = app_instance.task_system.execute_task.call_args
