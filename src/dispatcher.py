@@ -43,13 +43,13 @@ def execute_programmatic_task(
         is_direct_tool = False
 
         # 1. Check Handler's Direct Tools first
-        #    (Assuming tool_executors maps tool_name -> function)
-        #    Need to check if the handler *has* tool_executors attribute first
-        if hasattr(handler_instance, 'tool_executors') and identifier in handler_instance.tool_executors:
-            target_executor = handler_instance.tool_executors.get(identifier)
+        #    These are Python functions registered for programmatic execution.
+        if hasattr(handler_instance, 'direct_tool_executors') and identifier in handler_instance.direct_tool_executors:
+            target_executor = handler_instance.direct_tool_executors.get(identifier)
             if target_executor:
                 is_direct_tool = True
-                logging.info(f"Identifier '{identifier}' maps to a Direct Tool.")
+                logging.info(f"Identifier '{identifier}' maps to a Direct Tool (Python function).")
+        # TODO: Phase 3 - Consider checking LLM-registered tools (self.registered_tools) here too?
 
         # 2. If not a Direct Tool, check TaskSystem Templates
         if not is_direct_tool:

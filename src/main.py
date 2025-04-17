@@ -2,6 +2,7 @@
 import sys
 import os
 import json
+import logging
 from typing import Dict, List, Optional, Any
 
 class Application:
@@ -18,13 +19,20 @@ class Application:
         self.config = config or {}
         
         # Import components
+        # Import components lazily if needed, or ensure they are available
         from memory.memory_system import MemorySystem
         from task_system.task_system import TaskSystem
         from handler.passthrough_handler import PassthroughHandler
-        from task_system.templates.associative_matching import register_template
-        
+        from task_system.templates.associative_matching import register_template as register_assoc_template
+        from task_system.templates.aider_templates import register_aider_templates
+        from executors.aider_executors import execute_aider_automatic, execute_aider_interactive
+
         # Initialize task system first
         self.task_system = TaskSystem()
+        # Register core templates
+        register_assoc_template(self.task_system)
+        # Register optional Aider templates (for help)
+        register_aider_templates(self.task_system)
         
         # Initialize memory system with task_system reference
         self.memory_system = MemorySystem(
@@ -68,10 +76,7 @@ class Application:
             print(f"INIT: Handler.task_system instance: {id(self.passthrough_handler.task_system)}")
         else:
             print("INIT: Handler.task_system is None")
-        
-        # Register templates
-        register_template(self.task_system)
-        
+
         # Initialize Aider bridge
         self.aider_bridge = None
         
@@ -180,8 +185,34 @@ class Application:
         except Exception as e:
             print(f"Error initializing Aider: {str(e)}")
 
+        # Register Aider executors as Direct Tools if bridge is available
+        if self.aider_bridge:
+            try:
+                # Use lambda to pass the aider_bridge instance to the executors
+                reg_auto = self.passthrough_handler.registerDirectTool(
+                    "aider:automatic",
+                    lambda params: execute_aider_automatic(params, self.aider_bridge)
+                )
+                reg_inter = self.passthrough_handler.registerDirectTool(
+                    "aider:interactive",
+                    lambda params: execute_aider_interactive(params, self.aider_bridge)
+                )
+                if reg_auto and reg_inter:
+                    logging.info("Registered Aider executors as Direct Tools.")
+                else:
+                    logging.error("Failed to register one or more Aider direct tools.")
+            except AttributeError as e:
+                 logging.error(f"Failed to register Aider direct tools. Handler missing 'registerDirectTool'? Error: {e}")
+            except Exception as e:
+                 logging.error(f"Unexpected error registering Aider direct tools: {e}")
+        else:
+            logging.warning("Aider bridge not available, skipping Aider direct tool registration.")
+
+
 def main():
     """Main entry point."""
+    # Configure logging
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
     # Create application
     app = Application()
     

@@ -43,9 +43,10 @@ class BaseHandler:
         self.debug_mode = False
         
         # Tool registration
-        self.registered_tools = {}  # Tool specifications
-        self.tool_executors = {}    # Tool executor functions
-        
+        self.registered_tools = {}      # Tool specifications (for LLM tool use)
+        self.tool_executors = {}        # Tool executor functions (for LLM tool use)
+        self.direct_tool_executors = {} # Direct executor functions (for programmatic calls)
+
         # Conversation state
         self.conversation_history = []
         
@@ -78,9 +79,34 @@ class BaseHandler:
         except Exception as e:
             self.log_debug(f"Error registering tool: {str(e)}")
             return False
-    
+
+    def registerDirectTool(self, tool_name: str, executor_func: Callable) -> bool:
+        """Register a direct tool executor function.
+
+        These tools are intended for programmatic invocation via the dispatcher,
+        not necessarily for LLM tool use.
+
+        Args:
+            tool_name: Name of the tool (identifier)
+            executor_func: Function that implements the tool
+
+        Returns:
+            True if registration successful, False otherwise
+        """
+        try:
+            if not tool_name:
+                self.log_debug(f"Error registering direct tool: Missing tool name")
+                return False
+
+            self.log_debug(f"Registering direct tool: {tool_name}")
+            self.direct_tool_executors[tool_name] = executor_func
+            return True
+        except Exception as e:
+            self.log_debug(f"Error registering direct tool {tool_name}: {str(e)}")
+            return False
+
     def _execute_tool(self, tool_name: str, tool_params: Any) -> Optional[Dict[str, Any]]:
-        """Execute a registered tool.
+        """Execute a registered tool (typically called by LLM).
         
         Args:
             tool_name: Name of the tool to execute

@@ -2,6 +2,9 @@
 from typing import Dict, Any, Optional, Callable, List
 import sys
 import os
+import shlex
+import json
+import logging
 
 class Repl:
     """Interactive REPL (Read-Eval-Print Loop) interface.
@@ -29,9 +32,18 @@ class Repl:
             "/verbose": self._cmd_verbose,
             "/index": self._cmd_index,
             "/test-aider": self._cmd_test_aider,
-            "/debug": self._cmd_debug
+            "/debug": self._cmd_debug,
+            "/task": self._cmd_task # Add the new command
         }
-    
+        # Add dispatcher import
+        try:
+            # Ensure dispatcher is importable from the correct location
+            from dispatcher import execute_programmatic_task
+            self.dispatcher_func = execute_programmatic_task
+        except ImportError:
+            logging.error("Failed to import dispatcher function! /task command will not work.")
+            self.dispatcher_func = None
+
     def start(self) -> None:
         """Start the REPL interface.
         
@@ -317,3 +329,133 @@ class Repl:
             print(f"\nError testing Aider: {str(e)}", file=self.output)
             import traceback
             print(traceback.format_exc(), file=self.output)
+
+    def _cmd_task(self, args: str) -> None:
+        """Handles the /task command."""
+        if not self.dispatcher_func:
+            print("Error: Dispatcher is not available. Cannot execute /task.", file=self.output)
+            return
+
+        if not args:
+            print("Usage: /task <identifier> [param1=value1] [param2='\"json string\"'] [param3='[1, 2]'] [--flag] [--help]", file=self.output)
+            print("Example: /task aider:automatic prompt=\"Add docstrings\" file_context='[\"src/main.py\"]'", file=self.output)
+            return
+
+        try:
+            parts = shlex.split(args)
+            identifier = parts[0]
+            raw_params = parts[1:]
+
+            params: Dict[str, Any] = {}
+            flags: Dict[str, bool] = {}
+
+            # --- Help Flag ---
+            if "--help" in raw_params:
+                print(f"Fetching help for task: {identifier}...", file=self.output)
+                help_text = f"Help for '{identifier}':\n"
+                found_help = False
+
+                # Check Direct Tools (registered via registerDirectTool)
+                if hasattr(self.application.passthrough_handler, 'direct_tool_executors') and identifier in self.application.passthrough_handler.direct_tool_executors:
+                     # For direct tools, we currently rely on templates for detailed help
+                     help_text += f"\n* Found Direct Tool registration.\n"
+                     # We will look for a matching template below for parameter details.
+                     found_help = True # Mark that we found *something*
+
+                # Check TaskSystem Templates (registered via register_template)
+                if hasattr(self.application.task_system, 'find_template'):
+                     template_info = self.application.task_system.find_template(identifier)
+                     if template_info:
+                         help_text += f"\n* Task Template Details:\n"
+                         help_text += f"  Description: {template_info.get('description', 'N/A')}\n"
+                         params_def = template_info.get('parameters', {})
+                         if params_def:
+                             help_text += f"  Parameters:\n"
+                             for name, schema in params_def.items():
+                                 req_str = "(required)" if schema.get('required') else "(optional)"
+                                 type_str = f" (type: {schema.get('type', 'any')})"
+                                 def_str = f" (default: {schema['default']})" if 'default' in schema else ""
+                                 desc = schema.get('description', 'N/A')
+                                 help_text += f"    - {name}{type_str}: {desc} {req_str}{def_str}\n"
+                         else:
+                             help_text += "  Parameters: Not defined in template.\n"
+                         found_help = True
+
+                if not found_help:
+                    help_text = f"No help found for identifier: {identifier}. Check spelling and registration."
+
+                print(help_text, file=self.output)
+                return # Stop processing after help
+
+            # --- Parameter Parsing ---
+            for param_str in raw_params:
+                if param_str.startswith("--"):
+                    # Handle flags (like --use-history in Phase 3)
+                    flags[param_str[2:]] = True
+                elif "=" in param_str:
+                    key, value = param_str.split("=", 1)
+                    # Attempt JSON parsing for values starting with [ or { or "
+                    # shlex removes outer quotes, so check start/end characters
+                    if (value.startswith("[") and value.endswith("]")) or \
+                       (value.startswith("{") and value.endswith("}")) or \
+                       (value.startswith('"') and value.endswith('"')):
+                        try:
+                            # If it was originally quoted JSON, json.loads needs the quotes
+                            params[key] = json.loads(value)
+                        except json.JSONDecodeError as e:
+                            # If JSON fails, treat as a plain string
+                            print(f"Warning: Could not parse '{key}' value as JSON: {e}. Treating as string.", file=self.output)
+                            params[key] = value # Store as raw string on failure
+                    else:
+                        # Plain string value
+                        params[key] = value
+                else:
+                    print(f"Warning: Ignoring invalid parameter format (expected key=value or --flag): {param_str}", file=self.output)
+
+            # --- Call Dispatcher ---
+            print(f"\nExecuting task: {identifier} with params: {params} flags: {flags}", file=self.output)
+            print("Thinking...", end="", flush=True, file=self.output)
+            # Phase 3 will add history_str based on --use-history flag
+            result = self.dispatcher_func(
+                identifier=identifier,
+                params=params,
+                flags=flags,
+                handler_instance=self.application.passthrough_handler,
+                task_system_instance=self.application.task_system,
+                optional_history_str=None # None for Phase 2
+            )
+            print("\r" + " " * 12 + "\r", end="", flush=True, file=self.output) # Clear thinking message
+
+            # --- Display Result ---
+            print("\nResult:", file=self.output)
+            print(f"Status: {result.get('status', 'UNKNOWN')}", file=self.output)
+            # Pretty print content if it looks like JSON
+            content = result.get('content', 'N/A')
+            try:
+                # Attempt to parse content as JSON only if it's a string and looks like JSON
+                if isinstance(content, str) and content.strip().startswith(('[', '{')):
+                    parsed_content = json.loads(content)
+                    print("Content:")
+                    print(json.dumps(parsed_content, indent=2))
+                else:
+                     print(f"Content: {content}", file=self.output)
+            except json.JSONDecodeError:
+                 print(f"Content: {content}", file=self.output) # Print as is if not valid JSON
+
+            if result.get('notes'):
+                print("Notes:", file=self.output)
+                for k, v in result['notes'].items():
+                     # Pretty print complex values like lists/dicts within notes
+                     if isinstance(v, (dict, list)):
+                         print(f"  {k}:")
+                         # Use json.dumps for consistent formatting of nested structures
+                         try:
+                             print(json.dumps(v, indent=2))
+                         except TypeError: # Handle non-serializable types gracefully
+                             print(f"    (Could not serialize value of type {type(v).__name__})")
+                     else:
+                         print(f"  {k}: {v}", file=self.output)
+
+        except Exception as e:
+            print(f"\nError processing /task command: {e}", file=self.output)
+            logging.exception("Error in _cmd_task:") # Log full traceback
