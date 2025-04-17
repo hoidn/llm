@@ -2,11 +2,18 @@
 import sys
 import os
 import json
+"""Main entry point for the application."""
+import sys
+import os
+import json
 import logging # Add logging import if not present
 from typing import Dict, List, Optional, Any
 
 # Import executor functions at the top level for use in initialize_aider
+# Ensure the path is correct relative to src/
 from executors.aider_executors import execute_aider_automatic, execute_aider_interactive
+# Import the template registration function
+from task_system.templates.aider_templates import register_aider_templates
 
 class Application:
     """
@@ -27,7 +34,7 @@ class Application:
         from task_system.task_system import TaskSystem
         from handler.passthrough_handler import PassthroughHandler
         from task_system.templates.associative_matching import register_template as register_assoc_template
-        from task_system.templates.aider_templates import register_aider_templates
+        # from task_system.templates.aider_templates import register_aider_templates # Moved import to top
         # Import the executor functions needed for direct tool registration - moved to top level
 
         # Instantiate components
@@ -55,7 +62,7 @@ class Application:
 
         # Register core templates
         register_assoc_template(self.task_system)
-        # Register optional Aider templates (for help)
+        # Register optional Aider metadata templates (for help)
         register_aider_templates(self.task_system)
 
         # Initialize Aider bridge
@@ -172,10 +179,12 @@ class Application:
                 # Use lambda to pass the aider_bridge instance to the executors
                 reg_auto = self.passthrough_handler.registerDirectTool(
                     "aider:automatic",
+                    # Use lambda to pass the bridge instance when the tool is called
                     lambda params: execute_aider_automatic(params, self.aider_bridge)
                 )
                 reg_inter = self.passthrough_handler.registerDirectTool(
                     "aider:interactive",
+                    # Use lambda to pass the bridge instance
                     lambda params: execute_aider_interactive(params, self.aider_bridge)
                 )
                 if reg_auto and reg_inter:
