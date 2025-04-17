@@ -2,7 +2,18 @@
 import sys
 import os
 import json
+"""Main entry point for the application."""
+import sys
+import os
+import json
+import logging # Add logging import if not present
 from typing import Dict, List, Optional, Any
+
+# Import executor functions at the top level for use in initialize_aider
+# Ensure the path is correct relative to src/
+from executors.aider_executors import execute_aider_automatic, execute_aider_interactive
+# Import the template registration function
+from task_system.templates.aider_templates import register_aider_templates
 
 class Application:
     """
@@ -11,37 +22,49 @@ class Application:
     def __init__(self, config: Optional[Dict[str, Any]] = None):
         """
         Initialize application with optional configuration.
-        
+
         Args:
             config: Optional configuration dictionary
         """
         self.config = config or {}
-        
+        logging.info("Initializing Application...")
+
         # Import components
         from memory.memory_system import MemorySystem
         from task_system.task_system import TaskSystem
         from handler.passthrough_handler import PassthroughHandler
-        from task_system.templates.associative_matching import register_template
-        
-        # Initialize handler first (since memory system now depends on it)
-        self.passthrough_handler = PassthroughHandler(
-            task_system=None,  # Will set this after TaskSystem is initialized
-            memory_system=None  # Will set this after MemorySystem is initialized
-        )
-        
-        # Initialize memory system with handler reference
-        self.memory_system = MemorySystem(handler=self.passthrough_handler)
-        
-        # Initialize task system
+        from task_system.templates.associative_matching import register_template as register_assoc_template
+        # from task_system.templates.aider_templates import register_aider_templates # Moved import to top
+        # Import the executor functions needed for direct tool registration - moved to top level
+
+        # Instantiate components
         self.task_system = TaskSystem()
-        
-        # Complete handler initialization with references
-        self.passthrough_handler.task_system = self.task_system
-        self.passthrough_handler.memory_system = self.memory_system
-        
-        # Register templates
-        register_template(self.task_system)
-        
+        # Pass task_system reference to MemorySystem
+        self.memory_system = MemorySystem(task_system=self.task_system)
+        # Pass task_system and memory_system references to Handler
+        self.passthrough_handler = PassthroughHandler(
+            task_system=self.task_system,
+            memory_system=self.memory_system
+        )
+
+        # Complete the linking (give MemorySystem the Handler ref)
+        self.memory_system.handler = self.passthrough_handler
+        # Ensure TaskSystem has MemorySystem ref (important!)
+        self.task_system.memory_system = self.memory_system
+
+        logging.info("Component linking complete.")
+        # Add debug logs to verify linking (optional but helpful)
+        logging.debug(f"  TaskSystem -> MemorySystem: {id(self.task_system.memory_system)}")
+        logging.debug(f"  MemorySystem -> TaskSystem: {id(self.memory_system.task_system)}")
+        logging.debug(f"  MemorySystem -> Handler: {id(self.memory_system.handler)}")
+        logging.debug(f"  Handler -> TaskSystem: {id(self.passthrough_handler.task_system)}")
+        logging.debug(f"  Handler -> MemorySystem: {id(self.passthrough_handler.memory_system)}")
+
+        # Register core templates
+        register_assoc_template(self.task_system)
+        # Register optional Aider metadata templates (for help)
+        register_aider_templates(self.task_system)
+
         # Initialize Aider bridge
         self.aider_bridge = None
         
@@ -150,8 +173,38 @@ class Application:
         except Exception as e:
             print(f"Error initializing Aider: {str(e)}")
 
+        # Register Aider executors as Direct Tools if bridge is available
+        if self.aider_bridge:
+            try:
+                # Use lambda to pass the aider_bridge instance to the executors
+                reg_auto = self.passthrough_handler.registerDirectTool(
+                    "aider:automatic",
+                    # Use lambda to pass the bridge instance when the tool is called
+                    lambda params: execute_aider_automatic(params, self.aider_bridge)
+                )
+                reg_inter = self.passthrough_handler.registerDirectTool(
+                    "aider:interactive",
+                    # Use lambda to pass the bridge instance
+                    lambda params: execute_aider_interactive(params, self.aider_bridge)
+                )
+                if reg_auto and reg_inter:
+                    logging.info("Registered Aider executors as Direct Tools.")
+                else:
+                    logging.error("Failed to register one or more Aider direct tools.")
+            except AttributeError as e:
+                 logging.error(f"Failed to register Aider direct tools. Handler missing 'registerDirectTool'? Error: {e}")
+            except Exception as e:
+                 logging.error(f"Unexpected error registering Aider direct tools: {e}")
+        else:
+            logging.warning("Aider bridge not available, skipping Aider direct tool registration.")
+
+        logging.info("Application initialized.")
+
+
 def main():
     """Main entry point."""
+    # Configure logging
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
     # Create application
     app = Application()
     

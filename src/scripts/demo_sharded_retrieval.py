@@ -13,14 +13,23 @@ Example:
 import os
 import sys
 import time
+import logging
 
 # Add the project root to the Python path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from memory.memory_system import MemorySystem
 from memory.indexers.git_repository_indexer import GitRepositoryIndexer
+from task_system.task_system import TaskSystem
+from task_system.templates.associative_matching import register_template as register_associative_matching_template
+from handler.passthrough_handler import PassthroughHandler
+from config.logging_config import get_logger
 
 def main():
+    # Setup logging
+    logger = get_logger(__name__)
+    logger.setLevel(logging.INFO)
+    
     # Get repository path and query from arguments
     if len(sys.argv) < 3:
         print("Usage: python -m src.scripts.demo_sharded_retrieval [repository_path] [query]")
@@ -38,14 +47,24 @@ def main():
     print(f"Query: {query}")
     print("-" * 50)
     
-    # Create memory system with sharding enabled
-    memory_system = MemorySystem()
+    # Instantiate TaskSystem and register necessary templates
+    task_system = TaskSystem()
+    register_associative_matching_template(task_system)
+    
+    # Create memory system with TaskSystem
+    memory_system = MemorySystem(task_system=task_system)
+    
+    # Create a handler and link components
+    handler = PassthroughHandler(task_system=task_system, memory_system=memory_system)
+    memory_system.handler = handler
+    task_system.memory_system = memory_system
     
     # Configure for demonstration
     memory_system.configure_sharding(
         token_size_per_shard=4000,
         max_shards=8,
-        token_estimation_ratio=0.25
+        token_estimation_ratio=0.25,
+        max_parallel_shards=4  # Limit to 4 parallel threads for the demo
     )
     
     # Index the repository
@@ -68,8 +87,8 @@ def main():
     
     # Now run with sharding enabled
     memory_system.enable_sharding(True)
-    print("\nRunning query with sharding ENABLED...")
-    print(f"Created {len(memory_system._sharded_index)} shards")
+    print("\nRunning query with sharding ENABLED (parallel processing)...")
+    print(f"Created {len(memory_system._sharded_index)} shards with {memory_system._config['max_parallel_shards']} parallel workers")
     start_time = time.time()
     result_sharded = memory_system.get_relevant_context_for({"taskText": query})
     sharded_time = time.time() - start_time
@@ -105,8 +124,14 @@ def main():
     # Show top matches
     if result_sharded.matches:
         print("\nTop 5 relevant files:")
-        for i, (path, _) in enumerate(result_sharded.matches[:5], 1):
-            print(f"{i}. {path}")
+        for i, match_item in enumerate(result_sharded.matches[:5], 1):
+            # Check if the item is a sequence and has at least one element (the path)
+            if isinstance(match_item, (list, tuple)) and len(match_item) > 0:
+                path = match_item[0]  # Safely get the first element
+                print(f"{i}. {path}")
+            else:
+                # Log if the item has an unexpected format
+                print(f"{i}. [Malformed Match Item: {match_item}]")
 
 if __name__ == "__main__":
     main()

@@ -19,10 +19,10 @@ class ContextGenerationInput:
         inherited_context: str = "",
         previous_outputs: Optional[List[str]] = None,
         fresh_context: str = "enabled",
-        taskText: str = ""  # For backward compatibility
+        taskText: str = "",  # For backward compatibility
+        history_context: Optional[str] = None # <-- New Parameter
     ):
         """Initialize a ContextGenerationInput instance.
-        
         Args:
             template_description: Main template description
             template_type: Template type (e.g., 'atomic')
@@ -33,6 +33,7 @@ class ContextGenerationInput:
             previous_outputs: Previous task outputs for context accumulation
             fresh_context: Whether to generate fresh context or use inherited only
             taskText: Legacy parameter for backward compatibility
+            history_context: Optional string containing recent conversation history.
         """
         self.template_description = template_description or taskText
         self.template_type = template_type
@@ -43,7 +44,8 @@ class ContextGenerationInput:
         self.previous_outputs = previous_outputs or []
         self.fresh_context = fresh_context
         self.taskText = taskText or template_description  # For backward compatibility
-        
+        self.history_context = history_context # <-- New Assignment
+
         # Default to including all inputs if not specified
         if not self.context_relevance and self.inputs:
             self.context_relevance = {k: True for k in self.inputs.keys()}
@@ -64,6 +66,8 @@ class ContextGenerationInput:
             return self.inherited_context or default
         elif key == "previousOutputs":
             return self.previous_outputs or default
+        elif key == "history_context":
+            return self.history_context or default
         elif hasattr(self, key):
             return getattr(self, key) or default
         return default
@@ -98,7 +102,8 @@ class ContextGenerationInput:
         return cls(
             template_description=input_data.get("taskText", ""),
             inherited_context=input_data.get("inheritedContext", ""),
-            previous_outputs=input_data.get("previousOutputs", [])
+            previous_outputs=input_data.get("previousOutputs", []),
+            history_context=input_data.get("history_context", None) # <-- Add history
         )
 
 
@@ -106,15 +111,15 @@ class AssociativeMatchResult:
     """Result structure for context retrieval operations.
     
     This class provides a standardized format for context retrieval results,
-    including a context summary and list of file matches.
+    including a context summary and list of file matches with relevance and score.
     """
     
-    def __init__(self, context: str, matches: List[Tuple[str, str]]):
+    def __init__(self, context: str, matches: List[Tuple[str, str, Optional[float]]]):
         """Initialize an AssociativeMatchResult instance.
         
         Args:
             context: Context summary text
-            matches: List of (file_path, relevance) tuples
+            matches: List of (file_path, relevance, score) tuples. Score is optional float.
         """
         self.context = context
         self.matches = matches
@@ -128,11 +133,35 @@ class AssociativeMatchResult:
         """Create an instance from dictionary format.
         
         Args:
-            data: Dictionary with 'context' and 'matches' keys
+            data: Dictionary with 'context' and 'matches' keys.
+                  'matches' should be a list of [path, relevance, score] lists/tuples.
             
         Returns:
             New AssociativeMatchResult instance
         """
         context = data.get("context", "No context available")
-        matches = data.get("matches", [])
-        return cls(context=context, matches=matches)
+        matches_data = data.get("matches", [])
+        # Convert list-based matches to the expected tuple format
+        matches_tuples = []
+        for match_item in matches_data:
+            if isinstance(match_item, (list, tuple)) and len(match_item) >= 2:
+                path = match_item[0]
+                relevance = match_item[1]
+                score = float(match_item[2]) if len(match_item) > 2 and match_item[2] is not None else None
+                matches_tuples.append((path, relevance, score))
+            elif isinstance(match_item, dict):
+                # Handle dictionary format
+                path = match_item.get("path", "")
+                relevance = match_item.get("relevance", "")
+                score = match_item.get("score")
+                if score is not None:
+                    try:
+                        score = float(score)
+                    except (ValueError, TypeError):
+                        score = None
+                matches_tuples.append((path, relevance, score))
+            else:
+                # Skip invalid items
+                continue
+                
+        return cls(context=context, matches=matches_tuples)

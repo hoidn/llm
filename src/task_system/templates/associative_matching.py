@@ -59,8 +59,16 @@ ASSOCIATIVE_MATCHING_TEMPLATE = {
     },
     "returns": {  # Return type definition
         "type": "array",
-        "items": {"type": "object"},
-        "description": "List of relevant file objects with path and relevance"
+        "items": {
+            "type": "object",
+            "properties": { # Be explicit about expected properties
+                "path": {"type": "string"},
+                "relevance": {"type": "string"},
+                "score": {"type": "number", "format": "float", "minimum": 0.0, "maximum": 1.0}
+            },
+            "required": ["path", "relevance", "score"]
+        },
+        "description": "List of relevant file objects with path, relevance reason, and score (0.0-1.0)."
     },
     "context_management": {
         "inherit_context": "optional",  # Use inherited context if available
@@ -69,9 +77,9 @@ ASSOCIATIVE_MATCHING_TEMPLATE = {
     },
     "output_format": {
         "type": "json",
-        "schema": "array"
+        "schema": "array of objects, each with keys: \"path\" (string), \"relevance\" (string), \"score\" (float, 0.0-1.0)"
     },
-    "system_prompt": """You are a file relevance assistant. Your task is to select files that are relevant to a user's query and additional context.
+    "system_prompt": """You are a file relevance assistant. Your task is to select files that are relevant to a user's query and additional context, providing a relevance score for each.
 
 The user message will contain:
 1. The main query: {{query}}
@@ -85,11 +93,13 @@ The user message will contain:
 Examine the metadata of each file and determine which files would be most useful for addressing the query.
 
 RETURN ONLY a JSON array of objects with the following format:
-[{"path": "path/to/file1.py", "relevance": "Reason this file is relevant"}, ...]
+[{"path": "path/to/file1.py", "relevance": "Reason this file is relevant", "score": 0.85}, ...]
 
 Include only files that are truly relevant to the query and context.
-The "relevance" field should briefly explain why the file is relevant.
-Prioritize the most relevant files, up to a maximum of {{max_results}}.
+- The "relevance" field should briefly explain *why* the file is relevant.
+- The "score" field should be a float between 0.0 (not relevant) and 1.0 (highly relevant), indicating your confidence in the relevance.
+
+Prioritize the most relevant files (highest scores first), up to a maximum of {{max_results}} files.
 
 Available Files Metadata:
 {{metadata}}
@@ -198,6 +208,14 @@ def execute_template(inputs: Dict[str, Any], memory_system, handler) -> List[Dic
     # --- 4. Execute using the handler's model_provider ---
     response_content = "[]" # Default empty JSON array string
     try:
+        # Check for handler and model_provider
+        if not handler:
+            logging.error("Associative matching failed: No handler provided.")
+            return []
+        if not hasattr(handler, 'model_provider') or not handler.model_provider:
+            logging.error("Associative matching failed: Handler (%s) has no model_provider.", type(handler).__name__)
+            return []
+
         # Access the provider from the handler
         provider = handler.model_provider
         if not provider:
@@ -252,23 +270,39 @@ def execute_template(inputs: Dict[str, Any], memory_system, handler) -> List[Dic
              logging.warning("LLM response for file matching was not a JSON list. Got: %s", type(parsed_files).__name__)
              return []
 
-        # Validate format
+        # Validate format including the score
         validated_files = []
         # TODO: Consider passing global_index keyset for validation against hallucinated paths
         # Example: global_paths = set(get_global_index(memory_system).keys())
         for item in parsed_files:
              if isinstance(item, dict) and "path" in item and "relevance" in item:
+                 # Add score if missing or ensure it's a float
+                 if "score" not in item:
+                     item["score"] = 0.5  # Default score if missing
+                 else:
+                     try:
+                         # Ensure score is a float
+                         score = float(item["score"])
+                         # Clamp score to [0, 1] range
+                         item["score"] = max(0.0, min(1.0, score))
+                     except (ValueError, TypeError):
+                         logging.warning("Invalid score format, using default: %s", item["score"])
+                         item["score"] = 0.5
+                 
                  # if item["path"] in global_paths: # Optional validation
                  validated_files.append(item)
                  # else: logging.warning("Skipping hallucinated path from LLM: %s", item['path'])
              else:
                  logging.warning("Skipping invalid item in LLM response: %s", item)
 
+        # Sort by score descending before returning
+        validated_files.sort(key=lambda x: x.get('score', 0.0), reverse=True)
+
         if validated_files:
-            logging.info("LLM selected %d relevant files", len(validated_files))
+            logging.info("LLM selected %d relevant files (with scores)", len(validated_files))
             # Log first few paths at DEBUG level
             for i, item in enumerate(validated_files[:3], 1):
-                logging.debug("  Relevant file %d: %s - %s...", i, item['path'], item['relevance'][:50])
+                logging.debug("  Relevant file %d: %.2f - %s - %s...", i, item['score'], item['path'], item['relevance'][:50])
             if len(validated_files) > 3:
                 logging.debug("  ... and %d more", len(validated_files) - 3)
         else:
