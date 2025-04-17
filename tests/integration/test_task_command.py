@@ -100,6 +100,18 @@ class TestTaskCommandIntegration:
     
     def test_task_aider_auto_simple(self, app_instance):
         """Test basic aider:automatic task execution."""
+        # ---> START ADDED CODE <---
+        # Reset mocks on the real TaskSystem instance for isolation
+        app_instance.task_system.find_template.reset_mock(return_value=None) # Reset and set default return
+        app_instance.task_system.execute_task.reset_mock(return_value={ # Reset and set default return
+             "status": "COMPLETE",
+             "content": "Mock TaskSystem.execute_task Result",
+             "notes": {}
+        })
+        app_instance.aider_bridge.execute_automatic_task.reset_mock() # Reset other relevant mocks
+        app_instance.memory_system.get_relevant_context_for.reset_mock()
+        # ---> END ADDED CODE <---
+
         # Capture stdout
         captured_output = io.StringIO()
         sys.stdout = captured_output
@@ -128,9 +140,18 @@ class TestTaskCommandIntegration:
         """Test that explicit file_context takes precedence over template and auto context."""
         # Arrange: No template override - use fixture's default (find_template returns None)
         # This ensures we test the direct tool path with explicit context
+        # ---> START ADDED CODE <---
+        # Reset mocks on the real TaskSystem instance for isolation
+        app_instance.task_system.find_template.reset_mock(return_value=None)
+        app_instance.task_system.execute_task.reset_mock(return_value={
+             "status": "COMPLETE",
+             "content": "Mock TaskSystem.execute_task Result",
+             "notes": {}
+        })
         app_instance.memory_system.get_relevant_context_for.reset_mock()
         app_instance.aider_bridge.execute_automatic_task.reset_mock()
-        app_instance.task_system.execute_subtask_directly.reset_mock()  # Reset this mock specifically
+        # ---> END ADDED CODE <---
+        # DELETE THIS LINE: app_instance.task_system.execute_subtask_directly.reset_mock()
 
         # Act: Call with explicit file_context param
         from dispatcher import execute_programmatic_task
@@ -158,20 +179,28 @@ class TestTaskCommandIntegration:
             "file_paths": ["/template/path.py"],  # Template explicit path
             "context_management": {"fresh_context": "enabled"}  # Auto enabled
         }
-        # Override the default None return value for this specific test
-        app_instance.task_system.find_template = MagicMock(return_value=mock_template)
-        # Configure the mock return value for this specific test
-        app_instance.task_system.execute_subtask_directly.return_value = {
-            "status": "COMPLETE",
-            "content": "Subtask executed successfully",
-            "notes": {
-                "template_used": "aider:automatic",
-                "context_source": "template_defined",  # Because template had file_paths
-                "context_files_count": 1  # Because template had 1 file path
-            }
-        }
+        # ---> START ADDED CODE <---
+        app_instance.task_system.find_template.reset_mock(return_value=None)
+        app_instance.task_system.execute_task.reset_mock(return_value={
+             "status": "COMPLETE",
+             "content": "Mock TaskSystem.execute_task Result", # Default mock result
+             "notes": {}
+        })
         app_instance.memory_system.get_relevant_context_for.reset_mock()
         app_instance.aider_bridge.execute_automatic_task.reset_mock()
+        # ---> END ADDED CODE <---
+
+        # Arrange: Template has explicit path, auto enabled, no request path
+        mock_template = {
+            "name": "aider:automatic", "type": "aider", "subtype": "automatic",
+            "parameters": {"prompt": {}, "file_context": {}},
+            "file_paths": ["/template/path.py"],  # Template explicit path
+            "context_management": {"fresh_context": "enabled"}  # Auto enabled
+        }
+        # Override the default None return value for this specific test
+        app_instance.task_system.find_template.return_value = mock_template # Set return value on the mock
+        # DELETE THIS BLOCK: app_instance.task_system.execute_subtask_directly.return_value = { ... }
+        # We now rely on the mocked execute_task *inside* the real execute_subtask_directly
 
         # Act: Call *without* explicit file_context param
         from dispatcher import execute_programmatic_task
@@ -185,16 +214,25 @@ class TestTaskCommandIntegration:
 
         # Assert: Check that TaskSystem path was taken
         assert result["status"] == "COMPLETE"
-        # Verify TaskSystem method was called
-        app_instance.task_system.execute_subtask_directly.assert_called_once()
-        # Verify the SubtaskRequest passed to it used the template's file_paths
-        call_args = app_instance.task_system.execute_subtask_directly.call_args[0][0]
-        assert isinstance(call_args, SubtaskRequest)
-        assert call_args.file_paths == ["/template/path.py"]  # Template path used
+        # Verify TaskSystem's internal execute_task was called (via dispatcher -> execute_subtask_directly)
+        app_instance.task_system.execute_task.assert_called_once()
+        # Verify the arguments passed to the internal execute_task
+        execute_task_call_args = app_instance.task_system.execute_task.call_args
+        assert execute_task_call_args.kwargs['task_type'] == "aider"
+        assert execute_task_call_args.kwargs['task_subtype'] == "automatic"
+        assert execute_task_call_args.kwargs['inputs'] == {"prompt": "Template context test"}
+        # Check the file context determined by execute_subtask_directly (using template path)
+        handler_config = execute_task_call_args.kwargs.get('handler_config', {})
+        assert handler_config.get('file_context') == ["/template/path.py"] # Template path used
+
         # Verify AiderBridge was NOT called directly by the dispatcher
         app_instance.aider_bridge.execute_automatic_task.assert_not_called()
-        # Check the content returned by the mocked TaskSystem method
-        assert "Subtask executed successfully" in result["content"]
+        # Check the content returned by the mocked TaskSystem.execute_task method
+        assert "Mock TaskSystem.execute_task Result" in result["content"]
+        # Check notes added by dispatcher/execute_subtask_directly
+        assert result["notes"]["context_source"] == "template_defined"
+        assert result["notes"]["context_files_count"] == 1
+        assert result["notes"]["template_used"] == "aider:automatic"
     
     def test_task_auto_context_used_when_no_explicit(self, app_instance):
         """Test that automatic context lookup is used when no explicit context is provided."""
@@ -204,37 +242,34 @@ class TestTaskCommandIntegration:
             "parameters": {"prompt": {}, "file_context": {}},
             "context_management": {"fresh_context": "enabled"}  # Auto enabled
         }
-        # Override the default None return value for this specific test
-        app_instance.task_system.find_template = MagicMock(return_value=mock_template)
-        # Configure the mock return value for this specific test
-        app_instance.task_system.execute_subtask_directly.return_value = {
-            "status": "COMPLETE",
-            "content": "Subtask executed successfully",
-            "notes": {
-                "template_used": "aider:automatic",
-                "context_source": "none",  # Because auto lookup was disabled
-                "context_files_count": 0  # Because no context was determined
-            }
-        }
+        # ---> START ADDED CODE <---
+        app_instance.task_system.find_template.reset_mock(return_value=None)
+        app_instance.task_system.execute_task.reset_mock(return_value={
+             "status": "COMPLETE",
+             "content": "Mock TaskSystem.execute_task Result", # Default mock result
+             "notes": {}
+        })
         app_instance.memory_system.get_relevant_context_for.reset_mock()
         app_instance.aider_bridge.execute_automatic_task.reset_mock()
-        
-        # Mock context result
+        # ---> END ADDED CODE <---
+
+        # Arrange: Template has no file_paths, auto enabled
+        mock_template = {
+            "name": "aider:automatic", "type": "aider", "subtype": "automatic",
+            "parameters": {"prompt": {}, "file_context": {}},
+            "context_management": {"fresh_context": "enabled"}  # Auto enabled
+        }
+        # Override the default None return value for this specific test
+        app_instance.task_system.find_template.return_value = mock_template # Set return value on the mock
+
+        # Mock context result for memory system
         mock_context_result = AssociativeMatchResult(
             context="Found relevant files",
             matches=[("/auto/lookup/path.py", "Auto found file", 0.9)]
         )
         app_instance.memory_system.get_relevant_context_for.return_value = mock_context_result
-        # Configure the mock return value for this specific test
-        app_instance.task_system.execute_subtask_directly.return_value = {
-            "status": "COMPLETE",
-            "content": "Subtask executed successfully",
-            "notes": {
-                "template_used": "aider:automatic",
-                "context_source": "automatic_lookup",  # Because auto lookup was triggered
-                "context_files_count": 1  # Because mock memory returned 1 file
-            }
-        }
+        # DELETE THIS BLOCK: app_instance.task_system.execute_subtask_directly.return_value = { ... }
+        # We now rely on the mocked execute_task *inside* the real execute_subtask_directly
 
         # Act: Call without explicit context
         from dispatcher import execute_programmatic_task
@@ -249,23 +284,27 @@ class TestTaskCommandIntegration:
         # Assert
         assert result["status"] == "COMPLETE"
         app_instance.memory_system.get_relevant_context_for.assert_called_once()  # Auto lookup performed
-        
-        # Assert TaskSystem path was taken
-        app_instance.task_system.execute_subtask_directly.assert_called_once()
+
+        # Assert TaskSystem's internal execute_task was called
+        app_instance.task_system.execute_task.assert_called_once()
         # Verify AiderBridge was NOT called directly by the dispatcher
         app_instance.aider_bridge.execute_automatic_task.assert_not_called()
 
-        # Verify the SubtaskRequest passed to execute_subtask_directly
-        call_args = app_instance.task_system.execute_subtask_directly.call_args[0][0]
-        assert isinstance(call_args, SubtaskRequest)
-        assert call_args.type == "aider"
-        assert call_args.subtype == "automatic"
-        assert call_args.inputs == {"prompt": "Auto context test"}
-        # Verify the file paths determined by the automatic lookup were passed
-        assert call_args.file_paths == ["/auto/lookup/path.py"]
+        # Verify the arguments passed to the internal execute_task
+        execute_task_call_args = app_instance.task_system.execute_task.call_args
+        assert execute_task_call_args.kwargs['task_type'] == "aider"
+        assert execute_task_call_args.kwargs['task_subtype'] == "automatic"
+        assert execute_task_call_args.kwargs['inputs'] == {"prompt": "Auto context test"}
+        # Check the file context determined by execute_subtask_directly (using auto lookup)
+        handler_config = execute_task_call_args.kwargs.get('handler_config', {})
+        assert handler_config.get('file_context') == ["/auto/lookup/path.py"] # Auto path used
 
-        # Verify the final result content (comes from the mocked TaskSystem method)
-        assert "Subtask executed successfully" in result["content"]
+        # Verify the final result content (comes from the mocked TaskSystem.execute_task method)
+        assert "Mock TaskSystem.execute_task Result" in result["content"]
+        # Check notes added by dispatcher/execute_subtask_directly
+        assert result["notes"]["context_source"] == "automatic_lookup"
+        assert result["notes"]["context_files_count"] == 1 # Matches mock memory result
+        assert result["notes"]["template_used"] == "aider:automatic"
     
     def test_task_auto_context_skipped_when_disabled(self, app_instance):
         """Test that automatic context lookup is skipped when fresh_context is disabled."""
@@ -275,22 +314,27 @@ class TestTaskCommandIntegration:
             "parameters": {"prompt": {}, "file_context": {}},
             "context_management": {"fresh_context": "disabled"}  # Auto disabled
         }
-        # Override the default None return value for this specific test
-        app_instance.task_system.find_template = MagicMock(return_value=mock_template)
+        # ---> START ADDED CODE <---
+        app_instance.task_system.find_template.reset_mock(return_value=None)
+        app_instance.task_system.execute_task.reset_mock(return_value={
+             "status": "COMPLETE",
+             "content": "Mock TaskSystem.execute_task Result", # Default mock result
+             "notes": {}
+        })
         app_instance.memory_system.get_relevant_context_for.reset_mock()
         app_instance.aider_bridge.execute_automatic_task.reset_mock()
-        app_instance.task_system.execute_subtask_directly.reset_mock()  # Reset mock before configuring
+        # ---> END ADDED CODE <---
 
-        # Configure the mock return value specifically for this test case
-        app_instance.task_system.execute_subtask_directly.return_value = {
-            "status": "COMPLETE",
-            "content": "Subtask executed successfully",
-            "notes": {
-                "template_used": "aider:automatic",
-                "context_source": "none",  # Expected source when lookup is skipped
-                "context_files_count": 0   # Expected count when lookup is skipped
-            }
+        # Arrange: Template has fresh_context: disabled
+        mock_template = {
+            "name": "aider:automatic", "type": "aider", "subtype": "automatic",
+            "parameters": {"prompt": {}, "file_context": {}},
+            "context_management": {"fresh_context": "disabled"}  # Auto disabled
         }
+        # Override the default None return value for this specific test
+        app_instance.task_system.find_template.return_value = mock_template # Set return value on the mock
+        # DELETE THIS LINE: app_instance.task_system.execute_subtask_directly.reset_mock()
+        # DELETE THIS BLOCK: app_instance.task_system.execute_subtask_directly.return_value = { ... }
 
         # Act: Call without explicit context
         from dispatcher import execute_programmatic_task
@@ -304,23 +348,28 @@ class TestTaskCommandIntegration:
 
         # Assert
         assert result["status"] == "COMPLETE"
-        # Assert TaskSystem path was taken
-        app_instance.task_system.execute_subtask_directly.assert_called_once()
+        # Assert TaskSystem's internal execute_task was called
+        app_instance.task_system.execute_task.assert_called_once()
         # Verify AiderBridge was NOT called directly by the dispatcher
         app_instance.aider_bridge.execute_automatic_task.assert_not_called()
         # Verify MemorySystem was NOT called for context lookup
         app_instance.memory_system.get_relevant_context_for.assert_not_called()
 
-        # Verify the SubtaskRequest passed to execute_subtask_directly had empty file_paths
-        call_args = app_instance.task_system.execute_subtask_directly.call_args[0][0]
-        assert isinstance(call_args, SubtaskRequest)
-        assert call_args.file_paths == [] # No context files determined
+        # Verify the arguments passed to the internal execute_task
+        execute_task_call_args = app_instance.task_system.execute_task.call_args
+        assert execute_task_call_args.kwargs['task_type'] == "aider"
+        assert execute_task_call_args.kwargs['task_subtype'] == "automatic"
+        assert execute_task_call_args.kwargs['inputs'] == {"prompt": "No context expected test"}
+        # Check the file context determined by execute_subtask_directly (should be empty)
+        handler_config = execute_task_call_args.kwargs.get('handler_config', {})
+        assert handler_config.get('file_context') == [] # No context files determined
 
-        # Verify the final result content (comes from the mocked TaskSystem method)
-        assert "Subtask executed successfully" in result["content"]
-        # Optionally check notes added by the dispatcher/TaskSystem about context source
+        # Verify the final result content (comes from the mocked TaskSystem.execute_task method)
+        assert "Mock TaskSystem.execute_task Result" in result["content"]
+        # Check notes added by dispatcher/execute_subtask_directly
         assert result["notes"]["context_source"] == "none"
         assert result["notes"]["context_files_count"] == 0
+        assert result["notes"]["template_used"] == "aider:automatic"
     
     def test_task_use_history_flag(self, app_instance):
         """Test that --use-history flag passes history to context generation."""
@@ -339,19 +388,37 @@ class TestTaskCommandIntegration:
         mock_context_result = AssociativeMatchResult(
             context="Found relevant files with history",
             matches=[("/history/context/path.py", "History-aware file", 0.9)]
+        # ---> START ADDED CODE <---
+        app_instance.task_system.find_template.reset_mock(return_value=None)
+        app_instance.task_system.execute_task.reset_mock(return_value={
+             "status": "COMPLETE",
+             "content": "Mock TaskSystem.execute_task Result", # Default mock result
+             "notes": {}
+        })
+        app_instance.memory_system.get_relevant_context_for.reset_mock()
+        app_instance.aider_bridge.execute_automatic_task.reset_mock()
+        # ---> END ADDED CODE <---
+
+        # Arrange: Template with auto context enabled
+        mock_template = {
+            "name": "aider:automatic", "type": "aider", "subtype": "automatic",
+            "parameters": {"prompt": {}, "file_context": {}},
+            "context_management": {"fresh_context": "enabled"}  # Auto enabled
+        }
+        # Override the default None return value for this specific test
+        app_instance.task_system.find_template.return_value = mock_template # Set return value on the mock
+        app_instance.memory_system.get_relevant_context_for.reset_mock() # Already reset above, but safe to repeat
+        app_instance.aider_bridge.execute_automatic_task.reset_mock() # Already reset above, but safe to repeat
+
+        # Mock context result for memory system
+        mock_context_result = AssociativeMatchResult(
+            context="Found relevant files with history",
+            # Use 2-tuples (path, relevance) as expected by TaskSystem fix
+            matches=[("/auto/lookup/path.py", "Auto found file"), # Keep original mock paths
+                     ("/history/context/path.py", "History-aware file")]
         )
         app_instance.memory_system.get_relevant_context_for.return_value = mock_context_result
-        # Configure the mock return value for this specific test
-        app_instance.task_system.execute_subtask_directly.return_value = {
-            "status": "COMPLETE",
-            "content": "Subtask executed successfully",
-            "notes": {
-                "template_used": "aider:automatic",
-                "context_source": "automatic_lookup",  # Because auto lookup was triggered
-                "context_files_count": 1,  # Because mock memory returned 1 file
-                "history_provided": True  # Add note indicating history was considered
-            }
-        }
+        # DELETE THIS BLOCK: app_instance.task_system.execute_subtask_directly.return_value = { ... }
 
         # Act: Call with --use-history flag
         from dispatcher import execute_programmatic_task
@@ -408,9 +475,18 @@ class TestTaskCommandIntegration:
     
     def test_task_use_history_with_explicit_context(self, app_instance):
         """Test that --use-history works with explicit file_context (history passed but lookup skipped)."""
-        # Arrange
+        # ---> START ADDED CODE <---
+        app_instance.task_system.find_template.reset_mock(return_value=None)
+        app_instance.task_system.execute_task.reset_mock(return_value={
+             "status": "COMPLETE",
+             "content": "Mock TaskSystem.execute_task Result",
+             "notes": {}
+        })
         app_instance.memory_system.get_relevant_context_for.reset_mock()
         app_instance.aider_bridge.execute_automatic_task.reset_mock()
+        # ---> END ADDED CODE <---
+
+        # Arrange (No specific template needed, testing direct tool path)
 
         # Act: Call with --use-history flag AND explicit file_context
         from dispatcher import execute_programmatic_task
@@ -432,6 +508,17 @@ class TestTaskCommandIntegration:
     
     def test_task_help_flag(self, app_instance):
         """Test that --help flag displays template parameter information."""
+        # ---> START ADDED CODE <---
+        app_instance.task_system.find_template.reset_mock(return_value=None)
+        app_instance.task_system.execute_task.reset_mock(return_value={
+             "status": "COMPLETE",
+             "content": "Mock TaskSystem.execute_task Result",
+             "notes": {}
+        })
+        app_instance.memory_system.get_relevant_context_for.reset_mock()
+        app_instance.aider_bridge.execute_automatic_task.reset_mock()
+        # ---> END ADDED CODE <---
+
         # Arrange: Template with detailed parameters
         mock_template = {
             "name": "aider:automatic", "type": "aider", "subtype": "automatic",
@@ -475,6 +562,17 @@ class TestTaskCommandIntegration:
     
     def test_task_parameter_parsing_complex_json(self, app_instance):
         """Test parsing of complex JSON parameters."""
+        # ---> START ADDED CODE <---
+        app_instance.task_system.find_template.reset_mock(return_value=None)
+        app_instance.task_system.execute_task.reset_mock(return_value={
+             "status": "COMPLETE",
+             "content": "Mock TaskSystem.execute_task Result",
+             "notes": {}
+        })
+        app_instance.memory_system.get_relevant_context_for.reset_mock()
+        app_instance.aider_bridge.execute_automatic_task.reset_mock()
+        # ---> END ADDED CODE <---
+
         # Capture stdout
         captured_output = io.StringIO()
         sys.stdout = captured_output
@@ -505,6 +603,17 @@ class TestTaskCommandIntegration:
     
     def test_task_error_handling_invalid_json(self, app_instance):
         """Test error handling for invalid JSON parameters."""
+        # ---> START ADDED CODE <---
+        app_instance.task_system.find_template.reset_mock(return_value=None)
+        app_instance.task_system.execute_task.reset_mock(return_value={
+             "status": "COMPLETE",
+             "content": "Mock TaskSystem.execute_task Result",
+             "notes": {}
+        })
+        app_instance.memory_system.get_relevant_context_for.reset_mock()
+        app_instance.aider_bridge.execute_automatic_task.reset_mock()
+        # ---> END ADDED CODE <---
+
         # Capture stdout
         captured_output = io.StringIO()
         sys.stdout = captured_output
@@ -527,9 +636,20 @@ class TestTaskCommandIntegration:
     
     def test_task_error_handling_template_not_found(self, app_instance):
         """Test error handling when template is not found."""
-        # Arrange: Template not found
-        app_instance.task_system.find_template = MagicMock(return_value=None)
-        
+        # ---> START ADDED CODE <---
+        app_instance.task_system.find_template.reset_mock(return_value=None)
+        app_instance.task_system.execute_task.reset_mock(return_value={
+             "status": "COMPLETE",
+             "content": "Mock TaskSystem.execute_task Result",
+             "notes": {}
+        })
+        app_instance.memory_system.get_relevant_context_for.reset_mock()
+        app_instance.aider_bridge.execute_automatic_task.reset_mock()
+        # ---> END ADDED CODE <---
+
+        # Arrange: Template not found (already handled by reset_mock above)
+        # app_instance.task_system.find_template = MagicMock(return_value=None) # No longer needed
+
         # Capture stdout
         captured_output = io.StringIO()
         sys.stdout = captured_output
@@ -551,9 +671,20 @@ class TestTaskCommandIntegration:
     
     def test_task_error_handling_executor_exception(self, app_instance):
         """Test error handling when executor raises an exception."""
+        # ---> START ADDED CODE <---
+        app_instance.task_system.find_template.reset_mock(return_value=None)
+        app_instance.task_system.execute_task.reset_mock(return_value={
+             "status": "COMPLETE",
+             "content": "Mock TaskSystem.execute_task Result",
+             "notes": {}
+        })
+        app_instance.memory_system.get_relevant_context_for.reset_mock()
+        app_instance.aider_bridge.execute_automatic_task.reset_mock()
+        # ---> END ADDED CODE <---
+
         # Arrange: Executor raises exception
         app_instance.aider_bridge.execute_automatic_task.side_effect = Exception("Simulated executor error")
-        
+
         # Capture stdout
         captured_output = io.StringIO()
         sys.stdout = captured_output
@@ -582,22 +713,26 @@ class TestTaskCommandIntegration:
             "subtype": "identifier",
             "description": "Template version"
         }
-        app_instance.task_system.find_template = MagicMock(return_value=mock_template)
-        app_instance.task_system.execute_subtask_directly.reset_mock()
-        
-        # Configure the mock return value for this specific test
-        app_instance.task_system.execute_subtask_directly.return_value = {
-            "status": "COMPLETE",
-            "content": "Subtask executed successfully",
-            "notes": {
-                "template_used": "duplicate:identifier",
-                "context_source": "none",  # Assuming template has no paths/auto-context
-                "context_files_count": 0
-            }
-        }
+        # ---> START ADDED CODE <---
+        app_instance.task_system.find_template.reset_mock(return_value=None)
+        app_instance.task_system.execute_task.reset_mock(return_value={
+             "status": "COMPLETE",
+             "content": "Mock TaskSystem.execute_task Result", # Default mock result
+             "notes": {}
+        })
+        app_instance.memory_system.get_relevant_context_for.reset_mock()
+        app_instance.aider_bridge.execute_automatic_task.reset_mock()
+        # ---> END ADDED CODE <---
+
+        # Arrange: Set find_template to return the mock template for this test
+        app_instance.task_system.find_template.return_value = mock_template
+        # DELETE THIS LINE: app_instance.task_system.execute_subtask_directly.reset_mock()
+        # DELETE THIS BLOCK: app_instance.task_system.execute_subtask_directly.return_value = { ... }
+
         # Add a direct tool with the same name
         direct_tool_mock = MagicMock(return_value={"status": "COMPLETE", "content": "Direct tool executed"})
         app_instance.passthrough_handler.direct_tool_executors["duplicate:identifier"] = direct_tool_mock
+        app_instance.passthrough_handler.direct_tool_executors["duplicate:identifier"].reset_mock() # Reset this mock too
         
         # Act: Call with the duplicate identifier
         from dispatcher import execute_programmatic_task
@@ -609,7 +744,9 @@ class TestTaskCommandIntegration:
             task_system_instance=app_instance.task_system
         )
 
-        # Assert: Template was used, not direct tool
+        # Assert: Template was used (TaskSystem.execute_task was called), not direct tool
         assert result["status"] == "COMPLETE"
-        app_instance.task_system.execute_subtask_directly.assert_called_once()
-        direct_tool_mock.assert_not_called()
+        app_instance.task_system.execute_task.assert_called_once() # Check internal mock call
+        direct_tool_mock.assert_not_called() # Check direct tool mock was not called
+        assert "Mock TaskSystem.execute_task Result" in result["content"] # Check content from internal mock
+        assert result["notes"]["template_used"] == "duplicate:identifier" # Check notes
