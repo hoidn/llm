@@ -4,10 +4,10 @@ import json
 from unittest.mock import MagicMock, patch
 
 from src.executors.system_executors import execute_get_context, execute_read_files
-from src.memory.context_generation import ContextGenerationInput, AssociativeMatchResult
-from src.memory.memory_system import MemorySystem  # Import for type hinting mock
-from src.handler.file_access import FileAccessManager  # Import for type hinting mock
-from src.system.errors import INPUT_VALIDATION_FAILURE, UNEXPECTED_ERROR
+from memory.context_generation import ContextGenerationInput, AssociativeMatchResult
+from memory.memory_system import MemorySystem  # Import for type hinting mock
+from handler.file_access import FileAccessManager  # Import for type hinting mock
+from system.errors import INPUT_VALIDATION_FAILURE, UNEXPECTED_ERROR
 
 
 @pytest.fixture
