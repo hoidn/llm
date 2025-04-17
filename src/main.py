@@ -2,7 +2,7 @@
 import sys
 import os
 import json
-import logging
+import logging # Add logging import if not present
 from typing import Dict, List, Optional, Any
 
 class Application:
@@ -12,14 +12,14 @@ class Application:
     def __init__(self, config: Optional[Dict[str, Any]] = None):
         """
         Initialize application with optional configuration.
-        
+
         Args:
             config: Optional configuration dictionary
         """
         self.config = config or {}
-        
+        logging.info("Initializing Application...")
+
         # Import components
-        # Import components lazily if needed, or ensure they are available
         from memory.memory_system import MemorySystem
         from task_system.task_system import TaskSystem
         from handler.passthrough_handler import PassthroughHandler
@@ -28,55 +28,33 @@ class Application:
         # Import the executor functions needed for direct tool registration
         from executors.aider_executors import execute_aider_automatic, execute_aider_interactive
 
-        # Initialize task system first
+        # Instantiate components
         self.task_system = TaskSystem()
-        # Register core templates
-        register_assoc_template(self.task_system)
-        # Register optional Aider templates (for help)
-        register_aider_templates(self.task_system)
-        
-        # Initialize memory system with task_system reference
-        self.memory_system = MemorySystem(
-            task_system=self.task_system,
-            handler=None  # We'll set the handler reference after Handler is fully initialized
-        )
-        
-        # Initialize handler with both task_system and memory_system references
+        # Pass task_system reference to MemorySystem
+        self.memory_system = MemorySystem(task_system=self.task_system)
+        # Pass task_system and memory_system references to Handler
         self.passthrough_handler = PassthroughHandler(
             task_system=self.task_system,
             memory_system=self.memory_system
         )
-        
-        # Complete the loop: Give MemorySystem the Handler reference
+
+        # Complete the linking (give MemorySystem the Handler ref)
         self.memory_system.handler = self.passthrough_handler
-        
-        # Ensure TaskSystem has the MemorySystem reference
+        # Ensure TaskSystem has MemorySystem ref (important!)
         self.task_system.memory_system = self.memory_system
-        
-        # Sanity checks for debugging
-        print(f"INIT: TaskSystem instance: {id(self.task_system)}")
-        print(f"INIT: MemorySystem instance: {id(self.memory_system)}")
-        print(f"INIT: PassthroughHandler instance: {id(self.passthrough_handler)}")
-        if self.task_system.memory_system:
-            print(f"INIT: TaskSystem.memory_system instance: {id(self.task_system.memory_system)}")
-        else:
-            print("INIT: TaskSystem.memory_system is None")
-        if self.memory_system.task_system:
-            print(f"INIT: MemorySystem.task_system instance: {id(self.memory_system.task_system)}")
-        else:
-            print("INIT: MemorySystem.task_system is None")
-        if self.memory_system.handler:
-            print(f"INIT: MemorySystem.handler instance: {id(self.memory_system.handler)}")
-        else:
-            print("INIT: MemorySystem.handler is None")
-        if self.passthrough_handler.memory_system:
-            print(f"INIT: Handler.memory_system instance: {id(self.passthrough_handler.memory_system)}")
-        else:
-            print("INIT: Handler.memory_system is None")
-        if self.passthrough_handler.task_system:
-            print(f"INIT: Handler.task_system instance: {id(self.passthrough_handler.task_system)}")
-        else:
-            print("INIT: Handler.task_system is None")
+
+        logging.info("Component linking complete.")
+        # Add debug logs to verify linking (optional but helpful)
+        logging.debug(f"  TaskSystem -> MemorySystem: {id(self.task_system.memory_system)}")
+        logging.debug(f"  MemorySystem -> TaskSystem: {id(self.memory_system.task_system)}")
+        logging.debug(f"  MemorySystem -> Handler: {id(self.memory_system.handler)}")
+        logging.debug(f"  Handler -> TaskSystem: {id(self.passthrough_handler.task_system)}")
+        logging.debug(f"  Handler -> MemorySystem: {id(self.passthrough_handler.memory_system)}")
+
+        # Register core templates
+        register_assoc_template(self.task_system)
+        # Register optional Aider templates (for help)
+        register_aider_templates(self.task_system)
 
         # Initialize Aider bridge
         self.aider_bridge = None
@@ -208,6 +186,8 @@ class Application:
                  logging.error(f"Unexpected error registering Aider direct tools: {e}")
         else:
             logging.warning("Aider bridge not available, skipping Aider direct tool registration.")
+
+        logging.info("Application initialized.")
 
 
 def main():

@@ -15,10 +15,14 @@ from .mock_handler import MockHandler
 from memory.context_generation import ContextGenerationInput
 from .ast_nodes import SubtaskRequest # Adjust import path if needed
 from .template_utils import Environment
-from system.errors import TaskError, create_task_failure, format_error_result, INPUT_VALIDATION_FAILURE, UNEXPECTED_ERROR
-from typing import Dict, Any # Add TaskResult if not already imported
+from .ast_nodes import SubtaskRequest # Add SubtaskRequest import
+from .template_utils import Environment # Add Environment import
+from system.errors import TaskError, create_task_failure, format_error_result, INPUT_VALIDATION_FAILURE, UNEXPECTED_ERROR # Add error imports
+import os # Add os import for path operations
+import logging # Add logging import
 
-# Define TaskResult type hint (or import if defined elsewhere)
+# Define TaskResult type hint if not already present
+from typing import Dict, Any, List, Optional, Tuple # Ensure necessary types are imported
 TaskResult = Dict[str, Any]
 
 class TaskSystem(TemplateLookupInterface):
@@ -361,7 +365,125 @@ class TaskSystem(TemplateLookupInterface):
                 details={"exception_type": type(e).__name__}
             )
             return format_error_result(error)
-        
+
+    def execute_subtask_directly(self, request: SubtaskRequest, env: Environment) -> TaskResult:
+        """
+        Executes a Task System template workflow directly from a SubtaskRequest.
+        Phase 1: Handles template lookup and *explicit* context determination only.
+                 Does not perform automatic context lookup or full evaluation.
+        """
+        identifier = f"{request.type}:{request.subtype}" if request.subtype else request.type
+        logging.info(f"TaskSystem executing directly: {identifier}")
+        logging.debug(f"Request inputs: {request.inputs}")
+        logging.debug(f"Request explicit file_paths: {request.file_paths}")
+
+        try:
+            # 1. Template Lookup
+            template = self.find_template(identifier)
+            if not template:
+                msg = f"Template not found for identifier: '{identifier}'"
+                logging.error(msg)
+                # Use imported error functions
+                return format_error_result(create_task_failure(msg, INPUT_VALIDATION_FAILURE))
+            logging.debug(f"Found template: {template.get('name', identifier)}")
+
+            # 2. Explicit Context Determination (Phase 1 Logic)
+            determined_file_paths: List[str] = []
+            context_source = "none"
+            error_message = None # For file path command errors
+
+            if request.file_paths:
+                # Priority 1: Use paths from the request itself
+                determined_file_paths = request.file_paths
+                context_source = "explicit_request"
+                logging.debug(f"Using explicit file paths from request: {len(determined_file_paths)} files")
+            elif template.get("file_paths"):
+                 # Priority 2: Use literal paths from the template definition
+                 determined_file_paths = template["file_paths"]
+                 context_source = "template_literal"
+                 logging.debug(f"Using literal file paths from template: {len(determined_file_paths)} files")
+            elif template.get("file_paths_source"):
+                 # Priority 3: Use command source from template (only literal/command in Phase 1)
+                 source_info = template["file_paths_source"]
+                 source_type = source_info.get("type", "literal") # Default to literal if type missing
+                 if source_type == "literal" and template.get("file_paths"):
+                     # Handled above, but check again for robustness
+                     determined_file_paths = template["file_paths"]
+                     context_source = "template_literal"
+                     logging.debug(f"Using literal file paths from template via source object: {len(determined_file_paths)} files")
+                 elif source_type == "command" and source_info.get("command"):
+                     command = source_info["command"]
+                     logging.debug(f"Attempting to execute command for file paths: {command}")
+                     # Need handler to execute command - assume it's available via self.memory_system.handler
+                     # Safely access handler
+                     handler = None
+                     if hasattr(self, 'memory_system') and self.memory_system and hasattr(self.memory_system, 'handler'):
+                         handler = self.memory_system.handler
+
+                     if handler and hasattr(handler, "execute_file_path_command"):
+                         try:
+                             determined_file_paths = handler.execute_file_path_command(command)
+                             context_source = "template_command"
+                             logging.debug(f"Command executed, found {len(determined_file_paths)} files.")
+                         except Exception as cmd_err:
+                             error_message = f"Error executing file_paths command '{command}': {cmd_err}"
+                             logging.error(error_message)
+                             context_source = "template_command_error"
+                     else:
+                         error_message = "Cannot execute file_paths command: Handler or method not available."
+                         logging.error(error_message)
+                         context_source = "template_command_error"
+                 elif source_type in ["description", "context_description"]:
+                     logging.debug(f"Automatic context lookup via '{source_type}' source is deferred (Phase 1).")
+                     context_source = "deferred_lookup"
+                 # else: source_type is literal but no file_paths defined, or unknown type
+
+            # 3. Environment Setup (Placeholder for Phase 1)
+            # Create the execution environment by extending the passed base env
+            # with the inputs from the request.
+            execution_env = env.extend(request.inputs or {})
+            logging.debug("Execution environment prepared (Phase 1 stub).")
+
+            # 4. Execution Placeholder (Phase 1)
+            # Simulate successful execution for now, returning info for verification
+            logging.info(f"Phase 1: Placeholder execution for template '{template.get('name', identifier)}'.")
+            # In a real execution, this would call the Evaluator:
+            # result = self.evaluator.eval(template_ast_node, execution_env)
+            result_content = f"Executed template '{template.get('name', identifier)}' with inputs."
+            result_status = "COMPLETE"
+
+            # 5. Result Formatting
+            result = {
+                "status": result_status,
+                "content": result_content,
+                "notes": {
+                    "execution_path": "execute_subtask_directly (Phase 1 Stub)",
+                    "template_used": template.get('name', identifier),
+                    "context_source": context_source,
+                    "context_files_count": len(determined_file_paths),
+                    # Include paths in notes for debugging/testing Phase 1
+                    "determined_context_files": determined_file_paths[:10] # Limit for notes
+                }
+            }
+            if error_message:
+                result["notes"]["context_error"] = error_message
+
+            return result
+
+        except TaskError as e:
+            logging.error(f"TaskError during direct execution: {e.message}")
+            # Use imported error functions
+            return format_error_result(e)
+        except Exception as e:
+            logging.exception("Unexpected error during direct execution:")
+            # Use imported error functions
+            error = create_task_failure(
+                message=f"An unexpected error occurred during direct execution: {str(e)}",
+                reason=UNEXPECTED_ERROR,
+                details={"exception_type": type(e).__name__}
+            )
+            return format_error_result(error)
+
     def find_matching_tasks(self, input_text: str, memory_system) -> List[Dict[str, Any]]:
         """Find matching templates based on a provided input string.
         

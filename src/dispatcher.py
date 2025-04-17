@@ -181,3 +181,150 @@ def execute_programmatic_task(
             details={"exception_type": type(e).__name__}
         )
         return format_error_result(error)
+from typing import Dict, List, Any, Optional
+import logging
+import json
+
+# Import necessary components and types (adjust paths based on final structure)
+# Assuming standard project structure where dispatcher is at the top level src/
+from handler.base_handler import BaseHandler # Use BaseHandler type hint
+from task_system.task_system import TaskSystem
+from task_system.ast_nodes import SubtaskRequest
+from task_system.template_utils import Environment # Needed for execute_subtask_directly call
+from system.errors import TaskError, create_task_failure, format_error_result, INPUT_VALIDATION_FAILURE, UNEXPECTED_ERROR
+
+# Define TaskResult type hint
+TaskResult = Dict[str, Any]
+
+logger = logging.getLogger(__name__)
+
+
+def execute_programmatic_task(
+    identifier: str,
+    params: Dict[str, Any],
+    flags: Dict[str, bool],
+    handler_instance: BaseHandler, # Use BaseHandler type hint
+    task_system_instance: TaskSystem,
+    optional_history_str: Optional[str] = None
+) -> TaskResult:
+    """
+    Routes a programmatic task request (/task) to the appropriate executor.
+    Phase 1: Handles Direct Tools and basic routing to TaskSystem templates
+             with explicit file_context parameter handling only.
+    """
+    logger.info(f"Dispatcher executing: identifier='{identifier}'")
+    logger.debug(f"Params: {params}, Flags: {flags}")
+
+    try:
+        # --- Parameter Pre-processing ---
+        explicit_file_paths: Optional[List[str]] = None
+        if "file_context" in params:
+            fc_param = params["file_context"]
+            if isinstance(fc_param, list) and all(isinstance(p, str) for p in fc_param):
+                explicit_file_paths = fc_param
+                logger.debug("Using pre-parsed list for file_context.")
+            elif isinstance(fc_param, str) and fc_param.strip():
+                try:
+                    loaded_paths = json.loads(fc_param)
+                    if isinstance(loaded_paths, list) and all(isinstance(p, str) for p in loaded_paths):
+                        explicit_file_paths = loaded_paths
+                        logger.debug("Successfully parsed file_context JSON string.")
+                    else:
+                        raise ValueError("Parsed JSON is not a list of strings.")
+                except (json.JSONDecodeError, ValueError) as e:
+                    msg = f"Invalid file_context parameter: must be a JSON string array or already a list of strings. Error: {e}"
+                    logger.error(msg)
+                    return format_error_result(create_task_failure(msg, INPUT_VALIDATION_FAILURE))
+            elif fc_param is not None: # Handle cases where it's present but not list/string
+                 msg = f"Invalid type for file_context parameter: {type(fc_param).__name__}"
+                 logger.error(msg)
+                 return format_error_result(create_task_failure(msg, INPUT_VALIDATION_FAILURE))
+            # Note: We keep file_context in params for now, as SubtaskRequest might need it.
+            # If a Direct Tool *doesn't* expect it, it should ignore it.
+
+        # --- Routing Logic ---
+        target_executor = None
+        is_direct_tool = False
+        template_definition = None
+
+        # 1. Check Handler Direct Tools
+        # Use hasattr for safety, assuming direct_tool_executors might not always exist
+        handler_tools = getattr(handler_instance, 'direct_tool_executors', {})
+        if identifier in handler_tools:
+            logger.info(f"Identifier '{identifier}' found in Handler Direct Tool registry.")
+            target_executor = handler_tools[identifier]
+            is_direct_tool = True # Assume direct unless template found
+
+        # 2. Check TaskSystem Templates (Templates take precedence if found)
+        # Use hasattr for safety
+        if hasattr(task_system_instance, 'find_template'):
+            template_definition = task_system_instance.find_template(identifier)
+            if template_definition:
+                logger.info(f"Identifier '{identifier}' maps to a TaskSystem Template (overrides Direct Tool match if any).")
+                target_executor = task_system_instance # Target is the TaskSystem itself
+                is_direct_tool = False # It's a template, not direct
+            elif is_direct_tool:
+                 logger.info(f"Identifier '{identifier}' confirmed as Direct Tool (not a template).")
+            # else: Neither found yet
+
+        # 3. Handle Execution or Not Found
+        if target_executor:
+            if is_direct_tool:
+                # --- Direct Tool Execution ---
+                logger.debug(f"Executing Direct Tool: {identifier}")
+                # Direct tools receive the raw params dictionary
+                raw_result = target_executor(params)
+
+                # Basic result wrapping
+                if isinstance(raw_result, dict) and "status" in raw_result:
+                     result = raw_result
+                     if "notes" not in result: result["notes"] = {}
+                else:
+                     result = {"status": "COMPLETE", "content": str(raw_result), "notes": {}}
+                result["notes"]["execution_path"] = "direct_tool"
+                logger.info(f"Direct Tool execution complete. Status: {result.get('status')}")
+                return result
+            else:
+                # --- Template Execution via TaskSystem ---
+                logger.debug(f"Executing Subtask Template via TaskSystem: {identifier}")
+                # Determine type/subtype for SubtaskRequest
+                if ":" in identifier:
+                    task_type, task_subtype = identifier.split(':', 1)
+                else:
+                    task_type = identifier
+                    # Get subtype from template if available, otherwise None/empty
+                    task_subtype = template_definition.get("subtype")
+
+                # Create SubtaskRequest
+                subtask_request = SubtaskRequest(
+                    type=task_type,
+                    subtype=task_subtype,
+                    inputs=params, # Pass original params
+                    file_paths=explicit_file_paths, # Pass only explicitly provided paths
+                    history_context=optional_history_str if flags.get("use-history") else None
+                )
+
+                # Call TaskSystem method (Phase 1 stub)
+                # Create a base Environment. execute_subtask_directly will extend it.
+                base_env = Environment({})
+                return task_system_instance.execute_subtask_directly(subtask_request, base_env)
+        else:
+            # --- Identifier Not Found ---
+            logger.warning(f"Identifier '{identifier}' not found as Direct Tool or TaskSystem Template.")
+            return format_error_result(create_task_failure(
+                message=f"Task identifier '{identifier}' not found",
+                reason=INPUT_VALIDATION_FAILURE,
+                details={"identifier": identifier}
+            ))
+
+    except TaskError as e:
+        logger.error(f"TaskError during dispatch: {e.message}")
+        return format_error_result(e)
+    except Exception as e:
+        logger.exception("Unexpected error during dispatch:") # Log traceback
+        error = create_task_failure(
+            message=f"An unexpected error occurred during dispatch: {str(e)}",
+            reason=UNEXPECTED_ERROR,
+            details={"exception_type": type(e).__name__}
+        )
+        return format_error_result(error)
