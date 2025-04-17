@@ -398,3 +398,7 @@ The registration process follows the same pattern as other tools in the system:
 3. Implement invocation routing in the Handler
 4. Ensure consistent error handling in both paths
 5. Provide clear documentation of available tools to the LLM
+
+### Programmatic Invocation of Direct Tools
+
+Note that Direct Tools registered with the Handler (representing synchronous operations like simple Python functions or file I/O) can also be invoked programmatically, for example, via the REPL `/task` command. This uses a central dispatch logic that looks up the tool in the Handler's registry and executes its associated function directly. This provides a consistent execution path for these actions, whether they are called by an LLM during a conversational flow or invoked directly by the user or system.

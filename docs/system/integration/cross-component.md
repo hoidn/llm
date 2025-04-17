@@ -97,6 +97,59 @@ Testing considerations:
 - Verify correct context flow between components
 - Test both interactive and automatic modes
 - Include integration tests for the complete flow
+
+### Programmatic Invocation Flow (`/task`)
+
+The `/task` command, typically initiated from the REPL, bypasses the standard conversational handler flow and uses a central dispatch mechanism (e.g., logic within `main.py`) to route requests directly to either a Handler's Direct Tool or the TaskSystem's `execute_subtask_directly` method.
+
+**Flow for `/task` -> Direct Tool:**
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Repl
+    participant CentralDispatch (main.py)
+    participant Handler
+    participant ToolExecutorFunc (Python)
+
+    User->>Repl: /task math:add x=1 y=2
+    Repl->>CentralDispatch: execute_programmatic_task("math:add", params)
+    CentralDispatch->>Handler: Lookup Direct Tool "math:add"
+    Handler-->>CentralDispatch: tool_executor_func
+    CentralDispatch->>ToolExecutorFunc: tool_executor_func(params)
+    ToolExecutorFunc-->>CentralDispatch: Raw Result (e.g., 3)
+    CentralDispatch->>CentralDispatch: Format as TaskResult
+    CentralDispatch-->>Repl: TaskResult
+    Repl-->>User: Display Result
+```
+
+**Flow for `/task` -> Subtask Template:**
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Repl
+    participant CentralDispatch (main.py)
+    participant TaskSystem
+    participant Evaluator
+    participant Handler/LLM (if needed by subtask)
+    participant AiderBridge (if needed by subtask)
+
+    User->>Repl: /task aider:automatic prompt="..."
+    Repl->>CentralDispatch: execute_programmatic_task("aider:automatic", params)
+    CentralDispatch->>TaskSystem: Lookup Subtask Template "aider:automatic"
+    CentralDispatch->>TaskSystem: execute_subtask_directly(SubtaskRequest)
+    TaskSystem->>TaskSystem: Find template "aider:automatic"
+    TaskSystem->>Evaluator: Evaluate template body
+    Evaluator->>TaskSystem: (May call sub-calls or atomic steps)
+    TaskSystem->>AiderBridge: (If template logic calls Aider)
+    AiderBridge-->>TaskSystem: Aider Result
+    TaskSystem-->>Evaluator: Step Result
+    Evaluator-->>TaskSystem: Final Subtask Result
+    TaskSystem-->>CentralDispatch: TaskResult
+    CentralDispatch-->>Repl: TaskResult
+    Repl-->>User: Display Result
+```
     
 ## Task System ↔ Evaluator
     

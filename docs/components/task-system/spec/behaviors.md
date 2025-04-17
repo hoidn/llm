@@ -111,6 +111,19 @@ The Task System is responsible for managing LLM task execution, including:
 - For Anthropic models: Handler configures computer use tools
 - All file content access is always handled by the Handler, never the Memory System
 
+## Programmatic Task Invocation
+
+The Task System supports direct invocation of registered template workflows, typically triggered by external mechanisms like the REPL `/task` command via a central dispatcher.
+
+*   **Invocation:** Uses the `execute_subtask_directly(request, env)` method.
+*   **Input:** Takes a `SubtaskRequest` object defining the target task (type, subtype, inputs, context settings).
+*   **Execution:** Finds the corresponding template and executes its workflow via the Evaluator, similar to how subtasks spawned via `CONTINUATION` are handled, but without requiring a parent Handler task.
+*   **Context Determination:** Context for execution is determined based on the `SubtaskRequest` and template definition with the following precedence:
+    1.  Files specified in `request.file_paths` (if provided).
+    2.  Files specified via the template's `file_paths` / `file_paths_source` definition.
+    3.  Automatic context lookup via `MemorySystem.get_relevant_context_for` if the effective `context_management.fresh_context` setting is `enabled`. The query basis for this lookup uses primary input parameters (e.g., `prompt`) or the template description.
+*   **History Integration:** If invoked with a flag indicating history usage (e.g., `--use-history` parsed by the dispatcher) *and* automatic context lookup is triggered, the dispatcher should provide relevant chat history (e.g., via `inheritedContext` in `ContextGenerationInput`) to the `MemorySystem` lookup.
+
 ## Integration Behaviors
 
 ### Memory System Integration

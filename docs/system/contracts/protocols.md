@@ -89,6 +89,8 @@ The task template schema defines the structure for XML task template files and m
               </xs:sequence>
               <xs:element name="command" type="xs:string"/>
               <xs:element name="description" type="xs:string"/>
+              <!-- When source="context_description", this element holds the query string -->
+              <xs:element name="context_query" type="xs:string"/>
             </xs:choice>
             <xs:attribute name="source" use="optional" default="literal">
               <xs:simpleType>
@@ -96,6 +98,7 @@ The task template schema defines the structure for XML task template files and m
                   <xs:enumeration value="literal"/>
                   <xs:enumeration value="command"/>
                   <xs:enumeration value="description"/>
+                  <xs:enumeration value="context_description"/>
                 </xs:restriction>
               </xs:simpleType>
             </xs:attribute>

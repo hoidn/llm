@@ -159,6 +159,7 @@ The system ensures these files are fetched and included in the subtask's context
 - Task System delegates file operations to Handler
 - Clear separation between metadata and file content
 - Context retrieval through standard ContextGenerationInput interface
+- When determining file context, the system checks the `file_paths_source.type`. If the type is `context_description`, the system retrieves the string value from the nested `<context_query>` element. Any `{{variable}}` placeholders within this string are resolved using the current task's `Environment`. This resolved string is then used as the primary query (`template_description`) when constructing the `ContextGenerationInput` object passed to `MemorySystem.get_relevant_context_for`. This allows the context search to be driven by a query different from the main task description used for LLM execution. This step takes precedence over the default behavior of using the main task description for context lookup when `fresh_context` is enabled but no specific `file_paths_source` is provided.
 
 ### Evaluator Integration
 - Evaluator handles template substitution and function calls

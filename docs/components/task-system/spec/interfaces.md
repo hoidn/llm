@@ -75,6 +75,17 @@ interface TaskSystem {
         type: "json" | "text";
         schema?: string;
     }): { isParsed: boolean; value: any };
+
+    /**
+     * Execute a Task System template workflow directly from a SubtaskRequest.
+     * Bypasses the need for a CONTINUATION status from a Handler.
+     * Primarily used for programmatic invocation (e.g., via /task command).
+     *
+     * @param request - The SubtaskRequest containing type, subtype, inputs, etc.
+     * @param env - The environment for execution.
+     * @returns Promise resolving to the final TaskResult of the workflow.
+     */
+    execute_subtask_directly(request: SubtaskRequest, env: Environment): Promise<TaskResult>;
 }
 ```
 

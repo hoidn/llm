@@ -97,6 +97,7 @@ Both direct and subtask tools appear identical to the LLM but follow different e
    - Accept raw text queries without AST compilation
    - Wrap queries in subtasks for context management
    - Maintain conversation state between queries
+   - Additionally, the handler detects if user input starts with the prefix `/plan `. If detected, it modifies the instructions sent to the LLM, asking it to generate a step-by-step plan based on the subsequent text and to enclose the entire generated plan within `<plan>` and `</plan>` XML tags.
 
 2. **Context Integration**
    - Apply standard context management settings

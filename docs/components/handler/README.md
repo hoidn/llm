@@ -25,6 +25,7 @@ The Handler manages LLM interactions, resource tracking, and tool execution. It 
    - Process raw queries without AST compilation
    - Maintain conversation state within subtasks
    - Apply standard context management to non-AST queries
+   - Detects the `/plan ` prefix in passthrough queries to guide the LLM towards generating structured, XML-tagged plans.
 
 5. **Session Management**
    - Maintain isolated execution environments for tasks

@@ -67,7 +67,7 @@ interface BaseTaskDefinition {
     
     /**
      * Optional source for generating file paths to include in context.
-     * Takes precedence over file_paths array when provided with type 'command' or 'description'.
+     * Takes precedence over file_paths array when provided with type 'command', 'description', or 'context_description'.
      */
     file_paths_source?: {
         /**
@@ -75,16 +75,17 @@ interface BaseTaskDefinition {
          * - 'literal': Use explicit file_paths array (default behavior)
          * - 'command': Execute bash command to generate file paths
          * - 'description': Use natural language description for context-specific matching
+         * - 'context_description': Use separate query string for context lookup
          */
-        type: 'literal' | 'command' | 'description';
-        
-        /**
-         * Value depends on type:
-         * - For 'command': Bash command to execute
-         * - For 'description': Natural language description
-         * - For 'literal': Ignored (use file_paths array instead)
-         */
-        value: string;
+        type: 'literal' | 'command' | 'description' | 'context_description';
+
+        /** Value used for command execution */
+        command?: string;
+        /** Value used for description-based matching */
+        description?: string;
+        /** Value used for context_description query */
+        context_query?: string;
+        // 'literal' type uses the main file_paths array
     };
     
     context_management?: ContextManagement;

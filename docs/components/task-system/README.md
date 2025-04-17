@@ -20,6 +20,7 @@ The Task System orchestrates LLM task execution through structured XML templates
    - Coordinate resource tracking with Handler
    - Manage subtask spawning and nesting
    - Handle context management across tasks
+   - Executes specific, registered template workflows programmatically when invoked directly (e.g., via `execute_subtask_directly`).
 
 ## Process Visualization
 
@@ -40,7 +41,7 @@ flowchart LR
     style G fill:#bfb,stroke:#333
 ```
 
-The Task System manages the complete lifecycle from initial request through template selection, resource allocation, and execution via the Handler.
+The Task System manages the complete lifecycle from initial request through template selection, resource allocation, and execution via the Handler. It also supports direct execution of registered workflows.
 
 ### Component Integration
 The Task System interacts with other components during execution:

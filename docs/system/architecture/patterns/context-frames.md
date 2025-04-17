@@ -49,6 +49,7 @@ In addition to the three-dimensional context model, the system supports direct f
   - **literal** (default): Direct list of file paths
   - **command**: Bash command that outputs file paths (one per line)
   - **description**: Natural language description for context-specific associative matching
+  - **context_description**: Uses the string value provided in the nested `<context_query>` element as the primary query/description passed to `MemorySystem.get_relevant_context_for` to find relevant files. This allows separating the context-finding query from the main task description. Template variables within the `<context_query>` value are resolved before use.
 
 ```xml
 <!-- Literal paths (default behavior) -->
@@ -77,6 +78,14 @@ In addition to the three-dimensional context model, the system supports direct f
   <description>Task with description-based file context</description>
   <file_paths source="description">
     <description>Find all Python files related to authentication</description>
+  </file_paths>
+</task>
+
+<!-- Context Description -->
+<task type="atomic">
+  <description>Main task description for LLM execution</description>
+  <file_paths source="context_description">
+    <context_query>Specific query used ONLY for finding relevant files, e.g., related to {{input_topic}}</context_query>
   </file_paths>
 </task>
 ```
