@@ -144,6 +144,16 @@ class TestTaskCommandIntegration:
         }
         # Override the default None return value for this specific test
         app_instance.task_system.find_template = MagicMock(return_value=mock_template)
+        # Configure the mock return value for this specific test
+        app_instance.task_system.execute_subtask_directly.return_value = {
+            "status": "COMPLETE",
+            "content": "Subtask executed successfully",
+            "notes": {
+                "template_used": "aider:automatic",
+                "context_source": "template_defined",  # Because template had file_paths
+                "context_files_count": 1  # Because template had 1 file path
+            }
+        }
         app_instance.memory_system.get_relevant_context_for.reset_mock()
         app_instance.aider_bridge.execute_automatic_task.reset_mock()
 
@@ -180,6 +190,16 @@ class TestTaskCommandIntegration:
         }
         # Override the default None return value for this specific test
         app_instance.task_system.find_template = MagicMock(return_value=mock_template)
+        # Configure the mock return value for this specific test
+        app_instance.task_system.execute_subtask_directly.return_value = {
+            "status": "COMPLETE",
+            "content": "Subtask executed successfully",
+            "notes": {
+                "template_used": "aider:automatic",
+                "context_source": "none",  # Because auto lookup was disabled
+                "context_files_count": 0  # Because no context was determined
+            }
+        }
         app_instance.memory_system.get_relevant_context_for.reset_mock()
         app_instance.aider_bridge.execute_automatic_task.reset_mock()
         
@@ -189,6 +209,16 @@ class TestTaskCommandIntegration:
             matches=[("/auto/lookup/path.py", "Auto found file", 0.9)]
         )
         app_instance.memory_system.get_relevant_context_for.return_value = mock_context_result
+        # Configure the mock return value for this specific test
+        app_instance.task_system.execute_subtask_directly.return_value = {
+            "status": "COMPLETE",
+            "content": "Subtask executed successfully",
+            "notes": {
+                "template_used": "aider:automatic",
+                "context_source": "automatic_lookup",  # Because auto lookup was triggered
+                "context_files_count": 1  # Because mock memory returned 1 file
+            }
+        }
 
         # Act: Call without explicit context
         from dispatcher import execute_programmatic_task
@@ -283,6 +313,17 @@ class TestTaskCommandIntegration:
             matches=[("/history/context/path.py", "History-aware file", 0.9)]
         )
         app_instance.memory_system.get_relevant_context_for.return_value = mock_context_result
+        # Configure the mock return value for this specific test
+        app_instance.task_system.execute_subtask_directly.return_value = {
+            "status": "COMPLETE",
+            "content": "Subtask executed successfully",
+            "notes": {
+                "template_used": "aider:automatic",
+                "context_source": "automatic_lookup",  # Because auto lookup was triggered
+                "context_files_count": 1,  # Because mock memory returned 1 file
+                "history_provided": True  # Add note indicating history was considered
+            }
+        }
 
         # Act: Call with --use-history flag
         from dispatcher import execute_programmatic_task
