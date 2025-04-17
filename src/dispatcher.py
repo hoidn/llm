@@ -197,12 +197,28 @@ def execute_programmatic_task(
             # Call the TaskSystem method
             result = task_system_instance.execute_subtask_directly(subtask_request)
             
-            # Add execution path and context info
-            if "notes" not in result: 
+            # Ensure notes dictionary exists
+            if "notes" not in result:
                 result["notes"] = {}
+
+            # Always add/update execution_path (Dispatcher's responsibility)
             result["notes"]["execution_path"] = "subtask_template"
-            result["notes"]["context_source"] = context_source
-            result["notes"]["context_file_count"] = len(determined_file_paths)
+
+            # *Conditionally* add context info if not already provided by TaskSystem
+            if "context_source" not in result["notes"]:
+                # TaskSystem didn't report source, use Dispatcher's calculation
+                result["notes"]["context_source"] = context_source
+                logging.debug("Dispatcher added fallback context_source: %s", context_source)
+            else:
+                # TaskSystem already reported source, log what Dispatcher calculated vs what TaskSystem reported
+                logging.debug("TaskSystem reported context_source '%s', Dispatcher calculated '%s'. Using TaskSystem's value.",
+                              result["notes"]["context_source"], context_source)
+
+            if "context_file_count" not in result["notes"]:
+                 # TaskSystem didn't report count, use Dispatcher's calculation
+                 result["notes"]["context_file_count"] = len(determined_file_paths)
+                 logging.debug("Dispatcher added fallback context_file_count: %d", len(determined_file_paths))
+            # else: Trust TaskSystem's count if it provided one.
 
         logging.info(f"Execution complete for '{identifier}'. Status: {result.get('status')}")
         return result
