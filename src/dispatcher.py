@@ -60,47 +60,28 @@ def execute_programmatic_task(
         target_executor = None
         is_direct_tool = False
 
-        # 1. Check Handler's Direct Tools first
-        if hasattr(handler_instance, 'tool_executors') and identifier in handler_instance.tool_executors:
-            # Check direct_tool_executors specifically if it exists
-            is_specifically_direct = False
-            if hasattr(handler_instance, 'direct_tool_executors') and identifier in handler_instance.direct_tool_executors:
-                target_executor = handler_instance.direct_tool_executors.get(identifier)
-                is_specifically_direct = True
-                logging.debug(f"Found '{identifier}' in direct_tool_executors")
-
-            # If not found in direct_tool_executors, check the general tool_executors
-            if not is_specifically_direct:
-                target_executor = handler_instance.tool_executors.get(identifier)
-                logging.debug(f"Found '{identifier}' in general tool_executors")
-
+        # 1. Check Handler's *specific* Direct Tool registry first
+        if hasattr(handler_instance, 'direct_tool_executors') and identifier in handler_instance.direct_tool_executors:
+            target_executor = handler_instance.direct_tool_executors.get(identifier)
             if target_executor:
-                # We found a tool. Assume it's direct unless it's also a template.
-                is_direct_tool = True  # Tentatively mark as direct
-                logging.info(f"Identifier '{identifier}' found in Handler tool registry")
-            else:
-                logging.debug(f"Identifier '{identifier}' not found in Handler tool registry")
+                is_direct_tool = True
+                logging.info(f"Identifier '{identifier}' maps to a registered Direct Tool.")
 
-        # 2. Check TaskSystem Templates (regardless of whether a tool was found)
-        #    Templates take precedence if the identifier matches both
-        template_definition = task_system_instance.find_template(identifier)
-        if template_definition:
-            # It's a template, execute via TaskSystem
-            target_executor = task_system_instance  # Target the TaskSystem itself
-            is_direct_tool = False  # Override: It's a template, not a direct tool call
-            logging.info(f"Identifier '{identifier}' maps to a TaskSystem Template (overrides any tool match)")
-        elif is_direct_tool:
-            # It was found as a tool and is NOT a template
-            logging.info(f"Identifier '{identifier}' confirmed as Direct Tool (not a template)")
-            # target_executor is already set from the tool check above
-        else:
-            # It wasn't found as a tool AND wasn't found as a template
-            logging.warning(f"Identifier '{identifier}' not found in Handler tools or TaskSystem templates")
-            return format_error_result(create_task_failure(
-                message=f"Task identifier '{identifier}' not found",
-                reason=INPUT_VALIDATION_FAILURE,
-                details={"identifier": identifier}
-            ))
+        # 2. If not found as a Direct Tool, check TaskSystem Templates
+        if not is_direct_tool:
+            template_definition = task_system_instance.find_template(identifier)
+            if template_definition:
+                target_executor = task_system_instance  # Target the TaskSystem itself
+                # is_direct_tool remains False
+                logging.info(f"Identifier '{identifier}' maps to a TaskSystem Template.")
+            else:
+                # 3. Handle "Not Found" - wasn't in direct tools OR templates
+                logging.warning(f"Identifier '{identifier}' not found as Direct Tool or TaskSystem Template.")
+                return format_error_result(create_task_failure(
+                    message=f"Task identifier '{identifier}' not found",
+                    reason=INPUT_VALIDATION_FAILURE,
+                    details={"identifier": identifier}
+                ))
 
         # --- Context Determination ---
         # This section handles automatic context lookup if needed
