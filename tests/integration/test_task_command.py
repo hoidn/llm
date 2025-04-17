@@ -23,7 +23,7 @@ def app_instance():
         # Mock bridge methods
         mock_aider_bridge_instance.execute_automatic_task.return_value = {
             "status": "COMPLETE", 
-            "content": "Automatic task executed successfully",
+            "content": "Mock Aider Auto Result",
             "notes": {"files_modified": ["file1.py"]}
         }
         mock_aider_bridge_instance.start_interactive_session.return_value = {
@@ -36,18 +36,8 @@ def app_instance():
         mock_handler_instance.direct_tool_executors = {}
         mock_handler_instance.registerDirectTool = lambda name, func: mock_handler_instance.direct_tool_executors.update({name: func})
         
-        # Mock task system methods
-        mock_task_system_instance.find_template.return_value = {
-            "name": "aider:automatic",
-            "type": "aider",
-            "subtype": "automatic",
-            "description": "Execute Aider in automatic mode",
-            "parameters": {
-                "prompt": {"type": "string", "description": "Task description", "required": True},
-                "file_context": {"type": "array", "description": "Files to include", "required": False}
-            },
-            "context_management": {"fresh_context": "enabled"}
-        }
+        # Mock task system methods - Set find_template to return None BY DEFAULT
+        mock_task_system_instance.find_template = MagicMock(return_value=None)
         mock_task_system_instance.execute_subtask_directly.return_value = {
             "status": "COMPLETE",
             "content": "Subtask executed successfully",
@@ -107,7 +97,7 @@ class TestTaskCommandIntegration:
         # Verify output contains success message
         output = captured_output.getvalue()
         assert "Status: COMPLETE" in output
-        assert "Automatic task executed successfully" in output
+        assert "Mock Aider Auto Result" in output
         
         # Verify the correct method was called with correct parameters
         app_instance.aider_bridge.execute_automatic_task.assert_called_once_with(
@@ -123,6 +113,7 @@ class TestTaskCommandIntegration:
             "file_paths": ["/template/path.py"],  # Template path exists
             "context_management": {"fresh_context": "enabled"}  # Auto enabled
         }
+        # Override the default None return value for this specific test
         app_instance.task_system.find_template = MagicMock(return_value=mock_template)
         app_instance.memory_system.get_relevant_context_for.reset_mock()
         app_instance.aider_bridge.execute_automatic_task.reset_mock()
@@ -153,6 +144,7 @@ class TestTaskCommandIntegration:
             "file_paths": ["/template/path.py"],  # Template explicit path
             "context_management": {"fresh_context": "enabled"}  # Auto enabled
         }
+        # Override the default None return value for this specific test
         app_instance.task_system.find_template = MagicMock(return_value=mock_template)
         app_instance.memory_system.get_relevant_context_for.reset_mock()
         app_instance.aider_bridge.execute_automatic_task.reset_mock()
@@ -182,6 +174,7 @@ class TestTaskCommandIntegration:
             "parameters": {"prompt": {}, "file_context": {}},
             "context_management": {"fresh_context": "enabled"}  # Auto enabled
         }
+        # Override the default None return value for this specific test
         app_instance.task_system.find_template = MagicMock(return_value=mock_template)
         app_instance.memory_system.get_relevant_context_for.reset_mock()
         app_instance.aider_bridge.execute_automatic_task.reset_mock()
@@ -218,6 +211,7 @@ class TestTaskCommandIntegration:
             "parameters": {"prompt": {}, "file_context": {}},
             "context_management": {"fresh_context": "disabled"}  # Auto disabled
         }
+        # Override the default None return value for this specific test
         app_instance.task_system.find_template = MagicMock(return_value=mock_template)
         app_instance.memory_system.get_relevant_context_for.reset_mock()
         app_instance.aider_bridge.execute_automatic_task.reset_mock()
@@ -247,6 +241,7 @@ class TestTaskCommandIntegration:
             "parameters": {"prompt": {}, "file_context": {}},
             "context_management": {"fresh_context": "enabled"}  # Auto enabled
         }
+        # Override the default None return value for this specific test
         app_instance.task_system.find_template = MagicMock(return_value=mock_template)
         app_instance.memory_system.get_relevant_context_for.reset_mock()
         app_instance.aider_bridge.execute_automatic_task.reset_mock()
@@ -325,6 +320,7 @@ class TestTaskCommandIntegration:
                 }
             }
         }
+        # Override the default None return value for this specific test
         app_instance.task_system.find_template = MagicMock(return_value=mock_template)
         
         # Capture stdout
