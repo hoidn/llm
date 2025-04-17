@@ -15,7 +15,7 @@ from .mock_handler import MockHandler
 from memory.context_generation import ContextGenerationInput
 from .ast_nodes import SubtaskRequest # Adjust import path if needed
 from .template_utils import Environment
-from system.errors import TaskError, create_task_failure, format_error_result, INPUT_VALIDATION_FAILURE
+from system.errors import TaskError, create_task_failure, format_error_result, INPUT_VALIDATION_FAILURE, UNEXPECTED_ERROR
 from typing import Dict, Any # Add TaskResult if not already imported
 
 # Define TaskResult type hint (or import if defined elsewhere)
