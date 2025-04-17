@@ -1,44 +1,61 @@
 import pytest
-import io
-import sys
-import json
+from unittest.mock import patch, MagicMock, call # <-- Ensure 'call' is imported
 import logging
-from unittest.mock import MagicMock, patch, ANY
-
-# Import the Repl class (adjust path as needed)
+import json # <-- Ensure 'json' is imported
+# Import Repl class directly
 from src.repl.repl import Repl
 
-# Mock Application structure needed by Repl
+# --- MockApplication Class (Keep as is) ---
 class MockApplication:
     def __init__(self):
-        self.passthrough_handler = MagicMock()
-        self.task_system = MagicMock()
-        # Mock necessary methods/attributes used in _cmd_task
+        self.task_system = MagicMock(spec=['find_template']) # Mock only needed methods
+        self.passthrough_handler = MagicMock(spec=['registered_tools', 'direct_tool_executors'])
+        # Initialize mocked attributes to avoid AttributeErrors in tests
+        self.task_system.find_template.return_value = None
+        self.passthrough_handler.registered_tools = {}
         self.passthrough_handler.direct_tool_executors = {}
-        self.passthrough_handler.registered_tools = {} # For help fallback
-        self.task_system.find_template = MagicMock(return_value=None)
+        self.aider_bridge = None # Add if needed by Repl init or methods
+        self.indexed_repositories = ["dummy_repo"] # Assume repo indexed for most tests
+
+    def index_repository(self, repo_path):
+        # Mock indexing behavior if needed by tests
+        logging.info(f"Mock indexing repository: {repo_path}")
+        self.indexed_repositories.append(repo_path)
+        return True
+
+    def reset_conversation(self):
+        # Mock reset behavior if needed
+        logging.info("Mock resetting conversation")
+        pass
+
+    def handle_query(self, query):
+         # Mock query handling if needed
+         logging.info(f"Mock handling query: {query}")
+         return {"status": "COMPLETE", "content": f"Mock response to {query}", "notes": {}}
 
 @pytest.fixture
 def mock_app():
+    """Provides a mocked Application instance."""
     return MockApplication()
+# --- End MockApplication ---
 
+
+# --- CORRECTED FIXTURE ---
 @pytest.fixture
 def repl_instance(mock_app):
-    """Creates a Repl instance with mocked dependencies."""
-    patch_target = 'src.dispatcher.execute_programmatic_task' # Correct source path
-    logging.debug(f"Applying patch to: {patch_target}")
-    with patch(patch_target, new_callable=MagicMock) as mock_dispatcher:
-        logging.debug("PATCH ACTIVE: Before importing Repl.")
-        # Import Repl AFTER the patch is active
-        from src.repl.repl import Repl
-        logging.debug("PATCH ACTIVE: Imported Repl.")
-        repl = Repl(mock_app)
-        # Store the mock on the instance for easy access in tests
+    """Creates a Repl instance and mocks its dispatcher_func."""
+    # Create the real Repl instance first
+    repl = Repl(mock_app)
+    # Create a mock function to replace the dispatcher call target
+    mock_dispatcher = MagicMock(name="mock_execute_programmatic_task")
+    # Patch the dispatcher_func *on the instance* using unittest.mock.patch.object
+    # This ensures the specific instance uses the mock, avoiding import timing issues.
+    with patch.object(repl, 'dispatcher_func', mock_dispatcher):
+        logging.debug(f"Patched repl.dispatcher_func on instance {id(repl)} with mock {id(mock_dispatcher)}")
+        # Store mock for tests to access easily IF NEEDED. Tests should ideally use the mock directly via the patcher if possible.
         repl.mock_dispatcher_for_test = mock_dispatcher
-        logging.debug(f"REPL INSTANCE: dispatcher_func ID is {id(repl.dispatcher_func)}, Type is {type(repl.dispatcher_func)}")
-        logging.debug(f"MOCK DISPATCHER: ID is {id(mock_dispatcher)}, Type is {type(mock_dispatcher)}")
-        # DO NOT assert repl.dispatcher_func is mock_dispatcher here
         yield repl # Use yield for fixtures
+# --- END CORRECTED FIXTURE ---
 
 # --- CORRECTED TEST FUNCTIONS ---
 

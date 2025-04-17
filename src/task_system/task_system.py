@@ -374,7 +374,7 @@ class TaskSystem(TemplateLookupInterface):
                       and simulates internal execute_task call for test tracking.
         """
         identifier = f"{request.type}:{request.subtype}" if request.subtype else request.type
-        logging.debug(f"TaskSystem Stub: execute_subtask_directly called with identifier: {identifier}") # Changed Level
+        logging.debug(f"TaskSystem Stub: execute_subtask_directly called with identifier: {identifier}")
 
         try:
             # 1. Template Lookup
@@ -426,19 +426,18 @@ class TaskSystem(TemplateLookupInterface):
                          logging.error(error_message)
                          context_source = "template_command_error"
                  elif source_type in ["description", "context_description"]:
-                     # Mark as deferred if fresh_context is enabled, otherwise none
+                     # Mark as deferred if fresh_context is enabled, otherwise none (Corrected Logic)
                      if template.get('context_management', {}).get('fresh_context') != "disabled" and self.memory_system:
                          context_source = "deferred_lookup" # Set correctly
                          logging.debug("TaskSystem Stub: Marking context_source as deferred_lookup (Phase 1).")
                      else:
                          context_source = "none" # Stays none if fresh_context disabled
-                     # No paths determined here in Phase 1
-                     determined_file_paths = []
+                     determined_file_paths = [] # No paths determined here in Phase 1
                  else:
                       logging.debug(f"TaskSystem Stub: Unknown or unhandled file_paths_source type '{source_type}' or missing value.")
                       context_source = "none" # Fallback
 
-            # Priority 4: Check if automatic lookup is applicable (only if no explicit paths found yet)
+            # Priority 4: Check if automatic lookup is applicable (only if no explicit paths found yet) (Corrected Logic)
             elif template.get('context_management', {}).get('fresh_context') != "disabled" and self.memory_system:
                  context_source = "deferred_lookup" # Set correctly
                  logging.debug("TaskSystem Stub: Marking context_source as deferred_lookup (Phase 1 - no explicit paths).")
@@ -459,7 +458,7 @@ class TaskSystem(TemplateLookupInterface):
             result_content = f"Executed template '{template.get('name', identifier)}' with inputs."
             result_status = "COMPLETE"
 
-            # ---> ADD SIMULATED CALL BLOCK (Corrected) <---
+            # ---> ADD SIMULATED CALL BLOCK (Corrected with handler_config) <---
             logging.debug("TaskSystem Stub: Attempting simulated call to self.execute_task...")
             try:
                 handler_for_exec = getattr(getattr(self, 'memory_system', None), 'handler', MagicMock())
@@ -475,7 +474,7 @@ class TaskSystem(TemplateLookupInterface):
                     inputs=request.inputs or {},
                     memory_system=self.memory_system,
                     handler=handler_for_exec,
-                    handler_config=simulated_handler_config # Pass the determined context
+                    handler_config=simulated_handler_config # <-- Pass the config here
                 )
                 logging.debug("TaskSystem Stub: Simulated call to self.execute_task completed.")
             except AttributeError as ae:

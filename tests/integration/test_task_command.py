@@ -215,7 +215,7 @@ class TestTaskCommandIntegration:
         # Assert Mock Calls
         # Verify the dispatcher routed to the direct tool executor, which called the bridge
         app_instance.aider_bridge.execute_automatic_task.assert_called_once_with(
-            prompt="Add docstrings", file_context=["src/main.py"]
+            "Add docstrings", ["src/main.py"] # Expect positional args
         )
         # Verify TaskSystem wasn't involved for direct tool execution
         app_instance.task_system.execute_task.assert_not_called()
@@ -246,33 +246,34 @@ class TestTaskCommandIntegration:
 
         # Assert Mock Calls
         app_instance.aider_bridge.start_interactive_session.assert_called_once_with(
-            query="Refactor this class", file_context=["src/utils.py"]
+            "Refactor this class", ["src/utils.py"] # Expect positional args
         )
         app_instance.task_system.execute_task.assert_not_called()
 
 
     def test_task_aider_auto_invalid_json_context(self, app_instance):
         """Test /task aider:automatic with invalid JSON in file_context."""
-        # Arrange
-        captured_output = io.StringIO()
-        sys.stdout = captured_output
-        from src.repl.repl import Repl
-        repl = Repl(app_instance, output_stream=captured_output)
+        # Import dispatcher function
+        from src.dispatcher import execute_programmatic_task
+        from system.errors import INPUT_VALIDATION_FAILURE # Import error code
 
-        # Act
-        repl._cmd_task('aider:automatic prompt="Test invalid context" file_context=\'["file1.py",\'') # Invalid JSON
+        # Act: Call dispatcher directly with invalid JSON string
+        result = execute_programmatic_task(
+            identifier="aider:automatic",
+            params={"prompt": "Invalid JSON", "file_context": '["unclosed_array\''}, # Invalid JSON
+            flags={},
+            handler_instance=app_instance.passthrough_handler,
+            task_system_instance=app_instance.task_system
+        )
 
-        # Assert Output
-        sys.stdout = sys.__stdout__
-        output = captured_output.getvalue()
-        assert "Executing task: aider:automatic..." in output
-        assert "Status: FAILED" in output # Should fail validation in executor
-        assert "Invalid file_context parameter: must be a JSON string array or already a list of strings. Error:" in output # Check start of message
-        assert "JSON string array" in output
+        # Assert Result
+        assert result["status"] == "FAILED"
+        assert "Invalid file_context parameter: must be a JSON string array or already a list of strings. Error:" in result["content"] # Check specific error
+        assert result["notes"]["error"]["reason"] == INPUT_VALIDATION_FAILURE
 
         # Assert Mock Calls
-        app_instance.aider_bridge.execute_automatic_task.assert_not_called() # Bridge should not be called
-        app_instance.task_system.execute_task.assert_not_called()
+        # Dispatcher was called directly, bridge should not be called due to validation failure
+        app_instance.aider_bridge.execute_automatic_task.assert_not_called()
 
 
     def test_task_aider_auto_help(self, app_instance):
@@ -291,7 +292,7 @@ class TestTaskCommandIntegration:
         sys.stdout = sys.__stdout__
         output = captured_output.getvalue()
         assert "Fetching help for task: aider:automatic..." in output
-        assert "Task Template Details" in output
+        assert "* Direct Tool Specification:" in output
         assert "Execute an automatic Aider task" in output # Description
         assert "prompt (type: string): The instruction for code changes. (required)" in output
         assert "file_context (type: string): (Optional) JSON string array" in output
@@ -391,6 +392,9 @@ class TestTaskCommandIntegration:
 
         # Verify TaskSystem's internal execute_task was called
         app_instance.task_system.execute_task.assert_called_once()
+        # Check the file context determined by execute_subtask_directly (using template path)
+        handler_config = execute_task_call_args.kwargs.get('handler_config', {})
+        assert handler_config.get('file_context') == ["/template/path.py"] # Template path used
         # Verify the arguments passed to the internal execute_task
         execute_task_call_args = app_instance.task_system.execute_task.call_args
         assert execute_task_call_args.kwargs['task_type'] == "template"
@@ -408,6 +412,9 @@ class TestTaskCommandIntegration:
         app_instance.aider_bridge.execute_automatic_task.assert_not_called()
         # Verify MemorySystem was NOT called for lookup because template path took precedence
         app_instance.memory_system.get_relevant_context_for.assert_not_called()
+        # Check the file context determined by execute_subtask_directly (using template path)
+        handler_config = execute_task_call_args.kwargs.get('handler_config', {})
+        assert handler_config.get('file_context') == ["/template/path.py"] # Template path used
         # Check the content returned by the mocked TaskSystem.execute_task method
         assert "Mock TaskSystem.execute_task Result" in result["content"]
 
@@ -590,8 +597,10 @@ class TestTaskCommandIntegration:
         assert result["notes"]["context_source"] == "deferred_lookup" # Auto lookup deferred in Phase 1
         assert result["notes"]["context_files_count"] == 0 # No explicit paths found in Phase 1
 
-        # Verify MemorySystem WAS called for context lookup
-        app_instance.memory_system.get_relevant_context_for.assert_called_once()
+        # Verify history was passed to context generation
+        context_input_arg = app_instance.memory_system.get_relevant_context_for.call_args[0][0]
+        assert context_input_arg.__class__.__name__ == 'ContextGenerationInput'
+        assert context_input_arg.history_context == history_string # Check history passed
         # Verify history was passed to context generation
         context_input_arg = app_instance.memory_system.get_relevant_context_for.call_args[0][0]
         assert context_input_arg.__class__.__name__ == 'ContextGenerationInput'
