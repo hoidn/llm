@@ -384,10 +384,6 @@ class TestTaskCommandIntegration:
         app_instance.memory_system.get_relevant_context_for.reset_mock()
         app_instance.aider_bridge.execute_automatic_task.reset_mock()
         
-        # Mock context result
-        mock_context_result = AssociativeMatchResult(
-            context="Found relevant files with history",
-            matches=[("/history/context/path.py", "History-aware file", 0.9)]
         # ---> START ADDED CODE <---
         app_instance.task_system.find_template.reset_mock(return_value=None)
         app_instance.task_system.execute_task.reset_mock(return_value={
