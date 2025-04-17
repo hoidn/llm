@@ -246,10 +246,23 @@ class TestTaskCommandIntegration:
 
         # Assert
         assert result["status"] == "COMPLETE"
-        app_instance.memory_system.get_relevant_context_for.assert_not_called()  # Auto lookup skipped
-        app_instance.aider_bridge.execute_automatic_task.assert_called_once_with(
-            "No context expected test", []  # No context files passed
-        )
+        # Assert TaskSystem path was taken
+        app_instance.task_system.execute_subtask_directly.assert_called_once()
+        # Verify AiderBridge was NOT called directly by the dispatcher
+        app_instance.aider_bridge.execute_automatic_task.assert_not_called()
+        # Verify MemorySystem was NOT called for context lookup
+        app_instance.memory_system.get_relevant_context_for.assert_not_called()
+
+        # Verify the SubtaskRequest passed to execute_subtask_directly had empty file_paths
+        call_args = app_instance.task_system.execute_subtask_directly.call_args[0][0]
+        assert isinstance(call_args, SubtaskRequest)
+        assert call_args.file_paths == [] # No context files determined
+
+        # Verify the final result content (comes from the mocked TaskSystem method)
+        assert "Subtask executed successfully" in result["content"]
+        # Optionally check notes added by the dispatcher/TaskSystem about context source
+        assert result["notes"]["context_source"] == "none"
+        assert result["notes"]["context_files_count"] == 0
     
     def test_task_use_history_flag(self, app_instance):
         """Test that --use-history flag passes history to context generation."""
