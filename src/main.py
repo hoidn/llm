@@ -25,8 +25,7 @@ class Application:
         from handler.passthrough_handler import PassthroughHandler
         from task_system.templates.associative_matching import register_template as register_assoc_template
         from task_system.templates.aider_templates import register_aider_templates
-        # Import the executor functions needed for direct tool registration
-        from executors.aider_executors import execute_aider_automatic, execute_aider_interactive
+        # Import the executor functions needed for direct tool registration - moved to top level
 
         # Instantiate components
         self.task_system = TaskSystem()
