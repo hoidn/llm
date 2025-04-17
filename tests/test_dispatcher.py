@@ -8,7 +8,7 @@ from src.dispatcher import execute_programmatic_task
 from src.handler.base_handler import BaseHandler
 from src.task_system.task_system import TaskSystem
 from src.task_system.ast_nodes import SubtaskRequest
-from src.system.errors import TaskError, create_task_failure, format_error_result, UNEXPECTED_ERROR, INPUT_VALIDATION_FAILURE
+from src.system.errors import TaskError, create_task_failure, format_error_result, UNEXPECTED_ERROR, INPUT_VALIDATION_FAILURE, TASK_FAILURE # Import TASK_FAILURE
 
 # Define TaskResult type hint for clarity
 TaskResult = Dict[str, Any]
