@@ -106,3 +106,38 @@ class FunctionCallNode:
             if arg.is_named() and arg.name == name:
                 return arg
         return None
+
+
+class SubtaskRequest:
+    """
+    Represents a request to execute a subtask programmatically.
+
+    Attributes:
+        type: The primary type of the task (e.g., "atomic", "composite").
+        subtype: The specific subtype of the task (e.g., "code_generation", "file_edit").
+        inputs: A dictionary of input parameters for the task.
+        file_paths: Optional list of explicit file paths to use as context.
+    """
+    def __init__(self,
+                 type: str,
+                 subtype: Optional[str],
+                 inputs: Optional[Dict[str, Any]] = None,
+                 file_paths: Optional[List[str]] = None):
+        """
+        Initialize a SubtaskRequest.
+
+        Args:
+            type: The task type.
+            subtype: The task subtype.
+            inputs: Input parameters dictionary.
+            file_paths: Explicit file paths for context.
+        """
+        self.type = type
+        self.subtype = subtype
+        self.inputs = inputs or {}
+        self.file_paths = file_paths or []
+
+    def __repr__(self) -> str:
+        """Return a string representation of the SubtaskRequest."""
+        return (f"SubtaskRequest(type='{self.type}', subtype='{self.subtype}', "
+                f"inputs={repr(self.inputs)}, file_paths={repr(self.file_paths)})")

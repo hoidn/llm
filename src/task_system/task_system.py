@@ -13,6 +13,13 @@ from evaluator.interfaces import EvaluatorInterface, TemplateLookupInterface
 from .template_processor import TemplateProcessor
 from .mock_handler import MockHandler
 from memory.context_generation import ContextGenerationInput
+from .ast_nodes import SubtaskRequest # Adjust import path if needed
+from .template_utils import Environment
+from system.errors import TaskError, create_task_failure, format_error_result, INPUT_VALIDATION_FAILURE
+from typing import Dict, Any # Add TaskResult if not already imported
+
+# Define TaskResult type hint (or import if defined elsewhere)
+TaskResult = Dict[str, Any]
 
 class TaskSystem(TemplateLookupInterface):
     """Task System for task execution and management.
@@ -138,6 +145,107 @@ class TaskSystem(TemplateLookupInterface):
                         "system_prompt": "You are a helpful assistant that generates greetings."
                     }
                 }
+
+    def execute_subtask_directly(self, request: SubtaskRequest) -> TaskResult:
+        """
+        Executes a Task System template workflow directly from a SubtaskRequest.
+
+        Args:
+            request: The SubtaskRequest defining the task to run.
+
+        Returns:
+            The final TaskResult of the workflow.
+        """
+        identifier = f"{request.type}:{request.subtype}"
+        logging.info(f"Executing subtask directly: {identifier}")
+        try:
+            # 1. Find the target template
+            template = self.find_template(identifier)
+            if not template:
+                raise create_task_failure(
+                    message=f"Template not found for identifier: '{identifier}'",
+                    reason=INPUT_VALIDATION_FAILURE,
+                    details={"identifier": identifier}
+                )
+            logging.debug(f"Found template: {template.get('name')}")
+
+            # 2. Create a new top-level Environment for this execution
+            #    (Ensures isolation from any potential parent REPL environment)
+            #    Extend from a base environment if necessary system bindings exist
+            base_env = Environment({}) # Add global bindings if needed, e.g., {'TaskLibrary': self.templates}
+            task_env = base_env.extend(request.inputs or {})
+            logging.debug("Created new top-level environment for direct execution.")
+
+            # 3. Context Handling (Phase 1 Scope - Explicit Only)
+            determined_file_context: Optional[List[str]] = None
+            explicit_paths_used = False
+            if request.file_paths:
+                # Priority 1: Use paths directly from the request (user provided file_context=...)
+                determined_file_context = request.file_paths
+                explicit_paths_used = True
+                logging.debug(f"Using explicit file paths from request: {len(determined_file_context)} files")
+            elif template.get('file_paths'):
+                 # Priority 2: Use paths defined in the template itself
+                 determined_file_context = template['file_paths']
+                 explicit_paths_used = True
+                 logging.debug(f"Using explicit file paths from template: {len(determined_file_context)} files")
+            # elif template.get('file_paths_source'):
+                 # TODO Phase 3: Handle template file_paths_source (literal, command)
+                 # For Phase 1, we ignore this and fresh_context: enabled
+
+            # Note: Automatic context lookup (fresh_context: enabled) is NOT triggered in Phase 1.
+
+            # 4. Initiate template execution via the Evaluator
+            self._ensure_evaluator() # Make sure evaluator is initialized
+            logging.debug("Calling evaluator to execute template body...")
+
+            # Prepare inputs/context for the evaluator call
+            # The evaluator will handle the actual execution steps.
+            # We need to simulate the entry point similar to how a composite task step would be evaluated.
+            # This might involve calling self.evaluator.eval() on the template's body node
+            # or a dedicated execution method if available.
+            # For now, let's assume a placeholder call - this needs refinement based on Evaluator's API.
+
+            # Placeholder: Replace with actual call to Evaluator execution logic
+            # It needs the template body, the created task_env, and the determined context
+            # Example (adjust based on actual Evaluator interface):
+            # result = self.evaluator.evaluate(template['body'], task_env, initial_context=determined_file_context)
+
+            # --- Mock Execution for Phase 1 ---
+            # Since the evaluator call isn't fully defined here, let's return a mock success
+            # In a real implementation, this would call the evaluator.
+            logging.warning("Phase 1: Skipping actual Evaluator call. Returning mock success.")
+            mock_content = f"Successfully initiated execution for {identifier}."
+            if explicit_paths_used and determined_file_context is not None:
+                mock_content += f" Using {len(determined_file_context)} explicit files."
+            else:
+                 mock_content += " No explicit file context provided or found in template."
+
+            result: TaskResult = {
+                "status": "COMPLETE",
+                "content": mock_content,
+                "notes": {
+                    "template_used": template.get('name'),
+                    "explicit_paths_used": explicit_paths_used,
+                    "context_files_count": len(determined_file_context) if determined_file_context else 0
+                }
+            }
+            # --- End Mock Execution ---
+
+            logging.info(f"Direct execution finished for '{identifier}'. Status: {result.get('status')}")
+            return result
+
+        except TaskError as e:
+            logging.error(f"TaskError during direct execution of '{identifier}': {e.message}", exc_info=False)
+            return format_error_result(e)
+        except Exception as e:
+            logging.exception(f"Unexpected error during direct execution of '{identifier}':")
+            error = create_task_failure(
+                message=f"An unexpected error occurred during direct execution: {str(e)}",
+                reason=UNEXPECTED_ERROR,
+                details={"exception_type": type(e).__name__}
+            )
+            return format_error_result(error)
             elif call.template_name == "format_date":
                 # Extract arguments
                 date = "2023-01-01"
