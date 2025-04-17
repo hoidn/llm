@@ -173,6 +173,7 @@ sequenceDiagram
 - Evaluator executes the task using Handler provided by Task System
 - Task System handles template matching and selection
 - Evaluator manages execution context and variable bindings
+- For composite tasks like `director_evaluator_loop`, the Evaluator manages the internal control flow, iteratively evaluating the defined Director, Script (optional), and Evaluator sub-steps by recursively calling its own `eval` method. Script execution within the loop is delegated via evaluating a call to a Handler Direct Tool.
     
 ### Data Flow
     

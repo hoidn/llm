@@ -201,6 +201,8 @@ Use **Direct Tools** when:
 - No complex reasoning is required
 - Response format is simple and structured
 - Resource usage is predictable
+- System operations like file I/O or script execution are needed
+- Example: system:run_script - Executes a provided shell command safely, capturing its stdout, stderr, and exit code. Used internally by patterns like the Director-Evaluator loop.
 
 Use **Subtask Tools** when:
 - Complex reasoning or creativity is required

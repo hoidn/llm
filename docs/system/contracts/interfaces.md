@@ -12,7 +12,7 @@ The Compiler component provides AST generation and transformation services.
 ### 1.2 Evaluator Integration [Contract:Integration:EvaluatorTask:1.0]
 Defined in [Interface:Evaluator:1.0]
 
-The Evaluator component handles task execution, template variable substitution, and error recovery.
+The Evaluator component handles task execution step-by-step, template variable substitution, function call resolution, manages control flow for composite task types like director_evaluator_loop, and manages error recovery.
 
 ### 1.3 Task System Integration [Contract:Integration:TaskSystem:1.0]
 Defined in [Interface:TaskSystem:1.0]

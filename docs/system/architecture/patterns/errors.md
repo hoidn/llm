@@ -280,6 +280,10 @@ Error handling involves:
 - Surfacing errors through standard error flow
 - Providing detailed diagnostics
 
+#### Error Handling within Composite Tasks
+
+When an error occurs within a sub-step (Director, Script execution, or Evaluator) of a composite task like director_evaluator_loop, the loop terminates immediately. The final TaskResult returned by the Evaluator for the entire loop node will have status: "FAILED". The notes.error field in this final result will contain a TaskError object, typically with reason: SUBTASK_FAILURE, indicating the failure occurred within a sub-step. The details of this top-level error object will include the original TaskResult or TaskError from the specific step that failed. Additionally, the notes.iteration_history field will contain the recorded results for all iterations up to and including the one where the failure occurred.
+
 - **Associative Matching Failures:** If an associative matching task encounters an error—such as insufficient context or partial output—it will automatically trigger a retry. These errors will include any partial output and, if available, an optional success score (recorded in the task's `notes` field) to support future adaptive behavior.
 
 #### Error Recovery Flow for Associative Matching

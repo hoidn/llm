@@ -290,9 +290,11 @@ In both templates:
       <xs:element name="description" type="xs:string"/>
       <xs:element name="max_iterations" type="xs:integer" minOccurs="0"/>
       <xs:element ref="context_management"/>
+      <!-- Note: The <director>, <evaluator>, and optional <script_execution> elements each contain a standard task definition (e.g., an atomic <task> or a <call> node) that is recursively evaluated by the Evaluator component during the corresponding step of the loop. -->
       <xs:element name="director" type="TaskType"/>
       <xs:element name="evaluator" type="TaskType"/>
       <xs:element name="script_execution" minOccurs="0">
+        <!-- Optional script execution step. Contains a task definition (e.g., <call task="system:run_script">) that is evaluated during the loop. The nested <inputs> define parameters passed *to that inner task definition*. -->
         <xs:complexType>
           <xs:sequence>
             <xs:element name="command" type="xs:string"/>

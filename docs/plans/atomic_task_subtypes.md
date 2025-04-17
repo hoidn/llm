@@ -1,3 +1,7 @@
+**Status: Superseded**
+
+**This plan proposed implementing Director/Evaluator functionality as subtypes of atomic tasks. The final architecture implemented this pattern using a distinct composite task type `director_evaluator_loop`, which is executed by the `Evaluator` component. Please refer to the canonical [Director-Evaluator Pattern documentation](../system/architecture/patterns/director-evaluator.md) for the current design.**
+
 1. Type Hierarchy Recommendation
 
 mermaid

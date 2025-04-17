@@ -55,6 +55,9 @@ A: Function templates explicitly declare their parameters and create isolated en
     
 **Q: How does the Evaluator handle resource constraints?**  
 A: The Evaluator delegates resource tracking to the Handler but makes decisions about continuation and task decomposition based on resource errors.
+
+**Q: What executes composite tasks like director_evaluator_loop?**
+A: The Evaluator manages the control flow for these loops. It iteratively calls `eval` on the defined sub-steps (Director, Script, Evaluator) within the loop structure, manages the iteration state and data flow between steps based on the loop's definition, and returns the final result.
     
 ## Compiler
     

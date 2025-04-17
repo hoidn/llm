@@ -4,13 +4,15 @@
 
 ## Overview
 
-The Director-Evaluator pattern is a specialized variant of the unified task‐subtask execution model, implemented in two ways:
+The Director-Evaluator pattern is a specialized task execution model for iterative refinement, primarily implemented as a composite task type `director_evaluator_loop` that is directly executed by the Evaluator component. This pattern enables structured iteration with feedback between steps.
 
-1. **Dynamic Variant**: A parent task (the **Director**) produces an initial output that may require evaluation. When the Director's output returns with a `CONTINUATION` status and an `evaluation_request` object in its `notes`, the evaluation subtask is spawned dynamically.
+The pattern has two implementation variants:
 
-2. **Static Variant**: A predefined task structure of type `director_evaluator_loop` that explicitly defines the Director, Evaluator, and optional script execution steps with clear iteration control.
+1. **Static Variant (Primary Implementation)**: A predefined task structure of type `director_evaluator_loop` that explicitly defines the Director, Evaluator, and optional script execution steps with clear iteration control. This is the canonical, implemented pattern executed directly by the Evaluator component.
 
-**Note:** The `evaluation_request` object must include:
+2. **Dynamic Variant (Historical Context)**: A parent task (the **Director**) produces an initial output that may require evaluation. When the Director's output returns with a `CONTINUATION` status and an `evaluation_request` object in its `notes`, the evaluation subtask is spawned dynamically.
+
+**Note:** For the dynamic variant, the `evaluation_request` object must include:
  - `type`: a string indicating the evaluation type,
  - `criteria`: a free-form string providing descriptive criteria used for dynamic evaluation template selection via associative matching,
  - `target`: a string representing the target (for example, the bash script command to run or the evaluation focus).
@@ -192,7 +194,7 @@ When the context_management block is omitted, the operator-specific defaults app
 
 ### Script Execution Integration
 
-Script execution is implemented as a tool call handled by the Handler:
+Script execution within the Director-Evaluator loop is implemented through the Evaluator's recursive evaluation mechanism:
 
 ```xml
 <script_execution>
@@ -204,12 +206,35 @@ Script execution is implemented as a tool call handled by the Handler:
 </script_execution>
 ```
 
-When a script execution step is included:
-- The script receives the Director's output as input
-- Script output (stdout, stderr, exit code) is captured
-- Results are passed to the Evaluator for processing
-- The Evaluator considers both the original output and script results
-- As a tool call, script execution does not use the continuation mechanism
+The execution flow works as follows:
+
+1. The `<script_execution>` element in the loop's XML definition contains a task node (typically a `<call task="system:run_script">` or similar)
+2. During loop execution, the Evaluator encounters this element and evaluates it by recursively calling its own `eval` method on the contained task node
+3. This evaluation triggers the standard mechanism for tool calls, which leads to the Handler executing the registered Direct Tool (e.g., `system:run_script`)
+4. The tool executes the script and captures stdout, stderr, and exit code
+5. These results are returned from the `eval` call back to the loop logic within the Evaluator
+6. The Evaluator makes these results available in the Environment for the subsequent Evaluator step of the same iteration
+
+This approach maintains a clean separation of concerns:
+- The Evaluator manages the control flow and environment updates
+- The Handler executes the actual script via its Direct Tool mechanism
+- Script execution is synchronous within the loop iteration
+- Results are structured and consistently formatted for the Evaluator step
+
+### Data Flow Between Steps
+
+Data flow between the Director, Script, and Evaluator steps within a single iteration, and the passing of feedback from the Evaluator step to the next iteration's Director step, is managed via the Environment object.
+
+The Evaluator extends the environment at each stage of the loop:
+
+1. **Initial Environment**: Contains the original inputs to the loop task
+2. **Director Step**: Extends the environment with iteration number and any feedback from previous iterations
+3. **After Director**: Extends the environment with `director_result` containing the Director's output
+4. **After Script Execution**: Extends the environment with `script_stdout`, `script_stderr`, and `script_exit_code`
+5. **Evaluator Step**: Receives the complete environment with all previous outputs
+6. **Next Iteration**: The Director receives feedback from the Evaluator via `evaluation_feedback` and `evaluation_success` bindings
+
+This explicit environment extension ensures clean data flow between steps and iterations without relying on global state or side effects.
 
 ## Relationship to Subtask Spawning
 

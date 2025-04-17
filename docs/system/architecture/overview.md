@@ -204,7 +204,7 @@ See [Contract:Integration:CompilerTask:1.0] for integration specification.
 
 ### Evaluator [Component:Evaluator:1.0]
 Execution control component.
-- Controls AST processing and execution
+- Controls AST processing and execution, including managing variable scoping, template substitution, function calls, and the control flow for composite task loops like Director-Evaluator
 - Manages all lexical environments and variable scoping
 - Performs all template variable substitution before Handler invocation
 - Handles different substitution rules for function vs. standard templates

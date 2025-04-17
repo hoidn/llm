@@ -110,6 +110,8 @@ The standardized context flow model remains valid:
    - Define error handling strategy
    - Specify environment inheritance rules
 
+Note that within the specific context of the director_evaluator_loop pattern, script execution is typically handled via an optional <script_execution> element defined in its XML structure. This element usually contains a task definition (e.g., a <call task="system:run_script">) that targets a registered Handler Direct Tool. The Evaluator manages the evaluation of this node during the loop, which in turn triggers the Handler to execute the actual script tool.
+
 ### 5. Memory System Interface Ambiguity
 
 #### Current Issues
