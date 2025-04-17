@@ -56,16 +56,19 @@ def app_instance():
         mock_handler_instance.get_recent_history_as_string = MagicMock(return_value="Mock History String")
 
         # ---> Instantiate REAL TaskSystem <---
-        # Pass the mock evaluator instance to the real TaskSystem constructor
+        # ---> Instantiate REAL TaskSystem <---
         real_task_system = TaskSystem(evaluator=mock_evaluator_instance)
-        # Inject the mock memory system
         real_task_system.memory_system = mock_memory_system_instance
-        # Mock the internal call to execute_task to isolate execute_subtask_directly logic
-        real_task_system.execute_task = MagicMock(return_value={
+
+        # Mock the internal call to execute_task ONCE in the fixture
+        # Set a clear default return value dictionary
+        execute_task_return_value = {
              "status": "COMPLETE",
              "content": "Mock TaskSystem.execute_task Result",
              "notes": {}
-        })
+        }
+        real_task_system.execute_task = MagicMock(return_value=execute_task_return_value)
+
         # Ensure find_template is also mocked on the real instance
         real_task_system.find_template = MagicMock(return_value=None) # Default to None
 
@@ -100,17 +103,21 @@ class TestTaskCommandIntegration:
     
     def test_task_aider_auto_simple(self, app_instance):
         """Test basic aider:automatic task execution."""
-        # ---> START ADDED CODE <---
-        # Reset mocks on the real TaskSystem instance for isolation
-        app_instance.task_system.find_template.reset_mock(return_value=None) # Reset and set default return
-        app_instance.task_system.execute_task.reset_mock(return_value={ # Reset and set default return
-             "status": "COMPLETE",
-             "content": "Mock TaskSystem.execute_task Result",
-             "notes": {}
-        })
-        app_instance.aider_bridge.execute_automatic_task.reset_mock() # Reset other relevant mocks
+        # ---> START MODIFIED RESET CODE <---
+        # Reset call history for mocks on the real TaskSystem instance
+        app_instance.task_system.find_template.reset_mock()
+        app_instance.task_system.find_template.return_value = None # Ensure default
+        app_instance.task_system.execute_task.reset_mock()
+        # DO NOT set return_value here, rely on fixture default
+
+        # Reset other relevant mocks
+        app_instance.aider_bridge.execute_automatic_task.reset_mock()
         app_instance.memory_system.get_relevant_context_for.reset_mock()
-        # ---> END ADDED CODE <---
+        if hasattr(app_instance.passthrough_handler, 'direct_tool_executors'):
+             for tool_mock in app_instance.passthrough_handler.direct_tool_executors.values():
+                 if isinstance(tool_mock, MagicMock):
+                     tool_mock.reset_mock()
+        # ---> END MODIFIED RESET CODE <---
 
         # Capture stdout
         captured_output = io.StringIO()
@@ -138,19 +145,24 @@ class TestTaskCommandIntegration:
     
     def test_task_context_precedence_explicit_wins(self, app_instance):
         """Test that explicit file_context takes precedence over template and auto context."""
+        # ---> START MODIFIED RESET CODE <---
+        # Reset call history for mocks on the real TaskSystem instance
+        app_instance.task_system.find_template.reset_mock()
+        app_instance.task_system.find_template.return_value = None # Ensure default
+        app_instance.task_system.execute_task.reset_mock()
+        # DO NOT set return_value here, rely on fixture default
+
+        # Reset other relevant mocks
+        app_instance.aider_bridge.execute_automatic_task.reset_mock()
+        app_instance.memory_system.get_relevant_context_for.reset_mock()
+        if hasattr(app_instance.passthrough_handler, 'direct_tool_executors'):
+             for tool_mock in app_instance.passthrough_handler.direct_tool_executors.values():
+                 if isinstance(tool_mock, MagicMock):
+                     tool_mock.reset_mock()
+        # ---> END MODIFIED RESET CODE <---
+
         # Arrange: No template override - use fixture's default (find_template returns None)
         # This ensures we test the direct tool path with explicit context
-        # ---> START ADDED CODE <---
-        # Reset mocks on the real TaskSystem instance for isolation
-        app_instance.task_system.find_template.reset_mock(return_value=None)
-        app_instance.task_system.execute_task.reset_mock(return_value={
-             "status": "COMPLETE",
-             "content": "Mock TaskSystem.execute_task Result",
-             "notes": {}
-        })
-        app_instance.memory_system.get_relevant_context_for.reset_mock()
-        app_instance.aider_bridge.execute_automatic_task.reset_mock()
-        # ---> END ADDED CODE <---
         # DELETE THIS LINE: app_instance.task_system.execute_subtask_directly.reset_mock()
 
         # Act: Call with explicit file_context param
@@ -172,23 +184,21 @@ class TestTaskCommandIntegration:
     
     def test_task_context_precedence_template_wins_over_auto(self, app_instance):
         """Test that template file_paths takes precedence over automatic context lookup."""
-        # Arrange: Template has explicit path, auto enabled, no request path
-        mock_template = {
-            "name": "aider:automatic", "type": "aider", "subtype": "automatic",
-            "parameters": {"prompt": {}, "file_context": {}},
-            "file_paths": ["/template/path.py"],  # Template explicit path
-            "context_management": {"fresh_context": "enabled"}  # Auto enabled
-        }
-        # ---> START ADDED CODE <---
-        app_instance.task_system.find_template.reset_mock(return_value=None)
-        app_instance.task_system.execute_task.reset_mock(return_value={
-             "status": "COMPLETE",
-             "content": "Mock TaskSystem.execute_task Result", # Default mock result
-             "notes": {}
-        })
-        app_instance.memory_system.get_relevant_context_for.reset_mock()
+        # ---> START MODIFIED RESET CODE <---
+        # Reset call history for mocks on the real TaskSystem instance
+        app_instance.task_system.find_template.reset_mock()
+        app_instance.task_system.find_template.return_value = None # Ensure default
+        app_instance.task_system.execute_task.reset_mock()
+        # DO NOT set return_value here, rely on fixture default
+
+        # Reset other relevant mocks
         app_instance.aider_bridge.execute_automatic_task.reset_mock()
-        # ---> END ADDED CODE <---
+        app_instance.memory_system.get_relevant_context_for.reset_mock()
+        if hasattr(app_instance.passthrough_handler, 'direct_tool_executors'):
+             for tool_mock in app_instance.passthrough_handler.direct_tool_executors.values():
+                 if isinstance(tool_mock, MagicMock):
+                     tool_mock.reset_mock()
+        # ---> END MODIFIED RESET CODE <---
 
         # Arrange: Template has explicit path, auto enabled, no request path
         mock_template = {
@@ -236,22 +246,21 @@ class TestTaskCommandIntegration:
     
     def test_task_auto_context_used_when_no_explicit(self, app_instance):
         """Test that automatic context lookup is used when no explicit context is provided."""
-        # Arrange: Template has no file_paths, auto enabled
-        mock_template = {
-            "name": "aider:automatic", "type": "aider", "subtype": "automatic",
-            "parameters": {"prompt": {}, "file_context": {}},
-            "context_management": {"fresh_context": "enabled"}  # Auto enabled
-        }
-        # ---> START ADDED CODE <---
-        app_instance.task_system.find_template.reset_mock(return_value=None)
-        app_instance.task_system.execute_task.reset_mock(return_value={
-             "status": "COMPLETE",
-             "content": "Mock TaskSystem.execute_task Result", # Default mock result
-             "notes": {}
-        })
-        app_instance.memory_system.get_relevant_context_for.reset_mock()
+        # ---> START MODIFIED RESET CODE <---
+        # Reset call history for mocks on the real TaskSystem instance
+        app_instance.task_system.find_template.reset_mock()
+        app_instance.task_system.find_template.return_value = None # Ensure default
+        app_instance.task_system.execute_task.reset_mock()
+        # DO NOT set return_value here, rely on fixture default
+
+        # Reset other relevant mocks
         app_instance.aider_bridge.execute_automatic_task.reset_mock()
-        # ---> END ADDED CODE <---
+        app_instance.memory_system.get_relevant_context_for.reset_mock()
+        if hasattr(app_instance.passthrough_handler, 'direct_tool_executors'):
+             for tool_mock in app_instance.passthrough_handler.direct_tool_executors.values():
+                 if isinstance(tool_mock, MagicMock):
+                     tool_mock.reset_mock()
+        # ---> END MODIFIED RESET CODE <---
 
         # Arrange: Template has no file_paths, auto enabled
         mock_template = {
@@ -308,22 +317,21 @@ class TestTaskCommandIntegration:
     
     def test_task_auto_context_skipped_when_disabled(self, app_instance):
         """Test that automatic context lookup is skipped when fresh_context is disabled."""
-        # Arrange: Template has fresh_context: disabled
-        mock_template = {
-            "name": "aider:automatic", "type": "aider", "subtype": "automatic",
-            "parameters": {"prompt": {}, "file_context": {}},
-            "context_management": {"fresh_context": "disabled"}  # Auto disabled
-        }
-        # ---> START ADDED CODE <---
-        app_instance.task_system.find_template.reset_mock(return_value=None)
-        app_instance.task_system.execute_task.reset_mock(return_value={
-             "status": "COMPLETE",
-             "content": "Mock TaskSystem.execute_task Result", # Default mock result
-             "notes": {}
-        })
-        app_instance.memory_system.get_relevant_context_for.reset_mock()
+        # ---> START MODIFIED RESET CODE <---
+        # Reset call history for mocks on the real TaskSystem instance
+        app_instance.task_system.find_template.reset_mock()
+        app_instance.task_system.find_template.return_value = None # Ensure default
+        app_instance.task_system.execute_task.reset_mock()
+        # DO NOT set return_value here, rely on fixture default
+
+        # Reset other relevant mocks
         app_instance.aider_bridge.execute_automatic_task.reset_mock()
-        # ---> END ADDED CODE <---
+        app_instance.memory_system.get_relevant_context_for.reset_mock()
+        if hasattr(app_instance.passthrough_handler, 'direct_tool_executors'):
+             for tool_mock in app_instance.passthrough_handler.direct_tool_executors.values():
+                 if isinstance(tool_mock, MagicMock):
+                     tool_mock.reset_mock()
+        # ---> END MODIFIED RESET CODE <---
 
         # Arrange: Template has fresh_context: disabled
         mock_template = {
@@ -373,27 +381,21 @@ class TestTaskCommandIntegration:
     
     def test_task_use_history_flag(self, app_instance):
         """Test that --use-history flag passes history to context generation."""
-        # Arrange: Template with auto context enabled
-        mock_template = {
-            "name": "aider:automatic", "type": "aider", "subtype": "automatic",
-            "parameters": {"prompt": {}, "file_context": {}},
-            "context_management": {"fresh_context": "enabled"}  # Auto enabled
-        }
-        # Override the default None return value for this specific test
-        app_instance.task_system.find_template = MagicMock(return_value=mock_template)
-        app_instance.memory_system.get_relevant_context_for.reset_mock()
+        # ---> START MODIFIED RESET CODE <---
+        # Reset call history for mocks on the real TaskSystem instance
+        app_instance.task_system.find_template.reset_mock()
+        app_instance.task_system.find_template.return_value = None # Ensure default
+        app_instance.task_system.execute_task.reset_mock()
+        # DO NOT set return_value here, rely on fixture default
+
+        # Reset other relevant mocks
         app_instance.aider_bridge.execute_automatic_task.reset_mock()
-        
-        # ---> START ADDED CODE <---
-        app_instance.task_system.find_template.reset_mock(return_value=None)
-        app_instance.task_system.execute_task.reset_mock(return_value={
-             "status": "COMPLETE",
-             "content": "Mock TaskSystem.execute_task Result", # Default mock result
-             "notes": {}
-        })
         app_instance.memory_system.get_relevant_context_for.reset_mock()
-        app_instance.aider_bridge.execute_automatic_task.reset_mock()
-        # ---> END ADDED CODE <---
+        if hasattr(app_instance.passthrough_handler, 'direct_tool_executors'):
+             for tool_mock in app_instance.passthrough_handler.direct_tool_executors.values():
+                 if isinstance(tool_mock, MagicMock):
+                     tool_mock.reset_mock()
+        # ---> END MODIFIED RESET CODE <---
 
         # Arrange: Template with auto context enabled
         mock_template = {
@@ -471,16 +473,21 @@ class TestTaskCommandIntegration:
     
     def test_task_use_history_with_explicit_context(self, app_instance):
         """Test that --use-history works with explicit file_context (history passed but lookup skipped)."""
-        # ---> START ADDED CODE <---
-        app_instance.task_system.find_template.reset_mock(return_value=None)
-        app_instance.task_system.execute_task.reset_mock(return_value={
-             "status": "COMPLETE",
-             "content": "Mock TaskSystem.execute_task Result",
-             "notes": {}
-        })
-        app_instance.memory_system.get_relevant_context_for.reset_mock()
+        # ---> START MODIFIED RESET CODE <---
+        # Reset call history for mocks on the real TaskSystem instance
+        app_instance.task_system.find_template.reset_mock()
+        app_instance.task_system.find_template.return_value = None # Ensure default
+        app_instance.task_system.execute_task.reset_mock()
+        # DO NOT set return_value here, rely on fixture default
+
+        # Reset other relevant mocks
         app_instance.aider_bridge.execute_automatic_task.reset_mock()
-        # ---> END ADDED CODE <---
+        app_instance.memory_system.get_relevant_context_for.reset_mock()
+        if hasattr(app_instance.passthrough_handler, 'direct_tool_executors'):
+             for tool_mock in app_instance.passthrough_handler.direct_tool_executors.values():
+                 if isinstance(tool_mock, MagicMock):
+                     tool_mock.reset_mock()
+        # ---> END MODIFIED RESET CODE <---
 
         # Arrange (No specific template needed, testing direct tool path)
 
@@ -504,16 +511,21 @@ class TestTaskCommandIntegration:
     
     def test_task_help_flag(self, app_instance):
         """Test that --help flag displays template parameter information."""
-        # ---> START ADDED CODE <---
-        app_instance.task_system.find_template.reset_mock(return_value=None)
-        app_instance.task_system.execute_task.reset_mock(return_value={
-             "status": "COMPLETE",
-             "content": "Mock TaskSystem.execute_task Result",
-             "notes": {}
-        })
-        app_instance.memory_system.get_relevant_context_for.reset_mock()
+        # ---> START MODIFIED RESET CODE <---
+        # Reset call history for mocks on the real TaskSystem instance
+        app_instance.task_system.find_template.reset_mock()
+        app_instance.task_system.find_template.return_value = None # Ensure default
+        app_instance.task_system.execute_task.reset_mock()
+        # DO NOT set return_value here, rely on fixture default
+
+        # Reset other relevant mocks
         app_instance.aider_bridge.execute_automatic_task.reset_mock()
-        # ---> END ADDED CODE <---
+        app_instance.memory_system.get_relevant_context_for.reset_mock()
+        if hasattr(app_instance.passthrough_handler, 'direct_tool_executors'):
+             for tool_mock in app_instance.passthrough_handler.direct_tool_executors.values():
+                 if isinstance(tool_mock, MagicMock):
+                     tool_mock.reset_mock()
+        # ---> END MODIFIED RESET CODE <---
 
         # Arrange: Template with detailed parameters
         mock_template = {
@@ -558,16 +570,21 @@ class TestTaskCommandIntegration:
     
     def test_task_parameter_parsing_complex_json(self, app_instance):
         """Test parsing of complex JSON parameters."""
-        # ---> START ADDED CODE <---
-        app_instance.task_system.find_template.reset_mock(return_value=None)
-        app_instance.task_system.execute_task.reset_mock(return_value={
-             "status": "COMPLETE",
-             "content": "Mock TaskSystem.execute_task Result",
-             "notes": {}
-        })
-        app_instance.memory_system.get_relevant_context_for.reset_mock()
+        # ---> START MODIFIED RESET CODE <---
+        # Reset call history for mocks on the real TaskSystem instance
+        app_instance.task_system.find_template.reset_mock()
+        app_instance.task_system.find_template.return_value = None # Ensure default
+        app_instance.task_system.execute_task.reset_mock()
+        # DO NOT set return_value here, rely on fixture default
+
+        # Reset other relevant mocks
         app_instance.aider_bridge.execute_automatic_task.reset_mock()
-        # ---> END ADDED CODE <---
+        app_instance.memory_system.get_relevant_context_for.reset_mock()
+        if hasattr(app_instance.passthrough_handler, 'direct_tool_executors'):
+             for tool_mock in app_instance.passthrough_handler.direct_tool_executors.values():
+                 if isinstance(tool_mock, MagicMock):
+                     tool_mock.reset_mock()
+        # ---> END MODIFIED RESET CODE <---
 
         # Capture stdout
         captured_output = io.StringIO()
@@ -599,16 +616,21 @@ class TestTaskCommandIntegration:
     
     def test_task_error_handling_invalid_json(self, app_instance):
         """Test error handling for invalid JSON parameters."""
-        # ---> START ADDED CODE <---
-        app_instance.task_system.find_template.reset_mock(return_value=None)
-        app_instance.task_system.execute_task.reset_mock(return_value={
-             "status": "COMPLETE",
-             "content": "Mock TaskSystem.execute_task Result",
-             "notes": {}
-        })
-        app_instance.memory_system.get_relevant_context_for.reset_mock()
+        # ---> START MODIFIED RESET CODE <---
+        # Reset call history for mocks on the real TaskSystem instance
+        app_instance.task_system.find_template.reset_mock()
+        app_instance.task_system.find_template.return_value = None # Ensure default
+        app_instance.task_system.execute_task.reset_mock()
+        # DO NOT set return_value here, rely on fixture default
+
+        # Reset other relevant mocks
         app_instance.aider_bridge.execute_automatic_task.reset_mock()
-        # ---> END ADDED CODE <---
+        app_instance.memory_system.get_relevant_context_for.reset_mock()
+        if hasattr(app_instance.passthrough_handler, 'direct_tool_executors'):
+             for tool_mock in app_instance.passthrough_handler.direct_tool_executors.values():
+                 if isinstance(tool_mock, MagicMock):
+                     tool_mock.reset_mock()
+        # ---> END MODIFIED RESET CODE <---
 
         # Capture stdout
         captured_output = io.StringIO()
@@ -632,16 +654,21 @@ class TestTaskCommandIntegration:
     
     def test_task_error_handling_template_not_found(self, app_instance):
         """Test error handling when template is not found."""
-        # ---> START ADDED CODE <---
-        app_instance.task_system.find_template.reset_mock(return_value=None)
-        app_instance.task_system.execute_task.reset_mock(return_value={
-             "status": "COMPLETE",
-             "content": "Mock TaskSystem.execute_task Result",
-             "notes": {}
-        })
-        app_instance.memory_system.get_relevant_context_for.reset_mock()
+        # ---> START MODIFIED RESET CODE <---
+        # Reset call history for mocks on the real TaskSystem instance
+        app_instance.task_system.find_template.reset_mock()
+        app_instance.task_system.find_template.return_value = None # Ensure default
+        app_instance.task_system.execute_task.reset_mock()
+        # DO NOT set return_value here, rely on fixture default
+
+        # Reset other relevant mocks
         app_instance.aider_bridge.execute_automatic_task.reset_mock()
-        # ---> END ADDED CODE <---
+        app_instance.memory_system.get_relevant_context_for.reset_mock()
+        if hasattr(app_instance.passthrough_handler, 'direct_tool_executors'):
+             for tool_mock in app_instance.passthrough_handler.direct_tool_executors.values():
+                 if isinstance(tool_mock, MagicMock):
+                     tool_mock.reset_mock()
+        # ---> END MODIFIED RESET CODE <---
 
         # Arrange: Template not found (already handled by reset_mock above)
         # app_instance.task_system.find_template = MagicMock(return_value=None) # No longer needed
@@ -667,16 +694,21 @@ class TestTaskCommandIntegration:
     
     def test_task_error_handling_executor_exception(self, app_instance):
         """Test error handling when executor raises an exception."""
-        # ---> START ADDED CODE <---
-        app_instance.task_system.find_template.reset_mock(return_value=None)
-        app_instance.task_system.execute_task.reset_mock(return_value={
-             "status": "COMPLETE",
-             "content": "Mock TaskSystem.execute_task Result",
-             "notes": {}
-        })
-        app_instance.memory_system.get_relevant_context_for.reset_mock()
+        # ---> START MODIFIED RESET CODE <---
+        # Reset call history for mocks on the real TaskSystem instance
+        app_instance.task_system.find_template.reset_mock()
+        app_instance.task_system.find_template.return_value = None # Ensure default
+        app_instance.task_system.execute_task.reset_mock()
+        # DO NOT set return_value here, rely on fixture default
+
+        # Reset other relevant mocks
         app_instance.aider_bridge.execute_automatic_task.reset_mock()
-        # ---> END ADDED CODE <---
+        app_instance.memory_system.get_relevant_context_for.reset_mock()
+        if hasattr(app_instance.passthrough_handler, 'direct_tool_executors'):
+             for tool_mock in app_instance.passthrough_handler.direct_tool_executors.values():
+                 if isinstance(tool_mock, MagicMock):
+                     tool_mock.reset_mock()
+        # ---> END MODIFIED RESET CODE <---
 
         # Arrange: Executor raises exception
         app_instance.aider_bridge.execute_automatic_task.side_effect = Exception("Simulated executor error")
@@ -709,16 +741,21 @@ class TestTaskCommandIntegration:
             "subtype": "identifier",
             "description": "Template version"
         }
-        # ---> START ADDED CODE <---
-        app_instance.task_system.find_template.reset_mock(return_value=None)
-        app_instance.task_system.execute_task.reset_mock(return_value={
-             "status": "COMPLETE",
-             "content": "Mock TaskSystem.execute_task Result", # Default mock result
-             "notes": {}
-        })
-        app_instance.memory_system.get_relevant_context_for.reset_mock()
+        # ---> START MODIFIED RESET CODE <---
+        # Reset call history for mocks on the real TaskSystem instance
+        app_instance.task_system.find_template.reset_mock()
+        app_instance.task_system.find_template.return_value = None # Ensure default
+        app_instance.task_system.execute_task.reset_mock()
+        # DO NOT set return_value here, rely on fixture default
+
+        # Reset other relevant mocks
         app_instance.aider_bridge.execute_automatic_task.reset_mock()
-        # ---> END ADDED CODE <---
+        app_instance.memory_system.get_relevant_context_for.reset_mock()
+        if hasattr(app_instance.passthrough_handler, 'direct_tool_executors'):
+             for tool_mock in app_instance.passthrough_handler.direct_tool_executors.values():
+                 if isinstance(tool_mock, MagicMock):
+                     tool_mock.reset_mock()
+        # ---> END MODIFIED RESET CODE <---
 
         # Arrange: Set find_template to return the mock template for this test
         app_instance.task_system.find_template.return_value = mock_template
@@ -728,8 +765,9 @@ class TestTaskCommandIntegration:
         # Add a direct tool with the same name
         direct_tool_mock = MagicMock(return_value={"status": "COMPLETE", "content": "Direct tool executed"})
         app_instance.passthrough_handler.direct_tool_executors["duplicate:identifier"] = direct_tool_mock
-        app_instance.passthrough_handler.direct_tool_executors["duplicate:identifier"].reset_mock() # Reset this mock too
-        
+        # Note: The reset block above already handles resetting direct tool mocks
+        # app_instance.passthrough_handler.direct_tool_executors["duplicate:identifier"].reset_mock() # Reset this mock too
+
         # Act: Call with the duplicate identifier
         from dispatcher import execute_programmatic_task
         result = execute_programmatic_task(
