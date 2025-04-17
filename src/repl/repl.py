@@ -370,6 +370,7 @@ class Repl:
 
             # --- Help Flag Handling ---
             if "--help" in raw_params_and_flags:
+                logging.debug(f"REPL Help: Checking help for identifier: '{identifier}'")
                 print(f"Fetching help for task: {identifier}...", file=self.output)
                 help_text = f"Help for '{identifier}':\n"
                 found_help = False
@@ -377,9 +378,12 @@ class Repl:
                 tool_spec = None # Use tool_spec for clarity
 
                 # Check TaskSystem Templates first (preferred source for help)
+                logging.debug("REPL Help: Checking TaskSystem templates...")
                 if hasattr(self.application.task_system, 'find_template'):
                      template_info = self.application.task_system.find_template(identifier)
+                     logging.debug(f"REPL Help: Template found: {bool(template_info)}")
                      if template_info:
+                         logging.debug("REPL Help: Formatting help from template.")
                          # ---> START TEMPLATE HELP FORMATTING <---
                          help_text += f"\n* Task Template Details:\n"
                          help_text += f"  Description: {template_info.get('description', 'N/A')}\n"
@@ -429,10 +433,12 @@ class Repl:
                 if not found_help:
                     # Check if it's a known direct tool executor even without a spec
                     if hasattr(self.application.passthrough_handler, 'direct_tool_executors') and identifier in self.application.passthrough_handler.direct_tool_executors:
+                         logging.debug("REPL Help: Found direct executor but no spec.")
                          help_text += f"\n* Found Direct Tool registration for '{identifier}', but no detailed template or specification was found for help display."
                          found_help = True
 
                 if not found_help:
+                    logging.debug("REPL Help: No template or tool found for help.")
                     help_text = f"No help found for identifier: {identifier}. Check spelling and registration."
 
                 print(help_text, file=self.output)

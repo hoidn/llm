@@ -373,6 +373,7 @@ class TaskSystem(TemplateLookupInterface):
                  Does not perform automatic context lookup or full evaluation.
         """
         identifier = f"{request.type}:{request.subtype}" if request.subtype else request.type
+        logging.debug(f"TaskSystem Stub: execute_subtask_directly called with identifier: {identifier}")
         logging.info(f"TaskSystem executing directly: {identifier}")
         logging.debug(f"Request inputs: {request.inputs}")
         logging.debug(f"Request explicit file_paths: {request.file_paths}")
@@ -437,6 +438,9 @@ class TaskSystem(TemplateLookupInterface):
                      logging.debug(f"Automatic context lookup via '{source_type}' source is deferred (Phase 1).")
                      context_source = "deferred_lookup"
                  # else: source_type is literal but no file_paths defined, or unknown type
+                 
+            logging.debug(f"TaskSystem Stub: Determined file paths: {determined_file_paths}")
+            logging.debug(f"TaskSystem Stub: Determined context_source: '{context_source}'")
 
             # 3. Environment Setup (Placeholder for Phase 1)
             # Create the execution environment by extending the passed base env
@@ -446,7 +450,28 @@ class TaskSystem(TemplateLookupInterface):
 
             # 4. Execution Placeholder (Phase 1)
             # Simulate successful execution for now, returning info for verification
+            logging.debug("TaskSystem Stub: Preparing placeholder result.")
             logging.info(f"Phase 1: Placeholder execution for template '{template.get('name', identifier)}'.")
+            
+            # Simulate a call to execute_task to check if it's available
+            logging.debug("TaskSystem Stub: Attempting simulated call to self.execute_task...")
+            try:
+                handler_for_exec = getattr(getattr(self, 'memory_system', None), 'handler', MagicMock())
+                if not handler_for_exec: handler_for_exec = MagicMock()
+
+                _ = self.execute_task(
+                    task_type=template.get("type", ""),
+                    task_subtype=template.get("subtype", ""),
+                    inputs=request.inputs or {},
+                    memory_system=self.memory_system,
+                    handler=handler_for_exec,
+                )
+                logging.debug("TaskSystem Stub: Simulated call to self.execute_task completed.")
+            except AttributeError as ae:
+                logging.error("TaskSystem Stub: Failed simulated call - execute_task method not found? Error: %s", ae, exc_info=False)
+            except Exception as sim_err:
+                logging.error(f"TaskSystem Stub: Error during *simulated* execute_task call: {sim_err}", exc_info=False)
+            
             # In a real execution, this would call the Evaluator:
             # result = self.evaluator.eval(template_ast_node, execution_env)
             result_content = f"Executed template '{template.get('name', identifier)}' with inputs."
@@ -468,6 +493,7 @@ class TaskSystem(TemplateLookupInterface):
             if error_message:
                 result["notes"]["context_error"] = error_message
 
+            logging.debug(f"TaskSystem Stub: Returning result with notes: {result.get('notes', {})}")
             return result
 
         except TaskError as e:

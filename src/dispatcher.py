@@ -3,6 +3,8 @@ import logging
 import json
 from memory.context_generation import ContextGenerationInput, AssociativeMatchResult
 
+logger = logging.getLogger(__name__)
+
 # Import necessary components and types
 from handler.base_handler import BaseHandler
 from task_system.task_system import TaskSystem
@@ -205,8 +207,8 @@ def execute_programmatic_task(
     Phase 1: Handles Direct Tools and basic routing to TaskSystem templates
              with explicit file_context parameter handling only.
     """
-    logger.info(f"Dispatcher executing: identifier='{identifier}'")
-    logger.debug(f"Params: {params}, Flags: {flags}")
+    logger.debug(f"Dispatcher executing: identifier='{identifier}'")
+    logger.debug(f"Dispatcher Params: {params}, Flags: {flags}")
 
     try:
         # --- Parameter Pre-processing ---
@@ -247,31 +249,40 @@ def execute_programmatic_task(
         target_executor = None
         is_direct_tool = False
         template_definition = None
+        
+        logger.debug("Dispatcher: Routing logic started.")
 
-        # 1. Check Handler Direct Tools
-        # Use hasattr for safety, assuming direct_tool_executors might not always exist
-        handler_tools = getattr(handler_instance, 'direct_tool_executors', {})
-        if identifier in handler_tools:
-            logger.info(f"Identifier '{identifier}' found in Handler Direct Tool registry.")
-            target_executor = handler_tools[identifier]
-            is_direct_tool = True # Assume direct unless template found
-
-        # 2. Check TaskSystem Templates (Templates take precedence if found)
-        # Use hasattr for safety
+        # 1. Check TaskSystem Templates FIRST
+        logger.debug("Dispatcher: Checking for template...")
         if hasattr(task_system_instance, 'find_template'):
             template_definition = task_system_instance.find_template(identifier)
+            logger.debug(f"Dispatcher: Template found: {bool(template_definition)}")
             if template_definition:
                 logger.info(f"Identifier '{identifier}' maps to a TaskSystem Template (overrides Direct Tool match if any).")
                 target_executor = task_system_instance # Target is the TaskSystem itself
                 is_direct_tool = False # It's a template, not direct
-            elif is_direct_tool:
-                 logger.info(f"Identifier '{identifier}' confirmed as Direct Tool (not a template).")
-            # else: Neither found yet
+            else:
+                logger.debug(f"Dispatcher: Identifier '{identifier}' not found as template.")
+                
+        # 2. Check Handler Direct Tools ONLY IF NOT found as a template
+        if not template_definition:
+            logger.debug("Dispatcher: Checking for direct tool (template not found)...")
+            # Use hasattr for safety, assuming direct_tool_executors might not always exist
+            handler_tools = getattr(handler_instance, 'direct_tool_executors', {})
+            if identifier in handler_tools:
+                logger.debug(f"Dispatcher: Direct tool found: {identifier}")
+                logger.info(f"Identifier '{identifier}' found in Handler Direct Tool registry.")
+                target_executor = handler_tools[identifier]
+                is_direct_tool = True # Assume direct unless template found
+            else:
+                logger.debug(f"Dispatcher: Direct tool '{identifier}' not found.")
+
 
         # 3. Handle Execution or Not Found
         if target_executor:
             if is_direct_tool:
                 # --- Direct Tool Execution ---
+                logger.debug("Dispatcher: Routing to Direct Tool.")
                 logger.debug(f"Executing Direct Tool: {identifier}")
                 # Direct tools receive the raw params dictionary
                 raw_result = target_executor(params)
@@ -283,10 +294,21 @@ def execute_programmatic_task(
                 else:
                      result = {"status": "COMPLETE", "content": str(raw_result), "notes": {}}
                 result["notes"]["execution_path"] = "direct_tool"
+                
+                # Add context info for Direct Tools
+                if explicit_file_paths is not None:
+                    result["notes"]["context_source"] = "explicit_request"
+                    result["notes"]["context_file_count"] = len(explicit_file_paths)
+                else:
+                    result["notes"]["context_source"] = "none"
+                    result["notes"]["context_file_count"] = 0
+                    
+                logger.debug(f"Dispatcher (Direct Tool Path): Returning notes: {result.get('notes', {})}")
                 logger.info(f"Direct Tool execution complete. Status: {result.get('status')}")
                 return result
             else:
                 # --- Template Execution via TaskSystem ---
+                logger.debug("Dispatcher: Routing to TaskSystem Template.")
                 logger.debug(f"Executing Subtask Template via TaskSystem: {identifier}")
                 # Determine type/subtype for SubtaskRequest
                 if ":" in identifier:
@@ -308,7 +330,9 @@ def execute_programmatic_task(
                 # Call TaskSystem method (Phase 1 stub)
                 # Create a base Environment. execute_subtask_directly will extend it.
                 base_env = Environment({})
-                return task_system_instance.execute_subtask_directly(subtask_request, base_env)
+                result = task_system_instance.execute_subtask_directly(subtask_request, base_env)
+                logger.debug(f"Dispatcher (Template Path): Returning TaskSystem result with notes: {result.get('notes', {})}")
+                return result
         else:
             # --- Identifier Not Found ---
             logger.warning(f"Identifier '{identifier}' not found as Direct Tool or TaskSystem Template.")
