@@ -252,11 +252,24 @@ class TaskSystem(TemplateLookupInterface):
                 # Priority 3: Use automatic context lookup if enabled
                 try:
                     # --- Derive Query String ---
-                    query = request.inputs.get("prompt") \
-                        or request.inputs.get("query") \
-                        or request.inputs.get("instruction") \
+                    logging.debug("Attempting to derive query for automatic context lookup.")
+                    logging.debug("Request inputs received: %s", request.inputs) # Log the inputs dict
+
+                    # Ensure request.inputs is a dict before using .get()
+                    current_inputs = request.inputs if isinstance(request.inputs, dict) else {}
+
+                    # Derive Query String (using current_inputs)
+                    query = current_inputs.get("prompt") \
+                        or current_inputs.get("query") \
+                        or current_inputs.get("instruction") \
                         or template.get("description", "Generic Task") # Fallback
-                    logging.debug(f"Derived query for context lookup: '{query}'")
+
+                    # Explicitly check if query is empty and log if using fallback
+                    if not query:
+                        query = template.get("description", "Generic Task")
+                        logging.warning("Could not derive query from inputs (prompt, query, instruction). Falling back to template description: '%s'", query)
+                    else:
+                        logging.debug(f"Derived query for context lookup: '{query}'")
                     
                     # --- Construct ContextGenerationInput ---
                     from memory.context_generation import ContextGenerationInput
@@ -264,11 +277,14 @@ class TaskSystem(TemplateLookupInterface):
                         template_description=query, # Use derived query
                         template_type=template.get("type", ""), # Use template info
                         template_subtype=template.get("subtype", ""), # Use template info
-                        inputs=request.inputs or {}, # Pass along original inputs
+                        inputs=current_inputs, # Use the validated inputs dict
                         # Pass history if provided in the request object itself
                         history_context=request.history_context # Use correct attribute
                         # Inherited/PreviousOutputs usually not relevant for direct calls
                     )
+                    
+                    # --- Call MemorySystem ---
+                    logging.debug("Calling MemorySystem.get_relevant_context_for (History provided: %s)", bool(request.history_context))
                     
                     # Get relevant context
                     logging.debug("Performing automatic context lookup via MemorySystem")
