@@ -528,6 +528,16 @@ class TestTaskCommandIntegration:
         app_instance.task_system.find_template = MagicMock(return_value=mock_template)
         app_instance.task_system.execute_subtask_directly.reset_mock()
         
+        # Configure the mock return value for this specific test
+        app_instance.task_system.execute_subtask_directly.return_value = {
+            "status": "COMPLETE",
+            "content": "Subtask executed successfully",
+            "notes": {
+                "template_used": "duplicate:identifier",
+                "context_source": "none",  # Assuming template has no paths/auto-context
+                "context_files_count": 0
+            }
+        }
         # Add a direct tool with the same name
         direct_tool_mock = MagicMock(return_value={"status": "COMPLETE", "content": "Direct tool executed"})
         app_instance.passthrough_handler.direct_tool_executors["duplicate:identifier"] = direct_tool_mock
