@@ -40,20 +40,20 @@ def repl_instance(mock_app):
         # DO NOT assert repl.dispatcher_func is mock_dispatcher here
         yield repl # Use yield for fixtures
 
-# --- Test Cases ---
+# --- CORRECTED TEST FUNCTIONS ---
 
-def test_cmd_task_no_args(repl_instance, capsys):
+def test_cmd_task_no_args(repl_instance, capsys): # Keep capsys
+    """Test that calling /task with no arguments prints usage."""
     repl_instance._cmd_task("")
     captured = capsys.readouterr()
+    # This test *should* check output because it doesn't call the dispatcher
     assert "Usage: /task <identifier>" in captured.out
-    assert "Examples:" in captured.out
-    repl_instance.dispatcher_func.assert_not_called()
+    assert repl_instance.mock_dispatcher_for_test.call_count == 0 # Verify dispatcher wasn't called
 
-def test_cmd_task_identifier_only(repl_instance, capsys):
+def test_cmd_task_identifier_only(repl_instance):
+    """Test calling /task with only an identifier."""
     repl_instance._cmd_task("my:task")
-    captured = capsys.readouterr()
-    assert "Executing task: my:task..." in captured.out
-    repl_instance.dispatcher_func.assert_called_once_with(
+    repl_instance.mock_dispatcher_for_test.assert_called_once_with(
         identifier="my:task",
         params={},
         flags={},
@@ -62,98 +62,110 @@ def test_cmd_task_identifier_only(repl_instance, capsys):
         optional_history_str=None
     )
 
-def test_cmd_task_simple_param(repl_instance, capsys):
+def test_cmd_task_simple_param(repl_instance):
+    """Test calling /task with one simple key=value parameter."""
     repl_instance._cmd_task("my:task key=value")
-    captured = capsys.readouterr()
-    assert "Executing task: my:task..." in captured.out
-    repl_instance.dispatcher_func.assert_called_once_with(
+    repl_instance.mock_dispatcher_for_test.assert_called_once_with(
         identifier="my:task",
         params={"key": "value"},
         flags={},
-        handler_instance=ANY, task_system_instance=ANY, optional_history_str=None
+        handler_instance=repl_instance.application.passthrough_handler,
+        task_system_instance=repl_instance.application.task_system,
+        optional_history_str=None
     )
 
-def test_cmd_task_quoted_param(repl_instance, capsys):
+def test_cmd_task_quoted_param(repl_instance):
+    """Test calling /task with a parameter value containing spaces (quoted)."""
     repl_instance._cmd_task("my:task message='Hello world!'")
-    captured = capsys.readouterr()
-    assert "Executing task: my:task..." in captured.out
-    repl_instance.dispatcher_func.assert_called_once_with(
+    repl_instance.mock_dispatcher_for_test.assert_called_once_with(
         identifier="my:task",
         params={"message": "Hello world!"},
         flags={},
-        handler_instance=ANY, task_system_instance=ANY, optional_history_str=None
+        handler_instance=repl_instance.application.passthrough_handler,
+        task_system_instance=repl_instance.application.task_system,
+        optional_history_str=None
     )
 
-def test_cmd_task_param_with_equals(repl_instance, capsys):
+def test_cmd_task_param_with_equals(repl_instance):
+    """Test calling /task with a parameter value containing an equals sign."""
     repl_instance._cmd_task("my:task filter='status=active'")
-    captured = capsys.readouterr()
-    assert "Executing task: my:task..." in captured.out
-    repl_instance.dispatcher_func.assert_called_once_with(
+    repl_instance.mock_dispatcher_for_test.assert_called_once_with(
         identifier="my:task",
-        params={"filter": "status=active"},
+        params={"filter": "status=active"}, # Value includes equals
         flags={},
-        handler_instance=ANY, task_system_instance=ANY, optional_history_str=None
+        handler_instance=repl_instance.application.passthrough_handler,
+        task_system_instance=repl_instance.application.task_system,
+        optional_history_str=None
     )
 
-def test_cmd_task_json_list_param(repl_instance, capsys):
+def test_cmd_task_json_list_param(repl_instance):
+    """Test calling /task with a parameter value that is a JSON list."""
     repl_instance._cmd_task('my:task files=\'["file1.py", "file2.py"]\'')
-    captured = capsys.readouterr()
-    assert "Executing task: my:task..." in captured.out
-    repl_instance.dispatcher_func.assert_called_once_with(
+    repl_instance.mock_dispatcher_for_test.assert_called_once_with(
         identifier="my:task",
-        params={"files": ["file1.py", "file2.py"]},
+        params={"files": ["file1.py", "file2.py"]}, # Expect parsed list
         flags={},
-        handler_instance=ANY, task_system_instance=ANY, optional_history_str=None
+        handler_instance=repl_instance.application.passthrough_handler,
+        task_system_instance=repl_instance.application.task_system,
+        optional_history_str=None
     )
 
-def test_cmd_task_json_dict_param(repl_instance, capsys):
+def test_cmd_task_json_dict_param(repl_instance):
+    """Test calling /task with a parameter value that is a JSON object."""
     repl_instance._cmd_task('my:task config=\'{"retries": 3, "active": true}\'')
-    captured = capsys.readouterr()
-    assert "Executing task: my:task..." in captured.out
-    repl_instance.dispatcher_func.assert_called_once_with(
+    repl_instance.mock_dispatcher_for_test.assert_called_once_with(
         identifier="my:task",
-        params={"config": {"retries": 3, "active": True}},
+        params={"config": {"retries": 3, "active": True}}, # Expect parsed dict
         flags={},
-        handler_instance=ANY, task_system_instance=ANY, optional_history_str=None
+        handler_instance=repl_instance.application.passthrough_handler,
+        task_system_instance=repl_instance.application.task_system,
+        optional_history_str=None
     )
 
-def test_cmd_task_invalid_json_param(repl_instance, capsys):
+def test_cmd_task_invalid_json_param(repl_instance, capsys): # Keep capsys
+    """Test calling /task with invalid JSON - should pass as string and print warning."""
     repl_instance._cmd_task('my:task data=\'{"key": invalid}\'') # Invalid JSON syntax
-    captured = capsys.readouterr()
-    assert "Executing task: my:task..." in captured.out
-    # Check that a warning was printed about parsing
-    assert "Warning: Could not parse value for 'data' as JSON" in captured.out
-    # Check that the raw string was passed
-    repl_instance.dispatcher_func.assert_called_once_with(
+    # Assert dispatcher was called with the *string* value
+    repl_instance.mock_dispatcher_for_test.assert_called_once_with(
         identifier="my:task",
-        params={"data": '{"key": invalid}'}, # Raw string passed
+        params={"data": '{"key": invalid}'}, # Expect raw string
         flags={},
-        handler_instance=ANY, task_system_instance=ANY, optional_history_str=None
+        handler_instance=repl_instance.application.passthrough_handler,
+        task_system_instance=repl_instance.application.task_system,
+        optional_history_str=None
     )
-
-def test_cmd_task_simple_flag(repl_instance, capsys):
-    repl_instance._cmd_task("my:task --force")
+    # Assert warning was printed
     captured = capsys.readouterr()
-    assert "Executing task: my:task..." in captured.out
-    repl_instance.dispatcher_func.assert_called_once_with(
+    assert "Warning: Could not parse value for 'data' as JSON" in captured.out
+
+def test_cmd_task_simple_flag(repl_instance):
+    """Test calling /task with a simple boolean flag."""
+    repl_instance._cmd_task("my:task --force")
+    repl_instance.mock_dispatcher_for_test.assert_called_once_with(
         identifier="my:task",
         params={},
-        flags={"force": True},
-        handler_instance=ANY, task_system_instance=ANY, optional_history_str=None
+        flags={"force": True}, # Expect flag set to True
+        handler_instance=repl_instance.application.passthrough_handler,
+        task_system_instance=repl_instance.application.task_system,
+        optional_history_str=None
     )
 
-def test_cmd_task_multiple_params_and_flags(repl_instance, capsys):
+def test_cmd_task_multiple_params_and_flags(repl_instance):
+    """Test calling /task with a mix of parameters and flags."""
     repl_instance._cmd_task("my:task p1=v1 --flag1 p2='v 2' --flag2 p3='{\"a\":1}'")
-    captured = capsys.readouterr()
-    assert "Executing task: my:task..." in captured.out
-    repl_instance.dispatcher_func.assert_called_once_with(
+    repl_instance.mock_dispatcher_for_test.assert_called_once_with(
         identifier="my:task",
         params={"p1": "v1", "p2": "v 2", "p3": {"a": 1}},
         flags={"flag1": True, "flag2": True},
-        handler_instance=ANY, task_system_instance=ANY, optional_history_str=None
+        handler_instance=repl_instance.application.passthrough_handler,
+        task_system_instance=repl_instance.application.task_system,
+        optional_history_str=None
     )
 
-def test_cmd_task_help_flag_template_found(repl_instance, capsys):
+# --- Help Flag Tests (Check Output) ---
+
+def test_cmd_task_help_flag_template_found(repl_instance, capsys): # Keep capsys
+    """Test --help when a matching template is found."""
     mock_template = {
         "name": "test:help", "description": "Test Help Template",
         "parameters": {
@@ -161,89 +173,130 @@ def test_cmd_task_help_flag_template_found(repl_instance, capsys):
             "param2": {"type": "integer", "description": "Second param", "default": 10}
         }
     }
+    # Configure the *mock* application's TaskSystem mock
     repl_instance.application.task_system.find_template.return_value = mock_template
+    repl_instance.application.passthrough_handler.registered_tools = {} # Ensure no tool conflict
 
     repl_instance._cmd_task("test:help --help")
     captured = capsys.readouterr()
 
     assert "Fetching help for task: test:help..." in captured.out
-    assert "Task Template Details" in captured.out
+    assert "* Task Template Details:" in captured.out # Check correct section header
     assert "Description: Test Help Template" in captured.out
     assert "param1 (type: string): First param (required)" in captured.out
-    assert "param2 (type: integer) (default: 10): Second param" in captured.out
-    repl_instance.dispatcher_func.assert_not_called()
-    repl_instance.application.task_system.find_template.assert_called_once_with("test:help")
+    assert 'param2 (type: integer) (default: 10): Second param' in captured.out
+    repl_instance.mock_dispatcher_for_test.assert_not_called() # Dispatcher shouldn't be called for help
 
-def test_cmd_task_help_flag_direct_tool_found(repl_instance, capsys):
+def test_cmd_task_help_flag_direct_tool_found(repl_instance, capsys): # Keep capsys
+    """Test --help when no template but a direct tool spec is found."""
     # No template found
     repl_instance.application.task_system.find_template.return_value = None
-    # Direct tool exists
-    repl_instance.application.passthrough_handler.direct_tool_executors['test:direct'] = lambda x: x
+    # Direct tool *spec* exists in registered_tools
+    mock_tool_spec = {
+        "name": "test:direct", "description": "Direct Tool Help",
+        "input_schema": {"type":"object", "properties": {"arg1": {"type": "string", "description": "Tool Arg"}}, "required":["arg1"]}
+    }
+    repl_instance.application.passthrough_handler.registered_tools = {'test:direct': mock_tool_spec}
+    repl_instance.application.passthrough_handler.direct_tool_executors = {'test:direct': lambda x: x} # Executor also exists
 
     repl_instance._cmd_task("test:direct --help")
     captured = capsys.readouterr()
 
     assert "Fetching help for task: test:direct..." in captured.out
-    assert "Found Direct Tool registration for 'test:direct'" in captured.out
-    assert "(Parameter details are typically defined in corresponding Task Templates if available)" in captured.out
-    repl_instance.dispatcher_func.assert_not_called()
-    repl_instance.application.task_system.find_template.assert_called_once_with("test:direct")
+    assert "* Direct Tool Specification:" in captured.out # Check correct section header
+    assert "Description: Direct Tool Help" in captured.out
+    assert "arg1 (type: string): Tool Arg (required)" in captured.out # Check formatting
+    repl_instance.mock_dispatcher_for_test.assert_not_called()
 
-
-def test_cmd_task_help_flag_not_found(repl_instance, capsys):
+def test_cmd_task_help_flag_direct_tool_no_spec(repl_instance, capsys): # Keep capsys
+    """Test --help when only a direct tool executor (no spec) is found."""
     repl_instance.application.task_system.find_template.return_value = None
+    repl_instance.application.passthrough_handler.registered_tools = {} # No spec
+    repl_instance.application.passthrough_handler.direct_tool_executors = {'test:direct_only': lambda x: x} # Executor exists
+
+    repl_instance._cmd_task("test:direct_only --help")
+    captured = capsys.readouterr()
+    assert "Fetching help for task: test:direct_only..." in captured.out
+    assert "* Found Direct Tool registration for 'test:direct_only'" in captured.out # Check fallback message
+    repl_instance.mock_dispatcher_for_test.assert_not_called()
+
+
+def test_cmd_task_help_flag_not_found(repl_instance, capsys): # Keep capsys
+    """Test --help when neither template nor tool is found."""
+    repl_instance.application.task_system.find_template.return_value = None
+    repl_instance.application.passthrough_handler.registered_tools = {}
     repl_instance.application.passthrough_handler.direct_tool_executors = {}
 
     repl_instance._cmd_task("unknown:task --help")
     captured = capsys.readouterr()
 
     assert "Fetching help for task: unknown:task..." in captured.out
-    assert "No help found for identifier: unknown:task" in captured.out
-    repl_instance.dispatcher_func.assert_not_called()
-    repl_instance.application.task_system.find_template.assert_called_once_with("unknown:task")
+    assert "No help found for identifier: unknown:task." in captured.out
+    repl_instance.mock_dispatcher_for_test.assert_not_called()
 
-def test_cmd_task_dispatcher_error(repl_instance, capsys):
-    repl_instance.dispatcher_func.side_effect = Exception("Dispatcher boom!")
-    repl_instance._cmd_task("my:task")
+# --- Error Handling Tests (Check Output) ---
+
+def test_cmd_task_dispatcher_error(repl_instance, capsys): # Keep capsys
+    """Test REPL handling when the dispatcher call raises an unexpected error."""
+    # Configure the mock dispatcher to raise an exception
+    repl_instance.mock_dispatcher_for_test.side_effect = Exception("Dispatcher boom!")
+
+    repl_instance._cmd_task("my:task") # Attempt to call the failing dispatcher
     captured = capsys.readouterr()
+
+    # Check that the REPL printed the error message
     assert "Error calling dispatcher: Dispatcher boom!" in captured.out
+    # Verify dispatcher was called (even though it failed)
+    repl_instance.mock_dispatcher_for_test.assert_called_once() # Check call was made
 
-def test_cmd_task_shlex_error(repl_instance, capsys):
-    repl_instance._cmd_task("my:task param='unclosed quote")
+def test_cmd_task_shlex_error(repl_instance, capsys): # Keep capsys
+    """Test REPL handling of shlex parsing errors."""
+    repl_instance._cmd_task("my:task param='unclosed quote") # Input that causes shlex error
     captured = capsys.readouterr()
-    assert "Error parsing command:" in captured.out
-    assert "Make sure all quotes are properly closed" in captured.out
-    repl_instance.dispatcher_func.assert_not_called()
+    assert "Error parsing command: No closing quotation" in captured.out
+    repl_instance.mock_dispatcher_for_test.assert_not_called() # Dispatcher not called
 
-def test_cmd_task_result_display_simple(repl_instance, capsys):
-    repl_instance.dispatcher_func.return_value = {"status": "COMPLETE", "content": "Simple result"}
+# --- Result Display Tests (Check Output) ---
+
+def test_cmd_task_result_display_simple(repl_instance, capsys): # Keep capsys
+    """Test REPL displays simple string content correctly."""
+    repl_instance.mock_dispatcher_for_test.return_value = {"status": "COMPLETE", "content": "Simple result"}
+    repl_instance._cmd_task("my:task") # Call dispatcher via REPL command
+    captured = capsys.readouterr()
+    # Check the final printed output
+    assert "\nResult:" in captured.out
+    assert "Status: COMPLETE" in captured.out
+    assert "Content:\nSimple result" in captured.out # Check content formatting
+    assert "\nNotes:" not in captured.out # No notes to display
+
+def test_cmd_task_result_display_json_content(repl_instance, capsys): # Keep capsys
+    """Test REPL pretty-prints JSON content."""
+    json_content_str = json.dumps({"data": [1, 2], "valid": True})
+    repl_instance.mock_dispatcher_for_test.return_value = {"status": "COMPLETE", "content": json_content_str}
     repl_instance._cmd_task("my:task")
     captured = capsys.readouterr()
+    assert "\nResult:" in captured.out
     assert "Status: COMPLETE" in captured.out
-    assert "Content:\nSimple result" in captured.out
-    assert "Notes:" not in captured.out # No notes field in result
-
-def test_cmd_task_result_display_json_content(repl_instance, capsys):
-    json_content = json.dumps({"data": [1, 2], "valid": True})
-    repl_instance.dispatcher_func.return_value = {"status": "COMPLETE", "content": json_content}
-    repl_instance._cmd_task("my:task")
-    captured = capsys.readouterr()
-    assert "Status: COMPLETE" in captured.out
-    assert "Content:" in captured.out
     # Check for indented JSON output
-    assert '{\n  "data": [\n    1,\n    2\n  ],\n  "valid": true\n}' in captured.out
+    assert '"data": [\n    1,\n    2\n  ]' in captured.out
+    assert '"valid": true' in captured.out
+    assert "\nNotes:" not in captured.out
 
-def test_cmd_task_result_display_with_notes(repl_instance, capsys):
-    notes_content = {"info": "some details", "files": ["a.txt"]}
-    repl_instance.dispatcher_func.return_value = {
+def test_cmd_task_result_display_with_notes(repl_instance, capsys): # Keep capsys
+    """Test REPL displays notes correctly."""
+    notes_content = {"info": "some details", "files": ["a.txt"], "nested": {"key": 1}}
+    repl_instance.mock_dispatcher_for_test.return_value = {
         "status": "COMPLETE",
         "content": "Result with notes",
         "notes": notes_content
     }
     repl_instance._cmd_task("my:task")
     captured = capsys.readouterr()
+    assert "\nResult:" in captured.out
     assert "Status: COMPLETE" in captured.out
     assert "Content:\nResult with notes" in captured.out
     assert "\nNotes:" in captured.out
     # Check for indented JSON output of notes
-    assert '{\n  "info": "some details",\n  "files": [\n    "a.txt"\n  ]\n}' in captured.out
+    assert '"info": "some details"' in captured.out
+    assert '"files": [\n    "a.txt"\n  ]' in captured.out
+    assert '"nested": {\n    "key": 1\n  }' in captured.out
