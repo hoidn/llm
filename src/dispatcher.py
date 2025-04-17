@@ -190,7 +190,8 @@ def execute_programmatic_task(
                 type=task_type,
                 subtype=task_subtype,
                 inputs=params,
-                file_paths=determined_file_paths  # Pass the final determined paths
+                file_paths=determined_file_paths,  # Pass the final determined paths
+                history_context=optional_history_str if flags.get("use-history") else None  # Pass history if flag is set
             )
             
             # Call the TaskSystem method

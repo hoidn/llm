@@ -251,15 +251,23 @@ class TaskSystem(TemplateLookupInterface):
             elif template.get('context_management', {}).get('fresh_context') != "disabled" and self.memory_system:
                 # Priority 3: Use automatic context lookup if enabled
                 try:
-                    # Create context generation input
+                    # --- Derive Query String ---
+                    query = request.inputs.get("prompt") \
+                        or request.inputs.get("query") \
+                        or request.inputs.get("instruction") \
+                        or template.get("description", "Generic Task") # Fallback
+                    logging.debug(f"Derived query for context lookup: '{query}'")
+                    
+                    # --- Construct ContextGenerationInput ---
                     from memory.context_generation import ContextGenerationInput
                     context_input = ContextGenerationInput(
-                        template_description=template.get("description", ""),
-                        template_type=template.get("type", ""),
-                        template_subtype=template.get("subtype", ""),
-                        inputs=request.inputs or {},
-                        # Include history_context if it was passed in the inputs
-                        history_context=request.inputs.get("history_context") if request.inputs else None
+                        template_description=query, # Use derived query
+                        template_type=template.get("type", ""), # Use template info
+                        template_subtype=template.get("subtype", ""), # Use template info
+                        inputs=request.inputs or {}, # Pass along original inputs
+                        # Pass history if provided in the request object itself
+                        history_context=request.history_context # Use correct attribute
+                        # Inherited/PreviousOutputs usually not relevant for direct calls
                     )
                     
                     # Get relevant context

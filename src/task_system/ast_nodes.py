@@ -122,7 +122,8 @@ class SubtaskRequest:
                  type: str,
                  subtype: Optional[str],
                  inputs: Optional[Dict[str, Any]] = None,
-                 file_paths: Optional[List[str]] = None):
+                 file_paths: Optional[List[str]] = None,
+                 history_context: Optional[str] = None):
         """
         Initialize a SubtaskRequest.
 
@@ -131,11 +132,13 @@ class SubtaskRequest:
             subtype: The task subtype.
             inputs: Input parameters dictionary.
             file_paths: Explicit file paths for context.
+            history_context: Optional conversation history for context generation.
         """
         self.type = type
         self.subtype = subtype
         self.inputs = inputs or {}
         self.file_paths = file_paths or []
+        self.history_context = history_context
 
     def __repr__(self) -> str:
         """Return a string representation of the SubtaskRequest."""
