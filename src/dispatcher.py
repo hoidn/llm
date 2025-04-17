@@ -100,18 +100,15 @@ def execute_programmatic_task(
                 else:
                      result = {"status": "COMPLETE", "content": str(raw_result), "notes": {}}
 
-                # ---> ADD THIS BLOCK START <---
-                # Add execution path and context info for Direct Tools
+                # ---> CORRECTED NOTES POPULATION FOR DIRECT TOOLS <---
                 result["notes"]["execution_path"] = "direct_tool"
-                # Determine context source based ONLY on whether explicit_file_paths was set during pre-processing
                 if explicit_file_paths is not None: # Check the variable from pre-processing
                      result["notes"]["context_source"] = "explicit_request"
                      result["notes"]["context_files_count"] = len(explicit_file_paths)
                 else:
-                     # No explicit paths were provided or parsed successfully
                      result["notes"]["context_source"] = "none"
                      result["notes"]["context_files_count"] = 0
-                # ---> ADD THIS BLOCK END <---
+                # ---> END CORRECTION <---
 
                 logger.info(f"Direct Tool execution complete. Status: {result.get('status')}")
                 return result
