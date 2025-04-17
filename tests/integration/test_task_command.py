@@ -755,27 +755,26 @@ class TestTaskCommandIntegration:
              for tool_mock in app_instance.passthrough_handler.direct_tool_executors.values():
                  if isinstance(tool_mock, MagicMock):
                      tool_mock.reset_mock()
-        # Capture stdout
-        captured_output = io.StringIO()
-        sys.stdout = captured_output
-        from src.repl.repl import Repl
-        repl = Repl(app_instance, output_stream=captured_output)
+        # Import dispatcher function
+        from src.dispatcher import execute_programmatic_task
+        from system.errors import INPUT_VALIDATION_FAILURE # Import error code
 
-        # Act: Execute task command with invalid JSON syntax
-        invalid_command = 'aider:automatic prompt="Invalid JSON" file_context=\'["unclosed_array\'' # Missing ]
-        repl._cmd_task(invalid_command)
+        # Act: Call dispatcher directly with invalid JSON string
+        result = execute_programmatic_task(
+            identifier="aider:automatic",
+            params={"prompt": "Invalid JSON", "file_context": '["unclosed_array\''}, # Invalid JSON
+            flags={},
+            handler_instance=app_instance.passthrough_handler,
+            task_system_instance=app_instance.task_system
+        )
 
-        # Assert Output
-        sys.stdout = sys.__stdout__
-        output = captured_output.getvalue()
-        # Add these assertions instead of checking capsys output
-        from system.errors import INPUT_VALIDATION_FAILURE # Import if not already done
+        # Assert Result
         assert result["status"] == "FAILED"
-        assert "Invalid file_context parameter" in result["content"]
+        assert "Invalid JSON format in file_context parameter" in result["content"] # Check specific error
         assert result["notes"]["error"]["reason"] == INPUT_VALIDATION_FAILURE
 
         # Assert Mock Calls
-        # Dispatcher should still be called, but bridge should not be called due to validation failure
+        # Dispatcher was called directly, bridge should not be called due to validation failure
         app_instance.aider_bridge.execute_automatic_task.assert_not_called()
 
 

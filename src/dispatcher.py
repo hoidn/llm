@@ -96,11 +96,12 @@ def execute_programmatic_task(
                 # ---> ADD THIS BLOCK START <---
                 # Add execution path and context info for Direct Tools
                 result["notes"]["execution_path"] = "direct_tool"
-                # Determine context source based ONLY on whether file_context was in original params
+                # Determine context source based ONLY on whether explicit_file_paths was set during pre-processing
                 if explicit_file_paths is not None: # Check the variable from pre-processing
                      result["notes"]["context_source"] = "explicit_request"
                      result["notes"]["context_files_count"] = len(explicit_file_paths)
                 else:
+                     # No explicit paths were provided or parsed successfully
                      result["notes"]["context_source"] = "none"
                      result["notes"]["context_files_count"] = 0
                 # ---> ADD THIS BLOCK END <---
