@@ -163,6 +163,9 @@ class Repl:
         print("  /debug [on|off] - Toggle debug mode for tool selection", file=self.output)
         print("  /test-aider [interactive|automatic] - Test Aider tool integration", file=self.output)
         print("  /task <identifier> [param=value] [param2='<json_value>'] [--flag] [--help] - Execute a task programmatically", file=self.output)
+        print("      Aider shortcuts: /task aider:automatic prompt=\"Fix bug\" file_context='[\"src/file.py\"]'", file=self.output)
+        print("      Aider shortcuts: /task aider:interactive prompt=\"Help me with this code\" file_context='[\"src/file.py\"]'", file=self.output)
+        print("      Aider shortcuts: /task aider:edit prompt=\"Add docstrings\" file_context='[\"src/file.py\"]'", file=self.output)
         print("  /exit - Exit the REPL", file=self.output)
 
     def _cmd_mode(self, args: str) -> None:
@@ -488,21 +491,53 @@ class Repl:
             history_context = None
             # if flags.get("use-history"): # Logic for history will be added later
 
-            try:
-                result = self.dispatcher_func(
-                    identifier=identifier,
-                    params=params,
-                    flags=flags,
-                    handler_instance=self.application.passthrough_handler,
-                    task_system_instance=self.application.task_system,
-                    optional_history_str=history_context # Pass None for now
-                )
-            except Exception as e:
-                # Catch errors during dispatch call itself
+            # Check for Aider-specific tasks and use the bridge directly if available
+            if identifier.startswith("aider:") and hasattr(self.application, 'aider_bridge') and self.application.aider_bridge:
+                aider_mode = identifier.split(":", 1)[1] if ":" in identifier else "interactive"
+                prompt = params.get("prompt", "")
+                file_context = params.get("file_context", [])
+                
                 print("\r" + " " * 12 + "\r", end="", flush=True, file=self.output) # Clear thinking
-                print(f"\nError calling dispatcher: {e}", file=self.output)
-                logging.exception("Dispatcher call error:")
-                return
+                print(f"\nUsing Aider Bridge directly for '{aider_mode}' mode...", file=self.output)
+                
+                try:
+                    if aider_mode == "automatic":
+                        result = self.application.aider_bridge.execute_automatic_task(prompt, file_context)
+                    elif aider_mode == "interactive":
+                        result = self.application.aider_bridge.start_interactive_session(prompt, file_context)
+                    elif aider_mode == "edit":
+                        result = self.application.aider_bridge.execute_code_edit(prompt, file_context)
+                    else:
+                        print(f"\nUnknown Aider mode: {aider_mode}", file=self.output)
+                        return
+                        
+                    # Add execution metadata
+                    if "notes" not in result:
+                        result["notes"] = {}
+                    result["notes"]["execution_path"] = "direct_aider_bridge"
+                    result["notes"]["context_source"] = "explicit_request" if file_context else "none"
+                    result["notes"]["context_files_count"] = len(file_context) if file_context else 0
+                except Exception as e:
+                    print(f"\nError using Aider Bridge: {e}", file=self.output)
+                    logging.exception("Aider Bridge error:")
+                    return
+            else:
+                # Use standard dispatcher for non-Aider tasks
+                try:
+                    result = self.dispatcher_func(
+                        identifier=identifier,
+                        params=params,
+                        flags=flags,
+                        handler_instance=self.application.passthrough_handler,
+                        task_system_instance=self.application.task_system,
+                        optional_history_str=history_context # Pass None for now
+                    )
+                except Exception as e:
+                    # Catch errors during dispatch call itself
+                    print("\r" + " " * 12 + "\r", end="", flush=True, file=self.output) # Clear thinking
+                    print(f"\nError calling dispatcher: {e}", file=self.output)
+                    logging.exception("Dispatcher call error:")
+                    return
 
             print("\r" + " " * 12 + "\r", end="", flush=True, file=self.output) # Clear thinking
 
