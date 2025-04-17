@@ -5,6 +5,9 @@ import json
 import logging # Add logging import if not present
 from typing import Dict, List, Optional, Any
 
+# Import executor functions at the top level for use in initialize_aider
+from executors.aider_executors import execute_aider_automatic, execute_aider_interactive
+
 class Application:
     """
     Main application class that coordinates all components.

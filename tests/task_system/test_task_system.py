@@ -4,6 +4,12 @@ from unittest.mock import MagicMock, patch
 from task_system.task_system import TaskSystem
 from task_system.template_utils import resolve_function_calls as original_resolve_function_calls
 
+# Import necessary types/classes for tests
+from src.handler.base_handler import BaseHandler
+from src.task_system.ast_nodes import SubtaskRequest
+from src.system.errors import INPUT_VALIDATION_FAILURE
+
+
 def patched_resolve_function_calls(text, task_system, env, **kwargs):
     return original_resolve_function_calls(text, task_system, env)
 
