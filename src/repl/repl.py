@@ -408,27 +408,30 @@ class Repl:
                          found_help = True # Found detailed help via template
 
                 # Fallback: Check Handler Direct Tool registration ONLY if template wasn't found
-                # Use registered_tools which holds the spec from register_tool
-                if not found_help and hasattr(self.application.passthrough_handler, 'registered_tools'):
-                     tool_spec = self.application.passthrough_handler.registered_tools.get(identifier)
-                     if tool_spec:
-                         # ---> START TOOL SPEC HELP FORMATTING <---
-                         help_text += f"\n* Direct Tool Specification:\n"
-                         help_text += f"  Description: {tool_spec.get('description', 'N/A')}\n"
-                         # Attempt to display params from input_schema if present
-                         schema = tool_spec.get('input_schema', {}).get('properties', {})
-                         if schema:
-                             help_text += f"  Parameters (from schema):\n"
-                             required = tool_spec.get('input_schema', {}).get('required', [])
-                             for name, prop_schema in schema.items():
-                                 req_str = "(required)" if name in required else ""
-                                 type_str = f" (type: {prop_schema.get('type', 'any')})"
-                                 desc = prop_schema.get('description', 'N/A')
-                                 help_text += f"    - {name}{type_str}: {desc} {req_str}\n"
-                         else:
-                              help_text += "  Parameters: Not defined in tool schema.\n"
-                         # ---> END TOOL SPEC HELP FORMATTING <---
-                         found_help = True # Found some help via tool spec
+                if not found_help:
+                    logging.debug("REPL Help: Checking direct tool registry (template not found)...")
+                    if hasattr(self.application.passthrough_handler, 'registered_tools'):
+                         tool_spec = self.application.passthrough_handler.registered_tools.get(identifier)
+                         logging.debug(f"REPL Help: Tool spec found: {bool(tool_spec)}")
+                         if tool_spec:
+                             logging.debug("REPL Help: Formatting help from tool spec.")
+                             # ---> START TOOL SPEC HELP FORMATTING <---
+                             help_text += f"\n* Direct Tool Specification:\n"
+                             help_text += f"  Description: {tool_spec.get('description', 'N/A')}\n"
+                             # Attempt to display params from input_schema if present
+                             schema = tool_spec.get('input_schema', {}).get('properties', {})
+                             if schema:
+                                 help_text += f"  Parameters (from schema):\n"
+                                 required = tool_spec.get('input_schema', {}).get('required', [])
+                                 for name, prop_schema in schema.items():
+                                     req_str = "(required)" if name in required else ""
+                                     type_str = f" (type: {prop_schema.get('type', 'any')})"
+                                     desc = prop_schema.get('description', 'N/A')
+                                     help_text += f"    - {name}{type_str}: {desc} {req_str}\n"
+                             else:
+                                  help_text += "  Parameters: Not defined in tool schema.\n"
+                             # ---> END TOOL SPEC HELP FORMATTING <---
+                             found_help = True # Found some help via tool spec
 
                 if not found_help:
                     # Check if it's a known direct tool executor even without a spec
