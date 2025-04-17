@@ -203,9 +203,23 @@ class TestTaskCommandIntegration:
         # Assert
         assert result["status"] == "COMPLETE"
         app_instance.memory_system.get_relevant_context_for.assert_called_once()  # Auto lookup performed
-        app_instance.aider_bridge.execute_automatic_task.assert_called_once_with(
-            "Auto context test", ["/auto/lookup/path.py"]  # Auto-found path used
-        )
+        
+        # Assert TaskSystem path was taken
+        app_instance.task_system.execute_subtask_directly.assert_called_once()
+        # Verify AiderBridge was NOT called directly by the dispatcher
+        app_instance.aider_bridge.execute_automatic_task.assert_not_called()
+
+        # Verify the SubtaskRequest passed to execute_subtask_directly
+        call_args = app_instance.task_system.execute_subtask_directly.call_args[0][0]
+        assert isinstance(call_args, SubtaskRequest)
+        assert call_args.type == "aider"
+        assert call_args.subtype == "automatic"
+        assert call_args.inputs == {"prompt": "Auto context test"}
+        # Verify the file paths determined by the automatic lookup were passed
+        assert call_args.file_paths == ["/auto/lookup/path.py"]
+
+        # Verify the final result content (comes from the mocked TaskSystem method)
+        assert "Subtask executed successfully" in result["content"]
     
     def test_task_auto_context_skipped_when_disabled(self, app_instance):
         """Test that automatic context lookup is skipped when fresh_context is disabled."""
