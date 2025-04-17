@@ -41,30 +41,49 @@ def execute_programmatic_task(
         # --- Routing Logic ---
         target_executor = None
         is_direct_tool = False
+        target_executor = None # Initialize target_executor
 
         # 1. Check Handler's Direct Tools first
         #    These are Python functions registered for programmatic execution.
-        if hasattr(handler_instance, 'direct_tool_executors') and identifier in handler_instance.direct_tool_executors:
-            target_executor = handler_instance.direct_tool_executors.get(identifier)
+        #    Use tool_executors as the primary registry for callable functions.
+        if hasattr(handler_instance, 'tool_executors') and identifier in handler_instance.tool_executors:
+            # Check if this identifier corresponds to a tool registered via registerDirectTool
+            # (We might need a better way to distinguish direct vs subtask tools if names overlap)
+            # For now, assume any match in tool_executors could be a direct tool if not a template.
+            # Let's refine this: Check direct_tool_executors specifically if it exists.
+            is_specifically_direct = False
+            if hasattr(handler_instance, 'direct_tool_executors') and identifier in handler_instance.direct_tool_executors:
+                 target_executor = handler_instance.direct_tool_executors.get(identifier)
+                 is_specifically_direct = True
+
+            # If not found in direct_tool_executors, check the general tool_executors
+            # This covers tools registered via register_tool or potentially registerSubtaskTool
+            if not is_specifically_direct:
+                 target_executor = handler_instance.tool_executors.get(identifier)
+
             if target_executor:
-                is_direct_tool = True
-                logging.info(f"Identifier '{identifier}' maps to a Direct Tool (Python function).")
-        # TODO: Phase 3 - Consider checking LLM-registered tools (self.registered_tools) here too?
-
-        # 2. If not a Direct Tool, check TaskSystem Templates
-        if not is_direct_tool:
-            # Identifiers for TaskSystem are expected to be "type:subtype"
-            if ':' not in identifier:
-                 logging.warning(f"Identifier '{identifier}' is not a Direct Tool and lacks ':' for TaskSystem lookup.")
-                 # Fall through to the "Not Found" case below
+                # We found *a* tool. Assume it's direct unless it's also a template.
+                # We'll check for templates next. If it's *not* a template, it's treated as direct.
+                is_direct_tool = True # Tentatively mark as direct
+                logging.info(f"Identifier '{identifier}' found in Handler tool registry.")
             else:
-                template_definition = task_system_instance.find_template(identifier)
-                if template_definition:
-                    target_executor = task_system_instance # Target the TaskSystem itself
-                    logging.info(f"Identifier '{identifier}' maps to a TaskSystem Template.")
+                 logging.debug(f"Identifier '{identifier}' not found in Handler tool registry.")
 
-        # 3. Handle "Not Found" if no target was identified
-        if target_executor is None:
+        # 2. Check TaskSystem Templates (regardless of whether a tool was found)
+        #    Templates take precedence if the identifier matches both.
+        template_definition = task_system_instance.find_template(identifier)
+        if template_definition:
+            # It's a template, execute via TaskSystem
+            target_executor = task_system_instance # Target the TaskSystem itself
+            is_direct_tool = False # Override: It's a template, not a direct tool call
+            logging.info(f"Identifier '{identifier}' maps to a TaskSystem Template (overrides any tool match).")
+        elif is_direct_tool:
+            # It was found as a tool and is NOT a template, so it's definitely a direct tool call.
+            logging.info(f"Identifier '{identifier}' confirmed as Direct Tool (not a template).")
+            # target_executor is already set from the tool check above.
+            pass
+        else:
+            # It wasn't found as a tool AND wasn't found as a template.
             logging.warning(f"Identifier '{identifier}' not found in Handler tools or TaskSystem templates.")
             raise create_task_failure(
                 message=f"Task identifier '{identifier}' not found.",

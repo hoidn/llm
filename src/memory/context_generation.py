@@ -19,10 +19,10 @@ class ContextGenerationInput:
         inherited_context: str = "",
         previous_outputs: Optional[List[str]] = None,
         fresh_context: str = "enabled",
-        taskText: str = ""  # For backward compatibility
+        taskText: str = "",  # For backward compatibility
+        history_context: Optional[str] = None # <-- New Parameter
     ):
         """Initialize a ContextGenerationInput instance.
-        
         Args:
             template_description: Main template description
             template_type: Template type (e.g., 'atomic')
@@ -33,6 +33,7 @@ class ContextGenerationInput:
             previous_outputs: Previous task outputs for context accumulation
             fresh_context: Whether to generate fresh context or use inherited only
             taskText: Legacy parameter for backward compatibility
+            history_context: Optional string containing recent conversation history.
         """
         self.template_description = template_description or taskText
         self.template_type = template_type
@@ -43,7 +44,8 @@ class ContextGenerationInput:
         self.previous_outputs = previous_outputs or []
         self.fresh_context = fresh_context
         self.taskText = taskText or template_description  # For backward compatibility
-        
+        self.history_context = history_context # <-- New Assignment
+
         # Default to including all inputs if not specified
         if not self.context_relevance and self.inputs:
             self.context_relevance = {k: True for k in self.inputs.keys()}
@@ -64,6 +66,8 @@ class ContextGenerationInput:
             return self.inherited_context or default
         elif key == "previousOutputs":
             return self.previous_outputs or default
+        elif key == "history_context":
+            return self.history_context or default
         elif hasattr(self, key):
             return getattr(self, key) or default
         return default
@@ -98,7 +102,8 @@ class ContextGenerationInput:
         return cls(
             template_description=input_data.get("taskText", ""),
             inherited_context=input_data.get("inheritedContext", ""),
-            previous_outputs=input_data.get("previousOutputs", [])
+            previous_outputs=input_data.get("previousOutputs", []),
+            history_context=input_data.get("history_context", None) # <-- Add history
         )
 
 

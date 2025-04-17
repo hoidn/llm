@@ -499,28 +499,29 @@ class TaskSystem(TemplateLookupInterface):
                         relevance = item.get("relevance", "Relevant to query")
                         score = item.get("score")
                         
-                        # Convert score to float if present
-                        if score is not None:
-                            try:
-                                score = float(score)
-                            except (ValueError, TypeError):
-                                score = None
-                        
+                        # Convert score to float if present (score is no longer part of the tuple)
+                        # if score is not None:
+                        #     try:
+                        #         score = float(score)
+                        #     except (ValueError, TypeError):
+                        #         score = None
+
                         # Try exact match first
                         if path in global_index:
-                            file_matches.append((path, relevance, score))
+                            # Create 2-tuple (path, relevance)
+                            file_matches.append((path, relevance))
                         else:
                             # Try to match by basename if exact match fails
                             # This helps with relative vs absolute path differences
                             path_basename = os.path.basename(path)
                             matched = False
-                            
+
                             for index_path in global_index.keys():
                                 if os.path.basename(index_path) == path_basename:
-                                    file_matches.append((index_path, relevance, score))
+                                    # Create 2-tuple (path, relevance)
+                                    file_matches.append((index_path, relevance))
                                     matched = True
                                     break
-                            
                             if not matched:
                                 logging.warning("Path not found in index: %s", path)
             else:
@@ -528,11 +529,12 @@ class TaskSystem(TemplateLookupInterface):
         except Exception as e:
             logging.exception("Error processing context generation result:")
         
-        # Create standardized result
+        # Create standardized result (AssociativeMatchResult expects List[Tuple[str, str]])
         from memory.context_generation import AssociativeMatchResult
         context = f"Found {len(file_matches)} relevant files." if file_matches else result.get("content", "Context generation failed")
-        logging.debug("Returning AssociativeMatchResult with %d matches. First match: %s", 
+        logging.debug("Returning AssociativeMatchResult with %d matches (as 2-tuples). First match: %s",
                      len(file_matches), file_matches[0] if file_matches else 'None')
+        # Ensure file_matches is now List[Tuple[str, str]]
         return AssociativeMatchResult(context=context, matches=file_matches)
 
     def _execute_context_generation_task(self, context_input, global_index, handler):
