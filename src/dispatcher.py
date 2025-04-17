@@ -223,19 +223,27 @@ def execute_programmatic_task(
             if isinstance(fc_param, list) and all(isinstance(p, str) for p in fc_param):
                 explicit_file_paths = fc_param
                 logger.debug("Using pre-parsed list for file_context.")
-            elif isinstance(fc_param, str) and fc_param.strip():
-                try:
-                    loaded_paths = json.loads(fc_param)
-                    if isinstance(loaded_paths, list) and all(isinstance(p, str) for p in loaded_paths):
-                        explicit_file_paths = loaded_paths
-                        logger.debug("Successfully parsed file_context JSON string.")
-                    else:
-                        raise ValueError("Parsed JSON is not a list of strings.")
-                except (json.JSONDecodeError, ValueError) as e:
-                    msg = f"Invalid file_context parameter: must be a JSON string array or already a list of strings. Error: {e}"
-                    logger.error(msg)
-                    return format_error_result(create_task_failure(msg, INPUT_VALIDATION_FAILURE))
-            elif fc_param is not None: # Handle cases where it's present but not list/string
+            elif isinstance(fc_param, str): # Check if it's a string first
+                if fc_param.strip(): # THEN check if it's non-empty after stripping
+                    try:
+                        # Attempt JSON parsing ONLY if the string is not empty
+                        loaded_paths = json.loads(fc_param)
+                        if isinstance(loaded_paths, list) and all(isinstance(p, str) for p in loaded_paths):
+                            explicit_file_paths = loaded_paths
+                            logger.debug("Successfully parsed file_context JSON string.")
+                        else:
+                            raise ValueError("Parsed JSON is not a list of strings.")
+                    except (json.JSONDecodeError, ValueError) as e:
+                        # Handle parsing errors for non-empty strings
+                        msg = f"Invalid file_context parameter: must be a JSON string array or already a list of strings. Error: {e}"
+                        logger.error(msg)
+                        return format_error_result(create_task_failure(msg, INPUT_VALIDATION_FAILURE))
+                else:
+                    # Empty string "" case - treat like None, explicit_file_paths remains None
+                    logger.debug("Empty string provided for file_context, treating as no explicit paths.")
+                    pass # Do nothing, explicit_file_paths is already None
+            elif fc_param is not None:
+                 # Handles non-string, non-list, non-None types
                  msg = f"Invalid type for file_context parameter: {type(fc_param).__name__}"
                  logger.error(msg)
                  return format_error_result(create_task_failure(msg, INPUT_VALIDATION_FAILURE))
