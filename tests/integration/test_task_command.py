@@ -279,7 +279,10 @@ class TestTaskCommandIntegration:
     def test_task_aider_auto_help(self, app_instance):
         """Test /task aider:automatic --help."""
         # Arrange
-        # The fixture already registers the template with the real TaskSystem
+        # Ensure find_template returns None for this test to test tool spec path
+        app_instance.task_system.find_template.return_value = None
+        
+        # The fixture already registers the tool spec with the mock handler
         captured_output = io.StringIO()
         sys.stdout = captured_output
         from src.repl.repl import Repl
@@ -293,6 +296,7 @@ class TestTaskCommandIntegration:
         output = captured_output.getvalue()
         assert "Fetching help for task: aider:automatic..." in output
         assert "* Direct Tool Specification:" in output
+        assert "* Task Template Details:" not in output # Should NOT find template details
         assert "Execute an automatic Aider task" in output # Description
         assert "prompt (type: string): The instruction for code changes. (required)" in output
         assert "file_context (type: string): (Optional) JSON string array" in output
@@ -408,8 +412,8 @@ class TestTaskCommandIntegration:
         # Check the file context determined by execute_subtask_directly (using template path)
         handler_config = execute_task_call_args.kwargs.get('handler_config', {})
         assert handler_config.get('file_context') == ["/template/path.py"] # Template path used
-        # Check the content returned by the mocked TaskSystem.execute_task method
-        assert "Mock TaskSystem.execute_task Result" in result["content"]
+        # Check the content returned by the stub
+        assert "Executed template 'template:with_context' with inputs." in result["content"]
 
 
     def test_task_auto_context_used_when_no_explicit(self, app_instance):
@@ -462,6 +466,12 @@ class TestTaskCommandIntegration:
         # In Phase 1, MemorySystem is not called for lookup (deferred)
         # Instead, check that the context_source is correctly marked as deferred
         assert result["notes"]["context_source"] == "deferred_lookup"
+        
+        # Verify the arguments passed to the internal execute_task
+        execute_task_call_args = app_instance.task_system.execute_task.call_args
+        # Check the file context determined by execute_subtask_directly (should be empty for deferred lookup)
+        handler_config = execute_task_call_args.kwargs.get('handler_config', {})
+        assert handler_config.get('file_context') == [] # Empty list for deferred lookup in Phase 1
         # Verify TaskSystem's internal execute_task was called
         app_instance.task_system.execute_task.assert_called_once()
         # Verify the arguments passed to the internal execute_task
@@ -475,8 +485,8 @@ class TestTaskCommandIntegration:
 
         # Verify AiderBridge (or other direct tools) were NOT called directly
         app_instance.aider_bridge.execute_automatic_task.assert_not_called()
-        # Check the content returned by the mocked TaskSystem.execute_task method
-        assert "Mock TaskSystem.execute_task Result" in result["content"]
+        # Check the content returned by the stub
+        assert "Executed template 'template:no_context' with inputs." in result["content"]
 
 
     def test_task_auto_context_skipped_when_disabled(self, app_instance):
@@ -594,6 +604,12 @@ class TestTaskCommandIntegration:
         # In Phase 1, history is stored in the request but lookup is deferred
         # Check that context_source is correctly marked as deferred
         assert result["notes"]["context_source"] == "deferred_lookup"
+        
+        # Verify the arguments passed to the internal execute_task
+        execute_task_call_args = app_instance.task_system.execute_task.call_args
+        # Check the file context determined by execute_subtask_directly (should be empty for deferred lookup)
+        handler_config = execute_task_call_args.kwargs.get('handler_config', {})
+        assert handler_config.get('file_context') == [] # Empty list for deferred lookup in Phase 1
 
         # Verify TaskSystem's internal execute_task was called
         app_instance.task_system.execute_task.assert_called_once()
@@ -658,12 +674,30 @@ class TestTaskCommandIntegration:
 
     def test_task_help_flag(self, app_instance):
         """Test /task --help displays template parameter information."""
-        # Arrange: Use aider:automatic, template is registered in fixture
+        # Arrange: Create a mock template that will be returned by find_template
+        mock_template = {
+            "name": "aider:automatic",
+            "type": "aider",
+            "subtype": "automatic",
+            "description": "Execute an automatic Aider task (Template Version)",
+            "parameters": {
+                "prompt": {
+                    "type": "string",
+                    "description": "The instruction for code changes (from template)",
+                    "required": True
+                },
+                "file_context": {
+                    "type": "string",
+                    "description": "(Optional) JSON string array of file paths (from template)"
+                }
+            }
+        }
+        
         # Reset call history for mocks on the real TaskSystem instance
         app_instance.task_system.find_template.reset_mock()
-        app_instance.task_system.find_template.return_value = None # Ensure default
+        # Set the return value to our mock template to test template precedence
+        app_instance.task_system.find_template.return_value = mock_template
         app_instance.task_system.execute_task.reset_mock()
-        # DO NOT set return_value here, rely on fixture default
 
         # Reset other relevant mocks
         app_instance.aider_bridge.execute_automatic_task.reset_mock()
@@ -672,6 +706,7 @@ class TestTaskCommandIntegration:
              for tool_mock in app_instance.passthrough_handler.direct_tool_executors.values():
                  if isinstance(tool_mock, MagicMock):
                      tool_mock.reset_mock()
+                     
         # Capture stdout
         captured_output = io.StringIO()
         sys.stdout = captured_output
@@ -685,10 +720,11 @@ class TestTaskCommandIntegration:
         sys.stdout = sys.__stdout__
         output = captured_output.getvalue()
         assert "Fetching help for task: aider:automatic..." in output
-        assert "Task Template Details" in output
-        assert "Execute an automatic Aider task" in output # Description from template
-        assert "prompt (type: string): The instruction for code changes. (required)" in output
-        assert "file_context (type: string): (Optional) JSON string array" in output # Description from template
+        assert "* Task Template Details:" in output
+        assert "* Direct Tool Specification:" not in output # Should NOT show tool spec
+        assert "Execute an automatic Aider task (Template Version)" in output # Description from template
+        assert "prompt (type: string): The instruction for code changes (from template) (required)" in output
+        assert "(Optional) JSON string array of file paths (from template)" in output
 
         # Assert Mock Calls
         app_instance.aider_bridge.execute_automatic_task.assert_not_called()
@@ -712,6 +748,20 @@ class TestTaskCommandIntegration:
              for tool_mock in app_instance.passthrough_handler.direct_tool_executors.values():
                  if isinstance(tool_mock, MagicMock):
                      tool_mock.reset_mock()
+                     
+        # Set up a mock for the direct tool executor to capture the params
+        direct_tool_mock = MagicMock()
+        # Store the received params for inspection
+        received_params = {}
+        
+        def capture_params(params):
+            received_params.update(params)
+            return {"status": "COMPLETE", "content": "Success", "notes": {}}
+            
+        direct_tool_mock.side_effect = capture_params
+        # Replace the executor in the handler's direct_tool_executors
+        app_instance.passthrough_handler.direct_tool_executors["aider:automatic"] = direct_tool_mock
+        
         # Capture stdout
         captured_output = io.StringIO()
         sys.stdout = captured_output
@@ -726,23 +776,15 @@ class TestTaskCommandIntegration:
         sys.stdout = sys.__stdout__
         output = captured_output.getvalue()
         assert "Executing task: aider:automatic..." in output
-        assert "Status: COMPLETE" in output # Assumes mock bridge returns success
+        assert "Status: COMPLETE" in output # From our mock return value
 
-        # Assert Mock Calls: Verify bridge received correctly parsed params
-        app_instance.aider_bridge.execute_automatic_task.assert_called_once()
-        # Get the arguments passed to the *executor* via the lambda in registerDirectTool
-        # The executor then calls the bridge. We check the bridge call.
-        call_kwargs = app_instance.aider_bridge.execute_automatic_task.call_args.kwargs
-        assert call_kwargs['prompt'] == "Complex JSON test"
-        assert call_kwargs['file_context'] == ["/f1"]
-        # The 'config' param was parsed by REPL and passed via dispatcher to the executor lambda,
-        # which then passed it inside the 'params' dict to the bridge call.
-        # We need to check the params dict passed to the *executor*.
-        # Since we mock the bridge directly, we check its call args.
-        # The executor `execute_aider_automatic` only explicitly passes prompt and file_context.
-        # To test the 'config' param reached the executor, we'd need to mock the executor itself,
-        # or modify the executor to pass **params to the bridge call.
-        # For now, we confirm the primary params (prompt, file_context) are correct.
+        # Assert Mock Calls: Verify direct tool executor received correctly parsed params
+        direct_tool_mock.assert_called_once()
+        
+        # Check that all parameters were correctly parsed and passed to the executor
+        assert received_params["prompt"] == "Complex JSON test"
+        assert received_params["file_context"] == ["/f1"]
+        assert received_params["config"] == {"nested": {"value": 42}, "array": [1, 2, 3]}
 
 
     def test_task_error_handling_invalid_json_repl(self, app_instance):

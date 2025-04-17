@@ -53,6 +53,7 @@ def _parse_file_context(file_context_param: Optional[Any]) -> Tuple[Optional[Lis
 def execute_aider_automatic(params: Dict[str, Any], aider_bridge: AiderBridge) -> TaskResult:
     """Executor for the aider:automatic task."""
     logging.info("Executing Aider Automatic task")
+    logging.debug(f"Executor received params: {params}")
     prompt = params.get("prompt", "")
 
     if not prompt:
@@ -79,6 +80,7 @@ def execute_aider_automatic(params: Dict[str, Any], aider_bridge: AiderBridge) -
 def execute_aider_interactive(params: Dict[str, Any], aider_bridge: AiderBridge) -> TaskResult:
     """Executor for the aider:interactive task."""
     logging.info("Executing Aider Interactive task")
+    logging.debug(f"Executor received params: {params}")
     
     # Check for query parameter first, then fall back to prompt
     query = params.get("query", "")

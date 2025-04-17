@@ -42,12 +42,14 @@ def mock_app():
 
 # --- CORRECTED FIXTURE ---
 @pytest.fixture
-def repl_instance(mock_app):
+def repl_instance(mock_app, capsys):
     """Creates a Repl instance and mocks its dispatcher_func."""
-    # Create the real Repl instance first
-    repl = Repl(mock_app)
+    # Create the real Repl instance first, using sys.stdout to ensure capsys captures output
+    repl = Repl(mock_app, output_stream=sys.stdout)
     # Create a mock function to replace the dispatcher call target
     mock_dispatcher = MagicMock(name="mock_execute_programmatic_task")
+    # Set default return value for the mock
+    mock_dispatcher.return_value = {"status": "COMPLETE", "content": "Mock Result", "notes": {}}
     # Patch the dispatcher_func *on the instance* using unittest.mock.patch.object
     # This ensures the specific instance uses the mock, avoiding import timing issues.
     with patch.object(repl, 'dispatcher_func', mock_dispatcher):
