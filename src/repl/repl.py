@@ -371,8 +371,8 @@ class Repl:
             identifier = parts[0]
             raw_params_and_flags = parts[1:]
 
-                # --- CORRECTED Help Flag Handling ---
-                if "--help" in raw_params_and_flags:
+            # --- CORRECTED Help Flag Handling ---
+            if "--help" in raw_params_and_flags:
                     logging.debug(f"REPL Help: Checking help for identifier: '{identifier}'") # Added Log
                     help_text = f"Help for '{identifier}':\n"
                     found_help = False
@@ -440,7 +440,7 @@ class Repl:
 
                     print(help_text, file=self.output)
                     return # Stop processing after help
-                # --- END CORRECTED Help Flag Handling ---
+            # --- END CORRECTED Help Flag Handling ---
 
             # --- Parameter & Flag Parsing ---
             params: Dict[str, Any] = {}
