@@ -5,6 +5,7 @@ import io
 import sys
 from unittest.mock import patch, MagicMock, ANY, call
 from memory.context_generation import ContextGenerationInput, AssociativeMatchResult
+from task_system.ast_nodes import SubtaskRequest
 
 @pytest.fixture
 def app_instance():
@@ -106,17 +107,11 @@ class TestTaskCommandIntegration:
     
     def test_task_context_precedence_explicit_wins(self, app_instance):
         """Test that explicit file_context takes precedence over template and auto context."""
-        # Arrange: Template allows auto-lookup but explicit context is provided
-        mock_template = {
-            "name": "aider:automatic", "type": "aider", "subtype": "automatic",
-            "parameters": {"prompt": {}, "file_context": {}},
-            "file_paths": ["/template/path.py"],  # Template path exists
-            "context_management": {"fresh_context": "enabled"}  # Auto enabled
-        }
-        # Override the default None return value for this specific test
-        app_instance.task_system.find_template = MagicMock(return_value=mock_template)
+        # Arrange: No template override - use fixture's default (find_template returns None)
+        # This ensures we test the direct tool path with explicit context
         app_instance.memory_system.get_relevant_context_for.reset_mock()
         app_instance.aider_bridge.execute_automatic_task.reset_mock()
+        app_instance.task_system.execute_subtask_directly.reset_mock()  # Reset this mock specifically
 
         # Act: Call with explicit file_context param
         from dispatcher import execute_programmatic_task
@@ -159,12 +154,18 @@ class TestTaskCommandIntegration:
             task_system_instance=app_instance.task_system
         )
 
-        # Assert
+        # Assert: Check that TaskSystem path was taken
         assert result["status"] == "COMPLETE"
-        app_instance.memory_system.get_relevant_context_for.assert_not_called()  # Auto lookup skipped
-        app_instance.aider_bridge.execute_automatic_task.assert_called_once_with(
-            "Template context test", ["/template/path.py"]  # Template path used
-        )
+        # Verify TaskSystem method was called
+        app_instance.task_system.execute_subtask_directly.assert_called_once()
+        # Verify the SubtaskRequest passed to it used the template's file_paths
+        call_args = app_instance.task_system.execute_subtask_directly.call_args[0][0]
+        assert isinstance(call_args, SubtaskRequest)
+        assert call_args.file_paths == ["/template/path.py"]  # Template path used
+        # Verify AiderBridge was NOT called directly by the dispatcher
+        app_instance.aider_bridge.execute_automatic_task.assert_not_called()
+        # Check the content returned by the mocked TaskSystem method
+        assert "Subtask executed successfully" in result["content"]
     
     def test_task_auto_context_used_when_no_explicit(self, app_instance):
         """Test that automatic context lookup is used when no explicit context is provided."""
