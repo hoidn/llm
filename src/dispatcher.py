@@ -204,11 +204,11 @@ def execute_programmatic_task(
 ) -> TaskResult:
     """
     Routes a programmatic task request (/task) to the appropriate executor.
-    Phase 1: Handles Direct Tools and basic routing to TaskSystem templates
-             with explicit file_context parameter handling only.
+    Handles Direct Tools and TaskSystem template routing with correct precedence.
+    Populates result notes for direct tool execution path.
     """
-    logger.debug(f"Dispatcher executing: identifier='{identifier}'")
-    logger.debug(f"Dispatcher Params: {params}, Flags: {flags}")
+    logger.debug(f"Dispatcher executing: identifier='{identifier}'") # Changed level
+    logger.debug(f"Dispatcher Params: {params}, Flags: {flags}") # Changed level
 
     try:
         # --- Parameter Pre-processing ---
@@ -218,10 +218,9 @@ def execute_programmatic_task(
             if isinstance(fc_param, list) and all(isinstance(p, str) for p in fc_param):
                 explicit_file_paths = fc_param
                 logger.debug("Using pre-parsed list for file_context.")
-            elif isinstance(fc_param, str): # Check if it's a string first
-                if fc_param.strip(): # THEN check if it's non-empty after stripping
+            elif isinstance(fc_param, str):
+                if fc_param.strip():
                     try:
-                        # Attempt JSON parsing ONLY if the string is not empty
                         loaded_paths = json.loads(fc_param)
                         if isinstance(loaded_paths, list) and all(isinstance(p, str) for p in loaded_paths):
                             explicit_file_paths = loaded_paths
@@ -229,61 +228,53 @@ def execute_programmatic_task(
                         else:
                             raise ValueError("Parsed JSON is not a list of strings.")
                     except (json.JSONDecodeError, ValueError) as e:
-                        # Handle parsing errors for non-empty strings
                         msg = f"Invalid file_context parameter: must be a JSON string array or already a list of strings. Error: {e}"
                         logger.error(msg)
                         return format_error_result(create_task_failure(msg, INPUT_VALIDATION_FAILURE))
                 else:
-                    # Empty string "" case - treat like None, explicit_file_paths remains None
                     logger.debug("Empty string provided for file_context, treating as no explicit paths.")
-                    pass # Do nothing, explicit_file_paths is already None
             elif fc_param is not None:
-                 # Handles non-string, non-list, non-None types
                  msg = f"Invalid type for file_context parameter: {type(fc_param).__name__}"
                  logger.error(msg)
                  return format_error_result(create_task_failure(msg, INPUT_VALIDATION_FAILURE))
-            # Note: We keep file_context in params for now, as SubtaskRequest might need it.
-            # If a Direct Tool *doesn't* expect it, it should ignore it.
+            # Keep original file_context in params for potential use by target
+            # Note: If it was parsed, it remains parsed in params for the target.
 
         # --- Routing Logic ---
+        logger.debug("Dispatcher: Routing logic started.") # Added Log
         target_executor = None
         is_direct_tool = False
         template_definition = None
-        
-        logger.debug("Dispatcher: Routing logic started.")
 
-        # 1. Check TaskSystem Templates FIRST
-        logger.debug("Dispatcher: Checking for template...")
+        # 1. Check TaskSystem Templates FIRST (Corrected Precedence)
+        logger.debug("Dispatcher: Checking for template...") # Added Log
         if hasattr(task_system_instance, 'find_template'):
             template_definition = task_system_instance.find_template(identifier)
-            logger.debug(f"Dispatcher: Template found: {bool(template_definition)}")
+            logger.debug(f"Dispatcher: Template found: {bool(template_definition)}") # Added Log
             if template_definition:
-                logger.info(f"Identifier '{identifier}' maps to a TaskSystem Template (overrides Direct Tool match if any).")
-                target_executor = task_system_instance # Target is the TaskSystem itself
-                is_direct_tool = False # It's a template, not direct
+                logger.info(f"Identifier '{identifier}' maps to a TaskSystem Template.") # Changed Level
+                target_executor = task_system_instance # Target is TaskSystem
+                is_direct_tool = False # Not a direct tool call
             else:
-                logger.debug(f"Dispatcher: Identifier '{identifier}' not found as template.")
-                
-        # 2. Check Handler Direct Tools ONLY IF NOT found as a template
-        if not template_definition:
-            logger.debug("Dispatcher: Checking for direct tool (template not found)...")
-            # Use hasattr for safety, assuming direct_tool_executors might not always exist
+                 logger.debug(f"Dispatcher: Identifier '{identifier}' not found as template.") # Added Log
+                 # Proceed to check direct tools only if not found as template
+
+        # 2. Check Handler Direct Tools ONLY IF NOT found as a template (Corrected Logic)
+        if not template_definition: # Only check if template wasn't found
+            logger.debug("Dispatcher: Checking for direct tool (template not found)...") # Added Log
             handler_tools = getattr(handler_instance, 'direct_tool_executors', {})
             if identifier in handler_tools:
-                logger.debug(f"Dispatcher: Direct tool found: {identifier}")
-                logger.info(f"Identifier '{identifier}' found in Handler Direct Tool registry.")
+                logger.info(f"Identifier '{identifier}' found as a Handler Direct Tool.") # Changed Level
                 target_executor = handler_tools[identifier]
-                is_direct_tool = True # Assume direct unless template found
+                is_direct_tool = True
             else:
-                logger.debug(f"Dispatcher: Direct tool '{identifier}' not found.")
-
+                logger.debug(f"Dispatcher: Direct tool '{identifier}' not found.") # Added Log
 
         # 3. Handle Execution or Not Found
         if target_executor:
             if is_direct_tool:
                 # --- Direct Tool Execution ---
-                logger.debug("Dispatcher: Routing to Direct Tool.")
-                logger.debug(f"Executing Direct Tool: {identifier}")
+                logger.debug("Dispatcher: Routing to Direct Tool.") # Added Log
                 # Direct tools receive the raw params dictionary
                 raw_result = target_executor(params)
 
@@ -293,30 +284,29 @@ def execute_programmatic_task(
                      if "notes" not in result: result["notes"] = {}
                 else:
                      result = {"status": "COMPLETE", "content": str(raw_result), "notes": {}}
+
+                # ---> CORRECTED NOTES POPULATION FOR DIRECT TOOLS <---
                 result["notes"]["execution_path"] = "direct_tool"
-                
-                # Add context info for Direct Tools
-                if explicit_file_paths is not None:
-                    result["notes"]["context_source"] = "explicit_request"
-                    result["notes"]["context_file_count"] = len(explicit_file_paths)
+                if explicit_file_paths is not None: # Check the variable from pre-processing
+                     result["notes"]["context_source"] = "explicit_request"
+                     result["notes"]["context_files_count"] = len(explicit_file_paths)
                 else:
-                    result["notes"]["context_source"] = "none"
-                    result["notes"]["context_file_count"] = 0
-                    
-                logger.debug(f"Dispatcher (Direct Tool Path): Returning notes: {result.get('notes', {})}")
-                logger.info(f"Direct Tool execution complete. Status: {result.get('status')}")
+                     result["notes"]["context_source"] = "none"
+                     result["notes"]["context_files_count"] = 0
+                # ---> END CORRECTION <---
+
+                logger.debug(f"Dispatcher (Direct Tool Path): Returning notes: {result.get('notes', {})}") # Added Log
+                logger.info(f"Direct Tool execution complete. Status: {result.get('status')}") # Changed Level
                 return result
             else:
                 # --- Template Execution via TaskSystem ---
-                logger.debug("Dispatcher: Routing to TaskSystem Template.")
-                logger.debug(f"Executing Subtask Template via TaskSystem: {identifier}")
+                logger.debug("Dispatcher: Routing to TaskSystem Template.") # Added Log
                 # Determine type/subtype for SubtaskRequest
                 if ":" in identifier:
                     task_type, task_subtype = identifier.split(':', 1)
                 else:
                     task_type = identifier
-                    # Get subtype from template if available, otherwise None/empty
-                    task_subtype = template_definition.get("subtype")
+                    task_subtype = template_definition.get("subtype") # Get from template
 
                 # Create SubtaskRequest
                 subtask_request = SubtaskRequest(
@@ -327,15 +317,17 @@ def execute_programmatic_task(
                     history_context=optional_history_str if flags.get("use-history") else None
                 )
 
-                # Call TaskSystem method (Phase 1 stub)
-                # Create a base Environment. execute_subtask_directly will extend it.
-                base_env = Environment({})
+                # Call TaskSystem method
+                base_env = Environment({}) # Create base env for direct call
                 result = task_system_instance.execute_subtask_directly(subtask_request, base_env)
-                logger.debug(f"Dispatcher (Template Path): Returning TaskSystem result with notes: {result.get('notes', {})}")
+
+                # Before returning the result for the template path
+                logger.debug(f"Dispatcher (Template Path): Returning TaskSystem result with notes: {result.get('notes', {})}") # Added Log
+                logger.info(f"TaskSystem template execution complete. Status: {result.get('status')}") # Changed Level
                 return result
         else:
             # --- Identifier Not Found ---
-            logger.warning(f"Identifier '{identifier}' not found as Direct Tool or TaskSystem Template.")
+            logger.warning(f"Identifier '{identifier}' not found as Direct Tool or TaskSystem Template.") # Changed Level
             return format_error_result(create_task_failure(
                 message=f"Task identifier '{identifier}' not found",
                 reason=INPUT_VALIDATION_FAILURE,

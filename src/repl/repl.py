@@ -368,84 +368,76 @@ class Repl:
             identifier = parts[0]
             raw_params_and_flags = parts[1:]
 
-            # --- Help Flag Handling ---
-            if "--help" in raw_params_and_flags:
-                logging.debug(f"REPL Help: Checking help for identifier: '{identifier}'")
-                print(f"Fetching help for task: {identifier}...", file=self.output)
-                help_text = f"Help for '{identifier}':\n"
-                found_help = False
-                template_info = None
-                tool_spec = None # Use tool_spec for clarity
+                # --- CORRECTED Help Flag Handling ---
+                if "--help" in raw_params_and_flags:
+                    logging.debug(f"REPL Help: Checking help for identifier: '{identifier}'") # Added Log
+                    help_text = f"Help for '{identifier}':\n"
+                    found_help = False
+                    template_info = None
+                    tool_spec = None
 
-                # Check TaskSystem Templates first (preferred source for help)
-                logging.debug("REPL Help: Checking TaskSystem templates...")
-                if hasattr(self.application.task_system, 'find_template'):
-                     template_info = self.application.task_system.find_template(identifier)
-                     logging.debug(f"REPL Help: Template found: {bool(template_info)}")
-                     if template_info:
-                         logging.debug("REPL Help: Formatting help from template.")
-                         # ---> START TEMPLATE HELP FORMATTING <---
-                         help_text += f"\n* Task Template Details:\n"
-                         help_text += f"  Description: {template_info.get('description', 'N/A')}\n"
-                         params_def = template_info.get('parameters', {})
-                         if params_def:
-                             help_text += f"  Parameters:\n"
-                             for name, schema in params_def.items():
-                                 req_str = "(required)" if schema.get('required') else ""
-                                 type_str = f" (type: {schema.get('type', 'any')})"
-                                 # Safely format default value using json.dumps
-                                 def_str = ""
-                                 if 'default' in schema:
-                                     try:
-                                         def_str = f" (default: {json.dumps(schema['default'])})"
-                                     except TypeError:
-                                         def_str = f" (default: <unserializable>)" # Handle non-JSON defaults
-                                 desc = schema.get('description', 'N/A')
-                                 help_text += f"    - {name}{type_str}{def_str}: {desc} {req_str}\n"
-                         else:
-                             help_text += "    Parameters: Not defined in template.\n"
-                         # ---> END TEMPLATE HELP FORMATTING <---
-                         found_help = True # Found detailed help via template
+                    # 1. Check TaskSystem Templates FIRST (Corrected Precedence)
+                    logging.debug("REPL Help: Checking TaskSystem templates...") # Added Log
+                    if hasattr(self.application.task_system, 'find_template'):
+                        template_info = self.application.task_system.find_template(identifier)
+                        logging.debug(f"REPL Help: Template found: {bool(template_info)}") # Added Log
+                        if template_info:
+                            logging.debug("REPL Help: Formatting help from template.") # Added Log
+                            help_text += f"\n* Task Template Details:\n"
+                            help_text += f"  Description: {template_info.get('description', 'N/A')}\n"
+                            params_def = template_info.get('parameters', {})
+                            if params_def:
+                                help_text += f"  Parameters:\n"
+                                for name, schema in params_def.items():
+                                    req_str = "(required)" if schema.get('required') else ""
+                                    type_str = f" (type: {schema.get('type', 'any')})"
+                                    def_str = ""
+                                    if 'default' in schema:
+                                        try:
+                                            def_str = f" (default: {json.dumps(schema['default'])})"
+                                        except TypeError:
+                                            def_str = f" (default: <unserializable>)"
+                                    desc = schema.get('description', 'N/A')
+                                    help_text += f"    - {name}{type_str}{def_str}: {desc} {req_str}\n"
+                            else:
+                                help_text += "    Parameters: Not defined in template.\n"
+                            found_help = True
 
-                # Fallback: Check Handler Direct Tool registration ONLY if template wasn't found
-                if not found_help:
-                    logging.debug("REPL Help: Checking direct tool registry (template not found)...")
-                    if hasattr(self.application.passthrough_handler, 'registered_tools'):
-                         tool_spec = self.application.passthrough_handler.registered_tools.get(identifier)
-                         logging.debug(f"REPL Help: Tool spec found: {bool(tool_spec)}")
-                         if tool_spec:
-                             logging.debug("REPL Help: Formatting help from tool spec.")
-                             # ---> START TOOL SPEC HELP FORMATTING <---
-                             help_text += f"\n* Direct Tool Specification:\n"
-                             help_text += f"  Description: {tool_spec.get('description', 'N/A')}\n"
-                             # Attempt to display params from input_schema if present
-                             schema = tool_spec.get('input_schema', {}).get('properties', {})
-                             if schema:
-                                 help_text += f"  Parameters (from schema):\n"
-                                 required = tool_spec.get('input_schema', {}).get('required', [])
-                                 for name, prop_schema in schema.items():
-                                     req_str = "(required)" if name in required else ""
-                                     type_str = f" (type: {prop_schema.get('type', 'any')})"
-                                     desc = prop_schema.get('description', 'N/A')
-                                     help_text += f"    - {name}{type_str}: {desc} {req_str}\n"
-                             else:
-                                  help_text += "  Parameters: Not defined in tool schema.\n"
-                             # ---> END TOOL SPEC HELP FORMATTING <---
-                             found_help = True # Found some help via tool spec
+                    # 2. Check Handler Direct Tool registration ONLY if template wasn't found (Corrected Logic)
+                    if not found_help:
+                        logging.debug("REPL Help: Checking direct tool registry (template not found)...") # Added Log
+                        if hasattr(self.application.passthrough_handler, 'registered_tools'):
+                            tool_spec = self.application.passthrough_handler.registered_tools.get(identifier)
+                            logging.debug(f"REPL Help: Tool spec found: {bool(tool_spec)}") # Added Log
+                            if tool_spec:
+                                logging.debug("REPL Help: Formatting help from tool spec.") # Added Log
+                                help_text += f"\n* Direct Tool Specification:\n"
+                                help_text += f"  Description: {tool_spec.get('description', 'N/A')}\n"
+                                schema = tool_spec.get('input_schema', {}).get('properties', {})
+                                if schema:
+                                    help_text += f"  Parameters (from schema):\n"
+                                    required = tool_spec.get('input_schema', {}).get('required', [])
+                                    for name, prop_schema in schema.items():
+                                        req_str = "(required)" if name in required else ""
+                                        type_str = f" (type: {prop_schema.get('type', 'any')})"
+                                        desc = prop_schema.get('description', 'N/A')
+                                        help_text += f"    - {name}{type_str}: {desc} {req_str}\n"
+                                else:
+                                    help_text += "  Parameters: Not defined in tool schema.\n"
+                                found_help = True
+                            # Fallback check for executor existence if spec is missing
+                            elif hasattr(self.application.passthrough_handler, 'direct_tool_executors') and identifier in self.application.passthrough_handler.direct_tool_executors:
+                                logging.debug("REPL Help: Found direct executor but no spec.") # Added Log
+                                help_text += f"\n* Found Direct Tool registration for '{identifier}', but no detailed specification was found for help display."
+                                found_help = True
 
-                if not found_help:
-                    # Check if it's a known direct tool executor even without a spec
-                    if hasattr(self.application.passthrough_handler, 'direct_tool_executors') and identifier in self.application.passthrough_handler.direct_tool_executors:
-                         logging.debug("REPL Help: Found direct executor but no spec.")
-                         help_text += f"\n* Found Direct Tool registration for '{identifier}', but no detailed template or specification was found for help display."
-                         found_help = True
+                    if not found_help:
+                        logging.debug("REPL Help: No template or tool found for help.") # Added Log
+                        help_text = f"No help found for identifier: {identifier}. Check spelling and registration."
 
-                if not found_help:
-                    logging.debug("REPL Help: No template or tool found for help.")
-                    help_text = f"No help found for identifier: {identifier}. Check spelling and registration."
-
-                print(help_text, file=self.output)
-                return # Stop processing after help
+                    print(help_text, file=self.output)
+                    return # Stop processing after help
+                # --- END CORRECTED Help Flag Handling ---
 
             # --- Parameter & Flag Parsing ---
             params: Dict[str, Any] = {}

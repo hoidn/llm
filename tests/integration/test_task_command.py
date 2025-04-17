@@ -399,6 +399,8 @@ class TestTaskCommandIntegration:
         # Check the file context determined by execute_subtask_directly (using template path)
         handler_config = execute_task_call_args.kwargs.get('handler_config', {})
         assert handler_config.get('file_context') == ["/template/path.py"] # Template path used
+        handler_config = execute_task_call_args.kwargs.get('handler_config', {})
+        assert handler_config.get('file_context') == ["/template/path.py"] # Template path used
 
         # Verify AiderBridge (or other direct tools) were NOT called directly
         app_instance.aider_bridge.execute_automatic_task.assert_not_called()
@@ -524,6 +526,8 @@ class TestTaskCommandIntegration:
         assert execute_task_call_args.kwargs['task_subtype'] == "no_context"
         assert execute_task_call_args.kwargs['inputs'] == {"input": "No context expected test"}
         # Check the file context determined by execute_subtask_directly (should be empty)
+        handler_config = execute_task_call_args.kwargs.get('handler_config', {})
+        assert handler_config.get('file_context') == [] # No context files determined
         handler_config = execute_task_call_args.kwargs.get('handler_config', {})
         assert handler_config.get('file_context') == [] # No context files determined
 
