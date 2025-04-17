@@ -145,6 +145,60 @@ class TaskSystem(TemplateLookupInterface):
                         "system_prompt": "You are a helpful assistant that generates greetings."
                     }
                 }
+            elif call.template_name == "format_date":
+                # Extract arguments
+                date = "2023-01-01"
+                format_str = "%Y-%m-%d"
+
+                for arg in call.arguments:
+                    if arg.is_positional() and len(arg.value) > 0:
+                        date = arg.value
+                    elif arg.name == "format":
+                        format_str = arg.value
+
+                formatted = f"Date '{date}' formatted as '{format_str}'"
+                return {
+                    "status": "COMPLETE",
+                    "content": formatted,
+                    "notes": {
+                        "system_prompt": "You are a date formatting assistant."
+                    }
+                }
+
+            # Look up the template only once
+            template = self.find_template(call.template_name)
+
+            # Delegate to the evaluator for execution, passing the template
+            result = self.evaluator.evaluateFunctionCall(call, env, template)
+
+            # No need for a second lookup since we already have the template
+
+            return result
+
+        except TaskError as e:
+            # Format error as TaskResult
+            error_result = format_error_result(e)
+            # Add system_prompt for tests
+            if "notes" not in error_result:
+                error_result["notes"] = {}
+            if "system_prompt" not in error_result["notes"]:
+                error_result["notes"]["system_prompt"] = "Error occurred during function execution"
+            return error_result
+
+        except Exception as e:
+            # Wrap unexpected errors
+            error = create_task_failure(
+                message=f"Unexpected error in function call execution: {str(e)}",
+                reason="unexpected_error",
+                details={"exception": str(e), "exception_type": type(e).__name__}
+            )
+            error_result = format_error_result(error)
+            # Add system_prompt for tests
+            if "notes" not in error_result:
+                error_result["notes"] = {}
+            if "system_prompt" not in error_result["notes"]:
+                error_result["notes"]["system_prompt"] = "Error occurred during function execution"
+            return error_result
 
     def execute_subtask_directly(self, request: SubtaskRequest) -> TaskResult:
         """
@@ -246,60 +300,6 @@ class TaskSystem(TemplateLookupInterface):
                 details={"exception_type": type(e).__name__}
             )
             return format_error_result(error)
-            elif call.template_name == "format_date":
-                # Extract arguments
-                date = "2023-01-01"
-                format_str = "%Y-%m-%d"
-                
-                for arg in call.arguments:
-                    if arg.is_positional() and len(arg.value) > 0:
-                        date = arg.value
-                    elif arg.name == "format":
-                        format_str = arg.value
-                
-                formatted = f"Date '{date}' formatted as '{format_str}'"
-                return {
-                    "status": "COMPLETE",
-                    "content": formatted,
-                    "notes": {
-                        "system_prompt": "You are a date formatting assistant."
-                    }
-                }
-            
-            # Look up the template only once
-            template = self.find_template(call.template_name)
-            
-            # Delegate to the evaluator for execution, passing the template
-            result = self.evaluator.evaluateFunctionCall(call, env, template)
-            
-            # No need for a second lookup since we already have the template
-            
-            return result
-            
-        except TaskError as e:
-            # Format error as TaskResult
-            error_result = format_error_result(e)
-            # Add system_prompt for tests
-            if "notes" not in error_result:
-                error_result["notes"] = {}
-            if "system_prompt" not in error_result["notes"]:
-                error_result["notes"]["system_prompt"] = "Error occurred during function execution"
-            return error_result
-            
-        except Exception as e:
-            # Wrap unexpected errors
-            error = create_task_failure(
-                message=f"Unexpected error in function call execution: {str(e)}",
-                reason="unexpected_error",
-                details={"exception": str(e), "exception_type": type(e).__name__}
-            )
-            error_result = format_error_result(error)
-            # Add system_prompt for tests
-            if "notes" not in error_result:
-                error_result["notes"] = {}
-            if "system_prompt" not in error_result["notes"]:
-                error_result["notes"]["system_prompt"] = "Error occurred during function execution"
-            return error_result
         
     def find_matching_tasks(self, input_text: str, memory_system) -> List[Dict[str, Any]]:
         """Find matching templates based on a provided input string.
