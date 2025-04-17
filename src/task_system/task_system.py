@@ -236,20 +236,37 @@ class TaskSystem(TemplateLookupInterface):
 
             # 3. Context Handling
             determined_file_context: Optional[List[str]] = None
-            context_source = "none"
-            
-            if request.file_paths:
-                # Priority 1: Use paths directly from the request (user provided file_context=...)
-                determined_file_context = request.file_paths
-                context_source = "explicit_request"
-                logging.debug(f"Using explicit file paths from request: {len(determined_file_context)} files")
-            elif template.get('file_paths'):
-                # Priority 2: Use paths defined in the template itself
-                determined_file_context = template['file_paths']
+            context_source = "none" # Default
+
+            # Priority 1: Explicit paths defined *in the template*
+            template_file_paths = template.get('file_paths')
+            if template_file_paths:
+                determined_file_context = template_file_paths
                 context_source = "template_defined"
                 logging.debug(f"Using explicit file paths from template: {len(determined_file_context)} files")
-            elif template.get('context_management', {}).get('fresh_context') != "disabled" and self.memory_system:
-                # Priority 3: Use automatic context lookup if enabled
+
+            # Priority 2: Explicit paths passed *in the request* (overrides template paths IF DIFFERENT)
+            # Note: If dispatcher passed template paths here, this block might refine the source label
+            if request.file_paths:
+                # If template paths were already set, check if request paths are different
+                if determined_file_context is not None:
+                    # If the request paths are the *same* as template paths, keep source as "template_defined"
+                    # If they are *different*, then the request paths take precedence, source becomes "explicit_request"
+                    if set(request.file_paths) != set(determined_file_context):
+                        determined_file_context = request.file_paths
+                        context_source = "explicit_request"
+                        logging.debug(f"Overriding template paths with explicit request paths: {len(determined_file_context)} files")
+                    # else: Paths match, source remains "template_defined"
+                else:
+                    # No template paths were set, so these request paths are the primary source
+                    determined_file_context = request.file_paths
+                    context_source = "explicit_request"
+                    logging.debug(f"Using explicit file paths from request: {len(determined_file_context)} files")
+
+            # Priority 3: Automatic lookup (only if no explicit paths were determined above)
+            if determined_file_context is None and \
+               template.get('context_management', {}).get('fresh_context') != "disabled" and \
+               self.memory_system:
                 try:
                     # --- Derive Query String ---
                     logging.debug("Attempting to derive query for automatic context lookup.")
@@ -293,16 +310,19 @@ class TaskSystem(TemplateLookupInterface):
                     # Extract file paths from matches
                     if hasattr(context_result, 'matches'):
                         determined_file_context = [match[0] for match in context_result.matches]
-                        context_source = "automatic_lookup"
+                        context_source = "automatic_lookup" # Correct source label
                         logging.debug(f"Automatic context lookup found {len(determined_file_context)} files")
+                    else:
+                        determined_file_context = [] # Ensure it's an empty list if no matches
                 except Exception as e:
                     # Log but continue - we'll just use empty context
                     logging.error(f"Error during automatic context lookup: {e}", exc_info=True)
-                    determined_file_context = []
-            else:
-                # No context available or lookup disabled
+                    determined_file_context = [] # Ensure it's an empty list on error
+
+            # Ensure determined_file_context is a list if still None
+            if determined_file_context is None:
                 determined_file_context = []
-                logging.debug("No context files available or automatic lookup disabled")
+                # context_source remains "none"
 
             # 4. Initiate template execution via the Evaluator
             self._ensure_evaluator()  # Make sure evaluator is initialized
