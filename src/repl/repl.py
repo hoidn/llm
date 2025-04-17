@@ -496,6 +496,7 @@ class Repl:
             if identifier.startswith("aider:") and hasattr(self.application, 'aider_bridge') and self.application.aider_bridge:
                 aider_mode = identifier.split(":", 1)[1] if ":" in identifier else "interactive"
                 prompt = params.get("prompt", "")
+                query = params.get("query", "")  # Also check for query parameter
                 file_context = params.get("file_context", [])
                 
                 print("\r" + " " * 12 + "\r", end="", flush=True, file=self.output) # Clear thinking
@@ -505,7 +506,9 @@ class Repl:
                     if aider_mode == "automatic":
                         result = self.application.aider_bridge.execute_automatic_task(prompt, file_context)
                     elif aider_mode == "interactive":
-                        result = self.application.aider_bridge.start_interactive_session(prompt, file_context)
+                        # Use query if provided, otherwise fall back to prompt
+                        input_text = query if query else prompt
+                        result = self.application.aider_bridge.start_interactive_session(input_text, file_context)
                     elif aider_mode == "edit":
                         result = self.application.aider_bridge.execute_code_edit(prompt, file_context)
                     else:

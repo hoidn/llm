@@ -53,7 +53,7 @@ def _parse_file_context(file_context_param: Optional[Any]) -> Tuple[Optional[Lis
 def execute_aider_automatic(params: Dict[str, Any], aider_bridge: AiderBridge) -> TaskResult:
     """Executor for the aider:automatic task."""
     logging.info("Executing Aider Automatic task")
-    prompt = params.get("prompt")
+    prompt = params.get("prompt", "")
 
     if not prompt:
         return format_error_result(create_task_failure(
@@ -69,6 +69,16 @@ def execute_aider_automatic(params: Dict[str, Any], aider_bridge: AiderBridge) -
     try:
         # Call the AiderBridge method
         result = aider_bridge.execute_automatic_task(prompt=prompt, file_context=file_paths)
+        
+        # Ensure result has notes field
+        if "notes" not in result:
+            result["notes"] = {}
+            
+        # Add execution metadata
+        result["notes"]["execution_path"] = "direct_tool"
+        result["notes"]["context_source"] = "explicit_request" if file_paths else "none"
+        result["notes"]["context_file_count"] = len(file_paths) if file_paths else 0
+        
         # AiderBridge methods should return TaskResult format directly
         return result
     except Exception as e:
@@ -78,11 +88,15 @@ def execute_aider_automatic(params: Dict[str, Any], aider_bridge: AiderBridge) -
 def execute_aider_interactive(params: Dict[str, Any], aider_bridge: AiderBridge) -> TaskResult:
     """Executor for the aider:interactive task."""
     logging.info("Executing Aider Interactive task")
-    query = params.get("query")
-
+    
+    # Check for query parameter first, then fall back to prompt
+    query = params.get("query", "")
+    if not query:
+        query = params.get("prompt", "")  # Fall back to prompt parameter
+    
     if not query:
         return format_error_result(create_task_failure(
-            "Missing required parameter: query", INPUT_VALIDATION_FAILURE
+            "Missing required parameter: query or prompt", INPUT_VALIDATION_FAILURE
         ))
 
     file_context_param = params.get("file_context")
@@ -94,6 +108,16 @@ def execute_aider_interactive(params: Dict[str, Any], aider_bridge: AiderBridge)
     try:
         # Call the AiderBridge method
         result = aider_bridge.start_interactive_session(query=query, file_context=file_paths)
+        
+        # Ensure result has notes field
+        if "notes" not in result:
+            result["notes"] = {}
+            
+        # Add execution metadata
+        result["notes"]["execution_path"] = "direct_tool"
+        result["notes"]["context_source"] = "explicit_request" if file_paths else "none"
+        result["notes"]["context_file_count"] = len(file_paths) if file_paths else 0
+        
         # AiderBridge methods should return TaskResult format directly
         return result
     except Exception as e:

@@ -100,16 +100,23 @@ def execute_programmatic_task(
                 else:
                      result = {"status": "COMPLETE", "content": str(raw_result), "notes": {}}
 
-                # ---> CORRECTED NOTES POPULATION FOR DIRECT TOOLS <---
-                result["notes"]["execution_path"] = "direct_tool"
-                if explicit_file_paths is not None: # Check the variable from pre-processing
-                     result["notes"]["context_source"] = "explicit_request"
-                     result["notes"]["context_files_count"] = len(explicit_file_paths)
-                else:
-                     result["notes"]["context_source"] = "none"
-                     result["notes"]["context_files_count"] = 0
-                # ---> END CORRECTION <---
+                # ---> ENSURE NOTES POPULATION FOR DIRECT TOOLS <---
+                # Only add these if they don't already exist (executor might have added them)
+                if "execution_path" not in result["notes"]:
+                    result["notes"]["execution_path"] = "direct_tool"
+                if "context_source" not in result["notes"]:
+                    if explicit_file_paths is not None:
+                        result["notes"]["context_source"] = "explicit_request"
+                    else:
+                        result["notes"]["context_source"] = "none"
+                if "context_file_count" not in result["notes"] and "context_files_count" not in result["notes"]:
+                    count = len(explicit_file_paths) if explicit_file_paths is not None else 0
+                    result["notes"]["context_file_count"] = count
+                    # Also add the standard key for consistency
+                    result["notes"]["context_files_count"] = count
+                # ---> END ENSURE NOTES <---
 
+                logger.debug(f"Dispatcher (Direct Tool Path): Returning notes: {result.get('notes', {})}")
                 logger.info(f"Direct Tool execution complete. Status: {result.get('status')}")
                 return result
             else:
