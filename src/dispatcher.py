@@ -59,50 +59,55 @@ def execute_programmatic_task(
         # --- Routing Logic ---
         target_executor = None
         is_direct_tool = False
+        template_definition = None  # Initialize template_definition
 
-        # 1. Check Handler's *specific* Direct Tool registry first
+        # 1. Check Handler's Direct Tool registry first
         if hasattr(handler_instance, 'direct_tool_executors') and identifier in handler_instance.direct_tool_executors:
             target_executor = handler_instance.direct_tool_executors.get(identifier)
             if target_executor:
-                is_direct_tool = True
-                logging.info(f"Identifier '{identifier}' maps to a registered Direct Tool.")
+                is_direct_tool = True  # Tentatively direct
+                logging.info(f"Identifier '{identifier}' found in Handler Direct Tool registry")
 
-        # 2. If not found as a Direct Tool, check TaskSystem Templates
-        if not is_direct_tool:
-            template_definition = task_system_instance.find_template(identifier)
-            if template_definition:
-                target_executor = task_system_instance  # Target the TaskSystem itself
-                # is_direct_tool remains False
-                logging.info(f"Identifier '{identifier}' maps to a TaskSystem Template.")
-            else:
-                # 3. Handle "Not Found" - wasn't in direct tools OR templates
-                logging.warning(f"Identifier '{identifier}' not found as Direct Tool or TaskSystem Template.")
-                return format_error_result(create_task_failure(
-                    message=f"Task identifier '{identifier}' not found",
-                    reason=INPUT_VALIDATION_FAILURE,
-                    details={"identifier": identifier}
-                ))
+        # 2. Check TaskSystem Templates (Templates take precedence)
+        template_definition = task_system_instance.find_template(identifier)
+        if template_definition:
+            target_executor = task_system_instance
+            is_direct_tool = False  # Override: It's a template
+            logging.info(f"Identifier '{identifier}' maps to a TaskSystem Template (overrides Direct Tool match if any).")
+        elif is_direct_tool:
+            logging.info(f"Identifier '{identifier}' confirmed as Direct Tool (not a template).")
+        else:
+            # Not found in either registry
+            logging.warning(f"Identifier '{identifier}' not found as Direct Tool or TaskSystem Template.")
+            return format_error_result(create_task_failure(
+                message=f"Task identifier '{identifier}' not found",
+                reason=INPUT_VALIDATION_FAILURE,
+                details={"identifier": identifier}
+            ))
 
-        # --- Context Determination ---
-        # This section handles automatic context lookup if needed
-        # Context precedence: explicit file_context > template file_paths > automatic lookup
+        # --- Context Determination (Applies primarily if executing a TEMPLATE) ---
+        # For Direct Tools, context is usually passed explicitly in params,
+        # but we determine potential context here for logging/consistency.
         determined_file_paths = []
         context_source = "none"
         
-        # Check for explicit file_context in params (highest precedence)
         if "file_context" in params and params["file_context"]:
-            determined_file_paths = params["file_context"]
-            context_source = "explicit"
-            logging.debug(f"Using explicit file_context: {len(determined_file_paths)} files")
+            # Use explicit context from params (already parsed if JSON string)
+            if isinstance(params["file_context"], list):
+                determined_file_paths = params["file_context"]
+                context_source = "explicit_request"
+                logging.debug(f"Using explicit file_context from params: {len(determined_file_paths)} files")
+            else:
+                logging.warning("file_context parameter provided but is not a list. Ignoring.")
         
-        # If no explicit context and we're using a template, check template file_paths
-        elif not is_direct_tool and template_definition and template_definition.get("file_paths"):
+        # Check template ONLY IF no explicit context was given AND it's a template path
+        elif template_definition and template_definition.get("file_paths"):
             determined_file_paths = template_definition["file_paths"]
-            context_source = "template"
+            context_source = "template_defined"
             logging.debug(f"Using template file_paths: {len(determined_file_paths)} files")
         
-        # If still no context and template allows fresh context, do automatic lookup
-        elif (not is_direct_tool and template_definition and 
+        # Automatic lookup ONLY IF no explicit/template context AND fresh_context enabled
+        elif (template_definition and not determined_file_paths and
               template_definition.get("context_management", {}).get("fresh_context") != "disabled"):
             # We need to do automatic context lookup
             try:
@@ -137,14 +142,14 @@ def execute_programmatic_task(
         # --- Execution Logic ---
         if is_direct_tool:
             # Call Direct Tool Path
-            logging.debug(f"Executing Direct Tool: {identifier} with {len(determined_file_paths)} context files")
+            logging.debug(f"Executing Direct Tool: {identifier}")
             
-            # If the tool expects file_context, ensure it's in the right format
-            if "file_context" not in params and determined_file_paths:
-                params["file_context"] = determined_file_paths
+            # Direct tools rely solely on their explicit parameters
+            # We DO NOT inject template or automatic context into direct tools
+            params_for_tool = params.copy()  # Avoid modifying original params
             
             # Execute the tool
-            raw_result = target_executor(params)
+            raw_result = target_executor(params_for_tool)
 
             # Wrap raw result into TaskResult
             result: TaskResult
@@ -163,12 +168,12 @@ def execute_programmatic_task(
             
             # Add execution path and context info
             result["notes"]["execution_path"] = "direct_tool"
-            result["notes"]["context_source"] = context_source
-            result["notes"]["context_file_count"] = len(determined_file_paths)
+            result["notes"]["context_source"] = "explicit_request" if "file_context" in params else "none"
+            result["notes"]["context_file_count"] = len(params.get("file_context", [])) if isinstance(params.get("file_context"), list) else 0
 
         else:
             # Call Subtask Template Path
-            logging.debug(f"Executing Subtask Template via TaskSystem: {identifier} with {len(determined_file_paths)} context files")
+            logging.debug(f"Executing Subtask Template via TaskSystem: {identifier}")
             
             # Split identifier into type and subtype
             if ":" in identifier:
@@ -179,12 +184,13 @@ def execute_programmatic_task(
                 task_subtype = ""
                 logging.warning(f"Identifier '{identifier}' doesn't follow type:subtype format, using '{task_type}' as type and empty subtype")
             
-            # Create SubtaskRequest
+            # Create SubtaskRequest, passing the *determined* file paths
+            # (which could be from explicit request, template, or automatic lookup)
             subtask_request = SubtaskRequest(
                 type=task_type,
                 subtype=task_subtype,
                 inputs=params,
-                file_paths=determined_file_paths
+                file_paths=determined_file_paths  # Pass the final determined paths
             )
             
             # Call the TaskSystem method
