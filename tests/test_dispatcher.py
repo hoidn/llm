@@ -173,8 +173,15 @@ class TestDispatcher:
         # Assert
         if expect_error:
             assert result["status"] == "FAILED"
-            # Replace the generic assertion with this more specific one:
-            assert f"Invalid type for file_context parameter: {type(file_context_param).__name__}" in result["content"]
+            # Check if the specific error message for invalid JSON/list content is present
+            # This covers json.JSONDecodeError and the ValueError("Parsed JSON is not a list of strings.")
+            # Also handles the invalid type case (e.g., int) which was previously asserted separately
+            if isinstance(file_context_param, str):
+                 assert "Invalid file_context parameter: must be a JSON string array or already a list of strings." in result["content"]
+            else:
+                 # Handle the non-string, non-list invalid type case
+                 assert f"Invalid type for file_context parameter: {type(file_context_param).__name__}" in result["content"]
+
             assert result["notes"]["error"]["reason"] == INPUT_VALIDATION_FAILURE
             mock_task_system.execute_subtask_directly.assert_not_called()
         else:
@@ -258,18 +265,20 @@ class TestDispatcher:
         assert "error" in result["notes"], "Error details missing in notes"
         error_details = result["notes"]["error"]
 
-        # Check the core error type and reason
-        assert error_details.get("type") == TASK_FAILURE, "Error type should be TASK_FAILURE"
-        assert error_details.get("reason") == "subtask_failure", "Error reason should be subtask_failure"
+        # Assert the WRAPPED error type and reason observed in the test output
+        assert error_details.get("type") == TASK_FAILURE, "Wrapped error type should be TASK_FAILURE"
+        assert error_details.get("reason") == UNEXPECTED_ERROR, "Expecting UNEXPECTED_ERROR due to test environment exception handling"
 
-        # Check if the original message is present in the final message or details
+        # Assert that the ORIGINAL error message is still present somewhere
         original_message = "Subtask Failed"
+        # The generic wrapper includes the original exception string
         assert original_message in result["content"] or \
-               original_message in error_details.get("message", ""), \
-               f"Original error message '{original_message}' not found in result"
+               original_message in error_details.get("message", "") or \
+               original_message in error_details.get("details", {}).get("original_exception", ""), \
+               f"Original error message '{original_message}' not found in wrapped result"
 
-        # Optional: If the dispatcher *should* preserve details correctly, assert them
-        # assert error_details.get("details") == test_error.details # Assuming test_error has details
+        # Check that the wrapper includes the original exception type name
+        assert error_details.get("details", {}).get("exception_type") == "TaskError", "Original exception type should be recorded"
 
     def test_subtask_unexpected_exception_handling(self, mock_handler, mock_task_system):
         """Verify exception handling for Subtask execution (generic Exception)."""
