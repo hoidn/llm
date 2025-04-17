@@ -66,6 +66,38 @@ sequenceDiagram
 
 This sequence shows how the Task System coordinates between components to fulfill execution requests while maintaining clear responsibility boundaries.
 
+## Programmatic Task Execution
+
+The TaskSystem provides the `execute_subtask_directly` method for programmatic task execution:
+
+```python
+def execute_subtask_directly(self, request: SubtaskRequest) -> TaskResult:
+    """
+    Executes a Task System template workflow directly from a SubtaskRequest.
+
+    Args:
+        request: The SubtaskRequest defining the task to run.
+
+    Returns:
+        The final TaskResult of the workflow.
+    """
+```
+
+This method is used by the Dispatcher to execute tasks programmatically via the `/task` command. It handles:
+
+1. Template lookup based on the task identifier
+2. Context determination (explicit, template-defined, or automatic)
+3. Environment setup for task execution
+4. Task execution via the appropriate handler
+5. Result formatting and error handling
+
+The context determination follows a precedence order:
+1. Explicit file paths in the request
+2. Template-defined file paths
+3. Automatic context lookup via MemorySystem (if enabled)
+
+For more details on programmatic task execution, see the [Programmatic Task Examples](../task_system/impl/examples/programmatic_task.md).
+
 ## Key Interfaces
 
 For detailed interface specifications, see:
@@ -78,6 +110,7 @@ For detailed interface specifications, see:
 - **Handler**: Used for LLM interactions and resource enforcement
 - **Evaluator**: Used for task execution and error recovery
 - **Compiler**: Used for task parsing and transformation
+- **Dispatcher**: Used for programmatic task routing
 
 ## Architecture
 

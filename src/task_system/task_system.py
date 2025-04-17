@@ -210,87 +210,104 @@ class TaskSystem(TemplateLookupInterface):
         Returns:
             The final TaskResult of the workflow.
         """
-        identifier = f"{request.type}:{request.subtype}"
+        # Handle case where type and subtype are provided separately
+        if request.subtype:
+            identifier = f"{request.type}:{request.subtype}"
+        else:
+            identifier = request.type
+            
         logging.info(f"Executing subtask directly: {identifier}")
         try:
             # 1. Find the target template
             template = self.find_template(identifier)
             if not template:
-                raise create_task_failure(
+                logging.error(f"Template not found for identifier: '{identifier}'")
+                return format_error_result(create_task_failure(
                     message=f"Template not found for identifier: '{identifier}'",
                     reason=INPUT_VALIDATION_FAILURE,
                     details={"identifier": identifier}
-                )
+                ))
             logging.debug(f"Found template: {template.get('name')}")
 
             # 2. Create a new top-level Environment for this execution
-            #    (Ensures isolation from any potential parent REPL environment)
-            #    Extend from a base environment if necessary system bindings exist
-            base_env = Environment({}) # Add global bindings if needed, e.g., {'TaskLibrary': self.templates}
+            base_env = Environment({})  # Add global bindings if needed
             task_env = base_env.extend(request.inputs or {})
-            logging.debug("Created new top-level environment for direct execution.")
+            logging.debug("Created new top-level environment for direct execution")
 
-            # 3. Context Handling (Phase 1 Scope - Explicit Only)
+            # 3. Context Handling
             determined_file_context: Optional[List[str]] = None
-            explicit_paths_used = False
+            context_source = "none"
+            
             if request.file_paths:
                 # Priority 1: Use paths directly from the request (user provided file_context=...)
                 determined_file_context = request.file_paths
-                explicit_paths_used = True
+                context_source = "explicit_request"
                 logging.debug(f"Using explicit file paths from request: {len(determined_file_context)} files")
             elif template.get('file_paths'):
-                 # Priority 2: Use paths defined in the template itself
-                 determined_file_context = template['file_paths']
-                 explicit_paths_used = True
-                 logging.debug(f"Using explicit file paths from template: {len(determined_file_context)} files")
-            # elif template.get('file_paths_source'):
-                 # TODO Phase 3: Handle template file_paths_source (literal, command)
-                 # For Phase 1, we ignore this and fresh_context: enabled
-
-            # Note: Automatic context lookup (fresh_context: enabled) is NOT triggered in Phase 1.
+                # Priority 2: Use paths defined in the template itself
+                determined_file_context = template['file_paths']
+                context_source = "template_defined"
+                logging.debug(f"Using explicit file paths from template: {len(determined_file_context)} files")
+            elif template.get('context_management', {}).get('fresh_context') != "disabled" and self.memory_system:
+                # Priority 3: Use automatic context lookup if enabled
+                try:
+                    # Create context generation input
+                    from memory.context_generation import ContextGenerationInput
+                    context_input = ContextGenerationInput(
+                        template_description=template.get("description", ""),
+                        template_type=template.get("type", ""),
+                        template_subtype=template.get("subtype", ""),
+                        inputs=request.inputs or {},
+                        # Include history_context if it was passed in the inputs
+                        history_context=request.inputs.get("history_context") if request.inputs else None
+                    )
+                    
+                    # Get relevant context
+                    logging.debug("Performing automatic context lookup via MemorySystem")
+                    context_result = self.memory_system.get_relevant_context_for(context_input)
+                    
+                    # Extract file paths from matches
+                    if hasattr(context_result, 'matches'):
+                        determined_file_context = [match[0] for match in context_result.matches]
+                        context_source = "automatic_lookup"
+                        logging.debug(f"Automatic context lookup found {len(determined_file_context)} files")
+                except Exception as e:
+                    # Log but continue - we'll just use empty context
+                    logging.error(f"Error during automatic context lookup: {e}", exc_info=True)
+                    determined_file_context = []
+            else:
+                # No context available or lookup disabled
+                determined_file_context = []
+                logging.debug("No context files available or automatic lookup disabled")
 
             # 4. Initiate template execution via the Evaluator
-            self._ensure_evaluator() # Make sure evaluator is initialized
-            logging.debug("Calling evaluator to execute template body...")
+            self._ensure_evaluator()  # Make sure evaluator is initialized
+            logging.debug("Preparing to execute template body...")
 
-            # Prepare inputs/context for the evaluator call
-            # The evaluator will handle the actual execution steps.
-            # We need to simulate the entry point similar to how a composite task step would be evaluated.
-            # This might involve calling self.evaluator.eval() on the template's body node
-            # or a dedicated execution method if available.
-            # For now, let's assume a placeholder call - this needs refinement based on Evaluator's API.
-
-            # Placeholder: Replace with actual call to Evaluator execution logic
-            # It needs the template body, the created task_env, and the determined context
-            # Example (adjust based on actual Evaluator interface):
-            # result = self.evaluator.evaluate(template['body'], task_env, initial_context=determined_file_context)
-
-            # --- Mock Execution for Phase 1 ---
-            # Since the evaluator call isn't fully defined here, let's return a mock success
-            # In a real implementation, this would call the evaluator.
-            logging.warning("Phase 1: Skipping actual Evaluator call. Returning mock success.")
-            mock_content = f"Successfully initiated execution for {identifier}."
-            if explicit_paths_used and determined_file_context is not None:
-                mock_content += f" Using {len(determined_file_context)} explicit files."
-            else:
-                 mock_content += " No explicit file context provided or found in template."
-
-            result: TaskResult = {
-                "status": "COMPLETE",
-                "content": mock_content,
-                "notes": {
-                    "template_used": template.get('name'),
-                    "explicit_paths_used": explicit_paths_used,
-                    "context_files_count": len(determined_file_context) if determined_file_context else 0
-                }
-            }
-            # --- End Mock Execution ---
+            # Execute the template using the task_system's execute_task method
+            # This provides a consistent execution path with proper context management
+            result = self.execute_task(
+                task_type=template.get("type", ""),
+                task_subtype=template.get("subtype", ""),
+                inputs=request.inputs or {},
+                memory_system=self.memory_system,
+                handler_config={"file_context": determined_file_context}
+            )
+            
+            # Add context information to the result
+            if "notes" not in result:
+                result["notes"] = {}
+            result["notes"].update({
+                "template_used": template.get('name'),
+                "context_source": context_source,
+                "context_files_count": len(determined_file_context) if determined_file_context else 0
+            })
 
             logging.info(f"Direct execution finished for '{identifier}'. Status: {result.get('status')}")
             return result
 
         except TaskError as e:
-            logging.error(f"TaskError during direct execution of '{identifier}': {e.message}", exc_info=False)
+            logging.error(f"TaskError during direct execution of '{identifier}': {e.message}")
             return format_error_result(e)
         except Exception as e:
             logging.exception(f"Unexpected error during direct execution of '{identifier}':")

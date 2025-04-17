@@ -401,4 +401,14 @@ The registration process follows the same pattern as other tools in the system:
 
 ### Programmatic Invocation of Direct Tools
 
-Note that Direct Tools registered with the Handler (representing synchronous operations like simple Python functions or file I/O) can also be invoked programmatically, for example, via the REPL `/task` command. This uses a central dispatch logic that looks up the tool in the Handler's registry and executes its associated function directly. This provides a consistent execution path for these actions, whether they are called by an LLM during a conversational flow or invoked directly by the user or system.
+Direct Tools registered with the Handler (representing synchronous operations like simple Python functions or file I/O) can also be invoked programmatically, for example, via the REPL `/task` command. This uses a central dispatch logic that looks up the tool in the Handler's registry and executes its associated function directly. This provides a consistent execution path for these actions, whether they are called by an LLM during a conversational flow or invoked directly by the user or system.
+
+The programmatic invocation follows these steps:
+
+1. The REPL parses the `/task` command and extracts the identifier and parameters
+2. The Dispatcher determines if the identifier corresponds to a Direct Tool or a Template
+3. If it's a Direct Tool, the Dispatcher calls the tool's executor function directly
+4. If it's a Template, the Dispatcher creates a SubtaskRequest and calls TaskSystem.execute_subtask_directly
+5. The result is formatted and displayed to the user
+
+This approach ensures that tools can be invoked consistently regardless of whether they're called by an LLM or directly by a user, maintaining the same execution semantics, parameter validation, and error handling.

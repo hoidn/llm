@@ -160,6 +160,7 @@ class Repl:
         print("  /verbose [on|off] - Toggle verbose mode", file=self.output)
         print("  /debug [on|off] - Toggle debug mode for tool selection", file=self.output)
         print("  /test-aider [interactive|automatic] - Test Aider tool integration", file=self.output)
+        print("  /task <type:subtype> [param=value] [param2='[\"json\", \"list\"]'] [--use-history] [--help] - Execute a specific task programmatically", file=self.output)
         print("  /exit - Exit the REPL", file=self.output)
     
     def _cmd_mode(self, args: str) -> None:
@@ -331,18 +332,32 @@ class Repl:
             print(traceback.format_exc(), file=self.output)
 
     def _cmd_task(self, args: str) -> None:
-        """Handles the /task command."""
+        """Handles the /task command for programmatic task execution.
+        
+        Args:
+            args: Command arguments in the format "<identifier> [param=value] [--flag]"
+        """
         if not self.dispatcher_func:
             print("Error: Dispatcher is not available. Cannot execute /task.", file=self.output)
             return
 
         if not args:
-            print("Usage: /task <identifier> [param1=value1] [param2='\"json string\"'] [param3='[1, 2]'] [--flag] [--help]", file=self.output)
-            print("Example: /task aider:automatic prompt=\"Add docstrings\" file_context='[\"src/main.py\"]'", file=self.output)
+            print("Usage: /task <type:subtype> [param=value] [param2='[\"json\", \"list\"]'] [--use-history] [--help]", file=self.output)
+            print("Examples:", file=self.output)
+            print("  /task aider:automatic prompt=\"Add docstrings\" file_context='[\"src/main.py\"]'", file=self.output)
+            print("  /task aider:automatic --help", file=self.output)
+            print("  /task aider:automatic prompt=\"Fix bugs\" --use-history", file=self.output)
             return
 
         try:
-            parts = shlex.split(args)
+            # Parse command parts using shlex to handle quoted strings properly
+            try:
+                parts = shlex.split(args)
+            except ValueError as e:
+                print(f"Error parsing command: {e}", file=self.output)
+                print("Make sure all quotes are properly closed.", file=self.output)
+                return
+                
             identifier = parts[0]
             raw_params = parts[1:]
 
@@ -390,7 +405,7 @@ class Repl:
             # --- Parameter Parsing ---
             for param_str in raw_params:
                 if param_str.startswith("--"):
-                    # Handle flags (like --use-history in Phase 3)
+                    # Handle flags (like --use-history)
                     flags[param_str[2:]] = True
                 elif "=" in param_str:
                     key, value = param_str.split("=", 1)
@@ -412,23 +427,51 @@ class Repl:
                 else:
                     print(f"Warning: Ignoring invalid parameter format (expected key=value or --flag): {param_str}", file=self.output)
 
+            # --- Prepare History Context if Needed ---
+            history_context = None
+            if flags.get("use-history") and hasattr(self.application, "passthrough_handler"):
+                # Extract recent conversation history
+                if hasattr(self.application.passthrough_handler, "conversation_history"):
+                    # Format the last few exchanges (up to 5)
+                    history = self.application.passthrough_handler.conversation_history[-10:]  # Last 10 messages
+                    history_context = "\n".join([
+                        f"{msg['role'].capitalize()}: {msg['content'][:200]}{'...' if len(msg['content']) > 200 else ''}"
+                        for msg in history
+                    ])
+                    print("Using recent conversation history for context.", file=self.output)
+
             # --- Call Dispatcher ---
             print(f"\nExecuting task: {identifier} with params: {params} flags: {flags}", file=self.output)
             print("Thinking...", end="", flush=True, file=self.output)
-            # Phase 3 will add history_str based on --use-history flag
-            result = self.dispatcher_func(
-                identifier=identifier,
-                params=params,
-                flags=flags,
-                handler_instance=self.application.passthrough_handler,
-                task_system_instance=self.application.task_system,
-                optional_history_str=None # None for Phase 2
-            )
-            print("\r" + " " * 12 + "\r", end="", flush=True, file=self.output) # Clear thinking message
+            
+            try:
+                result = self.dispatcher_func(
+                    identifier=identifier,
+                    params=params,
+                    flags=flags,
+                    handler_instance=self.application.passthrough_handler,
+                    task_system_instance=self.application.task_system,
+                    optional_history_str=history_context
+                )
+            except Exception as e:
+                print("\r" + " " * 12 + "\r", end="", flush=True, file=self.output)  # Clear thinking message
+                print(f"\nError from dispatcher: {e}", file=self.output)
+                logging.exception("Dispatcher error:")
+                return
+                
+            print("\r" + " " * 12 + "\r", end="", flush=True, file=self.output)  # Clear thinking message
 
             # --- Display Result ---
             print("\nResult:", file=self.output)
             print(f"Status: {result.get('status', 'UNKNOWN')}", file=self.output)
+            
+            # Check for error status
+            if result.get('status') == "FAILED":
+                print(f"Error: {result.get('content', 'Unknown error')}", file=self.output)
+                if result.get('notes', {}).get('error_details'):
+                    print(f"Details: {result['notes']['error_details']}", file=self.output)
+                return
+            
             # Pretty print content if it looks like JSON
             content = result.get('content', 'N/A')
             try:
@@ -440,22 +483,22 @@ class Repl:
                 else:
                      print(f"Content: {content}", file=self.output)
             except json.JSONDecodeError:
-                 print(f"Content: {content}", file=self.output) # Print as is if not valid JSON
+                 print(f"Content: {content}", file=self.output)  # Print as is if not valid JSON
 
             if result.get('notes'):
-                print("Notes:", file=self.output)
+                print("\nNotes:", file=self.output)
                 for k, v in result['notes'].items():
                      # Pretty print complex values like lists/dicts within notes
                      if isinstance(v, (dict, list)):
                          print(f"  {k}:")
                          # Use json.dumps for consistent formatting of nested structures
                          try:
-                             print(json.dumps(v, indent=2))
-                         except TypeError: # Handle non-serializable types gracefully
+                             print(f"    {json.dumps(v, indent=2)}")
+                         except TypeError:  # Handle non-serializable types gracefully
                              print(f"    (Could not serialize value of type {type(v).__name__})")
                      else:
                          print(f"  {k}: {v}", file=self.output)
 
         except Exception as e:
             print(f"\nError processing /task command: {e}", file=self.output)
-            logging.exception("Error in _cmd_task:") # Log full traceback
+            logging.exception("Error in _cmd_task:")  # Log full traceback
