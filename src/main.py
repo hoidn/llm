@@ -7,12 +7,12 @@ from typing import Dict, List, Optional, Any
 
 # Import executor functions at the top level for use in initialize_aider
 # Ensure the path is correct relative to src/
-from executors.aider_executors import execute_aider_automatic, execute_aider_interactive
+from .executors.aider_executors import execute_aider_automatic, execute_aider_interactive
 # Import the template registration functions
-from task_system.templates.aider_templates import register_aider_templates
-from task_system.templates.debug_templates import register_debug_templates
+from .task_system.templates.aider_templates import register_aider_templates
+from .task_system.templates.debug_templates import register_debug_templates
 # Import system executors
-from executors.system_executors import execute_get_context, execute_read_files, execute_run_script
+from .executors.system_executors import execute_get_context, execute_read_files, execute_run_script
 
 class Application:
     """
@@ -29,10 +29,10 @@ class Application:
         logging.info("Initializing Application...")
 
         # Import components
-        from memory.memory_system import MemorySystem
-        from task_system.task_system import TaskSystem
-        from handler.passthrough_handler import PassthroughHandler
-        from task_system.templates.associative_matching import register_template as register_assoc_template
+        from .memory.memory_system import MemorySystem
+        from .task_system.task_system import TaskSystem
+        from .handler.passthrough_handler import PassthroughHandler
+        from .task_system.templates.associative_matching import register_template as register_assoc_template
         # from task_system.templates.aider_templates import register_aider_templates # Moved import to top
         # Import the executor functions needed for direct tool registration - moved to top level
 
@@ -105,7 +105,7 @@ class Application:
                 return False
             
             # Initialize indexer
-            from memory.indexers.git_repository_indexer import GitRepositoryIndexer
+            from .memory.indexers.git_repository_indexer import GitRepositoryIndexer
             indexer = GitRepositoryIndexer(repo_path)
             
             # Configure indexer to exclude some common directories
@@ -158,8 +158,8 @@ class Application:
         the passthrough handler if Aider is available.
         """
         try:
-            from aider_bridge.bridge import AiderBridge
-            from aider_bridge.tools import register_aider_tools
+            from .aider_bridge.bridge import AiderBridge
+            from .aider_bridge.tools import register_aider_tools
             
             if not self.aider_bridge:
                 self.aider_bridge = AiderBridge(self.memory_system)
@@ -281,7 +281,7 @@ def main():
     
     # Start REPL
     print("\nStarting REPL...")
-    from repl.repl import Repl
+    from .repl.repl import Repl
     repl = Repl(app)
     repl.start()
 
