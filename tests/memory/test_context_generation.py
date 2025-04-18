@@ -128,12 +128,17 @@ class TestTemplateAwareContextGeneration:
     def test_aider_bridge_uses_context_generation_input(self):
         """Test that AiderBridge uses ContextGenerationInput for context retrieval."""
         # Import here to avoid circular imports
-        from aider_bridge.bridge import AiderBridge
+        from src.aider_bridge.bridge import AiderBridge
         
         # Create mock memory system
         mock_memory_system = MagicMock(spec=MemorySystem)
-        mock_memory_system.get_relevant_context_for.return_value = MagicMock(
-            matches=[("file1.py", "Relevant to query"), ("file2.py", "Relevant to query")]
+        # Return a proper AssociativeMatchResult Pydantic model
+        mock_memory_system.get_relevant_context_for.return_value = AssociativeMatchResult(
+            context="Mock context for query",
+            matches=[
+                MatchTuple(path="file1.py", relevance="Relevant to query", score=0.9),
+                MatchTuple(path="file2.py", relevance="Relevant to query", score=0.8)
+            ]
         )
         
         # Create AiderBridge with mock memory system
@@ -165,7 +170,7 @@ class TestTemplateAwareContextGeneration:
         task_system.memory_system = memory_system
         
         # Create mock handler with model_provider (needed by associative_matching)
-        from handler.base_handler import BaseHandler
+        from src.handler.base_handler import BaseHandler
         mock_handler = MagicMock(spec=BaseHandler)
         mock_handler.model_provider = MagicMock()  # Must have model_provider
         memory_system.handler = mock_handler  # Assign to memory system
@@ -178,7 +183,7 @@ class TestTemplateAwareContextGeneration:
         }
         
         # Register associative matching template
-        from task_system.templates.associative_matching import register_template
+        from src.task_system.templates.associative_matching import register_template
         register_template(task_system)
         
         # Create context input with correct subtype and required inputs
@@ -191,7 +196,7 @@ class TestTemplateAwareContextGeneration:
         )
         
         # Mock the template execution function (simulates LLM call)
-        with patch('task_system.templates.associative_matching.execute_template') as mock_execute_template:
+        with patch('src.task_system.templates.associative_matching.execute_template') as mock_execute_template:
             # Configure mock to return the expected list of dicts format
             mock_execute_template.return_value = [
                 {"path": "auth.py", "relevance": "Matches authentication query", "score": 0.95},
@@ -349,7 +354,7 @@ class TestAssociativeMatchResult:
             ]
         }
         
-        result = AssociativeMatchResult.parse_obj(data)
+        result = AssociativeMatchResult.model_validate(data)
         
         assert result.context == "Found 3 matching files"
         assert len(result.matches) == 3
@@ -358,7 +363,7 @@ class TestAssociativeMatchResult:
         
         # Test with missing fields
         with pytest.raises(ValidationError):
-            AssociativeMatchResult.parse_obj({})
+            AssociativeMatchResult.model_validate({})
         
         # Test with minimal valid data
         minimal_result = AssociativeMatchResult(context="No context", matches=[])
