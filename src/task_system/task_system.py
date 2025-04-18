@@ -5,21 +5,17 @@ import os
 import logging
 from unittest.mock import MagicMock
 
-from .template_utils import resolve_parameters, ensure_template_compatibility, get_preferred_model
-from .ast_nodes import FunctionCallNode
-from .template_utils import Environment
-from system.errors import TaskError, create_task_failure, format_error_result
-from evaluator.interfaces import EvaluatorInterface, TemplateLookupInterface
-from .template_processor import TemplateProcessor
-from .mock_handler import MockHandler
-from memory.context_generation import ContextGenerationInput
-from .ast_nodes import SubtaskRequest # Adjust import path if needed
-from .template_utils import Environment
-from .ast_nodes import SubtaskRequest # Add SubtaskRequest import
-from .template_utils import Environment # Add Environment import
-from system.errors import TaskError, create_task_failure, format_error_result, INPUT_VALIDATION_FAILURE, UNEXPECTED_ERROR # Add error imports
-import os # Add os import for path operations
-import logging # Add logging import
+from src.task_system.template_utils import resolve_parameters, ensure_template_compatibility, get_preferred_model
+from src.task_system.ast_nodes import FunctionCallNode
+from src.task_system.template_utils import Environment
+from src.system.errors import TaskError, create_task_failure, format_error_result
+from src.evaluator.interfaces import EvaluatorInterface, TemplateLookupInterface
+from src.task_system.template_processor import TemplateProcessor
+from src.task_system.mock_handler import MockHandler
+from src.memory.context_generation import ContextGenerationInput
+from src.task_system.ast_nodes import SubtaskRequest
+from src.task_system.template_utils import Environment
+from src.system.errors import TaskError, create_task_failure, format_error_result, INPUT_VALIDATION_FAILURE, UNEXPECTED_ERROR
 
 # Define TaskResult type hint if not already present
 from typing import Dict, Any, List, Optional, Tuple # Ensure necessary types are imported

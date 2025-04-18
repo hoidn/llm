@@ -13,8 +13,6 @@ from src.aider_bridge.bridge import AiderBridge
 from src.evaluator.evaluator import Evaluator # Assuming this path
 from src.memory.context_generation import ContextGenerationInput, AssociativeMatchResult
 from src.task_system.ast_nodes import SubtaskRequest
-# Add json import if not present
-import json
 
 @pytest.fixture
 def app_instance():
