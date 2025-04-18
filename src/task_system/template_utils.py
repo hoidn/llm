@@ -2,23 +2,8 @@
 from typing import Dict, List, Any, Optional, Union, Type, Tuple, TypeVar, Callable
 import re
 
-# Try different import paths to handle various environments
-try:
-    # First try the import path used in tests
-    from task_system.ast_nodes import FunctionCallNode, ArgumentNode
-except ImportError:
-    try:
-        # Try with direct import (production code)
-        from src.task_system.ast_nodes import FunctionCallNode, ArgumentNode
-    except ImportError:
-        try:
-            # Try with relative imports (common in some test environments)
-            from .ast_nodes import FunctionCallNode, ArgumentNode
-        except ImportError:
-            # Last resort for relative imports
-            from ast_nodes import FunctionCallNode, ArgumentNode
-
-from ..system.errors import create_input_validation_error, create_unexpected_error
+from src.task_system.ast_nodes import FunctionCallNode, ArgumentNode
+from src.system.errors import create_input_validation_error, create_unexpected_error
 
 # Type compatibility helpers for testing
 # This helps tests recognize our nodes even if import paths differ
