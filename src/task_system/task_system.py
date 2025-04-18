@@ -987,6 +987,9 @@ class TaskSystem(TemplateLookupInterface):
         logging.debug("Executing associative_matching task using handler: %s", type(handler).__name__)
         logging.debug("Passing inputs to execute_template with keys: %s", inputs_for_template.keys())
         
+        # Add debug logging to verify inputs
+        logging.debug(f"_execute_context_generation_task passing inputs to execute_task: type={type(inputs_for_template)}, keys={inputs_for_template.keys()}")
+        
         # Execute task to find relevant files, passing the correct handler explicitly
         return self.execute_task(
             task_type="atomic",
@@ -1177,6 +1180,8 @@ class TaskSystem(TemplateLookupInterface):
             if task_subtype == "associative_matching":
                 logging.debug("Calling _execute_associative_matching with template: %s and handler: %s", 
                              template.get('name'), type(handler).__name__)
+                logging.debug(f"Passing resolved_inputs to _execute_associative_matching: type={type(resolved_inputs)}, keys={resolved_inputs.keys() if isinstance(resolved_inputs, dict) else 'N/A'}")
+                
                 result = self._execute_associative_matching(template, resolved_inputs, memory_system, handler=handler)
                 
                 # Add model info if selected - result is already a TaskResult object
@@ -1523,16 +1528,17 @@ class TaskSystem(TemplateLookupInterface):
             Task result with relevant files
         """
         from .templates.associative_matching import execute_template
+        import json
         
         # We now receive the handler directly
         if not handler:
             # This case should ideally not happen if called correctly
             logging.error("CRITICAL: No handler passed to _execute_associative_matching.")
-            return {
-                "content": "[]",
-                "status": "FAILED",
-                "notes": {"error": "Internal configuration error: Handler missing"}
-            }
+            return TaskResult(
+                content="[]",
+                status="FAILED",
+                notes={"error": "Internal configuration error: Handler missing"}
+            )
             
         logging.debug("_execute_associative_matching received handler: %s", type(handler).__name__)
         
@@ -1549,12 +1555,15 @@ class TaskSystem(TemplateLookupInterface):
             # Ensure required keys exist
             if "query" not in inputs_for_template and "template_description" in inputs:
                 inputs_for_template["query"] = inputs["template_description"]
+            
+            # Add debug logging to verify inputs
+            logging.debug(f"_execute_associative_matching received inputs type: {type(inputs)}, keys: {inputs.keys() if isinstance(inputs, dict) else 'N/A'}")
+            logging.debug(f"Passing inputs_for_template to execute_template with keys: {inputs_for_template.keys()}")
                 
             # Pass the properly constructed inputs dictionary to execute_template
             relevant_file_objects = execute_template(inputs_for_template, memory_system, handler)
             
             # Convert to JSON string
-            import json
             file_list_json = json.dumps(relevant_file_objects)
             
             return TaskResult(
@@ -1566,7 +1575,7 @@ class TaskSystem(TemplateLookupInterface):
                 }
             )
         except Exception as e:
-            logging.exception("Error in _execute_associative_matching:")
+            logging.exception("Error in _execute_associative_matching execution:")
             
             # Create error message
             error_message = f"Error during associative matching: {str(e)}"
