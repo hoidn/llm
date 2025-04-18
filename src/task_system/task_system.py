@@ -1353,9 +1353,14 @@ class TaskSystem(TemplateLookupInterface):
             
             # Ensure model selection is added to result
             if selected_model:
-                if "notes" not in result:
-                    result["notes"] = {}
-                result["notes"]["selected_model"] = selected_model
+                if isinstance(result, dict):
+                    if "notes" not in result:
+                        result["notes"] = {}
+                    result["notes"]["selected_model"] = selected_model
+                elif hasattr(result, "notes"):
+                    if result.notes is None:
+                        result.notes = {}
+                    result.notes["selected_model"] = selected_model
                 
             return result
             
@@ -1523,6 +1528,11 @@ class TaskSystem(TemplateLookupInterface):
         
         # Execute the template
         try:
+            # Ensure inputs is a dictionary
+            if not isinstance(inputs, dict):
+                logging.error("Invalid inputs type: %s, expected dict", type(inputs))
+                inputs = {"query": str(inputs)} if inputs else {}
+                
             # Pass handler to execute_template
             relevant_file_objects = execute_template(inputs, memory_system, handler)
             
