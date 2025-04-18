@@ -439,15 +439,19 @@ class Evaluator(EvaluatorInterface):
             if isinstance(output_format, dict) and output_format.get("type") == "json":
                 try:
                     import json
-                    content = result.get("content", "")
+                    content = result.content if hasattr(result, 'content') else ""
                     if isinstance(content, str) and content.strip():
                         parsed_content = json.loads(content)
-                        result["parsedContent"] = parsed_content
+                        # Create a new result with the parsed content
+                        notes = result.notes.copy() if hasattr(result, 'notes') and result.notes else {}
+                        notes["parsedContent"] = parsed_content
+                        result = result.model_copy(update={"notes": notes})
                 except json.JSONDecodeError as e:
                     # Add parsing error to notes but don't fail the task
-                    if "notes" not in result:
-                        result["notes"] = {}
-                    result["notes"]["parseError"] = f"Failed to parse output as JSON: {str(e)}"
+                    notes = result.notes.copy() if hasattr(result, 'notes') and result.notes else {}
+                    notes["parseError"] = f"Failed to parse output as JSON: {str(e)}"
+                    # Create a new result with the updated notes
+                    result = result.model_copy(update={"notes": notes})
             
             return result
         except Exception as e:
