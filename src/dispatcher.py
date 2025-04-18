@@ -369,7 +369,7 @@ def execute_programmatic_task(
                     type=task_type,
                     subtype=task_subtype,
                     inputs=params, # Pass original params
-                    file_paths=explicit_file_paths, # Pass only explicitly provided paths
+                    file_paths=explicit_file_paths or [], # Provide default empty list if None
                     history_context=optional_history_str if flags.get("use-history") else None
                 )
 

@@ -62,8 +62,8 @@ class TestMemorySystemIntegration:
         assert hasattr(result, 'context')
         assert hasattr(result, 'matches')
         assert len(result.matches) == 2
-        assert result.matches[0][0] == "file1.py"
-        assert result.matches[1][0] == "file2.py"
+        assert result.matches[0].path == "file1.py"
+        assert result.matches[1].path == "file2.py"
     
     def test_backwards_compatibility_with_dict_input(self, setup_components):
         """Test backward compatibility with dictionary input."""

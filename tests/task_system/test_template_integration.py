@@ -50,8 +50,8 @@ class TestTemplateIntegration:
         )
         
         # Verify successful execution
-        assert result["status"] == "COMPLETE"
-        assert "file1.py" in result["content"]
+        assert result.status == "COMPLETE"
+        assert "file1.py" in result.content
         
         # Verify parameters were passed correctly
         args = task_system._execute_associative_matching.call_args[0]
@@ -132,6 +132,6 @@ class TestTemplateIntegration:
         )
         
         # Verify model selection
-        assert "notes" in result
-        assert "selected_model" in result["notes"]
-        assert result["notes"]["selected_model"] == "llama-3"  # Second fallback
+        assert hasattr(result, "notes")
+        assert "selected_model" in result.notes
+        assert result.notes["selected_model"] == "llama-3"  # Second fallback

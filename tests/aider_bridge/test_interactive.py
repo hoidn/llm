@@ -417,7 +417,8 @@ class TestAiderTools:
         """Test registering the interactive tool."""
         # Create mock objects
         handler = MagicMock()
-        handler.registerDirectTool = MagicMock()
+        handler.register_tool = MagicMock()  # Use Anthropic format
+        handler.registerDirectTool = MagicMock()  # Legacy format as fallback
         
         aider_bridge = MagicMock()
         aider_bridge.start_interactive_session = MagicMock()
@@ -428,13 +429,12 @@ class TestAiderTools:
         # Check result
         assert result["status"] == "success"
         assert result["name"] == "aiderInteractive"
-        # TODO: Expected tool type changed from "direct" to "anthropic_tool". Update test expectation accordingly.
         assert result["type"] == "anthropic_tool"
         
-        # Check that tool was registered
-        handler.registerDirectTool.assert_called_once()
-        tool_name, tool_func = handler.registerDirectTool.call_args[0]
-        assert tool_name == "aiderInteractive"
+        # Check that tool was registered with Anthropic format
+        handler.register_tool.assert_called_once()
+        tool_spec, tool_func = handler.register_tool.call_args[0]
+        assert tool_spec["name"] == "aiderInteractive"
         assert callable(tool_func)
     
     def test_register_interactive_tool_handler_error(self):
@@ -478,6 +478,7 @@ class TestAiderTools:
         """Test the tool function created during registration."""
         # Create mock objects
         handler = MagicMock()
+        handler.register_tool = MagicMock()  # Use Anthropic format
         
         aider_bridge = MagicMock()
         aider_bridge.start_interactive_session = MagicMock()
@@ -485,17 +486,16 @@ class TestAiderTools:
         # Register tool
         register_interactive_tool(handler, aider_bridge)
         
-        # Get tool function
-        tool_func = handler.registerDirectTool.call_args[0][1]
+        # Get tool function (from Anthropic format)
+        tool_func = handler.register_tool.call_args[0][1]
         
-        # Call tool function
-        tool_func("Implement a factorial function", ["/path/to/file.py"])
+        # Call tool function with input_data dict (Anthropic format)
+        tool_func({"query": "Implement a factorial function"})
         
         # Check that bridge method was called
-        aider_bridge.start_interactive_session.assert_called_once_with(
-            "Implement a factorial function", 
-            ["/path/to/file.py"]
-        )
+        aider_bridge.start_interactive_session.assert_called_once()
+        # First argument should be the query string
+        assert aider_bridge.start_interactive_session.call_args[0][0] == "Implement a factorial function"
 
 class TestAiderBridgeInteractive:
     """Tests for the interactive session methods in AiderBridge."""

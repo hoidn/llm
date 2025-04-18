@@ -32,8 +32,14 @@ class TestAssociativeMatchingTemplate:
         # Create a mock memory system
         mock_memory = MagicMock()
         
-        # Test with a simple query.
-        result = associative_matching.execute_template("data processing config", mock_memory)
+        # Create a mock handler with model_provider
+        mock_handler = MagicMock()
+        mock_handler.model_provider = MagicMock()
+        mock_handler.model_provider.send_message = MagicMock(return_value={"content": "[]"})
+        mock_handler.model_provider.extract_tool_calls = MagicMock(return_value={"content": "[]", "tool_calls": []})
+        
+        # Test with a simple query, passing the handler
+        result = associative_matching.execute_template("data processing config", mock_memory, mock_handler)
         
         # TODO: The new design may return an empty list if no files meet the new scoring criteria.
         # For now, we verify the result is a list and that all elements (if any) are strings.
@@ -42,7 +48,7 @@ class TestAssociativeMatchingTemplate:
 
         # Test with no matching files
         mock_get_index.return_value = {}
-        result = associative_matching.execute_template("query", mock_memory)
+        result = associative_matching.execute_template("query", mock_memory, mock_handler)
         assert result == []
 
     def test_get_global_index(self):

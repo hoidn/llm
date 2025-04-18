@@ -95,6 +95,16 @@ def mock_aider_session():
     return session
 
 @pytest.fixture
+def mock_run_subprocess(mocker):
+    """Mock subprocess.Popen for Aider subprocess execution."""
+    mock_popen = mocker.patch('subprocess.Popen')
+    mock_process = MagicMock()
+    mock_process.wait.return_value = 0  # Simulate successful completion
+    mock_process.poll.return_value = None  # Process is running
+    mock_popen.return_value = mock_process
+    return mock_popen
+
+@pytest.fixture
 def mock_aider_automatic_handler():
     """Create a mock Aider automatic handler."""
     handler = MagicMock()

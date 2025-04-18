@@ -305,8 +305,8 @@ class TestTaskSystemExecution:
             available_models=available_models
         )
         
-        assert result["status"] == "COMPLETE"
-        assert result["notes"]["selected_model"] == "gpt-4"
+        assert result.status == "COMPLETE"
+        assert result.notes["selected_model"] == "gpt-4"
 
     def test_execute_unknown_task(self):
         """Test executing an unknown task type."""
@@ -362,7 +362,7 @@ class TestTaskSystemExecution:
         assert args[0].context_relevance["unimportant_param"] is False
         
         # Verify result is successful
-        assert result["status"] == "COMPLETE"
+        assert result.status == "COMPLETE"
 
 
 # --- Tests for execute_subtask_directly (Phase 1) ---
@@ -388,9 +388,9 @@ def test_exec_direct_template_not_found(task_system_for_direct, base_env):
     """Test execute_subtask_directly when the template doesn't exist."""
     request = SubtaskRequest(type="nonexistent", subtype="task", inputs={})
     result = task_system_for_direct.execute_subtask_directly(request, base_env)
-    assert result["status"] == "FAILED"
-    assert "Template not found" in result["content"]
-    assert result["notes"]["error"]["reason"] == INPUT_VALIDATION_FAILURE
+    assert result.status == "FAILED"
+    assert "Template not found" in result.content
+    assert result.notes["error"]["reason"] == INPUT_VALIDATION_FAILURE
 
 def test_exec_direct_context_from_request(task_system_for_direct, base_env):
     """Test context determination using file_paths from the SubtaskRequest."""
