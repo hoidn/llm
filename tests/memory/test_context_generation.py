@@ -2,9 +2,9 @@
 import pytest
 from unittest.mock import patch, MagicMock
 
-from memory.memory_system import MemorySystem
-from memory.context_generation import ContextGenerationInput, AssociativeMatchResult
-from task_system.task_system import TaskSystem
+from src.memory.memory_system import MemorySystem
+from src.memory.context_generation import ContextGenerationInput, AssociativeMatchResult, MatchTuple
+from src.task_system.task_system import TaskSystem
 
 
 class TestTemplateAwareContextGeneration:
@@ -16,7 +16,10 @@ class TestTemplateAwareContextGeneration:
         mock_task_system = MagicMock(spec=TaskSystem)
         mock_task_system.generate_context_for_memory_system.return_value = AssociativeMatchResult(
             context="Found 2 relevant files.",
-            matches=[("file1.py", "Relevant to query"), ("file2.py", "Relevant to query")]
+            matches=[
+                MatchTuple(path="file1.py", relevance="Relevant to query", score=0.9),
+                MatchTuple(path="file2.py", relevance="Relevant to query", score=0.8)
+            ]
         )
         
         # Create MemorySystem with mock TaskSystem
@@ -55,8 +58,8 @@ class TestTemplateAwareContextGeneration:
         # Verify result
         assert result.context == "Found 2 relevant files."
         assert len(result.matches) == 2
-        assert result.matches[0][0] == "file1.py"
-        assert result.matches[1][0] == "file2.py"
+        assert result.matches[0].path == "file1.py"
+        assert result.matches[1].path == "file2.py"
     
     def test_memory_system_handles_task_system_errors(self):
         """Test that MemorySystem handles TaskSystem errors gracefully."""
@@ -191,8 +194,8 @@ class TestTemplateAwareContextGeneration:
         with patch('task_system.templates.associative_matching.execute_template') as mock_execute_template:
             # Configure mock to return the expected list of dicts format
             mock_execute_template.return_value = [
-                {"path": "auth.py", "relevance": "Matches authentication query"},
-                {"path": "user.py", "relevance": "Related to user management"}
+                {"path": "auth.py", "relevance": "Matches authentication query", "score": 0.95},
+                {"path": "user.py", "relevance": "Related to user management", "score": 0.85}
             ]
             
             # Call get_relevant_context_for
@@ -212,13 +215,18 @@ class TestTemplateAwareContextGeneration:
             assert isinstance(result, AssociativeMatchResult)
             assert result.context.startswith("Found 2 relevant files")
             assert len(result.matches) == 2
-            assert result.matches[0] == ("auth.py", "Matches authentication query")
-            assert result.matches[1] == ("user.py", "Related to user management")
+            assert result.matches[0].path == "auth.py"
+            assert result.matches[0].relevance == "Matches authentication query"
+            assert result.matches[0].score == 0.95
+            assert result.matches[1].path == "user.py"
+            assert result.matches[1].relevance == "Related to user management"
+            assert result.matches[1].score == 0.85
 """Tests for context generation classes."""
 import pytest
 from typing import Dict, Any, List, Tuple
+from pydantic import ValidationError
 
-from memory.context_generation import ContextGenerationInput, AssociativeMatchResult
+from src.memory.context_generation import ContextGenerationInput, AssociativeMatchResult, MatchTuple
 
 class TestContextGenerationInput:
     """Tests for ContextGenerationInput class."""
@@ -236,6 +244,10 @@ class TestContextGenerationInput:
         assert input1.previous_outputs == []
         assert input1.fresh_context == "enabled"
         assert input1.history_context is None # Check new default
+        
+        # Test validation with invalid input
+        with pytest.raises(ValidationError):
+            ContextGenerationInput(template_description=123)  # type error
 
         # Test with complete args
         input2 = ContextGenerationInput(
@@ -310,36 +322,45 @@ class TestAssociativeMatchResult:
     def test_initialization(self):
         """Test basic initialization."""
         matches = [
-            ("file1.py", "Contains authentication logic"),
-            ("file2.py", "Contains login UI")
+            MatchTuple(path="file1.py", relevance="Contains authentication logic", score=0.9),
+            MatchTuple(path="file2.py", relevance="Contains login UI", score=0.8)
         ]
         
-        result = AssociativeMatchResult("Found 2 matching files", matches)
+        result = AssociativeMatchResult(context="Found 2 matching files", matches=matches)
         
         assert result.context == "Found 2 matching files"
-        assert result.matches == matches
         assert len(result.matches) == 2
+        assert result.matches[0].path == "file1.py"
+        assert result.matches[0].relevance == "Contains authentication logic"
+        assert result.matches[0].score == 0.9
+        
+        # Test validation
+        with pytest.raises(ValidationError):
+            AssociativeMatchResult(context="Test", matches="not a list")  # type error
     
     def test_from_dict(self):
         """Test creation from dictionary."""
         data = {
             "context": "Found 3 matching files",
             "matches": [
-                ("file1.py", "Match reason 1"),
-                ("file2.py", "Match reason 2"),
-                ("file3.py", "Match reason 3")
+                {"path": "file1.py", "relevance": "Match reason 1", "score": 0.9},
+                {"path": "file2.py", "relevance": "Match reason 2", "score": 0.8},
+                {"path": "file3.py", "relevance": "Match reason 3", "score": 0.7}
             ]
         }
         
-        result = AssociativeMatchResult.from_dict(data)
+        result = AssociativeMatchResult.parse_obj(data)
         
         assert result.context == "Found 3 matching files"
         assert len(result.matches) == 3
-        assert result.matches[0][0] == "file1.py"
+        assert result.matches[0].path == "file1.py"
+        assert result.matches[0].score == 0.9
         
         # Test with missing fields
-        empty_data = {}
-        empty_result = AssociativeMatchResult.from_dict(empty_data)
+        with pytest.raises(ValidationError):
+            AssociativeMatchResult.parse_obj({})
         
-        assert empty_result.context == "No context available"
-        assert empty_result.matches == []
+        # Test with minimal valid data
+        minimal_result = AssociativeMatchResult(context="No context", matches=[])
+        assert minimal_result.context == "No context"
+        assert minimal_result.matches == []

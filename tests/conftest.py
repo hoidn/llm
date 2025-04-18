@@ -2,19 +2,21 @@
 import pytest
 from unittest.mock import MagicMock
 
+from src.memory.context_generation import AssociativeMatchResult, MatchTuple
+from src.system.types import TaskResult
+
 @pytest.fixture
 def mock_memory_system():
     """Create a mock memory system."""
     memory = MagicMock()
     memory.get_global_index.return_value = {}
     memory.update_global_index.return_value = None
-    # Create a mock result object with matches attribute
-    class MockResult:
-        def __init__(self):
-            self.context = "mock context"
-            self.matches = [("file1.py", "mock metadata")]
     
-    memory.get_relevant_context_for.return_value = MockResult()
+    # Return a proper AssociativeMatchResult Pydantic model
+    memory.get_relevant_context_for.return_value = AssociativeMatchResult(
+        context="mock context",
+        matches=[MatchTuple(path="file1.py", relevance="mock metadata", score=0.9)]
+    )
     return memory
 
 @pytest.fixture
@@ -30,21 +32,24 @@ def mock_context_generation_input():
 @pytest.fixture
 def mock_associative_match_result():
     """Create a mock AssociativeMatchResult."""
-    from src.memory.context_generation import AssociativeMatchResult
+    from src.memory.context_generation import AssociativeMatchResult, MatchTuple
     return AssociativeMatchResult(
         context="Test context summary",
-        matches=[("file1.py", "rel1", 0.9), ("file2.py", "rel2", 0.8)]
+        matches=[
+            MatchTuple(path="file1.py", relevance="rel1", score=0.9),
+            MatchTuple(path="file2.py", relevance="rel2", score=0.8)
+        ]
     )
 
 @pytest.fixture
 def mock_task_system():
     """Create a mock task system."""
     task_system = MagicMock()
-    task_system.execute_task.return_value = {
-        "content": "mock response",
-        "status": "COMPLETE",
-        "notes": {}
-    }
+    task_system.execute_task.return_value = TaskResult(
+        content="mock response",
+        status="COMPLETE",
+        notes={}
+    )
     task_system.register_template.return_value = None
     return task_system
 
@@ -93,14 +98,14 @@ def mock_aider_session():
 def mock_aider_automatic_handler():
     """Create a mock Aider automatic handler."""
     handler = MagicMock()
-    handler.execute_task.return_value = {
-        "status": "COMPLETE",
-        "content": "Automatic task executed",
-        "notes": {
+    handler.execute_task.return_value = TaskResult(
+        status="COMPLETE",
+        content="Automatic task executed",
+        notes={
             "files_modified": ["/path/to/mock_file.py"],
             "changes": [
                 {"file": "/path/to/mock_file.py", "description": "Modified file"}
             ]
         }
-    }
+    )
     return handler
