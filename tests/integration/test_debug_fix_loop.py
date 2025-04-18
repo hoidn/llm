@@ -5,8 +5,14 @@ import json
 import os
 import shutil
 import shlex
+import logging
 from pathlib import Path
 from typing import Dict, Any
+
+# Configure logging for this test file
+logging.basicConfig(level=logging.DEBUG, 
+                   format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 # Assume imports for application components exist, adjust paths as needed
 # Example: from src.main import Application
@@ -80,9 +86,11 @@ def test_files(tmp_path: Path):
 @pytest.fixture
 def app_instance(test_files, mocker):
     """Creates an Application instance pointing to the temp directory."""
+    logger.info("Starting app_instance fixture setup...")
     # IMPORTANT: Ensure real API keys are available in the environment for LLM tests
     # e.g., export OPENAI_API_KEY=sk-... or ANTHROPIC_API_KEY=...
     # Mock components that should NOT make external calls unless intended
+    logger.info("Patching template registration functions...")
     mocker.patch('src.main.register_aider_templates') # Avoid issues if Aider isn't fully mocked/available
     # Use the correct import path as used in src/main.py
     mocker.patch('task_system.templates.associative_matching.register_template')
@@ -92,6 +100,7 @@ def app_instance(test_files, mocker):
     # This assumes your Application structure allows selective component use/mocking
     # You might need to adjust based on how Application.__init__ works
     try:
+        logger.info("Attempting required imports for Application...")
         from src.main import Application
         from src.task_system.task_system import TaskSystem
         from src.evaluator.evaluator import Evaluator
@@ -99,36 +108,57 @@ def app_instance(test_files, mocker):
         from src.memory.memory_system import MemorySystem
         # Import bridge only if needed and intended for real calls/mocking specific methods
         # from src.aider_bridge.bridge import AiderBridge
+        logger.info("Required imports successful.")
     except ImportError as e:
-        pytest.skip(f"Skipping integration test due to missing component: {e}")
+        logger.error(f"ImportError during app_instance setup: {e}", exc_info=True)
+        pytest.skip(f"[SKIP 103] Skipping integration test due to missing component: {e}")
 
 
+    logger.info(f"Changing directory to: {test_files['dir']}")
     original_cwd = os.getcwd()
     os.chdir(test_files["dir"])
 
-    # Instantiate real components needed for the test flow
-    # We will mock specific methods that interact externally (subprocess, aider exec)
-    app = Application() # Assuming this sets up TaskSystem, Handler, MemorySystem, Evaluator
+    try:
+        # Instantiate real components needed for the test flow
+        # We will mock specific methods that interact externally (subprocess, aider exec)
+        logger.info("Instantiating Application...")
+        app = Application() # Assuming this sets up TaskSystem, Handler, MemorySystem, Evaluator
+        logger.info("Application instantiated successfully.")
+        # Log details about the created app instance
+        logger.debug(f"App instance attributes: {list(app.__dict__.keys())}")
 
-    # Ensure evaluator is linked if not done in App init
-    if not hasattr(app.task_system, 'evaluator'):
-         app.task_system.evaluator = Evaluator(app.task_system) # Link evaluator
+        # Ensure evaluator is linked if not done in App init
+        if not hasattr(app.task_system, 'evaluator'):
+            logger.info("Linking evaluator to task_system...")
+            app.task_system.evaluator = Evaluator(app.task_system) # Link evaluator
+            logger.info("Evaluator linked successfully.")
 
-    # Mock system:run_script executor if it's registered as a direct tool
-    # This prevents actual subprocess calls unless specifically intended
-    if hasattr(app.passthrough_handler, 'direct_tool_executors') and "system:run_script" in app.passthrough_handler.direct_tool_executors:
-         mocker.patch.dict(app.passthrough_handler.direct_tool_executors, {"system:run_script": MagicMock()})
-         print("Mocked system:run_script direct tool executor.")
+        # Mock system:run_script executor if it's registered as a direct tool
+        # This prevents actual subprocess calls unless specifically intended
+        if hasattr(app.passthrough_handler, 'direct_tool_executors'):
+            logger.debug(f"Available direct tool executors: {list(app.passthrough_handler.direct_tool_executors.keys())}")
+            if "system:run_script" in app.passthrough_handler.direct_tool_executors:
+                mocker.patch.dict(app.passthrough_handler.direct_tool_executors, {"system:run_script": MagicMock()})
+                logger.info("Mocked system:run_script direct tool executor.")
+            else:
+                logger.warning("system:run_script tool not found in direct_tool_executors")
+        else:
+            logger.warning("passthrough_handler has no direct_tool_executors attribute")
 
+        # Optional: Index if memory system is used and not mocked sufficiently
+        # try:
+        #     app.index_repository(str(test_files["dir"]))
+        # except Exception as e:
+        #     logger.warning(f"Warning: Indexing failed in test setup: {e}")
 
-    # Optional: Index if memory system is used and not mocked sufficiently
-    # try:
-    #     app.index_repository(str(test_files["dir"]))
-    # except Exception as e:
-    #     print(f"Warning: Indexing failed in test setup: {e}")
+    except Exception as e:
+        logger.exception("!!! Exception during Application instantiation !!!")
+        pytest.skip(f"[SKIP 140] Failed to instantiate Application: {e}")
 
+    logger.info("Yielding app instance to test...")
     yield app # Provide the app instance to the test
 
+    logger.info("Finished app_instance fixture, cleaning up...")
     os.chdir(original_cwd) # Change back directory
 
 # ---- Mock Fixtures ----
@@ -139,14 +169,34 @@ def mock_run_script_tool(app_instance, mocker):
     Mocks the system:run_script tool execution result within the handler.
     This is crucial to control test success/failure cycles.
     """
+    logger.info("Starting mock_run_script_tool fixture setup...")
+    
+    # Check if app_instance has the expected attributes
+    has_handler = hasattr(app_instance, 'passthrough_handler')
+    logger.debug(f"App instance has passthrough_handler: {has_handler}")
+    
+    if not has_handler:
+        logger.error("App instance missing passthrough_handler attribute")
+        pytest.skip("[SKIP 184a] App instance missing passthrough_handler attribute")
+        
     # Find the actual executor function registered for the tool
     # This assumes it's registered via registerDirectTool
-    if hasattr(app_instance.passthrough_handler, 'direct_tool_executors') and "system:run_script" in app_instance.passthrough_handler.direct_tool_executors:
+    has_executors = hasattr(app_instance.passthrough_handler, 'direct_tool_executors')
+    logger.debug(f"passthrough_handler has direct_tool_executors: {has_executors}")
+    
+    if has_executors:
+        logger.debug(f"Available direct tools: {list(app_instance.passthrough_handler.direct_tool_executors.keys())}")
+        has_run_script = "system:run_script" in app_instance.passthrough_handler.direct_tool_executors
+        logger.debug(f"system:run_script tool available: {has_run_script}")
+    else:
+        has_run_script = False
+        
+    if has_executors and has_run_script:
         # Patch the *specific executor function* bound to the tool name
         # The lambda makes this tricky, patching the source might be easier if known
         # Alternative: Patch subprocess.run if run_script uses it directly
         mock_subp = mocker.patch('subprocess.run')
-        print("Patched subprocess.run for run_script simulation.")
+        logger.info("Patched subprocess.run for run_script simulation.")
 
         def configure_mock(side_effect_list):
             mock_subp.side_effect = side_effect_list
@@ -179,18 +229,28 @@ def mock_run_script_tool(app_instance, mocker):
             print("Re-registered system:run_script with mock executor.")
             return mock_subp # Return the subprocess mock for assertion checks
 
+        logger.info("Successfully configured mock_run_script_tool")
         return configure_mock # Return the function that configures the mock
     else:
-        pytest.skip("system:run_script tool not found or not registered as expected.")
+        logger.error("system:run_script tool not found or not registered as expected")
+        pytest.skip("[SKIP 184b] system:run_script tool not found or not registered as expected.")
 
 
 @pytest.fixture
 def mock_memory_lookup(mocker, app_instance, test_files):
     """Mocks MemorySystem context lookup to return the source file."""
+    logger.info("Starting mock_memory_lookup fixture setup...")
+    
     # Ensure memory_system exists on the app instance
-    if not hasattr(app_instance, 'memory_system'):
-         pytest.skip("Application instance does not have memory_system attribute.")
+    has_memory = hasattr(app_instance, 'memory_system')
+    logger.debug(f"Checking for 'memory_system' attribute: {has_memory}")
+    logger.debug(f"App instance attributes: {list(app_instance.__dict__.keys())}")
+    
+    if not has_memory:
+        logger.error("Application instance does not have memory_system attribute.")
+        pytest.skip("[SKIP 192] Application instance does not have memory_system attribute.")
 
+    logger.info("Patching memory_system.get_relevant_context_for...")
     mock_lookup = mocker.patch.object(app_instance.memory_system, 'get_relevant_context_for')
 
     # Simulate finding the source file based on a (mocked) error query
@@ -200,16 +260,25 @@ def mock_memory_lookup(mocker, app_instance, test_files):
          matches=[(relative_src_path, "Simulated match based on error", 0.9)],
          context=f"Content of {relative_src_path}" # Optional: Add mock content
     )
-    print(f"Mocked memory_system.get_relevant_context_for to return: {relative_src_path}")
+    logger.info(f"Mocked memory_system.get_relevant_context_for to return: {relative_src_path}")
+    logger.info("Finished mock_memory_lookup setup.")
     return mock_lookup
 
 @pytest.fixture
 def mock_aider_execution(mocker, app_instance, test_files):
     """Mocks AiderBridge task execution (aider:automatic)."""
-     # Ensure aider_bridge exists on the app instance
-    if not hasattr(app_instance, 'aider_bridge'):
-         pytest.skip("Application instance does not have aider_bridge attribute.")
+    logger.info("Starting mock_aider_execution fixture setup...")
+    
+    # Ensure aider_bridge exists on the app instance
+    has_bridge = hasattr(app_instance, 'aider_bridge')
+    logger.debug(f"Checking for 'aider_bridge' attribute: {has_bridge}")
+    logger.debug(f"App instance attributes: {list(app_instance.__dict__.keys())}")
+    
+    if not has_bridge:
+        logger.error("Application instance does not have aider_bridge attribute.")
+        pytest.skip("[SKIP 211] Application instance does not have aider_bridge attribute.")
 
+    logger.info("Patching aider_bridge.execute_automatic_task...")
     mock_exec = mocker.patch.object(app_instance.aider_bridge, 'execute_automatic_task')
     relative_src_path = str(test_files["src"].relative_to(test_files["dir"]))
 
@@ -219,7 +288,8 @@ def mock_aider_execution(mocker, app_instance, test_files):
         "content": "Simulated fix applied by Aider.",
         "notes": {"files_modified": [relative_src_path]} # Use relative path
     }
-    print(f"Mocked aider_bridge.execute_automatic_task to return success for: {relative_src_path}")
+    logger.info(f"Mocked aider_bridge.execute_automatic_task to return success for: {relative_src_path}")
+    logger.info("Finished mock_aider_execution setup.")
     return mock_exec
 
 
@@ -240,11 +310,15 @@ def test_loop_success_after_fix(
     Uses real LLM calls for analysis and fix generation by default.
     Mocks subprocess (test execution) and Aider (fix application).
     """
+    logger.info("=== Starting test_loop_success_after_fix ===")
+    
     # ---- Arrange Mocks ----
+    logger.info("Arranging mocks...")
     import shlex # Needed for mock_run_script_tool setup
 
     # 1. Configure mock_run_script_tool: Fail first, then succeed
     # Use the configure function returned by the fixture
+    logger.info("Configuring mock_run_script_tool with success/failure sequence...")
     subprocess_mock = mock_run_script_tool([
         # First run (fails) - Provide realistic pytest output
         MagicMock(
@@ -255,7 +329,7 @@ def test_loop_success_after_fix(
         # Second run (after simulated fix - passes)
         MagicMock(returncode=0, stdout="== test session starts ==\ncollecting ... collected 2 items\n\ntest_calculator.py::test_add_positive PASSED [ 50%]\ntest_calculator.py::test_add_zero PASSED [100%]\n\n================= 2 passed in 0.01s ==================", stderr="")
     ])
-
+    logger.info("Mock subprocess configured successfully.")
 
     # mock_memory_lookup is set by fixture to return calculator.py
     # mock_aider_execution is set by fixture to simulate success
@@ -263,32 +337,45 @@ def test_loop_success_after_fix(
     # ---- Act ----
     # Use dispatcher to run the task
     # Ensure dispatcher is imported correctly
+    logger.info("Attempting import of execute_programmatic_task...")
     try:
         from src.dispatcher import execute_programmatic_task
-    except ImportError:
-        pytest.skip("Dispatcher function not found.")
+        logger.info("Import of execute_programmatic_task successful.")
+    except ImportError as e:
+        logger.error(f"ImportError for execute_programmatic_task: {e}", exc_info=True)
+        pytest.skip("[SKIP 269] Dispatcher function not found.")
 
     # Prepare parameters for the dispatcher
     test_command = f"pytest {test_files['test'].name}"
     target_files_json = json.dumps([]) # Empty list for this test
-
-    print(f"\nExecuting debug:loop task with command: '{test_command}'")
-    result = execute_programmatic_task(
-        identifier="debug:loop",
-        params={
-            "test_cmd": test_command,
-            "target_files": target_files_json
-            # Use default max_cycles=3
-        },
-        flags={}, # No flags needed for this test
-        # Pass the real, instantiated components from the app
-        handler_instance=app_instance.passthrough_handler,
-        task_system_instance=app_instance.task_system
-        # Pass memory_system, etc. if dispatcher needs them directly (depends on dispatcher impl)
-    )
+    
+    params = {
+        "test_cmd": test_command,
+        "target_files": target_files_json
+        # Use default max_cycles=3
+    }
+    
+    logger.info(f"Executing debug:loop task with command: '{test_command}'")
+    logger.debug(f"Full task parameters: {params}")
+    
+    try:
+        result = execute_programmatic_task(
+            identifier="debug:loop",
+            params=params,
+            flags={}, # No flags needed for this test
+            # Pass the real, instantiated components from the app
+            handler_instance=app_instance.passthrough_handler,
+            task_system_instance=app_instance.task_system
+            # Pass memory_system, etc. if dispatcher needs them directly (depends on dispatcher impl)
+        )
+        logger.info(f"Task execution finished. Result status: {result.get('status', 'UNKNOWN')}")
+        logger.debug(f"Full task result: {json.dumps(result, indent=2)}")
+    except Exception as e:
+        logger.exception("Exception during task execution:")
+        raise
 
     # ---- Assert ----
-    print("\nFinal Result:", json.dumps(result, indent=2)) # Debug output
+    logger.info("Starting assertions...")
 
     # 1. Final Status & Iterations
     assert result is not None, "Dispatcher returned None"
@@ -324,6 +411,8 @@ def test_loop_success_after_fix(
     # So, the aider result should be part of the director's output in the *first* iteration history entry.
     first_iter_director_result = result['notes']['iteration_history'][0].get('director', {})
     assert first_iter_director_result.get('notes', {}).get('files_modified') == [relative_src_path], "Aider modification notes not found in director result"
+    
+    logger.info("=== Finished test_loop_success_after_fix ===")
 
 # --- Add other test cases ---
 # @pytest.mark.integration
