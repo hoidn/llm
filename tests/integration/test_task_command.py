@@ -623,11 +623,11 @@ class TestTaskCommandIntegration:
         )
 
         # Assert
-        assert result["status"] == "COMPLETE"
-        assert result["notes"]["execution_path"] == "execute_subtask_directly (Phase 1 Stub)"
-        assert result["notes"]["template_used"] == "template:history_context"
-        assert result["notes"]["context_source"] == "deferred_lookup" # Auto lookup deferred in Phase 1
-        assert result["notes"]["context_files_count"] == 0 # No explicit paths found in Phase 1
+        assert result.status == "COMPLETE"
+        assert result.notes["execution_path"] == "execute_subtask_directly (Phase 1 Stub)"
+        assert result.notes["template_used"] == "template:history_context"
+        assert result.notes["context_source"] == "deferred_lookup" # Auto lookup deferred in Phase 1
+        assert result.notes["context_files_count"] == 0 # No explicit paths found in Phase 1
 
         # In Phase 1, history is stored in the request but lookup is deferred
         # Check that context_source is correctly marked as deferred
@@ -791,7 +791,8 @@ class TestTaskCommandIntegration:
         
         def capture_params(params):
             received_params.update(params)
-            return {"status": "COMPLETE", "content": "Success", "notes": {}}
+            from system.types import TaskResult
+            return TaskResult(status="COMPLETE", content="Success", notes={})
             
         direct_tool_mock.side_effect = capture_params
         
@@ -829,8 +830,8 @@ class TestTaskCommandIntegration:
         # --- End Act ---
 
         # Assert Result
-        assert result["status"] == "COMPLETE"
-        assert result["content"] == "Success" # From our mock return value
+        assert result.status == "COMPLETE"
+        assert result.content == "Success" # From our mock return value
 
         # Assert Mock Calls: Verify direct tool executor was called
         direct_tool_mock.assert_called_once()
@@ -871,9 +872,9 @@ class TestTaskCommandIntegration:
         )
 
         # Assert Result
-        assert result["status"] == "FAILED"
-        assert "Invalid file_context parameter: must be a JSON string array or already a list of strings. Error:" in result["content"] # Check specific error
-        assert result["notes"]["error"]["reason"] == INPUT_VALIDATION_FAILURE
+        assert result.status == "FAILED"
+        assert "Invalid file_context parameter: must be a JSON string array or already a list of strings. Error:" in result.content # Check specific error
+        assert result.notes["error"]["reason"] == INPUT_VALIDATION_FAILURE
 
         # Assert Mock Calls
         # Dispatcher was called directly, bridge should not be called due to validation failure
