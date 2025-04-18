@@ -18,7 +18,7 @@ except ImportError:
             # Last resort for relative imports
             from ast_nodes import FunctionCallNode, ArgumentNode
 
-from system.errors import create_input_validation_error, create_unexpected_error
+from ..system.errors import create_input_validation_error, create_unexpected_error
 
 # Type compatibility helpers for testing
 # This helps tests recognize our nodes even if import paths differ
