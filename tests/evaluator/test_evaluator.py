@@ -26,12 +26,13 @@ class MockTemplateLookup(TemplateLookupInterface):
             }
         }
         
+        from system.types import TaskResult
         # Mock for execute_task to return a test result
-        self._execute_task_result = {
-            "content": "Executed template with param1=test_value, param2=42",
-            "status": "COMPLETE",
-            "notes": {}
-        }
+        self._execute_task_result = TaskResult(
+            content="Executed template with param1=test_value, param2=42",
+            status="COMPLETE",
+            notes={}
+        )
         
         # Mock to track calls
         self.execute_task_calls = []
@@ -90,8 +91,8 @@ class TestEvaluator:
         assert "test_template" in template_provider.find_template_calls
         
         # Verify result
-        assert result["content"] == "Executed template with param1=test_value, param2=42"
-        assert result["status"] == "COMPLETE"
+        assert result.content == "Executed template with param1=test_value, param2=42"
+        assert result.status == "COMPLETE"
         
         # Verify task execution
         assert len(template_provider.execute_task_calls) == 1
@@ -232,11 +233,12 @@ class TestEvaluator:
             "parameters": {}
         })
         
+        from system.types import TaskResult
         # Mock the execute_task method
-        task_system.execute_task = MagicMock(return_value={
-            "content": "Executed from task system",
-            "status": "COMPLETE"
-        })
+        task_system.execute_task = MagicMock(return_value=TaskResult(
+            content="Executed from task system",
+            status="COMPLETE"
+        ))
         
         # Create a function call
         func_call = FunctionCallNode("test_template", [])
@@ -246,8 +248,8 @@ class TestEvaluator:
         result = task_system.executeCall(func_call, env)
         
         # Verify the result
-        assert result["content"] == "Executed from task system"
-        assert result["status"] == "COMPLETE"
+        assert result.content == "Executed from task system"
+        assert result.status == "COMPLETE"
         
         # Verify task_system.find_template was called
         task_system.find_template.assert_called_once_with("test_template")
@@ -359,12 +361,12 @@ class TestDirectorEvaluatorLoop:
             result = evaluator._evaluate_director_evaluator_loop(mock_loop_node, base_environment)
             
             # Assertions
-            assert result["status"] == "COMPLETE"
-            assert "iteration_history" in result["notes"]
-            assert len(result["notes"]["iteration_history"]) == 1  # Should terminate after first iteration
-            assert result["notes"]["iterations_completed"] == 1
-            assert "final_evaluation" in result["notes"]
-            assert result["notes"]["final_evaluation"]["notes"]["success"] is True
+            assert result.status == "COMPLETE"
+            assert "iteration_history" in result.notes
+            assert len(result.notes["iteration_history"]) == 1  # Should terminate after first iteration
+            assert result.notes["iterations_completed"] == 1
+            assert "final_evaluation" in result.notes
+            assert result.notes["final_evaluation"]["notes"]["success"] is True
             
             # Verify evaluate was called for each node
             assert mock_evaluate.call_count == 3  # director, script, evaluator
@@ -417,13 +419,13 @@ class TestDirectorEvaluatorLoop:
             result = evaluator._evaluate_director_evaluator_loop(mock_loop_node, base_environment)
             
             # Assertions
-            assert result["status"] == "COMPLETE"
-            assert "iteration_history" in result["notes"]
-            assert len(result["notes"]["iteration_history"]) == 1
-            assert result["notes"]["iterations_completed"] == 1
-            assert "final_evaluation" in result["notes"]
-            assert result["notes"]["final_evaluation"]["notes"]["success"] is False
-            assert "max_iterations_reached" in result["notes"]["termination_reason"]
+            assert result.status == "COMPLETE"
+            assert "iteration_history" in result.notes
+            assert len(result.notes["iteration_history"]) == 1
+            assert result.notes["iterations_completed"] == 1
+            assert "final_evaluation" in result.notes
+            assert result.notes["final_evaluation"]["notes"]["success"] is False
+            assert "max_iterations_reached" in result.notes["termination_reason"]
     
     def test_evaluator_step_invalid_json(self, evaluator, mock_loop_node, base_environment):
         """Test D-E loop when evaluator step returns invalid JSON."""
@@ -467,13 +469,13 @@ class TestDirectorEvaluatorLoop:
             result = evaluator._evaluate_director_evaluator_loop(mock_loop_node, base_environment)
             
             # Assertions
-            assert result["status"] == "COMPLETE"
-            assert "iteration_history" in result["notes"]
-            assert len(result["notes"]["iteration_history"]) == 1
-            assert result["notes"]["iterations_completed"] == 1
-            assert "final_evaluation" in result["notes"]
+            assert result.status == "COMPLETE"
+            assert "iteration_history" in result.notes
+            assert len(result.notes["iteration_history"]) == 1
+            assert result.notes["iterations_completed"] == 1
+            assert "final_evaluation" in result.notes
             # Should default to failure when success field is missing
-            assert result["notes"]["final_evaluation"]["notes"]["success"] is False
+            assert result.notes["final_evaluation"]["notes"]["success"] is False
     
     def test_evaluator_step_task_failure(self, evaluator, mock_loop_node, base_environment):
         """Test D-E loop when evaluator step returns a task failure."""
@@ -519,11 +521,11 @@ class TestDirectorEvaluatorLoop:
             result = evaluator._evaluate_director_evaluator_loop(mock_loop_node, base_environment)
             
             # Assertions
-            assert result["status"] == "FAILED"
-            assert "iteration_history" in result["notes"]
-            assert len(result["notes"]["iteration_history"]) == 1
-            assert "error" in result["notes"]
-            assert result["notes"]["error"]["reason"] == SUBTASK_FAILURE
+            assert result.status == "FAILED"
+            assert "iteration_history" in result.notes
+            assert len(result.notes["iteration_history"]) == 1
+            assert "error" in result.notes
+            assert result.notes["error"]["reason"] == SUBTASK_FAILURE
             
             # Verify the loop terminated immediately
             assert mock_evaluate.call_count == 3  # director, script, evaluator
@@ -580,11 +582,11 @@ class TestDirectorEvaluatorLoop:
             result = evaluator._evaluate_director_evaluator_loop(mock_loop_node, base_environment)
             
             # Assertions
-            assert result["status"] == "COMPLETE"
-            assert "iteration_history" in result["notes"]
-            assert len(result["notes"]["iteration_history"]) == 2  # Should succeed on second iteration
-            assert result["notes"]["iterations_completed"] == 2
-            assert result["notes"]["final_evaluation"]["notes"]["success"] is True
+            assert result.status == "COMPLETE"
+            assert "iteration_history" in result.notes
+            assert len(result.notes["iteration_history"]) == 2  # Should succeed on second iteration
+            assert result.notes["iterations_completed"] == 2
+            assert result.notes["final_evaluation"]["notes"]["success"] is True
             
             # Verify evaluate was called the expected number of times
             assert mock_evaluate.call_count == 6  # 2 iterations * 3 nodes
@@ -593,11 +595,12 @@ class TestDirectorEvaluatorLoop:
         """Test JSON output parsing for template results."""
         # Setup mock template provider
         mock_provider = MagicMock()
-        mock_provider.execute_task.return_value = {
-            "content": '{"key": "value", "items": [1, 2, 3]}',
-            "status": "COMPLETE",
-            "notes": {}
-        }
+        from system.types import TaskResult
+        mock_provider.execute_task.return_value = TaskResult(
+            content='{"key": "value", "items": [1, 2, 3]}',
+            status="COMPLETE",
+            notes={}
+        )
         
         # Create evaluator with mock provider
         evaluator = Evaluator(mock_provider)
@@ -622,11 +625,12 @@ class TestDirectorEvaluatorLoop:
         assert result["parsedContent"]["items"] == [1, 2, 3]
         
         # Test with invalid JSON
-        mock_provider.execute_task.return_value = {
-            "content": "This is not JSON",
-            "status": "COMPLETE",
-            "notes": {}
-        }
+        from system.types import TaskResult
+        mock_provider.execute_task.return_value = TaskResult(
+            content="This is not JSON",
+            status="COMPLETE",
+            notes={}
+        )
         
         result = evaluator._execute_template(template, env)
         

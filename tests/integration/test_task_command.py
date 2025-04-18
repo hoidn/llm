@@ -64,11 +64,12 @@ def app_instance():
 
         # Mock the internal call to execute_task ONCE in the fixture
         # Set a clear default return value dictionary
-        execute_task_return_value = {
-             "status": "COMPLETE",
-             "content": "Mock TaskSystem.execute_task Result",
-             "notes": {}
-        }
+        from system.types import TaskResult
+        execute_task_return_value = TaskResult(
+             status="COMPLETE",
+             content="Mock TaskSystem.execute_task Result",
+             notes={}
+        )
         real_task_system.execute_task = MagicMock(return_value=execute_task_return_value)
 
         # Ensure find_template is also mocked on the real instance
@@ -141,17 +142,19 @@ class TestTaskCommandIntegration:
         if isinstance(app_instance.aider_bridge.execute_automatic_task, MagicMock):
             app_instance.aider_bridge.execute_automatic_task.reset_mock()
             app_instance.aider_bridge.execute_automatic_task.side_effect = None # Clear side effects
-            app_instance.aider_bridge.execute_automatic_task.return_value = { # Reset return value
-                "status": "COMPLETE", "content": "Mock Aider Auto Result", "notes": {}
-            }
+            from system.types import TaskResult
+            app_instance.aider_bridge.execute_automatic_task.return_value = TaskResult( # Reset return value
+                status="COMPLETE", content="Mock Aider Auto Result", notes={}
+            )
         if isinstance(app_instance.aider_bridge.start_interactive_session, MagicMock):
             app_instance.aider_bridge.start_interactive_session.reset_mock()
             app_instance.aider_bridge.start_interactive_session.side_effect = None
-            app_instance.aider_bridge.start_interactive_session.return_value = { # Reset return value
-                "status": "COMPLETE",
-                "content": "Interactive session completed",
-                "notes": {"session_summary": "Made changes to file1.py"}
-            }
+            from system.types import TaskResult
+            app_instance.aider_bridge.start_interactive_session.return_value = TaskResult( # Reset return value
+                status="COMPLETE",
+                content="Interactive session completed",
+                notes={"session_summary": "Made changes to file1.py"}
+            )
 
         if isinstance(app_instance.memory_system.get_relevant_context_for, MagicMock):
             app_instance.memory_system.get_relevant_context_for.reset_mock()
@@ -186,10 +189,13 @@ class TestTaskCommandIntegration:
              for tool_mock in app_instance.passthrough_handler.direct_tool_executors.values():
                  if isinstance(tool_mock, MagicMock):
                      tool_mock.reset_mock()
+        from system.types import TaskResult
         # Mock the return value for this specific call
-        app_instance.aider_bridge.execute_automatic_task.return_value = {
-            "status": "COMPLETE", "content": "Aider Auto Success", "notes": {"files_changed": ["src/main.py"]}
-        }
+        app_instance.aider_bridge.execute_automatic_task.return_value = TaskResult(
+            status="COMPLETE", 
+            content="Aider Auto Success", 
+            notes={"files_changed": ["src/main.py"]}
+        )
 
         # Capture stdout
         captured_output = io.StringIO()
@@ -224,9 +230,12 @@ class TestTaskCommandIntegration:
     def test_task_aider_interactive_simple(self, app_instance):
         """Test basic aider:interactive task execution via /task."""
         # Arrange
-        app_instance.aider_bridge.start_interactive_session.return_value = {
-            "status": "COMPLETE", "content": "Interactive Done", "notes": {"summary": "Session summary"}
-        }
+        from system.types import TaskResult
+        app_instance.aider_bridge.start_interactive_session.return_value = TaskResult(
+            status="COMPLETE", 
+            content="Interactive Done", 
+            notes={"summary": "Session summary"}
+        )
 
         captured_output = io.StringIO()
         sys.stdout = captured_output
@@ -267,9 +276,9 @@ class TestTaskCommandIntegration:
         )
 
         # Assert Result
-        assert result["status"] == "FAILED"
-        assert "Invalid file_context parameter: must be a JSON string array or already a list of strings. Error:" in result["content"] # Check specific error
-        assert result["notes"]["error"]["reason"] == INPUT_VALIDATION_FAILURE
+        assert result.status == "FAILED"
+        assert "Invalid file_context parameter: must be a JSON string array or already a list of strings. Error:" in result.content # Check specific error
+        assert result.notes["error"]["reason"] == INPUT_VALIDATION_FAILURE
 
         # Assert Mock Calls
         # Dispatcher was called directly, bridge should not be called due to validation failure
@@ -352,10 +361,10 @@ class TestTaskCommandIntegration:
         )
 
         # Assert
-        assert result["status"] == "COMPLETE"
-        assert result["notes"]["execution_path"] == "direct_tool"
-        assert result["notes"]["context_source"] == "explicit_request"
-        assert result["notes"]["context_file_count"] == 1
+        assert result.status == "COMPLETE"
+        assert result.notes["execution_path"] == "direct_tool"
+        assert result.notes["context_source"] == "explicit_request"
+        assert result.notes["context_file_count"] == 1
         # Verify bridge call used the explicit path
         app_instance.aider_bridge.execute_automatic_task.assert_called_once_with(
             prompt="Explicit context test", file_context=["/request/path.py"]
@@ -401,11 +410,11 @@ class TestTaskCommandIntegration:
         )
 
         # Assert: Check that TaskSystem path was taken and correct context used
-        assert result["status"] == "COMPLETE"
-        assert result["notes"]["execution_path"] == "execute_subtask_directly (Phase 1 Stub)"
-        assert result["notes"]["template_used"] == "template:with_context"
-        assert result["notes"]["context_source"] == "template_literal" # Template path used (Phase 1)
-        assert result["notes"]["context_files_count"] == 1
+        assert result.status == "COMPLETE"
+        assert result.notes["execution_path"] == "execute_subtask_directly (Phase 1 Stub)"
+        assert result.notes["template_used"] == "template:with_context"
+        assert result.notes["context_source"] == "template_literal" # Template path used (Phase 1)
+        assert result.notes["context_files_count"] == 1
 
         # Verify TaskSystem's internal execute_task was called
         app_instance.task_system.execute_task.assert_called_once()
@@ -470,11 +479,11 @@ class TestTaskCommandIntegration:
         )
 
         # Assert
-        assert result["status"] == "COMPLETE"
-        assert result["notes"]["execution_path"] == "execute_subtask_directly (Phase 1 Stub)"
-        assert result["notes"]["template_used"] == "template:auto_context"
-        assert result["notes"]["context_source"] == "deferred_lookup" # Auto lookup deferred in Phase 1
-        assert result["notes"]["context_files_count"] == 0 # No explicit paths found in Phase 1
+        assert result.status == "COMPLETE"
+        assert result.notes["execution_path"] == "execute_subtask_directly (Phase 1 Stub)"
+        assert result.notes["template_used"] == "template:auto_context"
+        assert result.notes["context_source"] == "deferred_lookup" # Auto lookup deferred in Phase 1
+        assert result.notes["context_files_count"] == 0 # No explicit paths found in Phase 1
 
         # In Phase 1, MemorySystem is not called for lookup (deferred)
         # Check the content returned by the stub
@@ -536,11 +545,11 @@ class TestTaskCommandIntegration:
         )
 
         # Assert
-        assert result["status"] == "COMPLETE"
-        assert result["notes"]["execution_path"] == "execute_subtask_directly (Phase 1 Stub)"
-        assert result["notes"]["template_used"] == "template:no_context"
-        assert result["notes"]["context_source"] == "none" # No context source
-        assert result["notes"]["context_files_count"] == 0
+        assert result.status == "COMPLETE"
+        assert result.notes["execution_path"] == "execute_subtask_directly (Phase 1 Stub)"
+        assert result.notes["template_used"] == "template:no_context"
+        assert result.notes["context_source"] == "none" # No context source
+        assert result.notes["context_files_count"] == 0
 
         # Verify MemorySystem was NOT called for lookup
         app_instance.memory_system.get_relevant_context_for.assert_not_called()
@@ -670,10 +679,10 @@ class TestTaskCommandIntegration:
         )
 
         # Assert: Direct tool path taken, explicit context used, history ignored by dispatcher for direct tools
-        assert result["status"] == "COMPLETE"
-        assert result["notes"]["execution_path"] == "direct_tool"
-        assert result["notes"]["context_source"] == "explicit_request"
-        assert result["notes"]["context_file_count"] == 1
+        assert result.status == "COMPLETE"
+        assert result.notes["execution_path"] == "direct_tool"
+        assert result.notes["context_source"] == "explicit_request"
+        assert result.notes["context_file_count"] == 1
 
         # Verify bridge call used the explicit path
         app_instance.aider_bridge.execute_automatic_task.assert_called_once_with(
@@ -889,9 +898,9 @@ class TestTaskCommandIntegration:
         )
 
         # Assert
-        assert result["status"] == "FAILED"
-        assert "Task identifier 'nonexistent:template' not found" in result["content"]
-        assert result["notes"]["error"]["reason"] == "input_validation_failure"
+        assert result.status == "FAILED"
+        assert "Task identifier 'nonexistent:template' not found" in result.content
+        assert result.notes["error"]["reason"] == "input_validation_failure"
 
         # Verify bridge/task system not called
         app_instance.aider_bridge.execute_automatic_task.assert_not_called()
@@ -927,10 +936,10 @@ class TestTaskCommandIntegration:
         )
 
         # Assert: Check that the error from the executor/bridge was caught and formatted
-        assert result["status"] == "FAILED"
+        assert result.status == "FAILED"
         # The error message comes from the executor function's catch block
-        assert "Aider execution failed: Simulated bridge error" in result["content"]
-        assert result["notes"]["error"]["reason"] == "unexpected_error"
+        assert "Aider execution failed: Simulated bridge error" in result.content
+        assert result.notes["error"]["reason"] == "unexpected_error"
 
         # Verify the bridge was called (and raised the error)
         app_instance.aider_bridge.execute_automatic_task.assert_called_once()
@@ -973,10 +982,10 @@ class TestTaskCommandIntegration:
         )
 
         # Assert: Template path was taken, not the direct tool
-        assert result["status"] == "COMPLETE"
-        assert result["notes"]["execution_path"] == "execute_subtask_directly (Phase 1 Stub)" # Template path (Phase 1)
-        assert result["notes"]["template_used"] == "common:id"
-        assert "Executed template 'common:id' with inputs." in result["content"] # Content from TaskSystem stub
+        assert result.status == "COMPLETE"
+        assert result.notes["execution_path"] == "execute_subtask_directly (Phase 1 Stub)" # Template path (Phase 1)
+        assert result.notes["template_used"] == "common:id"
+        assert "Executed template 'common:id' with inputs." in result.content # Content from TaskSystem stub
 
         # Verify TaskSystem was called (via execute_subtask_directly), direct tool was not
         # Note: We don't mock execute_subtask_directly itself, so no call count check here

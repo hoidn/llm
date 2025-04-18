@@ -32,15 +32,16 @@ class TestAiderInteractiveSession:
         
     def test_start_session(self, mock_memory_system):
         """Test starting an interactive session."""
+        from system.types import TaskResult
         # Create a custom mock for format_interactive_result
-        expected_result = {
-            "status": "COMPLETE",
-            "content": "Interactive Aider session completed. Modified 1 files.",
-            "notes": {
+        expected_result = TaskResult(
+            status="COMPLETE",
+            content="Interactive Aider session completed. Modified 1 files.",
+            notes={
                 "files_modified": ["/path/to/file1.py"],
                 "session_summary": "Session initiated with query: Implement a factorial function"
             }
-        }
+        )
         
         # Create mock objects
         bridge = MagicMock()
@@ -69,11 +70,11 @@ class TestAiderInteractiveSession:
             
             # Check result
             assert result == expected_result
-            assert result["status"] == "COMPLETE"
-            assert "Interactive Aider session completed" in result["content"]
-            assert "files_modified" in result["notes"]
-            assert result["notes"]["files_modified"] == ["/path/to/file1.py"]
-            assert "session_summary" in result["notes"]
+            assert result.status == "COMPLETE"
+            assert "Interactive Aider session completed" in result.content
+            assert "files_modified" in result.notes
+            assert result.notes["files_modified"] == ["/path/to/file1.py"]
+            assert "session_summary" in result.notes
             
             # Verify our mock was called with correct arguments
             mock_format_result.assert_called_once()
@@ -118,16 +119,16 @@ class TestAiderInteractiveSession:
             
             # Check result structure
             assert isinstance(result, dict)
-            assert "status" in result
-            assert "content" in result
-            assert "notes" in result
+            assert hasattr(result, "status")
+            assert hasattr(result, "content")
+            assert hasattr(result, "notes")
             
             # Check specific values
-            assert result["status"] == "COMPLETE"
-            assert "Interactive Aider session completed" in result["content"]
-            assert "files_modified" in result["notes"]
-            assert "session_summary" in result["notes"]
-            assert "Session initiated with query: Implement a factorial function" in result["notes"]["session_summary"]
+            assert result.status == "COMPLETE"
+            assert "Interactive Aider session completed" in result.content
+            assert "files_modified" in result.notes
+            assert "session_summary" in result.notes
+            assert "Session initiated with query: Implement a factorial function" in result.notes["session_summary"]
     
     @pytest.mark.integration
     def test_start_session_integration(self, mock_memory_system, tmp_path, mock_run_subprocess):
@@ -168,16 +169,16 @@ class TestAiderInteractiveSession:
             
             # Check result structure
             assert isinstance(result, dict)
-            assert "status" in result
-            assert "content" in result
-            assert "notes" in result
+            assert hasattr(result, "status")
+            assert hasattr(result, "content")
+            assert hasattr(result, "notes")
             
             # Check specific values
-            assert result["status"] == "COMPLETE"
-            assert "Interactive Aider session completed" in result["content"]
-            assert "files_modified" in result["notes"]
-            assert "session_summary" in result["notes"]
-            assert "Session initiated with query: Implement a factorial function" in result["notes"]["session_summary"]
+            assert result.status == "COMPLETE"
+            assert "Interactive Aider session completed" in result.content
+            assert "files_modified" in result.notes
+            assert "session_summary" in result.notes
+            assert "Session initiated with query: Implement a factorial function" in result.notes["session_summary"]
             
             # Check that methods were called
             mock_get_states.assert_called()
@@ -199,10 +200,10 @@ class TestAiderInteractiveSession:
         result = session.start_session("Implement a factorial function")
         
         # Check result
-        assert result["status"] == "FAILED"
-        assert "Aider is not available" in result["content"]
-        assert "error" in result["notes"]
-        assert "Aider dependency not installed" in result["notes"]["error"]
+        assert result.status == "FAILED"
+        assert "Aider is not available" in result.content
+        assert "error" in result.notes
+        assert "Aider dependency not installed" in result.notes["error"]
     
     def test_start_session_already_active(self, mock_memory_system):
         """Test starting a session when one is already active."""
@@ -218,10 +219,10 @@ class TestAiderInteractiveSession:
         result = session.start_session("Implement a factorial function")
         
         # Check result
-        assert result["status"] == "FAILED"
-        assert "already active" in result["content"]
-        assert "error" in result["notes"]
-        assert "Session already active" in result["notes"]["error"]
+        assert result.status == "FAILED"
+        assert "already active" in result.content
+        assert "error" in result.notes
+        assert "Session already active" in result.notes["error"]
     
     @patch('aider_bridge.interactive.AiderInteractiveSession._run_aider_in_process', 
            side_effect=Exception("Test error"))
@@ -235,11 +236,12 @@ class TestAiderInteractiveSession:
         bridge.file_context = {"/path/to/file1.py"}
         
         # Set up format_interactive_result mock to return a successful result
-        mock_format_result.return_value = {
-            "status": "COMPLETE",
-            "content": "Interactive Aider session completed.",
-            "notes": {}
-        }
+        from system.types import TaskResult
+        mock_format_result.return_value = TaskResult(
+            status="COMPLETE",
+            content="Interactive Aider session completed.",
+            notes={}
+        )
         
         # Mock methods
         with patch.object(AiderInteractiveSession, '_get_file_states'), \
@@ -271,10 +273,10 @@ class TestAiderInteractiveSession:
         result = session.terminate_session()
         
         # Check result
-        assert result["status"] == "FAILED"
-        assert "No active Aider session" in result["content"]
-        assert "error" in result["notes"]
-        assert "No active session" in result["notes"]["error"]
+        assert result.status == "FAILED"
+        assert "No active Aider session" in result.content
+        assert "error" in result.notes
+        assert "No active session" in result.notes["error"]
     
     @patch('subprocess.Popen')
     def test_terminate_session(self, mock_popen, mock_memory_system):
@@ -297,10 +299,10 @@ class TestAiderInteractiveSession:
             result = session.terminate_session()
             
             # Check result
-            assert result["status"] == "COMPLETE"
-            assert "terminated successfully" in result["content"]
-            assert "files_modified" in result["notes"]
-            assert result["notes"]["files_modified"] == ["/path/to/file1.py"]
+            assert result.status == "COMPLETE"
+            assert "terminated successfully" in result.content
+            assert "files_modified" in result.notes
+            assert result.notes["files_modified"] == ["/path/to/file1.py"]
             
             # Check that process was terminated
             mock_process.terminate.assert_called_once()

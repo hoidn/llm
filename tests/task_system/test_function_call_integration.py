@@ -29,13 +29,16 @@ class TestFunctionCallIntegration:
             }
         }
         
+        # Import TaskResult
+        from system.types import TaskResult
+        
         # Mock execute_task to return a simple result with actual parameter values
         def mock_execute_task(task_type, task_subtype, inputs, **kwargs):
-            return {
-                "content": f"Executed with param1={inputs.get('param1', 'missing')}, param2={inputs.get('param2', 'missing')}",
-                "status": "COMPLETE",
-                "notes": {}
-            }
+            return TaskResult(
+                content=f"Executed with param1={inputs.get('param1', 'missing')}, param2={inputs.get('param2', 'missing')}",
+                status="COMPLETE",
+                notes={}
+            )
         
         ts.execute_task = MagicMock(side_effect=mock_execute_task)
         
@@ -66,8 +69,8 @@ class TestFunctionCallIntegration:
         result = task_system.executeCall(func_call, environment)
         
         # Verify result
-        assert result["status"] == "COMPLETE"
-        assert "Executed with param1=test_value, param2=99" in result["content"]
+        assert result.status == "COMPLETE"
+        assert "Executed with param1=test_value, param2=99" in result.content
         
         # Verify task_system.execute_task was called
         task_system.execute_task.assert_called_once()
@@ -142,5 +145,5 @@ class TestFunctionCallIntegration:
         template_result = resolve_function_calls(template_text, task_system, environment)
         
         # Both should contain the same content
-        assert "Executed with param1=test_value, param2=99" in direct_result["content"]
+        assert "Executed with param1=test_value, param2=99" in direct_result.content
         assert "Executed with param1=test_value, param2=99" in template_result
