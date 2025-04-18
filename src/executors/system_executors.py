@@ -5,13 +5,13 @@ import json
 from typing import Dict, Any, List, Optional
 
 # Adjust import paths based on actual project structure
-from memory.memory_system import MemorySystem
-from handler.file_access import FileAccessManager
+from ..memory.memory_system import MemorySystem
+from ..handler.file_access import FileAccessManager
 # Assuming TaskResult is defined centrally or importable
 # from task_system.spec.types import TaskResult
 TaskResult = Dict[str, Any]  # Placeholder if direct import fails
-from system.errors import create_task_failure, format_error_result, INPUT_VALIDATION_FAILURE, UNEXPECTED_ERROR
-from memory.context_generation import ContextGenerationInput, AssociativeMatchResult
+from ..system.errors import create_task_failure, format_error_result, INPUT_VALIDATION_FAILURE, UNEXPECTED_ERROR
+from ..memory.context_generation import ContextGenerationInput, AssociativeMatchResult
 
 logger = logging.getLogger(__name__)
 
