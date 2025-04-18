@@ -208,7 +208,6 @@ def register_debug_templates(task_system):
     Args:
         task_system: The TaskSystem instance to register templates with
     """
-    """
     logger.info("Registering Debug Loop templates...")
     if hasattr(task_system, 'register_template'):
         task_system.register_template(DEBUG_ANALYZE_RESULTS_TEMPLATE) # Existing
