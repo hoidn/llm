@@ -82,7 +82,6 @@ module EvaluatorModule {
 This module contains the Evaluator class, which is responsible for
 evaluating AST nodes, particularly function calls.
 """
-"""
 import logging
 import re
 from typing import Any, Dict, List, Optional, Union, Tuple, TypeVar, cast
