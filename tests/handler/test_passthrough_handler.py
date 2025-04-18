@@ -185,8 +185,8 @@ class TestPassthroughHandler:
     def test_create_file_context(self, mock_task_system, mock_memory_system):
         """Test _create_file_context method."""
         # Mock the ClaudeProvider and FileAccessManager
-        with patch('handler.model_provider.ClaudeProvider'), \
-             patch('handler.file_access.FileAccessManager') as mock_file_manager_class:
+        with patch('src.handler.model_provider.ClaudeProvider'), \
+             patch('src.handler.file_access.FileAccessManager') as mock_file_manager_class:
             # Setup file manager mock
             mock_file_manager = MagicMock()
             mock_file_manager.read_file.side_effect = lambda path: f"Content of {path}" if path == "file1.py" else None
