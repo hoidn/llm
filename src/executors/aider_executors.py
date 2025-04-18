@@ -63,14 +63,34 @@ def execute_aider_automatic(params: Dict[str, Any], aider_bridge: AiderBridge) -
 
     file_context_param = params.get("file_context")
     file_paths, error_result = _parse_file_context(file_context_param)
-    if error_result:
-        return error_result
+    # --- START Modified file_context handling ---
+    file_context_param = params.get("file_context") # Should be a list or None from dispatcher/evaluator
+    file_paths: Optional[List[str]] = None
+
+    if isinstance(file_context_param, list):
+        # Ensure all items are strings
+        if all(isinstance(item, str) for item in file_context_param):
+            file_paths = file_context_param
+        else:
+             # Create an error TaskResult if list contains non-strings
+             msg = f"Invalid file_context: list must contain only strings. Found: {file_context_param}"
+             logging.error(msg)
+             return format_error_result(create_task_failure(msg, INPUT_VALIDATION_FAILURE))
+    elif file_context_param is not None:
+        # If not a list but not None, it's an invalid type based on the template
+         msg = f"Invalid type for file_context parameter: {type(file_context_param).__name__}. Expected list."
+         logging.error(msg)
+         return format_error_result(create_task_failure(msg, INPUT_VALIDATION_FAILURE))
+    # If file_context_param is None, file_paths remains None, which is valid.
+    # --- END Modified file_context handling ---
+
 
     logging.debug(f"Calling Aider Automatic with prompt='{prompt[:50]}...', file_paths={file_paths}")
     try:
         # Call the AiderBridge method - IT should return TaskResult format directly
+        # Pass the validated List[str] or None directly to the bridge
         result = aider_bridge.execute_automatic_task(prompt=prompt, file_context=file_paths)
-        
+
         # Return the bridge result directly without adding notes
         return result
     except Exception as e:

@@ -254,11 +254,118 @@ class TestEvaluator:
         
         # Verify task_system.execute_task was called
         task_system.execute_task.assert_called_once()
-        
-        
+
+
+# --- Tests for Step Execution ---
+
+class TestStepExecution:
+    """Tests for the _execute_steps method and step handling in evaluate."""
+
+    @pytest.fixture
+    def mock_template_provider(self):
+        provider = MagicMock(spec=TemplateLookupInterface)
+        provider.find_template.side_effect = lambda name: {"name": name, "parameters": {}} if name != "not_found" else None
+        return provider
+
+    @pytest.fixture
+    def evaluator(self, mock_template_provider):
+        eval = Evaluator(mock_template_provider)
+        # Mock evaluateFunctionCall directly on the instance for step tests
+        eval.evaluateFunctionCall = MagicMock()
+        return eval
+
+    @pytest.fixture
+    def base_environment(self):
+        return Environment({"initial_var": "value"})
+
+    def test_execute_steps_basic_sequence(self, evaluator, base_environment):
+        """Test executing a simple sequence of steps."""
+        steps = [
+            {"type": "call", "template": "step1", "arguments": [], "bind_result_to": "res1"},
+            {"type": "call", "template": "step2", "arguments": [{"name": "input", "value": "{{res1.content}}"}]}
+        ]
+        # Mock results for each step call
+        evaluator.evaluateFunctionCall.side_effect = [
+            {"status": "COMPLETE", "content": "Result Step 1", "notes": {}},
+            {"status": "COMPLETE", "content": "Result Step 2", "notes": {}}
+        ]
+
+        final_result = evaluator._execute_steps(steps, base_environment)
+
+        assert final_result["status"] == "COMPLETE"
+        assert final_result["content"] == "Result Step 2"
+        assert evaluator.evaluateFunctionCall.call_count == 2
+
+        # Check environment passed to step 2 contains result of step 1
+        call_args_step2 = evaluator.evaluateFunctionCall.call_args_list[1]
+        env_step2 = call_args_step2[0][1] # Environment is the second positional arg
+        assert env_step2.find("res1")["content"] == "Result Step 1"
+        # Check argument was evaluated correctly for step 2 call node
+        call_node_step2 = call_args_step2[0][0] # Call node is the first positional arg
+        assert call_node_step2.arguments[0].value == "{{res1.content}}" # Arg value before evaluation
+
+    def test_execute_steps_failure_stops_sequence(self, evaluator, base_environment):
+        """Test that sequence stops if a step fails."""
+        steps = [
+            {"type": "call", "template": "step1", "arguments": [], "bind_result_to": "res1"},
+            {"type": "call", "template": "step2_fails", "arguments": []},
+            {"type": "call", "template": "step3_skipped", "arguments": []}
+        ]
+        evaluator.evaluateFunctionCall.side_effect = [
+            {"status": "COMPLETE", "content": "Result Step 1", "notes": {}},
+            {"status": "FAILED", "content": "Step 2 Error", "notes": {"reason": "test_fail"}}
+        ]
+
+        final_result = evaluator._execute_steps(steps, base_environment)
+
+        assert final_result["status"] == "FAILED"
+        assert final_result["content"] == "Step 2 Error"
+        assert final_result["notes"]["sequence_failure_step"] == 2
+        assert evaluator.evaluateFunctionCall.call_count == 2 # Step 3 should not be called
+
+    def test_execute_steps_template_not_found(self, evaluator, base_environment):
+        """Test sequence failure if a step's template isn't found."""
+        steps = [
+            {"type": "call", "template": "step1", "arguments": []},
+            {"type": "call", "template": "not_found", "arguments": []}
+        ]
+        evaluator.evaluateFunctionCall.side_effect = [
+            {"status": "COMPLETE", "content": "Result Step 1", "notes": {}}
+        ]
+        # find_template mock already configured to return None for "not_found"
+
+        final_result = evaluator._execute_steps(steps, base_environment)
+
+        assert final_result["status"] == "FAILED"
+        assert "Template 'not_found' not found" in final_result["content"]
+        assert final_result["notes"]["failed_template"] == "not_found"
+        assert evaluator.evaluateFunctionCall.call_count == 1 # Only step 1 called
+
+    def test_evaluate_calls_execute_steps_for_template_with_steps(self, evaluator, base_environment):
+        """Test that the main evaluate method routes to _execute_steps."""
+        template_with_steps = {
+            "name": "template_with_steps",
+            "steps": [
+                {"type": "call", "template": "sub_step1"}
+            ]
+        }
+        # Mock find_template to return this template
+        evaluator.template_provider.find_template.return_value = template_with_steps
+        # Mock _execute_steps to check if it was called
+        evaluator._execute_steps = MagicMock(return_value={"status": "COMPLETE", "content": "Steps executed"})
+
+        # Evaluate using a FunctionCallNode referencing the template
+        call_node = FunctionCallNode("template_with_steps", [])
+        result = evaluator.evaluate(call_node, base_environment)
+
+        assert result["content"] == "Steps executed"
+        evaluator._execute_steps.assert_called_once_with(template_with_steps['steps'], base_environment)
+        # Ensure evaluateFunctionCall wasn't called directly for the outer node
+        evaluator.evaluateFunctionCall.assert_not_called()
+
+
 class TestDirectorEvaluatorLoop:
     """Tests for the Director-Evaluator loop functionality in Evaluator."""
-    
     @pytest.fixture
     def mock_template_provider(self):
         """Create a mock template provider."""
@@ -423,10 +530,10 @@ class TestDirectorEvaluatorLoop:
             assert result["notes"]["iterations_completed"] == 1
             assert "final_evaluation" in result["notes"]
             assert result["notes"]["final_evaluation"]["notes"]["success"] is False
-            assert "max_iterations_reached" in result["notes"]["termination_reason"]
-    
-    def test_evaluator_step_invalid_json(self, evaluator, mock_loop_node, base_environment):
-        """Test D-E loop when evaluator step returns invalid JSON."""
+            assert result["notes"].get("termination_reason") == "max_iterations_reached"
+
+    def test_evaluator_step_invalid_evaluator_output(self, evaluator, mock_loop_node, base_environment):
+        """Test D-E loop when evaluator step returns invalid structure (missing notes.success)."""
         # Setup mocks for evaluate method
         with patch.object(evaluator, 'evaluate') as mock_evaluate:
             # Configure mock to return different results for different nodes
@@ -453,11 +560,11 @@ class TestDirectorEvaluatorLoop:
                     # Evaluator returns invalid JSON
                     return {
                         "status": "COMPLETE",
-                        "content": "invalid json",
-                        "notes": {}  # Missing success field
+                        "status": "COMPLETE",
+                        "content": "Evaluator output missing success field",
+                        "notes": {"feedback": "Something happened"} # Missing 'success'
                     }
                 return {}
-            
             mock_evaluate.side_effect = mock_evaluate_side_effect
             
             # Set max_iterations to 1 to test single iteration
@@ -473,61 +580,65 @@ class TestDirectorEvaluatorLoop:
             assert result["notes"]["iterations_completed"] == 1
             assert "final_evaluation" in result["notes"]
             # Should default to failure when success field is missing
-            assert result["notes"]["final_evaluation"]["notes"]["success"] is False
-    
-    def test_evaluator_step_task_failure(self, evaluator, mock_loop_node, base_environment):
-        """Test D-E loop when evaluator step returns a task failure."""
+            assert result["notes"]["final_evaluation"]["notes"]["success"] is False # Should default to False
+            assert "Evaluation failed or structure invalid" in result["notes"]["final_evaluation"]["notes"]["feedback"]
+
+    def test_director_step_task_failure(self, evaluator, mock_loop_node, base_environment):
+        """Test D-E loop when the director step returns a task failure."""
         # Setup mocks for evaluate method
         with patch.object(evaluator, 'evaluate') as mock_evaluate:
-            # Configure mock to return different results for different nodes
+            # Configure mock evaluate to fail the director step
             def mock_evaluate_side_effect(node, env):
                 if node == mock_loop_node.director_node:
-                    return {
-                        "status": "COMPLETE",
-                        "content": "Director output",
-                        "notes": {}
-                    }
-                elif node == mock_loop_node.script_execution_node:
-                    return {
-                        "status": "COMPLETE",
-                        "content": "Script executed",
-                        "notes": {
-                            "scriptOutput": {
-                                "stdout": "",
-                                "stderr": "",
-                                "exit_code": 0
-                            }
-                        }
-                    }
-                elif node == mock_loop_node.evaluator_node:
-                    # Evaluator returns FAILED status
+                    # Director returns FAILED status
                     return {
                         "status": "FAILED",
-                        "content": "LLM call failed",
-                        "notes": {
-                            "error": {
-                                "message": "Error in evaluator step",
-                                "reason": "llm_error"
-                            }
-                        }
+                        "content": "Director step failed execution",
+                        "notes": {"reason": "subtask_error"}
                     }
-                return {}
-            
+                # Other steps won't be called if director fails first
+                return {"status": "COMPLETE"} # Placeholder for other nodes if needed
             mock_evaluate.side_effect = mock_evaluate_side_effect
             
             # Call the method under test
             result = evaluator._evaluate_director_evaluator_loop(mock_loop_node, base_environment)
             
             # Assertions
-            assert result["status"] == "FAILED"
+            assert result["status"] == "FAILED", "Loop should fail if director fails"
             assert "iteration_history" in result["notes"]
+            assert len(result["notes"]["iteration_history"]) == 1, "Should fail in first iteration"
+            assert "error" in result["notes"], "Overall error details should be in notes"
+            assert result["notes"]["error"]["reason"] == SUBTASK_FAILURE, "Error reason should indicate subtask failure"
+            assert "Director step failed" in result["notes"]["error"]["message"]
+
+            # Verify the loop terminated immediately after director failure
+            assert mock_evaluate.call_count == 1 # Only director node should be evaluated
+
+    def test_script_step_task_failure(self, evaluator, mock_loop_node, base_environment):
+        """Test D-E loop when the script execution step returns a task failure."""
+        with patch.object(evaluator, 'evaluate') as mock_evaluate:
+            def mock_evaluate_side_effect(node, env):
+                if node == mock_loop_node.director_node:
+                    return {"status": "COMPLETE", "content": "Director output"}
+                elif node == mock_loop_node.script_execution_node:
+                    # Script execution returns FAILED status
+                    return {
+                        "status": "FAILED",
+                        "content": "Script command failed",
+                        "notes": {"reason": "command_failed", "exit_code": 1}
+                    }
+                # Evaluator won't be called if script fails
+                return {"status": "COMPLETE"}
+
+            mock_evaluate.side_effect = mock_evaluate_side_effect
+            result = evaluator._evaluate_director_evaluator_loop(mock_loop_node, base_environment)
+
+            assert result["status"] == "FAILED"
             assert len(result["notes"]["iteration_history"]) == 1
-            assert "error" in result["notes"]
             assert result["notes"]["error"]["reason"] == SUBTASK_FAILURE
-            
-            # Verify the loop terminated immediately
-            assert mock_evaluate.call_count == 3  # director, script, evaluator
-    
+            assert "Script execution step failed" in result["notes"]["error"]["message"]
+            assert mock_evaluate.call_count == 2 # Director, Script
+
     def test_multiple_iterations_to_success(self, evaluator, mock_loop_node, base_environment):
         """Test D-E loop with multiple iterations until success."""
         # Setup mocks for evaluate method
@@ -587,8 +698,59 @@ class TestDirectorEvaluatorLoop:
             assert result["notes"]["final_evaluation"]["notes"]["success"] is True
             
             # Verify evaluate was called the expected number of times
-            assert mock_evaluate.call_count == 6  # 2 iterations * 3 nodes
-        
+            assert mock_evaluate.call_count == 6 # 2 iterations * 3 nodes (director, script, evaluator)
+
+    def test_loop_parses_target_files_parameter(self, evaluator, mock_loop_node, base_environment):
+        """Test that the D-E loop correctly parses the target_files JSON string."""
+        # Modify the loop node mock to include parameters
+        mock_loop_node.parameters = {
+            "test_cmd": {"type": "string", "required": True},
+            "target_files": {"type": "string", "default": "[]"},
+            "max_cycles": {"type": "integer", "default": 3}
+        }
+        # Provide the target_files parameter in the initial environment
+        initial_env = base_environment.extend({
+            "test_cmd": "pytest",
+            "target_files": '["file1.py", "path/to/file2.py"]' # JSON string
+        })
+
+        with patch.object(evaluator, 'evaluate') as mock_evaluate:
+            # Simulate success on first try to stop loop quickly
+            mock_evaluate.side_effect = lambda node, env: {
+                "status": "COMPLETE",
+                "content": "Mocked step",
+                "notes": {"success": True} if node == mock_loop_node.evaluator_node else {}
+            }
+
+            evaluator._evaluate_director_evaluator_loop(mock_loop_node, initial_env)
+
+            # Check the environment passed to the *director* node in the first iteration
+            # The D-E loop creates loop_env, then loop_env_iter, then director_env
+            # We need to capture the environment passed to the director call
+            director_call_args = None
+            for call_arg in mock_evaluate.call_args_list:
+                 if call_arg[0][0] == mock_loop_node.director_node: # Check if node matches director
+                      director_call_args = call_arg
+                      break
+
+            assert director_call_args is not None, "Director node was not evaluated"
+            director_env = director_call_args[0][1] # Get the environment argument
+
+            # Assert that 'target_files' in the director's env is a list
+            assert "target_files" in director_env.bindings
+            assert director_env.bindings["target_files"] == ["file1.py", "path/to/file2.py"]
+
+    def test_loop_fails_on_invalid_target_files_json(self, evaluator, mock_loop_node, base_environment):
+        """Test D-E loop failure when target_files is invalid JSON."""
+        mock_loop_node.parameters = { "target_files": {"type": "string"} }
+        initial_env = base_environment.extend({"target_files": '["file1.py",'}) # Invalid JSON
+
+        result = evaluator._evaluate_director_evaluator_loop(mock_loop_node, initial_env)
+
+        assert result["status"] == "FAILED"
+        assert "Invalid target_files parameter" in result["content"]
+
+
     def test_json_output_parsing(self):
         """Test JSON output parsing for template results."""
         # Setup mock template provider

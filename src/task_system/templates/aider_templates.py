@@ -37,8 +37,14 @@ AIDER_AUTOMATIC_TEMPLATE: Dict[str, Any] = {
     "parameters": {
         "prompt": {"type": "string", "description": "The instruction for code changes.", "required": True},
         # file_context is technically optional for the *tool*, but often needed.
-        # Represent it as a string here as that's what the user passes via CLI.
-        "file_context": {"type": "string", "description": "(Optional) JSON string array of explicit file paths to include. e.g., '[\"/path/to/file1.py\", \"/path/to/file2.py\"]'", "required": False}
+        # Changed type to array for direct list passing from evaluator/dispatcher
+        "file_context": {
+            "type": "array",
+            "items": {"type": "string"}, # Specify items are strings
+            "description": "(Optional) List of explicit file paths for Aider context.",
+            "required": False
+            # No default needed here, None or empty list is handled by executor
+        },
     },
     # No 'body' or 'system_prompt' needed as execution is via Direct Tool
 }

@@ -163,9 +163,11 @@ class Repl:
         print("  /debug [on|off] - Toggle debug mode for tool selection", file=self.output)
         print("  /test-aider [interactive|automatic] - Test Aider tool integration", file=self.output)
         print("  /task <identifier> [param=value] [param2='<json_value>'] [--flag] [--help] - Execute a task programmatically", file=self.output)
-        print("      Aider shortcuts: /task aider:automatic prompt=\"Fix bug\" file_context='[\"src/file.py\"]'", file=self.output)
-        print("      Aider shortcuts: /task aider:interactive prompt=\"Help me with this code\" file_context='[\"src/file.py\"]'", file=self.output)
-        print("      Aider shortcuts: /task aider:edit prompt=\"Add docstrings\" file_context='[\"src/file.py\"]'", file=self.output)
+        print("      Examples:", file=self.output)
+        print("        /task aider:automatic prompt=\"Fix bug\" file_context='[\"src/file.py\"]'", file=self.output)
+        print("        /task aider:interactive query=\"Help me\" file_context='[\"src/file.py\"]'", file=self.output)
+        print("        /task system:get_context query=\"Find relevant files for handler\"", file=self.output)
+        print("        /task debug:loop test_cmd=\"pytest tests/\" target_files='[\"src/main.py\"]' --max_cycles=5", file=self.output)
         print("  /exit - Exit the REPL", file=self.output)
 
     def _cmd_mode(self, args: str) -> None:
@@ -519,7 +521,8 @@ class Repl:
             print("  --help:       Show help for the specified <identifier>.", file=self.output)
             print("Examples:", file=self.output)
             print("  /task aider:automatic prompt=\"Add docstrings\" file_context='[\"src/main.py\"]'", file=self.output)
-            print("  /task aider:interactive --help", file=self.output)
+            print("  /task aider:interactive query=\"Refactor this\" --help", file=self.output)
+            print("  /task debug:loop test_cmd=\"pytest\" target_files='[\"src/calculator.py\"]'", file=self.output)
             return
 
         try:

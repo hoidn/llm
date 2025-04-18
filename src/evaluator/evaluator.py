@@ -5,12 +5,14 @@ evaluating AST nodes, particularly function calls.
 """
 import logging
 import re
+import json # Added for target_files parsing
 from typing import Any, Dict, List, Optional, Union, Tuple, TypeVar, cast
 
+# Adjust import paths if needed based on your project structure
 from task_system.ast_nodes import ArgumentNode, FunctionCallNode
 from task_system.template_utils import Environment, resolve_parameters
 from system.errors import (
-    TaskError, 
+    TaskError,
     create_input_validation_error,
     create_unexpected_error,
     create_task_failure,
@@ -26,6 +28,11 @@ T = TypeVar('T', bound=TemplateLookupInterface)
 
 # Constants
 DEFAULT_MAX_ITERATIONS = 5
+
+# Define TaskResult type hint if not already globally available
+TaskResult = Dict[str, Any]
+
+logger = logging.getLogger(__name__) # Added logger
 
 
 class Evaluator(EvaluatorInterface):
@@ -44,10 +51,98 @@ class Evaluator(EvaluatorInterface):
             template_provider: Component that provides template lookup and execution
         """
         self.template_provider = template_provider
-    
+        # Assuming template_provider has find_template or is the TaskSystem itself
+        if not hasattr(template_provider, 'find_template'):
+             logger.warning("Evaluator initialized with a template_provider that lacks 'find_template'. Step execution might fail.")
+
+    def find_template(self, identifier: str) -> Optional[Dict[str, Any]]:
+        """Helper to access template finding capability."""
+        if hasattr(self.template_provider, 'find_template'):
+            # Assuming template_provider is the TaskSystem or similar
+            return self.template_provider.find_template(identifier)
+        else:
+            logger.error(f"Template provider {type(self.template_provider)} lacks find_template method.")
+            return None
+
+    def _parse_step_to_call_node(self, step: Dict[str, Any]) -> Optional[FunctionCallNode]:
+        """Parses a step dictionary into a FunctionCallNode if it's a call type."""
+        if step.get("type") != "call" or "template" not in step:
+            # Log warning or handle non-call steps if needed later
+            logger.debug(f"Skipping non-call step: {step.get('type')}")
+            return None
+
+        template_name = step["template"]
+        arguments = []
+        for arg_def in step.get("arguments", []):
+            if "name" in arg_def and "value" in arg_def:
+                # Note: AST nodes might expect specific value types,
+                # this assumes value is directly usable or evaluate_arguments handles types.
+                # The value here is likely a string like "{{ variable }}" which evaluateFunctionCall will resolve.
+                arguments.append(ArgumentNode(name=arg_def["name"], value=arg_def["value"]))
+            elif "value" in arg_def: # Handle positional arguments if needed
+                 arguments.append(ArgumentNode(value=arg_def["value"]))
+            else:
+                logger.warning(f"Skipping invalid argument definition in step: {arg_def}")
+                # Consider if this should be an error
+
+        return FunctionCallNode(template_name=template_name, arguments=arguments)
+
+    def _execute_steps(self, steps: List[Dict[str, Any]], env: Environment) -> TaskResult:
+        """Executes a list of steps sequentially, binding results."""
+        last_result: TaskResult = {"status": "PENDING", "content": "No steps executed.", "notes": {}}
+        # Use a copy for local bindings within the sequence
+        current_env = env.copy() # Use copy to avoid modifying caller's env directly
+
+        for i, step in enumerate(steps):
+            step_name = step.get('description', step.get('template', f'Step {i+1}'))
+            logger.debug(f"Executing step {i+1}/{len(steps)}: {step_name}")
+            call_node = self._parse_step_to_call_node(step)
+
+            if call_node:
+                try:
+                    # Resolve the template definition for the function being called in the step
+                    step_template = self.find_template(call_node.template_name)
+
+                    if not step_template:
+                         logger.error(f"Template '{call_node.template_name}' not found for step {i+1}.")
+                         # Decide error handling: return error TaskResult or raise?
+                         return {"status": "FAILED", "content": f"Template '{call_node.template_name}' not found.", "notes": {"step": i+1, "failed_template": call_node.template_name}}
+
+                    # evaluateFunctionCall handles evaluating arguments *within* its logic using the env
+                    sub_call_result = self.evaluateFunctionCall(call_node, current_env, step_template)
+                    last_result = sub_call_result # Store result of this step
+
+                    # Check status and fail fast
+                    if sub_call_result.get("status") != "COMPLETE":
+                        logger.warning(f"Step {i+1} ({call_node.template_name}) failed. Stopping sequence.")
+                        # Optionally add failure info to notes
+                        last_result.setdefault("notes", {})["sequence_failure_step"] = i+1
+                        return last_result
+
+                    # Bind result to environment if requested
+                    if "bind_result_to" in step:
+                        var_name = step["bind_result_to"]
+                        logger.debug(f"Binding result of step {i+1} to env var '{var_name}'")
+                        # Bind the *entire* TaskResult dict
+                        current_env = current_env.extend({var_name: sub_call_result})
+
+
+                except TaskError as te:
+                     logger.error(f"TaskError executing step {i+1} ({call_node.template_name}): {te.message}")
+                     return format_error_result(te) # Return formatted TaskError
+                except Exception as e:
+                    logger.exception(f"Unexpected error executing step {i+1} ({call_node.template_name}): {e}")
+                    return {"status": "FAILED", "content": f"Unexpected error in step {i+1}: {e}", "notes": {"step": i+1, "template": call_node.template_name}}
+            else:
+                logger.warning(f"Skipping non-call or invalid step {i+1}: {step}")
+                # Decide how to handle non-call steps if they become relevant
+
+        # Return the result of the last successfully executed step
+        return last_result
+
     def evaluate(self, node: Any, env: Environment) -> Any:
         """
-        Evaluate an AST node in the given environment.
+        Evaluate an AST node or template dictionary in the given environment.
         
         Args:
             node: AST node to evaluate
@@ -59,22 +154,83 @@ class Evaluator(EvaluatorInterface):
         Raises:
             TaskError: If evaluation fails
         """
-        # Handle different node types
-        node_type = getattr(node, "type", None)
-        
-        if node_type == "director_evaluator_loop":
+        logger.debug(f"Evaluator.evaluate called with node type: {type(node).__name__}, env: {env}")
+
+        template_name_or_id = None
+        template = None
+
+        # Determine template name/ID and potentially fetch template
+        if isinstance(node, FunctionCallNode):
+            template_name_or_id = node.template_name
+            # Don't fetch template yet, evaluateFunctionCall will handle it
+        elif isinstance(node, dict) and 'name' in node: # If node is already template-like
+             template_name_or_id = node.get('name')
+             template = node # Assume the dict is the template itself
+        elif isinstance(node, dict) and 'template' in node and 'type' in node and node['type'] == 'call': # Handle step-like dicts passed directly
+             template_name_or_id = node['template']
+             # Convert step dict to FunctionCallNode before proceeding
+             call_node_from_dict = self._parse_step_to_call_node(node)
+             if call_node_from_dict:
+                 node = call_node_from_dict # Replace node with the parsed FunctionCallNode
+                 template_name_or_id = node.template_name
+             else:
+                 logger.warning(f"Could not parse dictionary as a call step: {node}")
+                 # Fall through to unsupported type error
+
+        # Fetch template if we have a name but haven't fetched it yet
+        if template_name_or_id and template is None and isinstance(node, FunctionCallNode):
+             template = self.find_template(template_name_or_id)
+
+        # --- START New Logic for Step Execution ---
+        if template and isinstance(template.get('steps'), list):
+            logger.debug(f"Detected template '{template_name_or_id}' with steps. Executing sequence.")
+            # Context management check (optional for now)
+            # if template.get("context_management", {}).get("fresh_context") == "disabled":
+            #      pass
+            return self._execute_steps(template['steps'], env)
+        # --- END New Logic ---
+
+        # --- Existing Logic ---
+        # Handle D-E loop node (assuming it's passed as a dict matching the template structure)
+        if isinstance(node, dict) and node.get("type") == "director_evaluator_loop":
+            # Pass the template dict directly
             return self._evaluate_director_evaluator_loop(node, env)
-        elif node_type == "call":
-            return self.evaluateFunctionCall(node, env)
-        # Add additional node types as needed
-        
-        # Default: return the node itself (for literals, etc.)
-        logging.debug(f"Evaluator.evaluate: Passing through node of type {node_type or type(node).__name__}")
-        return node
-    
-    def evaluateFunctionCall(self, call_node: FunctionCallNode, env: Environment, template: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+
+        # Handle standard function call node
+        if isinstance(node, FunctionCallNode):
+             # evaluateFunctionCall will fetch template if not provided
+             return self.evaluateFunctionCall(node, env, template)
+
+        # Handle simple variable resolution or literals if node is a string
+        if isinstance(node, str):
+             if self._is_variable_reference(node):
+                 var_name = self._extract_variable_name(node)
+                 try:
+                     return env.find(var_name)
+                 except ValueError as e:
+                      raise create_input_validation_error(f"Variable not found: {var_name}", details={"variable": var_name}) from e
+             else:
+                 # Try resolving as complex path or return literal
+                 try:
+                     return env.find(node)
+                 except ValueError:
+                      return node # Return as literal string
+
+        # Default: return the node itself (for literals like numbers, bools, etc.)
+        if not isinstance(node, (dict, list)): # Avoid returning complex structures unintentionally
+            logger.debug(f"Evaluator.evaluate: Passing through literal node of type {type(node).__name__}")
+            return node
+
+        # If we reach here, the node type is unsupported
+        logger.error(f"Unsupported node type for evaluation: {type(node)}")
+        raise create_task_failure(f"Unsupported node type for evaluation: {type(node)}", UNEXPECTED_ERROR)
+
+
+    def evaluateFunctionCall(self, call_node: FunctionCallNode, env: Environment, template: Optional[Dict[str, Any]] = None) -> TaskResult:
         """
         Evaluate a function call AST node.
+
+        This is the canonical execution path for function calls.
         
         This is the canonical execution path for function calls.
         
@@ -336,26 +492,43 @@ class Evaluator(EvaluatorInterface):
         """
         try:
             # Extract task type and subtype from template
-            task_type = template.get("type", "atomic")
-            task_subtype = template.get("subtype", "generic")
-            
-            # Extract inputs from environment
+            task_type = template.get("type", "atomic") # Default to atomic
+            task_subtype = template.get("subtype", "generic") # Default to generic
+
+            # Extract inputs from environment based on template parameters
             inputs = {}
-            for key in env.bindings:
-                inputs[key] = env.bindings[key]
-            
-            # Handle context management settings if present
-            context_mgmt = template.get("context_management", {})
-            
-            # Check for explicit file paths to include
-            file_paths = template.get("file_paths", [])
-            if file_paths:
-                inputs["file_paths"] = file_paths
-            
-            # Execute template using template provider
+            template_params = template.get("parameters", {})
+            for param_name in template_params.keys():
+                # Use env.find to respect scoping and handle potential errors
+                try:
+                    inputs[param_name] = env.find(param_name)
+                except ValueError:
+                    # Parameter not found in env, check if it has a default or is required later
+                    if "default" not in template_params[param_name] and template_params[param_name].get("required", False):
+                         # This should ideally be caught during binding, but double-check
+                         raise create_input_validation_error(f"Missing required parameter '{param_name}' in environment for template '{template.get('name')}'")
+                    # If not required and no default, it remains absent from inputs
+
+            # Handle context management settings if present (less relevant here, more for TaskSystem)
+            # context_mgmt = template.get("context_management", {})
+
+            # Check for explicit file paths defined *in the template itself* (less common)
+            # file_paths = template.get("file_paths", [])
+            # if file_paths:
+            #     inputs["file_paths"] = file_paths # Add/overwrite if defined in template
+
+            # Execute template using template provider's execute_task method
+            # This assumes template_provider (likely TaskSystem) has this method
+            if not hasattr(self.template_provider, 'execute_task'):
+                 raise create_task_failure(f"Template provider {type(self.template_provider)} does not support execute_task", UNEXPECTED_ERROR)
+
+            # Pass necessary context if execute_task requires it (e.g., memory_system)
+            # This depends on the signature of template_provider.execute_task
+            # Example: result = self.template_provider.execute_task(task_type, task_subtype, inputs, memory_system=self.memory_system)
+            # Assuming execute_task only needs type, subtype, inputs for now:
             result = self.template_provider.execute_task(task_type, task_subtype, inputs)
-            
-            # Add JSON parsing
+
+            # Add JSON parsing for the result content
             output_format = template.get("output_format", {})
             if isinstance(output_format, dict) and output_format.get("type") == "json":
                 try:
@@ -389,34 +562,90 @@ class Evaluator(EvaluatorInterface):
         Returns:
             TaskResult containing the loop execution results
         """
-        logging.info(f"Starting Director-Evaluator Loop: {getattr(node, 'description', 'N/A')}")
-        
+        # Node is expected to be a dictionary matching the template structure
+        if not isinstance(node, dict):
+             return format_error_result(create_task_failure(
+                 f"Director-Evaluator loop node must be a dictionary, got {type(node)}", INPUT_VALIDATION_FAILURE
+             ))
+
+        logging.info(f"Starting Director-Evaluator Loop: {node.get('description', 'N/A')}")
+
         # --- Initialization ---
-        max_iterations = getattr(node, 'max_iterations', DEFAULT_MAX_ITERATIONS)
-        # Safely get node references - assumes these attributes exist on the parsed node
-        director_node = getattr(node, 'director_node', None)
-        evaluator_node = getattr(node, 'evaluator_node', None)
-        script_node = getattr(node, 'script_execution_node', None)
-        termination_condition_node = getattr(node, 'termination_condition_node', None)
+        # Evaluate parameters defined in the loop template itself using the initial env
+        try:
+             # Use resolve_parameters to handle defaults and required checks based on loop's own params
+             # Pass env.bindings as the provided arguments
+             evaluated_params = resolve_parameters(node, env.bindings)
+        except ValueError as e:
+             logging.error(f"Error resolving parameters for D-E loop '{node.get('name')}': {e}")
+             return format_error_result(create_input_validation_error(f"Loop parameter error: {e}"))
+
+        # Get max_iterations from evaluated params, falling back to template default, then constant
+        max_iter_param = evaluated_params.get('max_cycles', node.get('parameters', {}).get('max_cycles', {}).get('default', DEFAULT_MAX_ITERATIONS))
+        try:
+            # Handle potential variable substitution in max_iterations value itself
+            if isinstance(max_iter_param, str) and self._is_variable_reference(max_iter_param):
+                 max_iterations_str = self._extract_variable_name(max_iter_param)
+                 max_iterations = int(env.find(max_iterations_str))
+            else:
+                 max_iterations = int(max_iter_param) # Use evaluated param directly
+        except (ValueError, TypeError) as e:
+             logging.warning(f"Invalid max_iterations value '{max_iter_param}', using default {DEFAULT_MAX_ITERATIONS}. Error: {e}")
+             max_iterations = DEFAULT_MAX_ITERATIONS
+
+        # Get node definitions (director, evaluator, script, condition) from the template dict
+        director_node_def = node.get('director')
+        evaluator_node_def = node.get('evaluator')
+        script_node_def = node.get('script_execution')
+        termination_condition_def = node.get('termination_condition')
 
         # Validate required nodes
-        if not director_node or not evaluator_node:
-            logging.error("D-E Loop Error: Missing director or evaluator definition in the node.")
+        if not director_node_def or not evaluator_node_def:
+            logging.error("D-E Loop Error: Missing director or evaluator definition in the template.")
             return format_error_result(create_task_failure(
-                "Director-Evaluator loop node is missing director or evaluator definition.",
+                "Director-Evaluator loop template is missing director or evaluator definition.",
                 INPUT_VALIDATION_FAILURE
             ))
 
         iteration_history = []
-        loop_env = env  # Start with the environment passed to the loop node
-        last_director_result: Optional[Dict[str, Any]] = None
-        last_script_output: Optional[Dict[str, Any]] = None # Stores {stdout, stderr, exit_code}
-        last_evaluation_result: Optional[Dict[str, Any]] = None
-        loop_error: Optional[TaskError] = None
-        loop_status = "FAILED" # Default status, updated on success or max iterations reached
+        # Create initial loop environment containing evaluated parameters
+        initial_bindings = evaluated_params.copy()
 
-        logging.debug(f"Loop configured: max_iterations={max_iterations}, script_present={bool(script_node)}, condition_present={bool(termination_condition_node)}")
-        
+        # --- START New Logic for target_files ---
+        target_files_str = evaluated_params.get("target_files", "[]") # Default to empty JSON array string
+        try:
+            # Ensure it's treated as a string before parsing
+            if not isinstance(target_files_str, str):
+                 # If it was already parsed to a list (e.g., by upstream logic), use it directly
+                 if isinstance(target_files_str, list):
+                      target_files_list = target_files_str
+                 else:
+                      raise ValueError(f"Expected string or list for target_files, got {type(target_files_str)}")
+            else:
+                 target_files_list = json.loads(target_files_str)
+
+            if not isinstance(target_files_list, list) or not all(isinstance(f, str) for f in target_files_list):
+                raise ValueError("target_files parameter must be a JSON list of strings.")
+            initial_bindings["target_files"] = target_files_list # Store the list
+            logging.debug(f"Parsed target_files: {target_files_list}")
+        except (json.JSONDecodeError, ValueError) as e:
+            logger.error(f"Invalid 'target_files' parameter value: '{target_files_str}'. Error: {e}")
+            # Return an error TaskResult
+            return format_error_result(create_input_validation_error(f"Invalid target_files parameter: {e}"))
+        # --- END New Logic for target_files ---
+
+        # Create the loop's environment, potentially inheriting from the caller's env
+        # For now, create a fresh environment with only the loop's evaluated parameters
+        loop_env = Environment(bindings=initial_bindings) # No parent=env for isolation initially
+
+        last_director_result: Optional[TaskResult] = None
+        last_script_output: Optional[Dict[str, Any]] = None # Stores {stdout, stderr, exit_code}
+        last_evaluation_result: Optional[TaskResult] = None
+        loop_error: Optional[TaskError] = None
+        loop_status = "FAILED" # Default status
+
+        logging.debug(f"Loop configured: max_iterations={max_iterations}, script_present={bool(script_node_def)}, condition_present={bool(termination_condition_def)}")
+
         # --- Iteration Loop ---
         for iteration in range(max_iterations):
             current_iteration = iteration + 1
@@ -440,10 +669,10 @@ class Evaluator(EvaluatorInterface):
 
                 director_env = loop_env_iter.extend(director_env_bindings)
 
-                # Recursively evaluate the director node using self.eval
-                last_director_result = self.evaluate(director_node, director_env)
+                # Recursively evaluate the director node definition (which is likely a 'call' dict)
+                last_director_result = self.evaluate(director_node_def, director_env)
                 current_iteration_results["director"] = last_director_result
-                logging.debug(f"Director result status: {last_director_result.get('status')}")
+                logging.debug(f"Director result status: {last_director_result.get('status')}, content: {str(last_director_result.get('content'))[:100]}...")
 
                 # Check for failure
                 if last_director_result.get("status") == "FAILED":
@@ -457,15 +686,14 @@ class Evaluator(EvaluatorInterface):
 
                 # --- 2. Execute Script (Optional) ---
                 last_script_output = None # Initialize for this iteration
-                
-                if script_node:
+
+                if script_node_def:
                     logging.debug("Executing Script step...")
                     # Environment already contains director_result from previous step
                     script_env = loop_env_iter
 
-                    # Recursively evaluate the script node (e.g., a <call task="system:run_script">)
-                    # self.eval handles resolving the call and invoking the Handler tool
-                    script_task_result = self.evaluate(script_node, script_env)
+                    # Recursively evaluate the script node definition (e.g., a call to system:run_script)
+                    script_task_result = self.evaluate(script_node_def, script_env)
                     current_iteration_results["script"] = script_task_result
                     logging.debug(f"Script result status: {script_task_result.get('status')}")
 
@@ -500,10 +728,10 @@ class Evaluator(EvaluatorInterface):
                 # Environment already contains director_result and script outputs
                 evaluator_env = loop_env_iter
 
-                # Recursively evaluate the evaluator node
-                last_evaluation_result = self.evaluate(evaluator_node, evaluator_env)
+                # Recursively evaluate the evaluator node definition
+                last_evaluation_result = self.evaluate(evaluator_node_def, evaluator_env)
                 current_iteration_results["evaluator"] = last_evaluation_result
-                logging.debug(f"Evaluator result status: {last_evaluation_result.get('status')}")
+                logging.debug(f"Evaluator result status: {last_evaluation_result.get('status')}, content: {str(last_evaluation_result.get('content'))[:100]}...")
 
                 # Check for failure
                 if last_evaluation_result.get("status") == "FAILED":
@@ -532,11 +760,16 @@ class Evaluator(EvaluatorInterface):
                     break # Exit loop
 
                 # Check 2: Custom Termination Condition (if exists)
-                if termination_condition_node:
-                     condition_str = getattr(termination_condition_node, 'condition_string', None)
+                if termination_condition_def:
+                     condition_str = termination_condition_def.get('condition_string')
                      if condition_str:
                          # Create env for condition check, adding 'evaluation' binding
-                         condition_env = loop_env_iter.extend({"evaluation": last_evaluation_result})
+                         # Also add other relevant bindings like 'current_iteration'
+                         condition_env = loop_env_iter.extend({
+                             "evaluation": last_evaluation_result,
+                             # Ensure current_iteration is available if needed by condition
+                             "current_iteration": current_iteration
+                         })
                          try:
                              if self._evaluate_termination_condition(condition_str, condition_env):
                                  logging.info(f"Loop terminating early after iteration {current_iteration} due to condition: {condition_str}")

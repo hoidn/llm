@@ -84,25 +84,21 @@ Proposed Code Fix:"""
     # "model": {"preferred": "claude-3-opus"} # Might need a stronger model for fix generation
 }
 
+
+# Task 3: Define DEBUG_LOOP_DIRECTOR_STEP_TEMPLATE
 DEBUG_LOOP_DIRECTOR_STEP_TEMPLATE: Dict[str, Any] = {
     "name": "debug_loop_director_step",
-    "type": "sequential", # Using sequential to manage the chain of calls
-    "description": "Internal step for the debug loop: analyzes failure, gets context, generates fix, applies fix.",
+    "type": "atomic", # Type isn't driving execution; 'steps' list is. Let Evaluator handle steps.
+    "description": "Internal step for the debug loop: Gets context, generates fix, applies fix.",
     "parameters": {
-        # This template implicitly receives the loop's environment variables:
+        # Implicitly receives from D-E loop environment:
         # - evaluation_result: TaskResult from the previous evaluator step.
-        # - target_files: Optional list of target file paths (passed as string initially).
+        # - target_files: List[str] of target file paths (parsed by D-E loop).
         # - test_cmd: Original test command string.
     },
-    "context_management": {
-        "inherit_context": "full",    # Needs access to loop variables like evaluation_result
-        "accumulate_data": True,    # Keep results of sub-steps accessible
-        "accumulation_format": "full_output", # Need full content (files, fix)
-        "fresh_context": "disabled" # Does not perform its own top-level context lookup
-    },
-    "steps": [
+    "context_management": {"fresh_context": "disabled"}, # Critical: Prevent recursive context lookup
+    "steps": [ # Execution managed by updated Evaluator based on this list
         # Step 1: Call system:get_context
-        # Assumes the D-E loop executor only runs the director step if evaluation_result.notes.success == false
         {
             "type": "call",
             "template": "system:get_context",
@@ -110,10 +106,11 @@ DEBUG_LOOP_DIRECTOR_STEP_TEMPLATE: Dict[str, Any] = {
             "arguments": [
                 # Pass the error message as the query
                 {"name": "query", "value": "{{ evaluation_result.notes.error_details.error_message }}"},
-                # Pass target_files if it exists in the environment. Use default(None) filter.
-                {"name": "target_files", "value": "{{ target_files | default(None) }}"}
+                # Pass the target_files list directly (parsed by D-E loop)
+                # Use default filter in case it's somehow missing, though D-E loop should ensure it exists
+                {"name": "target_files", "value": "{{ target_files | default([]) }}"}
             ],
-            "bind_result_to": "context_files_result" # Bind TaskResult to this var
+            "bind_result_to": "context_files_result"
         },
         # Step 2: Call system:read_files
         {
@@ -162,57 +159,45 @@ DEBUG_LOOP_TEMPLATE: Dict[str, Any] = {
     "type": "director_evaluator_loop",
     "description": "Automated Debug-Fix Loop: Runs tests, analyzes failures, attempts fixes.",
     "parameters": {
-        # Parameters expected from the /task command
         "test_cmd": {"type": "string", "description": "The shell command to execute tests.", "required": True},
-        "target_files": {"type": "string", "description": "(Optional) JSON string array of target file paths.", "required": False, "default": "[]"},
+        # User provides JSON string, parsing handled in Evaluator (Task 1)
+        "target_files": {"type": "string", "description": "(Optional) JSON string array of target file paths, e.g., '[\"file1.py\"]'.", "required": False, "default": "[]"},
         "max_cycles": {"type": "integer", "description": "Maximum fix attempts.", "required": False, "default": 3}
     },
-    "context_management": {
-        "inherit_context": "none", # Loop manages its own internal state
-        "accumulate_data": True, # Needed to pass results between iterations
-        "accumulation_format": "notes_only", # Only need notes for loop control/history
-        "fresh_context": "disabled" # Does not do its own context lookup
-    },
-    # Use the max_cycles parameter for max_iterations
-    "max_iterations": "{{ max_cycles }}",
-    # Define the Director step - calls the sequential template defined above
+    "context_management": {"fresh_context": "disabled"}, # Prevent top-level context lookup
+    "max_iterations": "{{ max_cycles }}", # Evaluator substitutes this during loop init
+    # Define the Director step - points to the template defined in Task 3
     "director": {
-        "type": "call",
-        "template": "debug_loop_director_step",
+        "type": "call", # This structure tells the D-E loop logic *what* to call
+        "template": "debug_loop_director_step", # References the template with steps
         "description": "Attempt to fix the failed tests.",
-        # Arguments (evaluation_result, target_files, etc.) are passed implicitly
-        # by the D-E loop executor via the environment.
-        "arguments": []
+        "arguments": [] # Arguments passed implicitly by D-E loop environment
     },
-    # Define the Script Execution step - runs the tests
+    # Define the Script Execution step
     "script_execution": {
         "type": "call",
-        "template": "system:run_script", # Assumes this Direct Tool is registered
+        "template": "system:run_script", # ASSUMES this direct tool exists and is registered
         "description": "Run the test command.",
-        "arguments": [
-            {"name": "command", "value": "{{ test_cmd }}"}
-            # Add timeout argument if system:run_script supports it
-            # {"name": "timeout", "value": 60}
-        ]
-        # Result (stdout, stderr, exit_code) bound automatically by executor
+        "arguments": [{"name": "command", "value": "{{ test_cmd }}"}]
+        # Result (stdout, stderr, exit_code) bound automatically to env by D-E loop logic
     },
-    # Define the Evaluator step - analyzes test results
+    # Define the Evaluator step
     "evaluator": {
         "type": "call",
-        "template": "debug:analyze_test_results", # The LLM analysis template
+        "template": "debug:analyze_test_results", # Existing template from Phase 4
         "description": "Analyze the test command output.",
         "arguments": [
-            # Inputs bound automatically by the D-E loop executor
+            # Inputs bound automatically by the D-E loop logic from script execution result
             {"name": "test_stdout", "value": "{{ script_stdout }}"},
             {"name": "test_stderr", "value": "{{ script_stderr }}"},
             {"name": "test_exit_code", "value": "{{ script_exit_code }}"}
         ]
-        # Result (EvaluationResult structure) bound automatically by executor
+        # Result automatically bound to 'evaluation_result' in env by D-E loop logic
     },
     # Define the Termination Condition
     "termination_condition": {
+        # Evaluated by D-E loop logic against the 'evaluation_result'
         "condition_string": "evaluation.notes.success == true"
-        # The D-E loop executor evaluates this against the result of the evaluator step
     }
 }
 
@@ -223,12 +208,15 @@ def register_debug_templates(task_system):
     Args:
         task_system: The TaskSystem instance to register templates with
     """
+    """
     logger.info("Registering Debug Loop templates...")
     if hasattr(task_system, 'register_template'):
-        task_system.register_template(DEBUG_ANALYZE_RESULTS_TEMPLATE)
-        task_system.register_template(DEBUG_GENERATE_FIX_TEMPLATE)
-        task_system.register_template(DEBUG_LOOP_DIRECTOR_STEP_TEMPLATE)
-        task_system.register_template(DEBUG_LOOP_TEMPLATE)
+        task_system.register_template(DEBUG_ANALYZE_RESULTS_TEMPLATE) # Existing
+        task_system.register_template(DEBUG_GENERATE_FIX_TEMPLATE)    # Existing
+        # --- Add New Templates ---
+        task_system.register_template(DEBUG_LOOP_DIRECTOR_STEP_TEMPLATE) # From Task 3
+        task_system.register_template(DEBUG_LOOP_TEMPLATE)               # From Task 4
+        # --------------------------
         logger.info("All Debug Loop templates registered.")
     else:
         logger.error("TaskSystem object does not have 'register_template' method.")

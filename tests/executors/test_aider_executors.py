@@ -108,6 +108,7 @@ class TestAiderExecutors:
         result = execute_aider_automatic(params, mock_bridge_instance)
 
         assert result == {"status": "COMPLETE", "content": "Success!"}
+        # Verify the list was passed correctly
         mock_bridge_instance.execute_automatic_task.assert_called_once_with(prompt="Test prompt", file_context=expected_list)
 
     def test_automatic_missing_prompt(self, mock_aider_bridge_class):
@@ -120,15 +121,29 @@ class TestAiderExecutors:
         assert "Missing required parameter: prompt" in result["content"]
         mock_bridge_instance.execute_automatic_task.assert_not_called()
 
-    def test_automatic_invalid_context(self, mock_aider_bridge_class):
+    def test_automatic_invalid_context_type(self, mock_aider_bridge_class):
+        """Test automatic executor when file_context is not a list (and not None)."""
         mock_bridge_instance = mock_aider_bridge_class.return_value
-        params = {"prompt": "Test prompt", "file_context": '["f1.py",'} # Invalid JSON
+        params = {"prompt": "Test prompt", "file_context": {"not": "a list"}} # Invalid type
 
         result = execute_aider_automatic(params, mock_bridge_instance)
 
         assert result["status"] == "FAILED"
-        assert "Invalid file_context" in result["content"]
+        assert "Invalid type for file_context" in result["content"]
+        assert "dict" in result["content"]
         mock_bridge_instance.execute_automatic_task.assert_not_called()
+
+    def test_automatic_invalid_context_list_content(self, mock_aider_bridge_class):
+        """Test automatic executor when file_context list contains non-strings."""
+        mock_bridge_instance = mock_aider_bridge_class.return_value
+        params = {"prompt": "Test prompt", "file_context": ["file1.py", 123]} # List with non-string
+
+        result = execute_aider_automatic(params, mock_bridge_instance)
+
+        assert result["status"] == "FAILED"
+        assert "list must contain only strings" in result["content"]
+        mock_bridge_instance.execute_automatic_task.assert_not_called()
+
 
     def test_automatic_bridge_exception(self, mock_aider_bridge_class):
         mock_bridge_instance = mock_aider_bridge_class.return_value
