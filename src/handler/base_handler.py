@@ -1,11 +1,11 @@
 """Base handler providing common functionality for all handlers."""
 from typing import Dict, List, Optional, Any, Callable, Tuple, Union
 
-from .model_provider import ProviderAdapter, ClaudeProvider
-from .file_access import FileAccessManager
-from .command_executor import execute_command_safely, parse_file_paths_from_output
-from ..memory.context_generation import ContextGenerationInput
-from ..system.prompt_registry import registry as prompt_registry
+from src.handler.model_provider import ProviderAdapter, ClaudeProvider
+from src.handler.file_access import FileAccessManager
+from src.handler.command_executor import execute_command_safely, parse_file_paths_from_output
+from src.memory.context_generation import ContextGenerationInput
+from src.system.prompt_registry import registry as prompt_registry
 
 class BaseHandler:
     """Base class for all handlers with common functionality.
