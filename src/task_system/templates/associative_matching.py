@@ -5,7 +5,7 @@ import os
 import math
 import json
 import logging
-from task_system.template_utils import Environment
+from ...task_system.template_utils import Environment
 
 # Template definition as a Python dictionary
 ASSOCIATIVE_MATCHING_TEMPLATE = {
