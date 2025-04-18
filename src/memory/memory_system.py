@@ -6,9 +6,9 @@ import sys
 import logging
 import concurrent.futures
 
-from memory.context_generation import ContextGenerationInput
-from memory.context_generation import AssociativeMatchResult  # Import the standard result type
-from system.prompt_registry import registry as prompt_registry
+from .context_generation import ContextGenerationInput
+from .context_generation import AssociativeMatchResult  # Import the standard result type
+from ..system.prompt_registry import registry as prompt_registry
 
 class MemorySystem:
     """Memory System for metadata management and associative matching.
