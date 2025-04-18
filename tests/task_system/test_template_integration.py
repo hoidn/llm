@@ -39,10 +39,11 @@ class TestTemplateIntegration:
         task_system.register_template(test_template)
         
         # Mock _execute_associative_matching for the test
-        task_system._execute_associative_matching = MagicMock(return_value={
-            "status": "COMPLETE",
-            "content": '["file1.py", "file2.py"]'
-        })
+        task_system._execute_associative_matching = MagicMock(return_value=TaskResult(
+            status="COMPLETE",
+            content='["file1.py", "file2.py"]',
+            notes={}
+        ))
         
         # Execute the template
         result = task_system.execute_task(
@@ -74,8 +75,11 @@ class TestTemplateIntegration:
         
         # IMPORTANT: Also mock the execute_template function to avoid actual execution
         with patch('task_system.templates.associative_matching.execute_template') as mock_execute_template:
-            # Configure mock to return test data
-            mock_execute_template.return_value = ["file1.py", "file2.py"]
+            # Configure mock to return test data in the expected format
+            mock_execute_template.return_value = [
+                {"path": "file1.py", "relevance": "Test relevance", "score": 0.9},
+                {"path": "file2.py", "relevance": "Test relevance", "score": 0.8}
+            ]
             
             # Create mock memory system
             mock_memory = MagicMock()

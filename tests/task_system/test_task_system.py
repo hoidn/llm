@@ -211,6 +211,8 @@ class TestTaskSystemExecution:
             # Verify that the format_greeting function call was processed
             # The string representation of the TaskResult is used in the system_prompt
             executed_template = task_system._execute_associative_matching.call_args[0][0]
+            
+            # Check that the system_prompt contains the expected greeting prefix
             assert "Greeting:" in executed_template["system_prompt"]
             
             # Convert dict to TaskResult if needed

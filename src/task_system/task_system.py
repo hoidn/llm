@@ -933,8 +933,16 @@ class TaskSystem(TemplateLookupInterface):
 
                         # Try exact match first
                         if path in global_index:
-                            # Create 2-tuple (path, relevance)
-                            file_matches.append((path, relevance))
+                            # Create MatchTuple with path, relevance, and score
+                            score_val = item.get("score")
+                            score_float = None
+                            if score_val is not None:
+                                try:
+                                    score_float = float(score_val)
+                                except (ValueError, TypeError):
+                                    logging.warning("Invalid score format '%s', setting score to None.", score_val)
+                        
+                            file_matches.append((path, relevance, score_float))
                         else:
                             # Try to match by basename if exact match fails
                             # This helps with relative vs absolute path differences
@@ -943,8 +951,16 @@ class TaskSystem(TemplateLookupInterface):
 
                             for index_path in global_index.keys():
                                 if os.path.basename(index_path) == path_basename:
-                                    # Create 2-tuple (path, relevance)
-                                    file_matches.append((index_path, relevance))
+                                    # Create tuple with path, relevance, and score
+                                    score_val = item.get("score")
+                                    score_float = None
+                                    if score_val is not None:
+                                        try:
+                                            score_float = float(score_val)
+                                        except (ValueError, TypeError):
+                                            logging.warning("Invalid score format '%s', setting score to None.", score_val)
+                                
+                                    file_matches.append((index_path, relevance, score_float))
                                     matched = True
                                     break
                             if not matched:

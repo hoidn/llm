@@ -187,14 +187,12 @@ class TestExecuteSubtaskDirectly:
         # Arrange:
         task_system_instance.find_template.return_value = sample_template
         
-        # Create a base environment that will raise an error when used
+        # Create a base environment
         base_env = Environment({})
         
-        # Make the execute_subtask_directly method raise an error during processing
-        original_method = task_system_instance._process_template_for_execution
-        def mock_method(*args, **kwargs):
-            raise TypeError("Unexpected environment issue")
-        task_system_instance._process_template_for_execution = mock_method
+        # Mock the execute_task method to raise an error
+        original_execute_task = task_system_instance.execute_task
+        task_system_instance.execute_task = MagicMock(side_effect=TypeError("Unexpected environment issue"))
         
         try:
             # Act: Call the method with environment
@@ -207,7 +205,7 @@ class TestExecuteSubtaskDirectly:
             assert result.notes.get("error", {}).get("details", {}).get("exception_type") == "TypeError"
         finally:
             # Restore the original method
-            task_system_instance._process_template_for_execution = original_method
+            task_system_instance.execute_task = original_execute_task
 
     # Note: Testing evaluator failure requires Phase 2+ when the mock execution is replaced.
     # def test_error_handling_evaluator_fails(self, task_system_instance, sample_request, sample_template, mock_evaluator):

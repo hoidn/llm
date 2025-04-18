@@ -224,9 +224,16 @@ class TestTemplateAwareContextGeneration:
             assert hasattr(result, 'matches')
             assert result.context.startswith("Found 2 relevant files")
             assert len(result.matches) == 2
+            
+            # Check first match
+            assert hasattr(result.matches[0], 'path')
+            assert hasattr(result.matches[0], 'relevance')
+            assert hasattr(result.matches[0], 'score')
             assert result.matches[0].path == "auth.py"
             assert result.matches[0].relevance == "Matches authentication query"
             assert result.matches[0].score == 0.95
+            
+            # Check second match
             assert result.matches[1].path == "user.py"
             assert result.matches[1].relevance == "Related to user management"
             assert result.matches[1].score == 0.85
