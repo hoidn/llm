@@ -145,9 +145,9 @@ DEBUG_LOOP_DIRECTOR_STEP_TEMPLATE: Dict[str, Any] = {
             "arguments": [
                 # Pass the fix proposal as the prompt
                 {"name": "prompt", "value": "{{ generate_fix_result.content }}"},
-                # Pass the list of relevant files as a JSON string
-                # NOTE: Requires a 'tojson' filter available in the template engine
-                {"name": "file_context", "value": "{{ context_files_result.notes.file_paths | tojson }}"}
+                # Pass the file path list directly (Task 2 ensures aider accepts list)
+                # Access the list from the notes of the context result
+                {"name": "file_context", "value": "{{ context_files_result.notes.file_paths }}"}
             ],
             "bind_result_to": "apply_fix_result" # Bind TaskResult to this var (final result of this step)
         }
