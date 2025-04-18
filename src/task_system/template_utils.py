@@ -2,6 +2,10 @@
 from typing import Dict, List, Any, Optional, Union, Type, Tuple, TypeVar, Callable
 import re
 
+# Import TaskResult and TaskError for type checking
+from system.types import TaskResult
+from system.errors import TaskError
+
 # Try different import paths to handle various environments
 try:
     # First try the import path used in tests
