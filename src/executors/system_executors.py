@@ -7,6 +7,7 @@ from typing import Dict, Any, List, Optional
 # Adjust import paths based on actual project structure
 from ..memory.memory_system import MemorySystem
 from ..handler.file_access import FileAccessManager
+from ..handler.command_executor import execute_command_safely
 # Assuming TaskResult is defined centrally or importable
 # from task_system.spec.types import TaskResult
 TaskResult = Dict[str, Any]  # Placeholder if direct import fails
