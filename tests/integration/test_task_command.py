@@ -282,6 +282,11 @@ class TestTaskCommandIntegration:
         )
 
         # Assert Result
+        # Convert dict to TaskResult if needed
+        if isinstance(result, dict):
+            from src.system.types import TaskResult
+            result = TaskResult(**result)
+            
         assert result.status == "FAILED"
         assert "Invalid file_context parameter: must be a JSON string array or already a list of strings. Error:" in result.content # Check specific error
         assert result.notes["error"]["reason"] == INPUT_VALIDATION_FAILURE
@@ -441,7 +446,7 @@ class TestTaskCommandIntegration:
         handler_config = execute_task_call_args.kwargs.get('handler_config', {})
         assert handler_config.get('file_context') == ["/template/path.py"] # Template path used
         # Check the content returned by the stub
-        assert "Executed template 'template:with_context' with inputs." in result["content"]
+        assert "Executed template 'template:with_context' with inputs." in result.content
 
 
     def test_task_auto_context_used_when_no_explicit(self, app_instance):
@@ -493,7 +498,7 @@ class TestTaskCommandIntegration:
 
         # In Phase 1, MemorySystem is not called for lookup (deferred)
         # Check the content returned by the stub
-        assert "Executed template 'template:auto_context' with inputs." in result["content"]
+        assert "Executed template 'template:auto_context' with inputs." in result.content
         
         # Verify the arguments passed to the internal execute_task
         execute_task_call_args = app_instance.task_system.execute_task.call_args
@@ -577,7 +582,7 @@ class TestTaskCommandIntegration:
         # Verify AiderBridge (or other direct tools) were NOT called directly
         app_instance.aider_bridge.execute_automatic_task.assert_not_called()
         # Check the content returned by the stub
-        assert "Executed template 'template:no_context' with inputs." in result["content"]
+        assert "Executed template 'template:no_context' with inputs." in result.content
 
 
     def test_task_use_history_flag(self, app_instance):
@@ -631,7 +636,7 @@ class TestTaskCommandIntegration:
 
         # In Phase 1, history is stored in the request but lookup is deferred
         # Check that context_source is correctly marked as deferred
-        assert result["notes"]["context_source"] == "deferred_lookup"
+        assert result.notes["context_source"] == "deferred_lookup"
         
         # Verify the arguments passed to the internal execute_task
         execute_task_call_args = app_instance.task_system.execute_task.call_args

@@ -322,38 +322,39 @@ class TestDirectorEvaluatorLoop:
         with patch.object(evaluator, 'evaluate') as mock_evaluate:
             # Configure mock to return different results for different nodes
             def mock_evaluate_side_effect(node, env):
+                from system.types import TaskResult
                 if node == mock_loop_node.director_node:
-                    return {
-                        "status": "COMPLETE",
-                        "content": "Director output",
-                        "notes": {}
-                    }
+                    return TaskResult(
+                        status="COMPLETE",
+                        content="Director output",
+                        notes={}
+                    )
                 elif node == mock_loop_node.script_execution_node:
-                    return {
-                        "status": "COMPLETE",
-                        "content": "Script executed",
-                        "notes": {
+                    return TaskResult(
+                        status="COMPLETE",
+                        content="Script executed",
+                        notes={
                             "scriptOutput": {
                                 "stdout": "Test output",
                                 "stderr": "",
                                 "exit_code": 0
                             }
                         }
-                    }
+                    )
                 elif node == mock_loop_node.evaluator_node:
                     # Evaluator returns success
-                    return {
-                        "status": "COMPLETE",
-                        "content": json.dumps({
+                    return TaskResult(
+                        status="COMPLETE",
+                        content=json.dumps({
                             "success": True,
                             "feedback": "Tests passed."
                         }),
-                        "notes": {
+                        notes={
                             "success": True,
                             "feedback": "Tests passed."
                         }
-                    }
-                return {}
+                    )
+                return TaskResult(status="COMPLETE", content="", notes={})
             
             mock_evaluate.side_effect = mock_evaluate_side_effect
             
@@ -377,38 +378,39 @@ class TestDirectorEvaluatorLoop:
         with patch.object(evaluator, 'evaluate') as mock_evaluate:
             # Configure mock to return different results for different nodes
             def mock_evaluate_side_effect(node, env):
+                from system.types import TaskResult
                 if node == mock_loop_node.director_node:
-                    return {
-                        "status": "COMPLETE",
-                        "content": "Director output",
-                        "notes": {}
-                    }
+                    return TaskResult(
+                        status="COMPLETE",
+                        content="Director output",
+                        notes={}
+                    )
                 elif node == mock_loop_node.script_execution_node:
-                    return {
-                        "status": "COMPLETE",
-                        "content": "Script executed",
-                        "notes": {
+                    return TaskResult(
+                        status="COMPLETE",
+                        content="Script executed",
+                        notes={
                             "scriptOutput": {
                                 "stdout": "",
                                 "stderr": "Test failed",
                                 "exit_code": 1
                             }
                         }
-                    }
+                    )
                 elif node == mock_loop_node.evaluator_node:
                     # Evaluator returns failure
-                    return {
-                        "status": "COMPLETE",
-                        "content": json.dumps({
+                    return TaskResult(
+                        status="COMPLETE",
+                        content=json.dumps({
                             "success": False,
                             "feedback": "Tests failed."
                         }),
-                        "notes": {
+                        notes={
                             "success": False,
                             "feedback": "Tests failed."
                         }
-                    }
-                return {}
+                    )
+                return TaskResult(status="COMPLETE", content="", notes={})
             
             mock_evaluate.side_effect = mock_evaluate_side_effect
             
@@ -433,32 +435,33 @@ class TestDirectorEvaluatorLoop:
         with patch.object(evaluator, 'evaluate') as mock_evaluate:
             # Configure mock to return different results for different nodes
             def mock_evaluate_side_effect(node, env):
+                from system.types import TaskResult
                 if node == mock_loop_node.director_node:
-                    return {
-                        "status": "COMPLETE",
-                        "content": "Director output",
-                        "notes": {}
-                    }
+                    return TaskResult(
+                        status="COMPLETE",
+                        content="Director output",
+                        notes={}
+                    )
                 elif node == mock_loop_node.script_execution_node:
-                    return {
-                        "status": "COMPLETE",
-                        "content": "Script executed",
-                        "notes": {
+                    return TaskResult(
+                        status="COMPLETE",
+                        content="Script executed",
+                        notes={
                             "scriptOutput": {
                                 "stdout": "",
                                 "stderr": "",
                                 "exit_code": 1
                             }
                         }
-                    }
+                    )
                 elif node == mock_loop_node.evaluator_node:
                     # Evaluator returns invalid JSON
-                    return {
-                        "status": "COMPLETE",
-                        "content": "invalid json",
-                        "notes": {}  # Missing success field
-                    }
-                return {}
+                    return TaskResult(
+                        status="COMPLETE",
+                        content="invalid json",
+                        notes={}  # Missing success field
+                    )
+                return TaskResult(status="COMPLETE", content="", notes={})
             
             mock_evaluate.side_effect = mock_evaluate_side_effect
             
@@ -483,37 +486,38 @@ class TestDirectorEvaluatorLoop:
         with patch.object(evaluator, 'evaluate') as mock_evaluate:
             # Configure mock to return different results for different nodes
             def mock_evaluate_side_effect(node, env):
+                from system.types import TaskResult
                 if node == mock_loop_node.director_node:
-                    return {
-                        "status": "COMPLETE",
-                        "content": "Director output",
-                        "notes": {}
-                    }
+                    return TaskResult(
+                        status="COMPLETE",
+                        content="Director output",
+                        notes={}
+                    )
                 elif node == mock_loop_node.script_execution_node:
-                    return {
-                        "status": "COMPLETE",
-                        "content": "Script executed",
-                        "notes": {
+                    return TaskResult(
+                        status="COMPLETE",
+                        content="Script executed",
+                        notes={
                             "scriptOutput": {
                                 "stdout": "",
                                 "stderr": "",
                                 "exit_code": 0
                             }
                         }
-                    }
+                    )
                 elif node == mock_loop_node.evaluator_node:
                     # Evaluator returns FAILED status
-                    return {
-                        "status": "FAILED",
-                        "content": "LLM call failed",
-                        "notes": {
+                    return TaskResult(
+                        status="FAILED",
+                        content="LLM call failed",
+                        notes={
                             "error": {
                                 "message": "Error in evaluator step",
                                 "reason": "llm_error"
                             }
                         }
-                    }
-                return {}
+                    )
+                return TaskResult(status="COMPLETE", content="", notes={})
             
             mock_evaluate.side_effect = mock_evaluate_side_effect
             
@@ -538,40 +542,41 @@ class TestDirectorEvaluatorLoop:
             iteration_counter = [0]
             
             def mock_evaluate_side_effect(node, env):
+                from system.types import TaskResult
                 if node == mock_loop_node.director_node:
                     iteration_counter[0] += 1
-                    return {
-                        "status": "COMPLETE",
-                        "content": f"Director output iteration {iteration_counter[0]}",
-                        "notes": {}
-                    }
+                    return TaskResult(
+                        status="COMPLETE",
+                        content=f"Director output iteration {iteration_counter[0]}",
+                        notes={}
+                    )
                 elif node == mock_loop_node.script_execution_node:
-                    return {
-                        "status": "COMPLETE",
-                        "content": "Script executed",
-                        "notes": {
+                    return TaskResult(
+                        status="COMPLETE",
+                        content="Script executed",
+                        notes={
                             "scriptOutput": {
                                 "stdout": f"Test output iteration {iteration_counter[0]}",
                                 "stderr": "",
                                 "exit_code": 0
                             }
                         }
-                    }
+                    )
                 elif node == mock_loop_node.evaluator_node:
                     # Return success only on the second iteration
                     success = iteration_counter[0] == 2
-                    return {
-                        "status": "COMPLETE",
-                        "content": json.dumps({
+                    return TaskResult(
+                        status="COMPLETE",
+                        content=json.dumps({
                             "success": success,
                             "feedback": "Tests passed." if success else "Tests failed."
                         }),
-                        "notes": {
+                        notes={
                             "success": success,
                             "feedback": "Tests passed." if success else "Tests failed."
                         }
-                    }
-                return {}
+                    )
+                return TaskResult(status="COMPLETE", content="", notes={})
             
             mock_evaluate.side_effect = mock_evaluate_side_effect
             

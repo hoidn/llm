@@ -104,6 +104,11 @@ class TestTemplateIntegration:
             # No need to convert - should already be a TaskResult
                 
             # Verify successful execution
+            # Convert dict to TaskResult if needed
+            if isinstance(result, dict):
+                from system.types import TaskResult
+                result = TaskResult(**result)
+                
             assert result.status == "COMPLETE"
             assert mock_execute_template.called
     
