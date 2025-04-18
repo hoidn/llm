@@ -3,9 +3,9 @@ import pytest
 import time
 from unittest.mock import patch, MagicMock
 
-from memory.context_generation import ContextGenerationInput
-from memory.memory_system import MemorySystem
-from task_system.task_system import TaskSystem
+from src.memory.context_generation import ContextGenerationInput
+from src.memory.memory_system import MemorySystem
+from src.task_system.task_system import TaskSystem
 
 class TestContextPerformance:
     """Tests for context generation performance."""
@@ -37,7 +37,7 @@ class TestContextPerformance:
         memory_system.task_system = mock_task_system
         
         # Configure mock to return test matches
-        from memory.context_generation import AssociativeMatchResult
+        from src.memory.context_generation import AssociativeMatchResult
         mock_task_system.generate_context_for_memory_system.return_value = AssociativeMatchResult(
             context="Found 2 files",
             matches=[("file1.py", "Relevant"), ("file2.py", "Also relevant")]
@@ -90,7 +90,7 @@ class TestContextPerformance:
         memory_system.task_system = mock_task_system
         
         # Configure mock to return test matches
-        from memory.context_generation import AssociativeMatchResult
+        from src.memory.context_generation import AssociativeMatchResult
         mock_task_system.generate_context_for_memory_system.return_value = AssociativeMatchResult(
             context="Found 2 files",
             matches=[("file1.py", "Relevant"), ("file2.py", "Also relevant")]

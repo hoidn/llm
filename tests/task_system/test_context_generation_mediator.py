@@ -4,13 +4,13 @@ from unittest.mock import MagicMock, patch
 import json
 import logging # Import logging
 
-from memory.context_generation import ContextGenerationInput, AssociativeMatchResult
-from task_system.task_system import TaskSystem
+from src.memory.context_generation import ContextGenerationInput, AssociativeMatchResult
+from src.task_system.task_system import TaskSystem
 # Import necessary components to mock
-from memory.memory_system import MemorySystem
-from handler.base_handler import BaseHandler
+from src.memory.memory_system import MemorySystem
+from src.handler.base_handler import BaseHandler
 # Import the template registration function
-from task_system.templates.associative_matching import register_template as register_associative_matching_template
+from src.task_system.templates.associative_matching import register_template as register_associative_matching_template
 
 
 class TestTaskSystemMediator:
@@ -37,7 +37,7 @@ class TestTaskSystemMediator:
 
         # Mock the template execution function that would normally call the LLM
         # This allows us to control the simulated LLM response for the test
-        patcher = patch('task_system.templates.associative_matching.execute_template')
+        patcher = patch('src.task_system.templates.associative_matching.execute_template')
         mock_execute_assoc_template = patcher.start()
         # Configure its return value to be the list of dicts format
         mock_execute_assoc_template.return_value = [

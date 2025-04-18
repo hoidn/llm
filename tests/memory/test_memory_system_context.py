@@ -2,9 +2,9 @@
 import pytest
 from unittest.mock import patch, MagicMock
 
-from memory.memory_system import MemorySystem
-from memory.context_generation import ContextGenerationInput
-from task_system.task_system import TaskSystem
+from src.memory.memory_system import MemorySystem
+from src.memory.context_generation import ContextGenerationInput
+from src.task_system.task_system import TaskSystem
 
 
 class TestMemorySystemContext:
@@ -31,7 +31,7 @@ class TestMemorySystemContext:
         memory_system.task_system = mock_task_system
         
         # Configure mock to return test matches
-        from memory.context_generation import AssociativeMatchResult
+        from src.memory.context_generation import AssociativeMatchResult
         mock_task_system.generate_context_for_memory_system.return_value = AssociativeMatchResult(
             context="Found 1 file",
             matches=[("file1.py", "Relevant")]
@@ -79,7 +79,7 @@ class TestMemorySystemContext:
         memory_system.task_system = mock_task_system
         
         # Configure mock to return test result
-        from memory.context_generation import AssociativeMatchResult
+        from src.memory.context_generation import AssociativeMatchResult
         mock_result = AssociativeMatchResult(
             context="Test context", 
             matches=[("file1.py", "Test relevance")]
@@ -127,7 +127,7 @@ class TestMemorySystemContext:
         memory_system.task_system = mock_task_system
         
         # Configure mock to return test result
-        from memory.context_generation import AssociativeMatchResult
+        from src.memory.context_generation import AssociativeMatchResult
         mock_result = AssociativeMatchResult(
             context="Test context", 
             matches=[("file1.py", "Test relevance")]

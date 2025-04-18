@@ -1,9 +1,9 @@
 """Integration tests for template enhancements."""
 import pytest
 from unittest.mock import MagicMock, patch
-from task_system.task_system import TaskSystem
-from task_system.templates.associative_matching import ASSOCIATIVE_MATCHING_TEMPLATE, execute_template
-from task_system.template_utils import resolve_function_calls as original_resolve_function_calls
+from src.task_system.task_system import TaskSystem
+from src.task_system.templates.associative_matching import ASSOCIATIVE_MATCHING_TEMPLATE, execute_template
+from src.task_system.template_utils import resolve_function_calls as original_resolve_function_calls
 
 def patched_resolve_function_calls(text, task_system, env, **kwargs):
     return original_resolve_function_calls(text, task_system, env)
@@ -12,7 +12,7 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def patch_resolve_function_calls(monkeypatch):
-    monkeypatch.setattr("task_system.template_utils.resolve_function_calls", patched_resolve_function_calls)
+    monkeypatch.setattr("src.task_system.template_utils.resolve_function_calls", patched_resolve_function_calls)
 
 class TestTemplateIntegration:
     """Integration tests for template system."""

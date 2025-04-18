@@ -3,9 +3,9 @@ import pytest
 from unittest.mock import MagicMock, patch
 import json
 
-from task_system.task_system import TaskSystem
-from memory.context_generation import ContextGenerationInput, AssociativeMatchResult
-from memory.memory_system import MemorySystem
+from src.task_system.task_system import TaskSystem
+from src.memory.context_generation import ContextGenerationInput, AssociativeMatchResult
+from src.memory.memory_system import MemorySystem
 
 
 class TestContextManagement:

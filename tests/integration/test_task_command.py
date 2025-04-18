@@ -255,7 +255,7 @@ class TestTaskCommandIntegration:
         """Test /task aider:automatic with invalid JSON in file_context."""
         # Import dispatcher function
         from src.dispatcher import execute_programmatic_task
-        from system.errors import INPUT_VALIDATION_FAILURE # Import error code
+        from src.system.errors import INPUT_VALIDATION_FAILURE # Import error code
 
         # Act: Call dispatcher directly with invalid JSON string
         result = execute_programmatic_task(

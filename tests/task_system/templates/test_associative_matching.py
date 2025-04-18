@@ -1,7 +1,7 @@
 """Tests for the AssociativeMatchingTemplate."""
 import pytest
 from unittest.mock import patch, MagicMock, PropertyMock
-import task_system.templates.associative_matching as associative_matching
+import src.task_system.templates.associative_matching as associative_matching
 
 class TestAssociativeMatchingTemplate:
     """Tests for the AssociativeMatchingTemplate."""

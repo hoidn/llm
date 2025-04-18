@@ -2,9 +2,9 @@
 import pytest
 from unittest.mock import patch, MagicMock, call
 
-from handler.base_handler import BaseHandler
-from handler.passthrough_handler import PassthroughHandler
-from handler.model_provider import ProviderAdapter
+from src.handler.base_handler import BaseHandler
+from src.handler.passthrough_handler import PassthroughHandler
+from src.handler.model_provider import ProviderAdapter
 
 class TestHandlerIntegration:
     """Integration tests for handler system."""
@@ -12,8 +12,8 @@ class TestHandlerIntegration:
     def test_inheritance_and_overrides(self, mock_task_system, mock_memory_system):
         """Test that inheritance works correctly with method overrides."""
         # Create handlers with mocked dependencies
-        with patch('handler.model_provider.ClaudeProvider'), \
-             patch('handler.file_access.FileAccessManager'):
+        with patch('src.handler.model_provider.ClaudeProvider'), \
+             patch('src.handler.file_access.FileAccessManager'):
             base_handler = BaseHandler(mock_task_system, mock_memory_system)
             passthrough_handler = PassthroughHandler(mock_task_system, mock_memory_system)
             

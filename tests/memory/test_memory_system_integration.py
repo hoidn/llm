@@ -4,9 +4,9 @@ from unittest.mock import MagicMock, patch
 import os
 import sys
 
-from memory.memory_system import MemorySystem
-from memory.context_generation import ContextGenerationInput, AssociativeMatchResult
-from task_system.task_system import TaskSystem
+from src.memory.memory_system import MemorySystem
+from src.memory.context_generation import ContextGenerationInput, AssociativeMatchResult
+from src.task_system.task_system import TaskSystem
 
 class TestMemorySystemIntegration:
     """Integration tests for Memory System with TaskSystem mediator."""

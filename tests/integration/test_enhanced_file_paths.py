@@ -4,9 +4,9 @@ from unittest.mock import patch, MagicMock
 import os
 import tempfile
 
-from task_system.task_system import TaskSystem
-from memory.memory_system import MemorySystem
-from handler.base_handler import BaseHandler
+from src.task_system.task_system import TaskSystem
+from src.memory.memory_system import MemorySystem
+from src.handler.base_handler import BaseHandler
 
 class TestEnhancedFilePathsIntegration:
     """Integration tests for the Enhanced File Paths feature."""

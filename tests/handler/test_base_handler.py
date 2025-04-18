@@ -2,7 +2,7 @@
 import pytest
 from unittest.mock import patch, MagicMock, call
 
-from handler.base_handler import BaseHandler
+from src.handler.base_handler import BaseHandler
 
 class TestBaseHandler:
     """Tests for the BaseHandler class."""
@@ -124,7 +124,7 @@ class TestBaseHandler:
         # Get the actual call argument
         call_arg = mock_memory_system.get_relevant_context_for.call_args[0][0]
         # Verify it's a ContextGenerationInput with correct values
-        from memory.context_generation import ContextGenerationInput
+        from src.memory.context_generation import ContextGenerationInput
         assert isinstance(call_arg, ContextGenerationInput)
         assert call_arg.template_description == "test query"
         assert call_arg.inherited_context == ""

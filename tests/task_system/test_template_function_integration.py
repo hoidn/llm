@@ -2,14 +2,14 @@
 import pytest
 from unittest.mock import MagicMock, patch
 import json
-from task_system.task_system import TaskSystem
-from task_system.templates.function_examples import (
+from src.task_system.task_system import TaskSystem
+from src.task_system.templates.function_examples import (
     register_function_templates,
     execute_format_json,
     execute_get_date
 )
-from task_system.template_utils import Environment
-from task_system.template_utils import resolve_function_calls as original_resolve_function_calls
+from src.task_system.template_utils import Environment
+from src.task_system.template_utils import resolve_function_calls as original_resolve_function_calls
 
 def patched_resolve_function_calls(text, task_system, env, **kwargs):
     return original_resolve_function_calls(text, task_system, env)
@@ -18,7 +18,7 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def patch_resolve_function_calls(monkeypatch):
-    monkeypatch.setattr("task_system.template_utils.resolve_function_calls", patched_resolve_function_calls)
+    monkeypatch.setattr("src.task_system.template_utils.resolve_function_calls", patched_resolve_function_calls)
 
 class TestTemplateFunctionIntegration:
     """Integration tests for template function calls."""
@@ -158,7 +158,7 @@ class TestTemplateFunctionIntegration:
         task_system = TaskSystem()
         
         # Register math helper templates
-        from task_system.templates.function_examples import ADD_TEMPLATE, SUBTRACT_TEMPLATE
+        from src.task_system.templates.function_examples import ADD_TEMPLATE, SUBTRACT_TEMPLATE
         task_system.register_template(ADD_TEMPLATE)
         task_system.register_template(SUBTRACT_TEMPLATE)
         
@@ -205,7 +205,7 @@ class TestTemplateFunctionIntegration:
         task_system.register_template(counter_template)
         
         # Create a direct test of execute_function_call
-        from task_system.template_utils import execute_function_call, Environment
+        from src.task_system.template_utils import execute_function_call, Environment
         
         # Test that execute_function_call properly enforces recursion depth
         env = Environment({"value": 0})

@@ -2,9 +2,9 @@
 import pytest
 from unittest.mock import patch, MagicMock
 
-from memory.memory_system import MemorySystem
-from memory.context_generation import ContextGenerationInput, AssociativeMatchResult
-from task_system.task_system import TaskSystem
+from src.memory.memory_system import MemorySystem
+from src.memory.context_generation import ContextGenerationInput, AssociativeMatchResult
+from src.task_system.task_system import TaskSystem
 
 
 class TestTemplateAwareContextGeneration:
@@ -125,7 +125,7 @@ class TestTemplateAwareContextGeneration:
     def test_aider_bridge_uses_context_generation_input(self):
         """Test that AiderBridge uses ContextGenerationInput for context retrieval."""
         # Import here to avoid circular imports
-        from aider_bridge.bridge import AiderBridge
+        from src.aider_bridge.bridge import AiderBridge
         
         # Create mock memory system
         mock_memory_system = MagicMock(spec=MemorySystem)
@@ -162,7 +162,7 @@ class TestTemplateAwareContextGeneration:
         task_system.memory_system = memory_system
         
         # Create mock handler with model_provider (needed by associative_matching)
-        from handler.base_handler import BaseHandler
+        from src.handler.base_handler import BaseHandler
         mock_handler = MagicMock(spec=BaseHandler)
         mock_handler.model_provider = MagicMock()  # Must have model_provider
         memory_system.handler = mock_handler  # Assign to memory system
@@ -175,7 +175,7 @@ class TestTemplateAwareContextGeneration:
         }
         
         # Register associative matching template
-        from task_system.templates.associative_matching import register_template
+        from src.task_system.templates.associative_matching import register_template
         register_template(task_system)
         
         # Create context input with correct subtype and required inputs
@@ -218,7 +218,7 @@ class TestTemplateAwareContextGeneration:
 import pytest
 from typing import Dict, Any, List, Tuple
 
-from memory.context_generation import ContextGenerationInput, AssociativeMatchResult
+from src.memory.context_generation import ContextGenerationInput, AssociativeMatchResult
 
 class TestContextGenerationInput:
     """Tests for ContextGenerationInput class."""

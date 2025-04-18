@@ -1,10 +1,10 @@
 """Tests for the PassthroughHandler."""
 import pytest
 from unittest.mock import patch, MagicMock
-from handler.passthrough_handler import PassthroughHandler
-from handler.model_provider import ClaudeProvider
-from handler.file_access import FileAccessManager
-from handler.base_handler import BaseHandler
+from src.handler.passthrough_handler import PassthroughHandler
+from src.handler.model_provider import ClaudeProvider
+from src.handler.file_access import FileAccessManager
+from src.handler.base_handler import BaseHandler
 
 class TestPassthroughHandler:
     """Tests for the PassthroughHandler class."""
@@ -12,8 +12,8 @@ class TestPassthroughHandler:
     def test_init(self, mock_task_system, mock_memory_system):
         """Test PassthroughHandler initialization."""
         # Mock the ProviderAdapter and FileAccessManager to avoid API key requirement in tests
-        with patch('handler.model_provider.ClaudeProvider') as mock_provider_class, \
-             patch('handler.file_access.FileAccessManager') as mock_file_manager_class:
+        with patch('src.handler.model_provider.ClaudeProvider') as mock_provider_class, \
+             patch('src.handler.file_access.FileAccessManager') as mock_file_manager_class:
             mock_provider = MagicMock()
             mock_provider_class.return_value = mock_provider
             
@@ -177,7 +177,7 @@ class TestPassthroughHandler:
             # Get the actual call argument
             call_arg = mock_memory_system.get_relevant_context_for.call_args[0][0]
             # Verify it's a ContextGenerationInput with correct values
-            from memory.context_generation import ContextGenerationInput
+            from src.memory.context_generation import ContextGenerationInput
             assert isinstance(call_arg, ContextGenerationInput)
             assert call_arg.template_description == "test query"
             assert call_arg.inherited_context == ""

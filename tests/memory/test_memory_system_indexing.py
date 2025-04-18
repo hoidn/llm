@@ -1,7 +1,7 @@
 """Tests for the MemorySystem git repository indexing."""
 import pytest
 from unittest.mock import patch, MagicMock
-from memory.memory_system import MemorySystem
+from src.memory.memory_system import MemorySystem
 
 class TestMemorySystemIndexing:
     """Tests for the MemorySystem git repository indexing."""
@@ -39,7 +39,7 @@ class TestMemorySystemIndexing:
     
     def test_index_git_repository(self):
         """Test memory system integration with GitRepositoryIndexer."""
-        with patch('memory.indexers.git_repository_indexer.GitRepositoryIndexer') as mock_indexer_class:
+        with patch('src.memory.indexers.git_repository_indexer.GitRepositoryIndexer') as mock_indexer_class:
             mock_indexer = MagicMock()
             mock_indexer_class.return_value = mock_indexer
             mock_indexer.index_repository.return_value = {"file1.py": "metadata1"}
