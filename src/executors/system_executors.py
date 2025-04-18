@@ -137,3 +137,79 @@ def execute_read_files(params: Dict[str, Any], file_manager: FileAccessManager) 
         logger.exception("Error in execute_read_files:")
         error = create_task_failure(f"Failed to read files: {str(e)}", UNEXPECTED_ERROR)
         return format_error_result(error)
+
+
+def execute_run_script(params: Dict[str, Any]) -> TaskResult:
+    """
+    Executor logic for the 'system:run_script' Direct Tool.
+    Executes a shell command safely and returns its output.
+
+    Args:
+        params: Dictionary containing parameters:
+            - command: The shell command string to execute (required).
+            - cwd: Optional current working directory for the command.
+            - timeout: Optional timeout in seconds.
+
+    Returns:
+        TaskResult dictionary with status, content, and notes containing scriptOutput.
+    """
+    logger.info("Executing system:run_script tool")
+    logger.debug(f"Received params: {params}")
+    try:
+        command = params.get("command")
+        cwd = params.get("cwd") # Optional
+        timeout = params.get("timeout") # Optional
+
+        if not command or not isinstance(command, str):
+            err = create_task_failure("Missing or invalid required parameter: command (must be a string)", INPUT_VALIDATION_FAILURE)
+            return format_error_result(err)
+
+        # Optional timeout validation
+        if timeout is not None:
+            try:
+                timeout = int(timeout)
+                if timeout <= 0:
+                    raise ValueError("Timeout must be positive.")
+            except (ValueError, TypeError):
+                 err = create_task_failure("Invalid parameter: timeout (must be a positive integer)", INPUT_VALIDATION_FAILURE)
+                 return format_error_result(err)
+
+        logger.debug(f"Running command: '{command}' with timeout={timeout}, cwd={cwd}")
+
+        # Use the safe command execution utility
+        # Pass timeout only if it was provided and validated
+        exec_kwargs = {}
+        if cwd: exec_kwargs["cwd"] = cwd
+        if timeout: exec_kwargs["timeout"] = timeout
+        safe_result = execute_command_safely(command, **exec_kwargs)
+
+        # Format the result into TaskResult standard, embedding safe_result in notes
+        # NOTE: This structure is crucial for the debug:loop template's evaluator step
+        script_output = {
+            "stdout": safe_result.get("output", ""),
+            "stderr": safe_result.get("error", ""),
+            "exit_code": safe_result.get("exit_code", -1)
+        }
+        
+        if safe_result["success"]:
+             logger.info("system:run_script executed successfully.")
+             status = "COMPLETE"
+             # Content can be stdout or a summary message
+             content = f"Command executed. Exit code: {script_output['exit_code']}."
+        else:
+             logger.warning(f"system:run_script failed. Exit code: {script_output['exit_code']}, Error: {script_output['stderr'][:100]}...")
+             status = "FAILED"
+             content = f"Command failed. Exit code: {script_output['exit_code']}. Error: {script_output['stderr']}"
+
+        return {
+            "status": status,
+            "content": content,
+            "notes": {
+                "scriptOutput": script_output # Key expected by debug:loop evaluator
+            }
+        }
+
+    except Exception as e:
+        logger.exception("Error in execute_run_script:")
+        error = create_task_failure(f"Failed to run script: {str(e)}", UNEXPECTED_ERROR)
+        return format_error_result(error)
