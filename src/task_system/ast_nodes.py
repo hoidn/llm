@@ -4,6 +4,7 @@ This module contains concrete implementations of AST nodes used in task
 template processing, particularly for function call evaluation.
 """
 from typing import Any, Dict, List, Optional, Union
+from pydantic import BaseModel, Field
 
 class ArgumentNode:
     """
@@ -108,7 +109,7 @@ class FunctionCallNode:
         return None
 
 
-class SubtaskRequest:
+class SubtaskRequest(BaseModel):
     """
     Represents a request to execute a subtask programmatically.
 
@@ -117,28 +118,13 @@ class SubtaskRequest:
         subtype: The specific subtype of the task (e.g., "code_generation", "file_edit").
         inputs: A dictionary of input parameters for the task.
         file_paths: Optional list of explicit file paths to use as context.
+        history_context: Optional conversation history for context generation.
     """
-    def __init__(self,
-                 type: str,
-                 subtype: Optional[str],
-                 inputs: Optional[Dict[str, Any]] = None,
-                 file_paths: Optional[List[str]] = None,
-                 history_context: Optional[str] = None):
-        """
-        Initialize a SubtaskRequest.
-
-        Args:
-            type: The task type.
-            subtype: The task subtype.
-            inputs: Input parameters dictionary.
-            file_paths: Explicit file paths for context.
-            history_context: Optional conversation history for context generation.
-        """
-        self.type = type
-        self.subtype = subtype
-        self.inputs = inputs or {}
-        self.file_paths = file_paths or []
-        self.history_context = history_context
+    type: str
+    subtype: Optional[str] = None
+    inputs: Dict[str, Any] = Field(default_factory=dict)
+    file_paths: List[str] = Field(default_factory=list)
+    history_context: Optional[str] = None
 
     def __repr__(self) -> str:
         """Return a string representation of the SubtaskRequest."""

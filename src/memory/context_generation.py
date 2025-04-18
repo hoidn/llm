@@ -1,51 +1,34 @@
 """Context generation input structures for Memory System."""
 from typing import Dict, List, Any, Optional, Union, Set, Tuple
+from pydantic import BaseModel, Field
 
 
-class ContextGenerationInput:
+class ContextGenerationInput(BaseModel):
     """Input structure for template-aware context generation.
     
     This class provides a standardized interface for passing template and input
     information to the Memory System for context retrieval.
     """
+    template_description: str = ""
+    template_type: str = ""
+    template_subtype: str = ""
+    inputs: Dict[str, Any] = Field(default_factory=dict)
+    context_relevance: Dict[str, bool] = Field(default_factory=dict)
+    inherited_context: str = ""
+    previous_outputs: List[str] = Field(default_factory=list)
+    fresh_context: str = "enabled"
+    taskText: str = ""  # For backward compatibility
+    history_context: Optional[str] = None
     
-    def __init__(
-        self,
-        template_description: str = "",
-        template_type: str = "",
-        template_subtype: str = "",
-        inputs: Optional[Dict[str, Any]] = None,
-        context_relevance: Optional[Dict[str, bool]] = None,
-        inherited_context: str = "",
-        previous_outputs: Optional[List[str]] = None,
-        fresh_context: str = "enabled",
-        taskText: str = "",  # For backward compatibility
-        history_context: Optional[str] = None # <-- New Parameter
-    ):
-        """Initialize a ContextGenerationInput instance.
-        Args:
-            template_description: Main template description
-            template_type: Template type (e.g., 'atomic')
-            template_subtype: Template subtype (e.g., 'associative_matching')
-            inputs: Dictionary of input parameters
-            context_relevance: Dictionary mapping input names to boolean include/exclude
-            inherited_context: Context inherited from parent tasks
-            previous_outputs: Previous task outputs for context accumulation
-            fresh_context: Whether to generate fresh context or use inherited only
-            taskText: Legacy parameter for backward compatibility
-            history_context: Optional string containing recent conversation history.
-        """
-        self.template_description = template_description or taskText
-        self.template_type = template_type
-        self.template_subtype = template_subtype
-        self.inputs = inputs or {}
-        self.context_relevance = context_relevance or {}
-        self.inherited_context = inherited_context
-        self.previous_outputs = previous_outputs or []
-        self.fresh_context = fresh_context
-        self.taskText = taskText or template_description  # For backward compatibility
-        self.history_context = history_context # <-- New Assignment
-
+    def __init__(self, **data):
+        """Initialize with additional logic for backward compatibility."""
+        super().__init__(**data)
+        # Set template_description from taskText if not provided
+        if not self.template_description and self.taskText:
+            self.template_description = self.taskText
+        # Set taskText from template_description if not provided
+        if not self.taskText and self.template_description:
+            self.taskText = self.template_description
         # Default to including all inputs if not specified
         if not self.context_relevance and self.inputs:
             self.context_relevance = {k: True for k in self.inputs.keys()}
@@ -103,26 +86,45 @@ class ContextGenerationInput:
             template_description=input_data.get("taskText", ""),
             inherited_context=input_data.get("inheritedContext", ""),
             previous_outputs=input_data.get("previousOutputs", []),
-            history_context=input_data.get("history_context", None) # <-- Add history
+            history_context=input_data.get("history_context", None)
         )
 
 
-class AssociativeMatchResult:
+class MatchTuple(BaseModel):
+    """Represents a file match with relevance and optional score."""
+    path: str
+    relevance: str
+    score: Optional[float] = None
+
+
+class AssociativeMatchResult(BaseModel):
     """Result structure for context retrieval operations.
     
     This class provides a standardized format for context retrieval results,
     including a context summary and list of file matches with relevance and score.
     """
+    context: str
+    matches: List[Union[MatchTuple, Tuple[str, str], Tuple[str, str, Optional[float]]]] = Field(default_factory=list)
     
-    def __init__(self, context: str, matches: List[Tuple[str, str, Optional[float]]]):
-        """Initialize an AssociativeMatchResult instance.
-        
-        Args:
-            context: Context summary text
-            matches: List of (file_path, relevance, score) tuples. Score is optional float.
-        """
-        self.context = context
-        self.matches = matches
+    def __init__(self, **data):
+        """Initialize with conversion of tuple matches to MatchTuple if needed."""
+        # Handle the case where matches are provided as tuples
+        if "matches" in data and isinstance(data["matches"], list):
+            normalized_matches = []
+            for match in data["matches"]:
+                if isinstance(match, tuple) or isinstance(match, list):
+                    if len(match) >= 2:
+                        match_dict = {
+                            "path": match[0],
+                            "relevance": match[1]
+                        }
+                        if len(match) > 2 and match[2] is not None:
+                            match_dict["score"] = match[2]
+                        normalized_matches.append(match_dict)
+                else:
+                    normalized_matches.append(match)
+            data["matches"] = normalized_matches
+        super().__init__(**data)
     
     def __repr__(self) -> str:
         """Get string representation of the result."""
@@ -141,14 +143,14 @@ class AssociativeMatchResult:
         """
         context = data.get("context", "No context available")
         matches_data = data.get("matches", [])
-        # Convert list-based matches to the expected tuple format
-        matches_tuples = []
+        # Convert list-based matches to the expected format
+        matches_list = []
         for match_item in matches_data:
             if isinstance(match_item, (list, tuple)) and len(match_item) >= 2:
                 path = match_item[0]
                 relevance = match_item[1]
                 score = float(match_item[2]) if len(match_item) > 2 and match_item[2] is not None else None
-                matches_tuples.append((path, relevance, score))
+                matches_list.append(MatchTuple(path=path, relevance=relevance, score=score))
             elif isinstance(match_item, dict):
                 # Handle dictionary format
                 path = match_item.get("path", "")
@@ -159,9 +161,9 @@ class AssociativeMatchResult:
                         score = float(score)
                     except (ValueError, TypeError):
                         score = None
-                matches_tuples.append((path, relevance, score))
+                matches_list.append(MatchTuple(path=path, relevance=relevance, score=score))
             else:
                 # Skip invalid items
                 continue
                 
-        return cls(context=context, matches=matches_tuples)
+        return cls(context=context, matches=matches_list)

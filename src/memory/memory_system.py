@@ -100,8 +100,7 @@ import sys
 import logging
 import concurrent.futures
 
-from memory.context_generation import ContextGenerationInput
-from memory.context_generation import AssociativeMatchResult  # Import the standard result type
+from memory.context_generation import ContextGenerationInput, AssociativeMatchResult, MatchTuple
 from system.prompt_registry import registry as prompt_registry
 
 class MemorySystem:
@@ -290,15 +289,23 @@ class MemorySystem:
             for match in shard_result.matches:
                 if isinstance(match, (list, tuple)):
                     if len(match) >= 2:
-                        # Keep the first two elements as a tuple
-                        validated_matches.append((match[0], match[1]))
+                        # Convert tuple to MatchTuple
+                        match_tuple = MatchTuple(
+                            path=match[0],
+                            relevance=match[1],
+                            score=match[2] if len(match) > 2 and match[2] is not None else None
+                        )
+                        validated_matches.append(match_tuple)
                     elif len(match) == 1:
                         # Add a default relevance score
-                        validated_matches.append((match[0], "1.0"))
+                        validated_matches.append(MatchTuple(path=match[0], relevance="1.0"))
                 elif isinstance(match, dict) and "path" in match:
                     # Handle dictionary format (from some templates)
                     relevance = match.get("relevance", "1.0")
-                    validated_matches.append((match["path"], relevance))
+                    validated_matches.append(MatchTuple(path=match["path"], relevance=relevance))
+                elif isinstance(match, MatchTuple):
+                    # Already a MatchTuple
+                    validated_matches.append(match)
                 else:
                     logging.warning("Shard %d contains invalid match format: %s", shard_index, match)
             
@@ -543,17 +550,26 @@ class MemorySystem:
         seen = set()
         unique_matches = []
         for match in all_matches:
-            # Ensure match is a tuple/list and has at least one element (the path)
-            if isinstance(match, (list, tuple)) and len(match) > 0:
+            # Handle different match types
+            if isinstance(match, MatchTuple):
+                path = match.path
+                if path not in seen:
+                    seen.add(path)
+                    unique_matches.append(match)
+            elif isinstance(match, (list, tuple)) and len(match) > 0:
                 path = match[0]
                 if path not in seen:
                     seen.add(path)
-                    # Ensure we always store a 2-element tuple for consistency
+                    # Convert to MatchTuple for consistency
                     if len(match) >= 2:
-                        unique_matches.append((path, match[1]))
+                        unique_matches.append(MatchTuple(
+                            path=path,
+                            relevance=match[1],
+                            score=match[2] if len(match) > 2 and match[2] is not None else None
+                        ))
                     else:
-                        # If there's only one element, add a default second element
-                        unique_matches.append((path, "1.0"))  # Default relevance score
+                        # If there's only one element, add a default relevance
+                        unique_matches.append(MatchTuple(path=path, relevance="1.0"))
                         logging.debug("Added default relevance score for match: %s", path)
             else:
                 logging.warning("Skipping malformed match item during deduplication: %s", match)

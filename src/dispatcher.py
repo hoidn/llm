@@ -57,8 +57,8 @@ from task_system.ast_nodes import SubtaskRequest
 from task_system.template_utils import Environment # Needed for execute_subtask_directly call
 from system.errors import TaskError, create_task_failure, format_error_result, INPUT_VALIDATION_FAILURE, UNEXPECTED_ERROR
 
-# Define TaskResult type hint
-TaskResult = Dict[str, Any]
+# Import TaskResult model
+from system.types import TaskResult
 
 logger = logging.getLogger(__name__)
 
@@ -143,10 +143,11 @@ def execute_programmatic_task(
 
                 # Basic result wrapping
                 if isinstance(raw_result, dict) and "status" in raw_result:
-                     result = raw_result
-                     if "notes" not in result: result["notes"] = {}
+                     result = TaskResult(**raw_result)
+                     if "notes" not in raw_result: 
+                         result.notes = {}
                 else:
-                     result = {"status": "COMPLETE", "content": str(raw_result), "notes": {}}
+                     result = TaskResult(status="COMPLETE", content=str(raw_result), notes={})
 
                 # ---> ENSURE NOTES POPULATION FOR DIRECT TOOLS <---
                 # Only add these if they don't already exist (executor might have added them)
@@ -218,7 +219,7 @@ def execute_programmatic_task(
     except TaskError as e:
         # Catch known TaskErrors and format them
         logging.error(f"TaskError during execution of '{identifier}': {e.message}")
-        return format_error_result(e)
+        return TaskResult(**format_error_result(e))
     except Exception as e:
         # Catch unexpected Python exceptions and format them
         logging.exception(f"Unexpected error during execution of '{identifier}':")  # Log full traceback
@@ -227,7 +228,7 @@ def execute_programmatic_task(
             reason=UNEXPECTED_ERROR,
             details={"exception_type": type(e).__name__}
         )
-        return format_error_result(error)
+        return TaskResult(**format_error_result(error))
 from typing import Dict, List, Any, Optional
 import logging
 import json

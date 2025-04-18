@@ -172,9 +172,9 @@ from system.errors import TaskError, create_task_failure, format_error_result, I
 import os # Add os import for path operations
 import logging # Add logging import
 
-# Define TaskResult type hint if not already present
+# Import TaskResult model
 from typing import Dict, Any, List, Optional, Tuple # Ensure necessary types are imported
-TaskResult = Dict[str, Any]
+from system.types import TaskResult
 
 class TaskSystem(TemplateLookupInterface):
     """Task System for task execution and management.
@@ -327,18 +327,21 @@ class TaskSystem(TemplateLookupInterface):
             result = self.evaluator.evaluateFunctionCall(call, env, template)
 
             # No need for a second lookup since we already have the template
-
+            
+            # Convert to TaskResult if it's a dict
+            if isinstance(result, dict) and "status" in result:
+                return TaskResult(**result)
             return result
 
         except TaskError as e:
             # Format error as TaskResult
-            error_result = format_error_result(e)
+            error_dict = format_error_result(e)
             # Add system_prompt for tests
-            if "notes" not in error_result:
-                error_result["notes"] = {}
-            if "system_prompt" not in error_result["notes"]:
-                error_result["notes"]["system_prompt"] = "Error occurred during function execution"
-            return error_result
+            if "notes" not in error_dict:
+                error_dict["notes"] = {}
+            if "system_prompt" not in error_dict["notes"]:
+                error_dict["notes"]["system_prompt"] = "Error occurred during function execution"
+            return TaskResult(**error_dict)
 
         except Exception as e:
             # Wrap unexpected errors
@@ -347,13 +350,13 @@ class TaskSystem(TemplateLookupInterface):
                 reason="unexpected_error",
                 details={"exception": str(e), "exception_type": type(e).__name__}
             )
-            error_result = format_error_result(error)
+            error_dict = format_error_result(error)
             # Add system_prompt for tests
-            if "notes" not in error_result:
-                error_result["notes"] = {}
-            if "system_prompt" not in error_result["notes"]:
-                error_result["notes"]["system_prompt"] = "Error occurred during function execution"
-            return error_result
+            if "notes" not in error_dict:
+                error_dict["notes"] = {}
+            if "system_prompt" not in error_dict["notes"]:
+                error_dict["notes"]["system_prompt"] = "Error occurred during function execution"
+            return TaskResult(**error_dict)
 
     def execute_subtask_directly(self, request: SubtaskRequest, env: Environment) -> TaskResult:
         """
@@ -494,20 +497,32 @@ class TaskSystem(TemplateLookupInterface):
             )
             
             # Add context information to the result
-            if "notes" not in result:
-                result["notes"] = {}
-            result["notes"].update({
-                "template_used": template.get('name'),
-                "context_source": context_source,
-                "context_files_count": len(determined_file_context) if determined_file_context else 0
-            })
+            if isinstance(result, dict) and "status" in result:
+                # Convert to TaskResult if it's a dict
+                if "notes" not in result:
+                    result["notes"] = {}
+                result["notes"].update({
+                    "template_used": template.get('name'),
+                    "context_source": context_source,
+                    "context_files_count": len(determined_file_context) if determined_file_context else 0
+                })
+                result = TaskResult(**result)
+            else:
+                # Already a TaskResult
+                if not hasattr(result, "notes") or result.notes is None:
+                    result.notes = {}
+                result.notes.update({
+                    "template_used": template.get('name'),
+                    "context_source": context_source,
+                    "context_files_count": len(determined_file_context) if determined_file_context else 0
+                })
 
             logging.info(f"Direct execution finished for '{identifier}'. Status: {result.get('status')}")
             return result
 
         except TaskError as e:
             logging.error(f"TaskError during direct execution of '{identifier}': {e.message}")
-            return format_error_result(e)
+            return TaskResult(**format_error_result(e))
         except Exception as e:
             logging.exception(f"Unexpected error during direct execution of '{identifier}':")
             error = create_task_failure(
@@ -515,7 +530,7 @@ class TaskSystem(TemplateLookupInterface):
                 reason=UNEXPECTED_ERROR,
                 details={"exception_type": type(e).__name__}
             )
-            return format_error_result(error)
+            return TaskResult(**format_error_result(error))
 
     def _determine_context_for_direct_execution(self, request: SubtaskRequest, template: Dict[str, Any]) -> Tuple[List[str], str, Optional[str]]:
         """
@@ -657,28 +672,30 @@ class TaskSystem(TemplateLookupInterface):
             # ---> END SIMPLIFIED SIMULATED CALL BLOCK <---
 
             # 5. Result Formatting
-            result = {
-                "status": result_status,
-                "content": result_content,
-                "notes": {
-                    # Use the special stub execution path note for Phase 1
-                    "execution_path": "execute_subtask_directly (Phase 1 Stub)",
-                    "template_used": template.get('name', identifier),
-                    "context_source": context_source, # Use determined source
-                    "context_files_count": len(determined_file_paths),
-                    # Include paths in notes for debugging/testing Phase 1
-                    "determined_context_files": determined_file_paths[:10] # Limit for notes
-                }
+            notes = {
+                # Use the special stub execution path note for Phase 1
+                "execution_path": "execute_subtask_directly (Phase 1 Stub)",
+                "template_used": template.get('name', identifier),
+                "context_source": context_source, # Use determined source
+                "context_files_count": len(determined_file_paths),
+                # Include paths in notes for debugging/testing Phase 1
+                "determined_context_files": determined_file_paths[:10] # Limit for notes
             }
             if error_message:
-                result["notes"]["context_error"] = error_message
+                notes["context_error"] = error_message
+                
+            result = TaskResult(
+                status=result_status,
+                content=result_content,
+                notes=notes
+            )
 
             logging.debug(f"TaskSystem Stub: Returning result with notes: {result.get('notes', {})}")
             return result
 
         except TaskError as e:
             logging.error(f"TaskError during direct execution: {e.message}")
-            return format_error_result(e)
+            return TaskResult(**format_error_result(e))
         except Exception as e:
             logging.exception("Unexpected error during direct execution:")
             error = create_task_failure(
@@ -686,7 +703,7 @@ class TaskSystem(TemplateLookupInterface):
                 reason=UNEXPECTED_ERROR,
                 details={"exception_type": type(e).__name__}
             )
-            return format_error_result(error)
+            return TaskResult(**format_error_result(error))
 
     def find_matching_tasks(self, input_text: str, memory_system) -> List[Dict[str, Any]]:
         """Find matching templates based on a provided input string.
