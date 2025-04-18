@@ -104,8 +104,7 @@ class TestExecuteSubtaskDirectly:
         # Assert:
         # Check that extend was called with the request inputs
         base_env.extend.assert_called_once_with(sample_request.inputs)
-        # 2. Check that extend was called on the base environment with request inputs
-        mock_base_env.extend.assert_called_once_with(sample_request.inputs)
+        # We don't need to check mock_base_env since we're using a spy on the real base_env
         # 3. Check that the (mocked) evaluator call would receive the extended environment
         #    (In Phase 1, the evaluator isn't actually called, but we check the setup)
         #    The mock success result is returned before evaluator call in Phase 1.
