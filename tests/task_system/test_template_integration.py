@@ -90,6 +90,9 @@ class TestTemplateIntegration:
                 matches=[("file1.py", 0.9), ("file2.py", 0.8)]
             )
             
+            # Import TaskResult
+            from system.types import TaskResult
+            
             # Execute using the legacy style (type and subtype)
             result = task_system.execute_task(
                 "atomic", "associative_matching", 
@@ -97,9 +100,7 @@ class TestTemplateIntegration:
                 memory_system=mock_memory
             )
             
-            # Convert dict to TaskResult if needed
-            if isinstance(result, dict):
-                result = TaskResult(**result)
+            # No need to convert - should already be a TaskResult
                 
             # Verify successful execution
             assert result.status == "COMPLETE"
