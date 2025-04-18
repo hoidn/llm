@@ -46,6 +46,7 @@ module DispatcherModule {
 // == !! END IDL TEMPLATE !! ===
 
 """
+from typing import Dict, List, Any, Optional
 import logging
 import json
 
