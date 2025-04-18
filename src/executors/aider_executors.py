@@ -5,7 +5,7 @@ from typing import Dict, Any, List, Optional, Tuple
 # Import AiderBridge safely for type hinting and execution
 try:
     # Adjust path relative to src/ directory if needed
-    from aider_bridge.bridge import AiderBridge
+    from ..aider_bridge.bridge import AiderBridge
 except ImportError:
     # Define a placeholder if AiderBridge isn't installed/available
     # This allows type checking and basic structure even without the dependency
@@ -17,7 +17,7 @@ except ImportError:
              return {"status": "ERROR", "content": "AiderBridge not available"}
 
 # Import error utilities (adjust path if needed based on project structure)
-from system.errors import create_task_failure, format_error_result, INPUT_VALIDATION_FAILURE, UNEXPECTED_ERROR
+from ..system.errors import create_task_failure, format_error_result, INPUT_VALIDATION_FAILURE, UNEXPECTED_ERROR
 
 # Define TaskResult type hint
 TaskResult = Dict[str, Any]
