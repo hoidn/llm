@@ -239,8 +239,8 @@ from task_system.ast_nodes import SubtaskRequest
 from task_system.template_utils import Environment # Needed for execute_subtask_directly call
 from system.errors import TaskError, create_task_failure, format_error_result, INPUT_VALIDATION_FAILURE, UNEXPECTED_ERROR
 
-# Define TaskResult type hint
-TaskResult = Dict[str, Any]
+# Import TaskResult model
+from system.types import TaskResult
 
 logger = logging.getLogger(__name__)
 def execute_programmatic_task(
@@ -250,7 +250,7 @@ def execute_programmatic_task(
     handler_instance: BaseHandler, # Use BaseHandler type hint
     task_system_instance: TaskSystem,
     optional_history_str: Optional[str] = None
-) -> TaskResult:
+) -> TaskResult:  # Return type is now the Pydantic TaskResult model
     """
     Routes a programmatic task request (/task) to the appropriate executor.
     Handles Direct Tools and TaskSystem template routing with correct precedence.
@@ -328,29 +328,37 @@ def execute_programmatic_task(
 
                 # Basic result wrapping
                 if isinstance(raw_result, dict) and "status" in raw_result:
-                     result = raw_result
-                     if "notes" not in result: result["notes"] = {}
+                    # Convert dict to TaskResult
+                    result = TaskResult(**raw_result)
+                elif isinstance(raw_result, TaskResult):
+                    # Already a TaskResult
+                    result = raw_result
                 else:
-                     result = {"status": "COMPLETE", "content": str(raw_result), "notes": {}}
+                    # Convert other types to TaskResult
+                    result = TaskResult(
+                        status="COMPLETE", 
+                        content=str(raw_result), 
+                        notes={}
+                    )
 
                 # ---> IMPROVED NOTES POPULATION FOR DIRECT TOOLS <---
                 # Only add these if they don't already exist (executor might have added them)
-                if "execution_path" not in result["notes"]:
-                    result["notes"]["execution_path"] = "direct_tool"
-                if "context_source" not in result["notes"]:
+                if "execution_path" not in result.notes:
+                    result.notes["execution_path"] = "direct_tool"
+                if "context_source" not in result.notes:
                     if explicit_file_paths is not None:
-                        result["notes"]["context_source"] = "explicit_request"
+                        result.notes["context_source"] = "explicit_request"
                     else:
-                        result["notes"]["context_source"] = "none"
-                if "context_file_count" not in result["notes"] and "context_files_count" not in result["notes"]:
+                        result.notes["context_source"] = "none"
+                if "context_file_count" not in result.notes and "context_files_count" not in result.notes:
                     count = len(explicit_file_paths) if explicit_file_paths is not None else 0
-                    result["notes"]["context_file_count"] = count
+                    result.notes["context_file_count"] = count
                     # Also add the standard key for consistency
-                    result["notes"]["context_files_count"] = count
+                    result.notes["context_files_count"] = count
                 # ---> END IMPROVED NOTES <---
 
-                logger.debug(f"Dispatcher (Direct Tool Path): Returning notes: {result.get('notes', {})}")
-                logger.info(f"Direct Tool execution complete. Status: {result.get('status')}")
+                logger.debug(f"Dispatcher (Direct Tool Path): Returning notes: {result.notes}")
+                logger.info(f"Direct Tool execution complete. Status: {result.status}")
                 return result
             else:
                 # --- Template Execution via TaskSystem ---
@@ -375,22 +383,28 @@ def execute_programmatic_task(
                 base_env = Environment({}) # Create base env for direct call
                 result = task_system_instance.execute_subtask_directly(subtask_request, base_env)
 
+                # Ensure result is a TaskResult
+                if isinstance(result, dict) and "status" in result:
+                    result = TaskResult(**result)
+
                 # Before returning the result for the template path
-                logger.debug(f"Dispatcher (Template Path): Returning TaskSystem result with notes: {result.notes if hasattr(result, 'notes') else {}}")
+                logger.debug(f"Dispatcher (Template Path): Returning TaskSystem result with notes: {result.notes}")
                 logger.info(f"TaskSystem template execution complete. Status: {result.status}")
                 return result
         else:
             # --- Identifier Not Found ---
             logger.warning(f"Identifier '{identifier}' not found as Direct Tool or TaskSystem Template.")
-            return format_error_result(create_task_failure(
+            error_result = format_error_result(create_task_failure(
                 message=f"Task identifier '{identifier}' not found",
                 reason=INPUT_VALIDATION_FAILURE,
                 details={"identifier": identifier}
             ))
+            # Convert to TaskResult
+            return TaskResult(**error_result)
 
     except TaskError as e:
         logger.error(f"TaskError during dispatch: {e.message}")
-        return format_error_result(e)
+        return TaskResult(**format_error_result(e))
     except Exception as e:
         logger.exception("Unexpected error during dispatch:") # Log traceback
         error = create_task_failure(
@@ -398,4 +412,4 @@ def execute_programmatic_task(
             reason=UNEXPECTED_ERROR,
             details={"exception_type": type(e).__name__}
         )
-        return format_error_result(error)
+        return TaskResult(**format_error_result(error))
