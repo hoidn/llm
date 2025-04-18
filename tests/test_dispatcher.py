@@ -12,6 +12,8 @@ from src.system.errors import TaskError, create_task_failure, format_error_resul
 
 # Import TaskResult model
 from src.system.types import TaskResult
+# Import TASK_FAILURE
+from src.system.errors import TaskError, create_task_failure, format_error_result, UNEXPECTED_ERROR, INPUT_VALIDATION_FAILURE, TASK_FAILURE
 
 class TestDispatcher:
 
@@ -34,7 +36,7 @@ class TestDispatcher:
         task_system.template_index = {}
         # Mock the methods used by the dispatcher
         task_system.find_template = MagicMock(return_value=None) # Default: template not found
-        from system.types import TaskResult
+        from src.system.types import TaskResult
         task_system.execute_subtask_directly = MagicMock(return_value=TaskResult(
             status="COMPLETE",
             content="Mock Subtask Result",

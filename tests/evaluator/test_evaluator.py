@@ -28,6 +28,7 @@ class MockTemplateLookup(TemplateLookupInterface):
         
         from system.types import TaskResult
         # Mock for execute_task to return a test result
+        from system.types import TaskResult
         self._execute_task_result = TaskResult(
             content="Executed template with param1=test_value, param2=42",
             status="COMPLETE",

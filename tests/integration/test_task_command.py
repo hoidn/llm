@@ -519,7 +519,7 @@ class TestTaskCommandIntegration:
         # Verify AiderBridge (or other direct tools) were NOT called directly
         app_instance.aider_bridge.execute_automatic_task.assert_not_called()
         # Check the content returned by the stub
-        assert "Executed template 'template:auto_context' with inputs." in result["content"]
+        assert "Executed template 'template:auto_context' with inputs." in result.content
 
 
     def test_task_auto_context_skipped_when_disabled(self, app_instance):
@@ -658,7 +658,7 @@ class TestTaskCommandIntegration:
         # Verify AiderBridge (or other direct tools) were NOT called directly
         app_instance.aider_bridge.execute_automatic_task.assert_not_called()
         # Check the content returned by the stub
-        assert "Executed template 'template:history_context' with inputs." in result["content"]
+        assert "Executed template 'template:history_context' with inputs." in result.content
 
 
     def test_task_use_history_with_explicit_context(self, app_instance):

@@ -37,10 +37,11 @@ class TestInputOutputBinding:
         
         # Mock execute_task to return test data
         task_system.execute_task = MagicMock()
+        from system.types import TaskResult
         task_system.execute_task.side_effect = lambda task_type, task_subtype, inputs, **kwargs: (
-            {"content": '[{"id": 1, "name": "first"}, {"id": 2, "name": "second"}]', "status": "COMPLETE"}
+            TaskResult(content='[{"id": 1, "name": "first"}, {"id": 2, "name": "second"}]', status="COMPLETE", notes={})
             if task_subtype == "test" and task_type == "atomic" and "index" not in inputs else
-            {"content": f'{{"id": {inputs["index"]}, "name": "item{inputs["index"]}"}}', "status": "COMPLETE"}
+            TaskResult(content=f'{{"id": {inputs["index"]}, "name": "item{inputs["index"]}"}}', status="COMPLETE", notes={})
         )
         
         # Create test environment
@@ -50,7 +51,7 @@ class TestInputOutputBinding:
         call1 = FunctionCallNode("get_items", [])
         result1 = evaluator.evaluateFunctionCall(call1, env)
         
-        assert "parsedContent" in result1
+        assert "parsedContent" in result1.notes
         assert isinstance(result1["parsedContent"], list)
         assert len(result1["parsedContent"]) == 2
         

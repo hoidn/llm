@@ -445,13 +445,29 @@ class Evaluator(EvaluatorInterface):
                         # Create a new result with the parsed content
                         notes = result.notes.copy() if hasattr(result, 'notes') and result.notes else {}
                         notes["parsedContent"] = parsed_content
-                        result = result.model_copy(update={"notes": notes})
+                        if hasattr(result, 'model_copy'):
+                            result = result.model_copy(update={"notes": notes})
+                        else:
+                            # For dict results, create a new dict with updated notes
+                            result_dict = result if isinstance(result, dict) else {"status": result.status, "content": result.content, "notes": {}}
+                            result_dict["notes"] = notes
+                            # Import TaskResult to ensure we return the right type
+                            from system.types import TaskResult
+                            result = TaskResult(**result_dict)
                 except json.JSONDecodeError as e:
                     # Add parsing error to notes but don't fail the task
                     notes = result.notes.copy() if hasattr(result, 'notes') and result.notes else {}
                     notes["parseError"] = f"Failed to parse output as JSON: {str(e)}"
                     # Create a new result with the updated notes
-                    result = result.model_copy(update={"notes": notes})
+                    if hasattr(result, 'model_copy'):
+                        result = result.model_copy(update={"notes": notes})
+                    else:
+                        # For dict results, create a new dict with updated notes
+                        result_dict = result if isinstance(result, dict) else {"status": result.status, "content": result.content, "notes": {}}
+                        result_dict["notes"] = notes
+                        # Import TaskResult to ensure we return the right type
+                        from system.types import TaskResult
+                        result = TaskResult(**result_dict)
             
             return result
         except Exception as e:

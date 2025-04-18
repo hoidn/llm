@@ -477,12 +477,12 @@ class Repl:
         Displays the formatted task result to the output stream.
         
         Args:
-            result: The task result dictionary to display
+            result: The task result dictionary or TaskResult object to display
         """
         print("\nResult:", file=self.output)
-        print(f"Status: {result.get('status', 'UNKNOWN')}", file=self.output)
+        print(f"Status: {result.status if hasattr(result, 'status') else 'UNKNOWN'}", file=self.output)
 
-        content = result.get('content', 'N/A')
+        content = result.content if hasattr(result, 'content') else 'N/A'
         print("Content:", file=self.output)
         try:
             # Pretty print if it's valid JSON and not just a simple string
@@ -494,14 +494,15 @@ class Repl:
         except (json.JSONDecodeError, TypeError):
              print(content, file=self.output) # Print raw content on error
 
-        if result.get('notes'):
+        notes = result.notes if hasattr(result, 'notes') else None
+        if notes:
             print("\nNotes:", file=self.output)
             try:
                 # Use json.dumps for consistent formatting of notes
-                print(json.dumps(result['notes'], indent=2), file=self.output)
+                print(json.dumps(notes, indent=2), file=self.output)
             except TypeError: # Handle non-serializable types gracefully
                 # Fallback to str() if notes contain non-serializable items
-                print(str(result['notes']), file=self.output)
+                print(str(notes), file=self.output)
     
     def _cmd_task(self, args: str) -> None:
         """Handles the /task command for programmatic task execution."""
