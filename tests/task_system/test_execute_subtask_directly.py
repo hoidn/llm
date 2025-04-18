@@ -89,25 +89,21 @@ class TestExecuteSubtaskDirectly:
         assert result.notes.get("error", {}).get("reason") == INPUT_VALIDATION_FAILURE
 
     # Patch Environment where it's imported in task_system.py
-    @patch('src.task_system.task_system.Environment')
-    def test_environment_creation(self, mock_env_class, task_system_instance, sample_request, sample_template, mock_evaluator):
+    def test_environment_creation(self, task_system_instance, sample_request, sample_template, mock_evaluator):
         # Arrange:
         task_system_instance.find_template.return_value = sample_template
-        # Mock the return values for Environment instantiation and extend
-        mock_base_env = MagicMock()
-        mock_extended_env = MagicMock()
-        mock_env_class.return_value = mock_base_env
-        mock_base_env.extend.return_value = mock_extended_env
-
-        # Create base environment
+        
+        # Create a spy on the extend method
         base_env = Environment({})
+        original_extend = base_env.extend
+        base_env.extend = MagicMock(wraps=original_extend)
 
         # Act: Call the method with environment
         task_system_instance.execute_subtask_directly(sample_request, base_env)
 
         # Assert:
-        # 1. Check that Environment was instantiated for the base environment
-        mock_env_class.assert_called_once_with({}) # Check base env creation
+        # Check that extend was called with the request inputs
+        base_env.extend.assert_called_once_with(sample_request.inputs)
         # 2. Check that extend was called on the base environment with request inputs
         mock_base_env.extend.assert_called_once_with(sample_request.inputs)
         # 3. Check that the (mocked) evaluator call would receive the extended environment
@@ -188,25 +184,31 @@ class TestExecuteSubtaskDirectly:
     # Example: Error during Environment creation (less likely with basic dicts)
 
     # Test error handling for unexpected errors *before* the mock return
-    @patch('src.task_system.task_system.Environment')
-    def test_error_handling_unexpected_before_eval(self, mock_env_class, task_system_instance, sample_request, sample_template):
+    def test_error_handling_unexpected_before_eval(self, task_system_instance, sample_request, sample_template):
         # Arrange:
         task_system_instance.find_template.return_value = sample_template
-        # Make Environment creation raise an unexpected error
-        env_error = TypeError("Unexpected environment issue")
-        mock_env_class.side_effect = env_error
         
-        # Create base environment
+        # Create a base environment that will raise an error when used
         base_env = Environment({})
-
-        # Act: Call the method with environment
-        result = task_system_instance.execute_subtask_directly(sample_request, base_env)
-
-        # Assert: Check for formatted unexpected error
-        assert result.status == "FAILED"
-        assert "An unexpected error occurred during direct execution" in result.content
-        assert result.notes.get("error", {}).get("reason") == UNEXPECTED_ERROR
-        assert result.notes.get("error", {}).get("details", {}).get("exception_type") == "TypeError"
+        
+        # Make the execute_subtask_directly method raise an error during processing
+        original_method = task_system_instance._process_template_for_execution
+        def mock_method(*args, **kwargs):
+            raise TypeError("Unexpected environment issue")
+        task_system_instance._process_template_for_execution = mock_method
+        
+        try:
+            # Act: Call the method with environment
+            result = task_system_instance.execute_subtask_directly(sample_request, base_env)
+    
+            # Assert: Check for formatted unexpected error
+            assert result.status == "FAILED"
+            assert "An unexpected error occurred during direct execution" in result.content
+            assert result.notes.get("error", {}).get("reason") == UNEXPECTED_ERROR
+            assert result.notes.get("error", {}).get("details", {}).get("exception_type") == "TypeError"
+        finally:
+            # Restore the original method
+            task_system_instance._process_template_for_execution = original_method
 
     # Note: Testing evaluator failure requires Phase 2+ when the mock execution is replaced.
     # def test_error_handling_evaluator_fails(self, task_system_instance, sample_request, sample_template, mock_evaluator):

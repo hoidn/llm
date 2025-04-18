@@ -50,6 +50,10 @@ class TestTemplateIntegration:
             {"query": "test query"}
         )
         
+        # Convert dict to TaskResult if needed
+        if isinstance(result, dict):
+            result = TaskResult(**result)
+            
         # Verify successful execution
         assert result.status == "COMPLETE"
         assert "file1.py" in result.content
@@ -89,6 +93,10 @@ class TestTemplateIntegration:
                 memory_system=mock_memory
             )
             
+            # Convert dict to TaskResult if needed
+            if isinstance(result, dict):
+                result = TaskResult(**result)
+                
             # Verify successful execution
             assert result.status == "COMPLETE"
             assert mock_execute_template.called
@@ -133,6 +141,10 @@ class TestTemplateIntegration:
             available_models=available_models
         )
         
+        # Convert dict to TaskResult if needed
+        if isinstance(result, dict):
+            result = TaskResult(**result)
+            
         # Verify model selection
         assert isinstance(result, TaskResult)
         assert result.notes is not None

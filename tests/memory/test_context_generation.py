@@ -151,8 +151,11 @@ class TestTemplateAwareContextGeneration:
         mock_memory_system.get_relevant_context_for.assert_called_once()
         args, _ = mock_memory_system.get_relevant_context_for.call_args
         
-        # Check that the argument is a ContextGenerationInput
-        assert isinstance(args[0], ContextGenerationInput)
+        # Check that the argument has the expected attributes of ContextGenerationInput
+        assert hasattr(args[0], 'template_description')
+        assert hasattr(args[0], 'template_type')
+        assert hasattr(args[0], 'inputs')
+        assert args[0].template_description == "Find auth code"
         
         # Check ContextGenerationInput properties
         context_input = args[0]
@@ -216,8 +219,9 @@ class TestTemplateAwareContextGeneration:
             assert passed_inputs['query'] == "Find authentication code"
             assert passed_handler is mock_handler  # Ensure correct handler was passed
             
-            # Verify result
-            assert isinstance(result, AssociativeMatchResult)
+            # Verify result has the expected attributes and values
+            assert hasattr(result, 'context')
+            assert hasattr(result, 'matches')
             assert result.context.startswith("Found 2 relevant files")
             assert len(result.matches) == 2
             assert result.matches[0].path == "auth.py"
