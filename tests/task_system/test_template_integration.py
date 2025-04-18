@@ -117,10 +117,11 @@ class TestTemplateIntegration:
         task_system.register_template(test_template)
         
         # Mock _execute_associative_matching for the test
-        task_system._execute_associative_matching = MagicMock(return_value={
-            "status": "COMPLETE",
-            "content": '[]'
-        })
+        task_system._execute_associative_matching = MagicMock(return_value=TaskResult(
+            status="COMPLETE",
+            content='[]',
+            notes={}
+        ))
         
         # Available models (preferred not available)
         available_models = ["llama-3", "gpt-3.5"]
