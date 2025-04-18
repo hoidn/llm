@@ -39,7 +39,7 @@ class TestAssociativeMatchingTemplate:
         mock_handler.model_provider.extract_tool_calls = MagicMock(return_value={"content": "[]", "tool_calls": []})
         
         # Test with a simple query, passing the handler
-        result = associative_matching.execute_template("data processing config", mock_memory, mock_handler)
+        result = associative_matching.execute_template({"query": "data processing config"}, mock_memory, mock_handler)
         
         # TODO: The new design may return an empty list if no files meet the new scoring criteria.
         # For now, we verify the result is a list and that all elements (if any) are strings.

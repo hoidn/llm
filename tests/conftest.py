@@ -15,7 +15,7 @@ def mock_memory_system():
     # Return a proper AssociativeMatchResult Pydantic model
     memory.get_relevant_context_for.return_value = AssociativeMatchResult(
         context="mock context",
-        matches=[MatchTuple(path="file1.py", relevance="mock metadata", score=0.9)]
+        matches=[("file1.py", "mock metadata")]
     )
     return memory
 

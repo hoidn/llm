@@ -165,8 +165,8 @@ def execute_programmatic_task(
                     result["notes"]["context_files_count"] = count
                 # ---> END ENSURE NOTES <---
 
-                logger.debug(f"Dispatcher (Direct Tool Path): Returning notes: {result.get('notes', {})}")
-                logger.info(f"Direct Tool execution complete. Status: {result.get('status')}")
+                logger.debug(f"Dispatcher (Direct Tool Path): Returning notes: {result.notes}")
+                logger.info(f"Direct Tool execution complete. Status: {result.status}")
                 return result
             else:
                 # --- Template Execution via TaskSystem ---
@@ -213,7 +213,7 @@ def execute_programmatic_task(
             if "context_files_count" not in result["notes"]:
                 logging.warning("TaskSystem did not report context_files_count.")
 
-        logging.info(f"Execution complete for '{identifier}'. Status: {result.get('status')}")
+        logging.info(f"Execution complete for '{identifier}'. Status: {result.status}")
         return result
 
     except TaskError as e:

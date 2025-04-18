@@ -690,7 +690,7 @@ class TaskSystem(TemplateLookupInterface):
                 notes=notes
             )
 
-            logging.debug(f"TaskSystem Stub: Returning result with notes: {result.get('notes', {})}")
+            logging.debug(f"TaskSystem Stub: Returning result with notes: {result.notes}")
             return result
 
         except TaskError as e:
@@ -1516,14 +1516,14 @@ class TaskSystem(TemplateLookupInterface):
             import json
             file_list_json = json.dumps(relevant_file_objects)
             
-            return {
-                "content": file_list_json,
-                "status": "COMPLETE",
-                "notes": {  # Always include notes
+            return TaskResult(
+                content=file_list_json,
+                status="COMPLETE",
+                notes={  # Always include notes
                     "file_count": len(relevant_file_objects),
                     "system_prompt": task.get("system_prompt", "")
                 }
-            }
+            )
         except Exception as e:
             logging.exception("Error in _execute_associative_matching:")
             
@@ -1533,20 +1533,20 @@ class TaskSystem(TemplateLookupInterface):
             # For backward compatibility tests
             # Always return COMPLETE for associative_matching tasks, regardless of name
             if task.get("subtype", "") == "associative_matching":
-                return {
-                    "content": error_message,  # Return error message instead of empty array
-                    "status": "COMPLETE",  # Return COMPLETE instead of FAILED for backward compatibility
-                    "notes": {  # Always include notes
+                return TaskResult(
+                    content=error_message,  # Return error message instead of empty array
+                    status="COMPLETE",  # Return COMPLETE instead of FAILED for backward compatibility
+                    notes={  # Always include notes
                         "error": error_message,
                         "system_prompt": task.get("system_prompt", "")
                     }
-                }
+                )
             else:
-                return {
-                    "content": error_message,  # Return error message instead of empty array
-                    "status": "FAILED",
-                    "notes": {  # Always include notes
+                return TaskResult(
+                    content=error_message,  # Return error message instead of empty array
+                    status="FAILED",
+                    notes={  # Always include notes
                         "error": error_message,
                         "system_prompt": task.get("system_prompt", "")
                     }
-                }
+                )

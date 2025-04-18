@@ -136,7 +136,7 @@ class TestTaskSystemExecution:
         # Execute with valid parameters
         result = task_system.execute_task("atomic", "associative_matching", {"query": "test"})
         
-        assert result["status"] == "COMPLETE"
+        assert result.status == "COMPLETE"
         task_system._execute_associative_matching.assert_called_once()
     
     def test_execute_task_with_function_calls(self):
@@ -362,7 +362,7 @@ class TestTaskSystemExecution:
         assert args[0].context_relevance["unimportant_param"] is False
         
         # Verify result is successful
-        assert result.status == "COMPLETE"
+        assert result["status"] == "COMPLETE"
 
 
 # --- Tests for execute_subtask_directly (Phase 1) ---

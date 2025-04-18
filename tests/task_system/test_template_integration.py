@@ -89,7 +89,7 @@ class TestTemplateIntegration:
             )
             
             # Verify successful execution
-            assert result["status"] == "COMPLETE"
+            assert result.status == "COMPLETE"
             assert mock_execute_template.called
     
     def test_enhanced_template_with_model_selection(self):

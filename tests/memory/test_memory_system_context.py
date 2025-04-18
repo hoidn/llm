@@ -104,7 +104,7 @@ class TestMemorySystemContext:
         # Verify result has expected content
         assert result.context == "Test context"
         assert len(result.matches) == 1
-        assert result.matches[0].path == "file1.py"
+        assert result.matches[0][0] == "file1.py"
     
     def test_get_relevant_context_for_with_legacy_format(self):
         """Test get_relevant_context_for with legacy dictionary format."""
