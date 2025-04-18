@@ -180,7 +180,13 @@ class TestTaskCommandIntegration:
         app_instance.task_system.find_template.reset_mock()
         app_instance.task_system.find_template.return_value = None # Ensure default
         app_instance.task_system.execute_task.reset_mock()
-        # DO NOT set return_value here, rely on fixture default
+        # Reset to default return value from fixture
+        from system.types import TaskResult
+        app_instance.task_system.execute_task.return_value = TaskResult(
+             status="COMPLETE",
+             content="Mock TaskSystem.execute_task Result",
+             notes={}
+        )
 
         # Reset other relevant mocks
         app_instance.aider_bridge.execute_automatic_task.reset_mock()
