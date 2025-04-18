@@ -1184,7 +1184,11 @@ class TaskSystem(TemplateLookupInterface):
                 
                 result = self._execute_associative_matching(template, resolved_inputs, memory_system, handler=handler)
                 
-                # Add model info if selected - result is already a TaskResult object
+                # Ensure result is a TaskResult object
+                if isinstance(result, dict) and "status" in result:
+                    result = TaskResult(**result)
+                
+                # Add model info if selected
                 if selected_model:
                     result.notes["selected_model"] = selected_model
                     

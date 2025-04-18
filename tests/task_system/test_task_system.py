@@ -128,10 +128,12 @@ class TestTaskSystemExecution:
         task_system.register_template(template)
         
         # Mock the _execute_associative_matching method
-        task_system._execute_associative_matching = MagicMock(return_value={
-            "status": "COMPLETE",
-            "content": "[]"
-        })
+        # Return a TaskResult object instead of a dictionary
+        task_system._execute_associative_matching = MagicMock(return_value=TaskResult(
+            status="COMPLETE",
+            content="[]",
+            notes={}
+        ))
         
         # Execute with valid parameters
         result = task_system.execute_task("atomic", "associative_matching", {"query": "test"})
@@ -175,10 +177,11 @@ class TestTaskSystemExecution:
         # First mock for the caller template
         task_system._execute_associative_matching = MagicMock(side_effect=[
             # Result from the main template execution
-            {
-                "status": "COMPLETE",
-                "content": "Template with call result"
-            }
+            TaskResult(
+                status="COMPLETE",
+                content="Template with call result",
+                notes={}
+            )
         ])
         
         # Create a separate mock for the function template execution
@@ -190,10 +193,11 @@ class TestTaskSystemExecution:
             
             # If this is the format_greeting function call
             if task_type == "atomic" and task_subtype == "format":
-                return {
-                    "status": "COMPLETE",
-                    "content": "Dear, Test!"
-                }
+                return TaskResult(
+                    status="COMPLETE",
+                    content="Dear, Test!",
+                    notes={}
+                )
             
             # Otherwise delegate to original implementation
             return original_execute(*args, **kwargs)
@@ -292,10 +296,12 @@ class TestTaskSystemExecution:
         task_system.register_template(template)
         
         # Mock the _execute_associative_matching method
-        task_system._execute_associative_matching = MagicMock(return_value={
-            "status": "COMPLETE",
-            "content": "[]"
-        })
+        # Return a TaskResult object instead of a dictionary
+        task_system._execute_associative_matching = MagicMock(return_value=TaskResult(
+            status="COMPLETE",
+            content="[]",
+            notes={}
+        ))
         
         # Execute with available models
         available_models = ["gpt-4"]  # Claude-3 not available
