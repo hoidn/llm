@@ -581,11 +581,12 @@ class Repl:
                         return
                         
                     # Add execution metadata
-                    if "notes" not in result:
-                        result["notes"] = {}
-                    result["notes"]["execution_path"] = "direct_aider_bridge"
-                    result["notes"]["context_source"] = "explicit_request" if file_context else "none"
-                    result["notes"]["context_files_count"] = len(file_context) if file_context else 0
+                    # Use model_copy to update notes instead of direct assignment
+                    notes = result.notes.copy() if hasattr(result, 'notes') and result.notes else {}
+                    notes["execution_path"] = "direct_aider_bridge"
+                    notes["context_source"] = "explicit_request" if file_context else "none"
+                    notes["context_files_count"] = len(file_context) if file_context else 0
+                    result = result.model_copy(update={"notes": notes})
                     
                     # Display the result
                     self._display_task_result(result)
