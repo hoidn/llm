@@ -941,7 +941,6 @@ class TaskSystem(TemplateLookupInterface):
         return AssociativeMatchResult(context=context, matches=file_matches)
 
     def _execute_context_generation_task(self, context_input, global_index, handler):
-        import os  # Add import for os.path functions
         """Execute specialized context generation task using LLM.
         
         This creates a specialized task for context generation and executes it
@@ -955,6 +954,8 @@ class TaskSystem(TemplateLookupInterface):
         Returns:
             Task result with relevant file information
         """
+        import os  # Add import for os.path functions
+        
         # Format metadata as a string
         metadata_items = []
         for path, meta in global_index.items():
@@ -963,22 +964,20 @@ class TaskSystem(TemplateLookupInterface):
         formatted_metadata = "\n".join(metadata_items)
         
         # Create specialized inputs for context generation
-        inputs = {
+        # Ensure we include ALL required parameters for the associative_matching template
+        inputs_for_template = {
             "query": context_input.template_description,
             "metadata": formatted_metadata,
-            "additional_context": {}
+            "additional_context": {},
+            "max_results": context_input.inputs.get("max_results", 20),  # Default to 20 if not specified
+            "inherited_context": context_input.inherited_context or "",
+            "previous_outputs": context_input.previous_outputs or []
         }
         
         # Add relevant inputs to additional context
         for name, value in context_input.inputs.items():
             if context_input.context_relevance.get(name, True):
-                inputs["additional_context"][name] = value
-        
-        if context_input.inherited_context:
-            inputs["inherited_context"] = context_input.inherited_context
-            
-        if context_input.previous_outputs:
-            inputs["previous_outputs"] = context_input.previous_outputs
+                inputs_for_template["additional_context"][name] = value
         
         # Use the passed handler instance
         if not handler:
@@ -986,12 +985,13 @@ class TaskSystem(TemplateLookupInterface):
             return {"status": "FAILED", "content": "Internal error: Handler missing for context generation."}
 
         logging.debug("Executing associative_matching task using handler: %s", type(handler).__name__)
+        logging.debug("Passing inputs to execute_template with keys: %s", inputs_for_template.keys())
         
         # Execute task to find relevant files, passing the correct handler explicitly
         return self.execute_task(
             task_type="atomic",
             task_subtype="associative_matching",
-            inputs=inputs,
+            inputs=inputs_for_template,  # Pass the properly constructed inputs dictionary
             handler=handler,  # Pass the explicitly determined handler
             memory_system=self.memory_system  # Pass memory_system along if needed by downstream
         )
@@ -1179,11 +1179,7 @@ class TaskSystem(TemplateLookupInterface):
                              template.get('name'), type(handler).__name__)
                 result = self._execute_associative_matching(template, resolved_inputs, memory_system, handler=handler)
                 
-                # Ensure result has notes field
-                if "notes" not in result:
-                    result["notes"] = {}
-                    
-                # Add model info if selected
+                # Add model info if selected - result is already a TaskResult object
                 if selected_model:
                     result.notes["selected_model"] = selected_model
                     
