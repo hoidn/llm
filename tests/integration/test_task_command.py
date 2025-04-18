@@ -771,10 +771,17 @@ class TestTaskCommandIntegration:
                  if isinstance(tool_mock, MagicMock):
                      tool_mock.reset_mock()
                      
+        from system.types import TaskResult
         # Set up a mock for the direct tool executor to capture the params
         direct_tool_mock = MagicMock()
         # Store the received params for inspection
         received_params = {}
+        
+        execute_task_return_value = TaskResult(
+             status="COMPLETE",
+             content="Mock TaskSystem.execute_task Result",
+             notes={}
+        )
         
         def capture_params(params):
             received_params.update(params)
