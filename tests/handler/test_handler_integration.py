@@ -86,8 +86,8 @@ class TestHandlerIntegration:
     
     def test_direct_vs_subtask_tool_registration(self, mock_task_system, mock_memory_system):
         """Test the difference between direct and subtask tool registration."""
-        with patch('handler.model_provider.ClaudeProvider'), \
-             patch('handler.file_access.FileAccessManager'):
+        with patch('src.handler.model_provider.ClaudeProvider'), \
+             patch('src.handler.file_access.FileAccessManager'):
             # Create handler
             handler = PassthroughHandler(mock_task_system, mock_memory_system)
             
