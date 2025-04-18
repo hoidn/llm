@@ -1,4 +1,83 @@
-"""Base handler providing common functionality for all handlers."""
+"""
+// === IDL-CREATION-GUIDLINES === // Object Oriented: Use OO Design. // Design Patterns: Use Factory, Builder and Strategy patterns where possible // ** Complex parameters JSON : Use JSON where primitive params are not possible and document them in IDL like "Expected JSON format: { "key1": "type1", "key2": "type2" }" // == !! BEGIN IDL TEMPLATE !! === // === CODE-CREATION-RULES === // Strict Typing: Always use strict typing. Avoid using ambiguous or variant types. // Primitive Types: Favor the use of primitive types wherever possible. // Portability Mandate: Python code must be written with the intent to be ported to Java, Go, and JavaScript. Consider language-agnostic logic and avoid platform-specific dependencies. // No Side Effects: Functions should be pure, meaning their output should only be determined by their input without any observable side effects. // Testability: Ensure that every function and method is easily testable. Avoid tight coupling and consider dependency injection where applicable. // Documentation: Every function, method, and module should be thoroughly documented, especially if there's a nuance that's not directly evident from its signature. // Contractual Obligation: The definitions provided in this IDL are a strict contract. All specified interfaces, methods, and constraints must be implemented precisely as defined without deviation. // =======================
+
+@module BaseHandlerModule
+// Dependencies: TaskSystem, MemorySystem, ProviderAdapter, FileAccessManager, CommandExecutor, ContextGenerationInput, PromptRegistry
+// Description: Provides common functionality for handlers, including tool registration,
+//              conversation management, context retrieval mediation, and LLM interaction setup.
+module BaseHandlerModule {
+
+    // Interface for the base handler functionality.
+    interface BaseHandler {
+        // @depends_on(TaskSystem, MemorySystem, ProviderAdapter, FileAccessManager)
+
+        // Constructor
+        // Preconditions:
+        // - task_system is a valid TaskSystem instance.
+        // - memory_system is a valid MemorySystem instance.
+        // - model_provider is an optional ProviderAdapter instance.
+        // - config is an optional dictionary.
+        // Postconditions:
+        // - Handler is initialized with dependencies and configuration.
+        // - FileAccessManager is instantiated.
+        // - Tool registries are initialized.
+        // - Conversation history is initialized.
+        void __init__(TaskSystem task_system, MemorySystem memory_system, optional ProviderAdapter model_provider, optional dict<string, Any> config);
+
+        // Registers a tool for LLM use.
+        // Preconditions:
+        // - tool_spec contains 'name', 'description', 'input_schema'.
+        // - executor_func is a callable function matching the tool's logic.
+        // Expected JSON format for tool_spec: { "name": "string", "description": "string", "input_schema": { ... } }
+        // Postconditions:
+        // - Tool is registered in `registered_tools` and `tool_executors`.
+        // - Returns true if successful, false otherwise.
+        boolean register_tool(dict<string, Any> tool_spec, function executor_func);
+
+        // Registers a tool for direct programmatic invocation.
+        // Preconditions:
+        // - tool_name is a non-empty string identifier.
+        // - executor_func is a callable function implementing the tool logic.
+        // Postconditions:
+        // - Tool executor is registered in `direct_tool_executors`.
+        // - Returns true if successful, false otherwise.
+        boolean registerDirectTool(string tool_name, function executor_func);
+
+        // Executes a shell command and parses file paths from its output.
+        // Preconditions:
+        // - command is a valid shell command string expected to output file paths.
+        // Postconditions:
+        // - Command is executed safely.
+        // - Returns a list of file paths extracted from the command's standard output.
+        // - Returns an empty list if the command fails or produces no recognizable paths.
+        list<string> execute_file_path_command(string command);
+
+        // Resets the conversation history.
+        // Preconditions: None.
+        // Postconditions:
+        // - `conversation_history` is cleared.
+        void reset_conversation();
+
+        // Logs a debug message if debug mode is enabled.
+        // Preconditions:
+        // - message is a string.
+        // Postconditions:
+        // - If debug_mode is true, the message is printed to the console/log.
+        void log_debug(string message);
+
+        // Enables or disables debug logging.
+        // Preconditions:
+        // - enabled is a boolean value.
+        // Postconditions:
+        // - `debug_mode` attribute is set to the value of `enabled`.
+        void set_debug_mode(boolean enabled);
+
+        // Additional methods... (Private/protected methods like _execute_tool, _get_relevant_files, _build_system_prompt are not part of the public IDL)
+    };
+};
+// == !! END IDL TEMPLATE !! ===
+
+"""
 from typing import Dict, List, Optional, Any, Callable, Tuple, Union
 
 from handler.model_provider import ProviderAdapter, ClaudeProvider

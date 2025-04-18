@@ -1,4 +1,98 @@
-"""Memory System implementation."""
+"""
+// === IDL-CREATION-GUIDLINES === // Object Oriented: Use OO Design. // Design Patterns: Use Factory, Builder and Strategy patterns where possible // ** Complex parameters JSON : Use JSON where primitive params are not possible and document them in IDL like "Expected JSON format: { "key1": "type1", "key2": "type2" }" // == !! BEGIN IDL TEMPLATE !! === // === CODE-CREATION-RULES === // Strict Typing: Always use strict typing. Avoid using ambiguous or variant types. // Primitive Types: Favor the use of primitive types wherever possible. // Portability Mandate: Python code must be written with the intent to be ported to Java, Go, and JavaScript. Consider language-agnostic logic and avoid platform-specific dependencies. // No Side Effects: Functions should be pure, meaning their output should only be determined by their input without any observable side effects. // Testability: Ensure that every function and method is easily testable. Avoid tight coupling and consider dependency injection where applicable. // Documentation: Every function, method, and module should be thoroughly documented, especially if there's a nuance that's not directly evident from its signature. // Contractual Obligation: The definitions provided in this IDL are a strict contract. All specified interfaces, methods, and constraints must be implemented precisely as defined without deviation. // =======================
+
+@module MemorySystemModule
+// Dependencies: BaseHandler, TaskSystem, ContextGenerationInput, AssociativeMatchResult, GitRepositoryIndexer, PromptRegistry
+// Description: Manages a global index of file metadata and provides context retrieval
+//              capabilities, primarily through associative matching mediated by the TaskSystem.
+//              Supports optional sharding for large indexes.
+module MemorySystemModule {
+
+    // Interface for the Memory System.
+    interface MemorySystem {
+        // @depends_on(BaseHandler, TaskSystem)
+
+        // Constructor
+        // Preconditions:
+        // - handler is an optional BaseHandler instance.
+        // - task_system is an optional TaskSystem instance.
+        // - config is an optional dictionary for sharding parameters.
+        // Postconditions:
+        // - MemorySystem is initialized with an empty global index and dependencies.
+        // - Sharding configuration is set from config or defaults.
+        void __init__(optional BaseHandler handler, optional TaskSystem task_system, optional dict<string, Any> config);
+
+        // Retrieves the current global file metadata index.
+        // Preconditions: None.
+        // Postconditions:
+        // - Returns the dictionary mapping absolute file paths to metadata strings.
+        dict<string, string> get_global_index();
+
+        // Updates the global file metadata index.
+        // Preconditions:
+        // - index is a dictionary mapping file paths to metadata strings.
+        // - All file paths in the index must be absolute (unless in a test environment).
+        // Postconditions:
+        // - The provided index entries are merged into the `global_index`.
+        // - Internal shards are updated if sharding is enabled.
+        // Raises:
+        // - ValueError if a non-absolute path is provided outside a test environment.
+        void update_global_index(dict<string, string> index);
+
+        // Enables or disables sharded context retrieval.
+        // Preconditions:
+        // - enabled is a boolean value.
+        // Postconditions:
+        // - Sharding flag `_config["sharding_enabled"]` is set.
+        // - Shards are updated via `_update_shards` if sharding is enabled.
+        void enable_sharding(boolean enabled);
+
+        // Configures parameters for sharded context retrieval.
+        // Preconditions:
+        // - Parameters (token_size_per_shard, max_shards, etc.) are valid types (int, float).
+        // Postconditions:
+        // - Internal sharding configuration `_config` is updated.
+        // - Shards are updated via `_update_shards` if sharding is enabled.
+        void configure_sharding(optional int token_size_per_shard, optional int max_shards, optional float token_estimation_ratio, optional int max_parallel_shards);
+
+        // Retrieves relevant context using a specific description for matching.
+        // Preconditions:
+        // - query is the main task query string.
+        // - context_description is the string to use for associative matching.
+        // Postconditions:
+        // - Calls `get_relevant_context_for` using `context_description`.
+        // - Returns an AssociativeMatchResult object.
+        AssociativeMatchResult get_relevant_context_with_description(string query, string context_description);
+
+        // Retrieves relevant context for a task, mediating through the TaskSystem.
+        // Preconditions:
+        // - input_data is either a legacy dictionary or a ContextGenerationInput object.
+        // - TaskSystem dependency must be available.
+        // Expected JSON format for legacy input_data: { "taskText": "string", "inheritedContext": "string", ... }
+        // Postconditions:
+        // - Converts input to ContextGenerationInput if necessary.
+        // - Handles sharding if enabled, processing shards in parallel.
+        // - Delegates context generation to `TaskSystem.generate_context_for_memory_system`.
+        // - Returns an AssociativeMatchResult object containing context summary and file matches.
+        AssociativeMatchResult get_relevant_context_for(union<dict<string, Any>, ContextGenerationInput> input_data);
+
+        // Indexes a Git repository and updates the global index.
+        // Preconditions:
+        // - repo_path is a valid path to a Git repository.
+        // - options is an optional dictionary for indexer configuration.
+        // Expected JSON format for options: { "include_patterns": list<string>, "exclude_patterns": list<string>, "max_file_size": int }
+        // Postconditions:
+        // - Instantiates GitRepositoryIndexer.
+        // - Indexes the repository based on configuration.
+        // - Updates the global index via `update_global_index`.
+        void index_git_repository(string repo_path, optional dict<string, Any> options);
+
+        // Additional methods... (Private/protected methods like _estimate_tokens, _update_shards are not part of the public IDL)
+    };
+};
+// == !! END IDL TEMPLATE !! ===
+
+"""
 from typing import Dict, List, Any, Optional, Tuple, Union
 import os
 import math

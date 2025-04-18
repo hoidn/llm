@@ -1,4 +1,155 @@
-"""Task System implementation."""
+"""
+// === IDL-CREATION-GUIDLINES === // Object Oriented: Use OO Design. // Design Patterns: Use Factory, Builder and Strategy patterns where possible // ** Complex parameters JSON : Use JSON where primitive params are not possible and document them in IDL like "Expected JSON format: { "key1": "type1", "key2": "type2" }" // == !! BEGIN IDL TEMPLATE !! === // === CODE-CREATION-RULES === // Strict Typing: Always use strict typing. Avoid using ambiguous or variant types. // Primitive Types: Favor the use of primitive types wherever possible. // Portability Mandate: Python code must be written with the intent to be ported to Java, Go, and JavaScript. Consider language-agnostic logic and avoid platform-specific dependencies. // No Side Effects: Functions should be pure, meaning their output should only be determined by their input without any observable side effects. // Testability: Ensure that every function and method is easily testable. Avoid tight coupling and consider dependency injection where applicable. // Documentation: Every function, method, and module should be thoroughly documented, especially if there's a nuance that's not directly evident from its signature. // Contractual Obligation: The definitions provided in this IDL are a strict contract. All specified interfaces, methods, and constraints must be implemented precisely as defined without deviation. // =======================
+
+@module TaskSystemModule
+// Dependencies: EvaluatorInterface, MemorySystem, BaseHandler, TemplateProcessor, ContextGenerationInput, SubtaskRequest, Environment, TaskError, FunctionCallNode
+// Description: Manages task templates, coordinates task execution workflows,
+//              mediates context generation with the Memory System, and utilizes the Evaluator
+//              for executing function calls within templates.
+module TaskSystemModule {
+
+    // Interface for the Task System, implementing TemplateLookupInterface.
+    interface TaskSystem extends TemplateLookupInterface {
+        // @depends_on(EvaluatorInterface, MemorySystem, BaseHandler) // BaseHandler needed indirectly for context generation/tool execution
+
+        // Constructor
+        // Preconditions:
+        // - evaluator is an optional EvaluatorInterface instance.
+        // - memory_system is an optional MemorySystem instance.
+        // Postconditions:
+        // - TaskSystem is initialized with template storage and optional dependencies.
+        // - TemplateProcessor is instantiated.
+        // - Handler cache is initialized.
+        void __init__(optional EvaluatorInterface evaluator, optional MemorySystem memory_system);
+
+        // Enables or disables test mode.
+        // Preconditions:
+        // - enabled is a boolean value.
+        // Postconditions:
+        // - Internal `_test_mode` flag is set.
+        // - If enabled, subsequent handler requests will use MockHandler.
+        void set_test_mode(boolean enabled);
+
+        // Executes a function call represented by an AST node.
+        // Preconditions:
+        // - call is a valid FunctionCallNode.
+        // - env is an optional Environment instance.
+        // Postconditions:
+        // - Evaluator is ensured to be initialized.
+        // - The function call is evaluated via the Evaluator.
+        // - Returns a TaskResult dictionary representing the outcome.
+        // Expected JSON format for return value: { "status": "string", "content": "Any", "notes": { ... } }
+        dict<string, Any> executeCall(FunctionCallNode call, optional Environment env);
+
+        // Executes a task workflow directly from a SubtaskRequest.
+        // Preconditions:
+        // - request is a valid SubtaskRequest object.
+        // - env is a valid Environment object (base environment for the call).
+        // Postconditions:
+        // - Finds the corresponding template.
+        // - Determines file context based on request, template, or automatic lookup.
+        // - Executes the template workflow via `execute_task`.
+        // - Returns the final TaskResult dictionary, including context source notes.
+        // Expected JSON format for request.inputs: { "param1": "value1", ... }
+        // Expected JSON format for return value: { "status": "string", "content": "Any", "notes": { "template_used": "string", "context_source": "string", "context_files_count": "int", ... } }
+        dict<string, Any> execute_subtask_directly(SubtaskRequest request, Environment env);
+
+        // Finds matching task templates based on input text.
+        // Preconditions:
+        // - input_text is a string describing the desired task.
+        // - memory_system is a valid MemorySystem instance.
+        // Postconditions:
+        // - Calculates similarity scores between input_text and atomic template descriptions.
+        // - Returns a list of matching templates (dictionaries) sorted by score.
+        // Expected JSON format for return list items: { "task": { ... }, "score": "float", "taskType": "string", "subtype": "string" }
+        list<dict<string, Any>> find_matching_tasks(string input_text, MemorySystem memory_system);
+
+        // Registers a task template.
+        // Preconditions:
+        // - template is a dictionary conforming to the template schema (including name, type, subtype).
+        // Expected JSON format for template: { "name": "string", "type": "string", "subtype": "string", "description": "string", ... }
+        // Postconditions:
+        // - Template is validated and enhanced for compatibility.
+        // - Template is stored in `templates` by name.
+        // - Template is indexed in `template_index` by type:subtype.
+        void register_template(dict<string, Any> template);
+
+        // Finds a template by name or type:subtype identifier.
+        // Preconditions:
+        // - identifier is a string (template name or type:subtype).
+        // Postconditions:
+        // - Returns the template dictionary if found, otherwise None.
+        optional dict<string, Any> find_template(string identifier);
+
+        // Generates context for the Memory System, acting as a mediator.
+        // Preconditions:
+        // - context_input is a valid ContextGenerationInput object.
+        // - global_index is a dictionary mapping file paths to metadata.
+        // Postconditions:
+        // - Delegates context generation to a specialized task executed via the appropriate Handler.
+        // - Returns an AssociativeMatchResult object containing the context summary and file matches.
+        // Expected JSON format for global_index: { "path/to/file": "metadata string", ... }
+        AssociativeMatchResult generate_context_for_memory_system(ContextGenerationInput context_input, dict<string, string> global_index);
+
+        // Resolves file paths based on template configuration.
+        // Preconditions:
+        // - template is a resolved template dictionary.
+        // - memory_system is a valid MemorySystem instance.
+        // - handler is a valid Handler instance.
+        // Postconditions:
+        // - Aggregates file paths from explicit definitions, context generation, or command execution based on template settings.
+        // - Returns a tuple containing a list of resolved file paths and an optional error message string.
+        tuple<list<string>, optional string> resolve_file_paths(dict<string, Any> template, MemorySystem memory_system, BaseHandler handler);
+
+        // Executes a task based on type, subtype, and inputs.
+        // Preconditions:
+        // - task_type and task_subtype identify a registered template.
+        // - inputs is a dictionary of parameters for the task.
+        // - memory_system is an optional MemorySystem instance.
+        // - available_models is an optional list of model names.
+        // - call_depth indicates recursion depth for function calls.
+        // - handler is an optional specific Handler instance to use.
+        // - kwargs may contain inherited_context, previous_outputs, handler_config.
+        // Expected JSON format for inputs: { "param1": "value1", ... }
+        // Expected JSON format for return value: { "status": "string", "content": "Any", "notes": { ... } }
+        // Postconditions:
+        // - Finds the template.
+        // - Resolves parameters.
+        // - Selects model and handler if necessary.
+        // - Handles context management (inheritance, accumulation, fresh lookup).
+        // - Processes the template (resolving variables/functions).
+        // - Resolves file paths.
+        // - Executes the task via the appropriate handler or specialized function.
+        // - Returns the TaskResult dictionary.
+        dict<string, Any> execute_task(string task_type, string task_subtype, dict<string, Any> inputs, optional MemorySystem memory_system, optional list<string> available_models, optional int call_depth, optional BaseHandler handler, **kwargs);
+
+        // Additional methods... (Private/protected methods like _execute_atomic_task are not part of the public IDL)
+    };
+
+    // Interface required by Evaluator, implemented by TaskSystem.
+    interface TemplateLookupInterface {
+        // Finds a template by name or type:subtype identifier.
+        // Preconditions:
+        // - identifier is a string.
+        // Postconditions:
+        // - Returns the template dictionary if found, otherwise None.
+        optional dict<string, Any> find_template(string identifier);
+
+        // Executes a task based on type, subtype, and inputs.
+        // Preconditions:
+        // - task_type and task_subtype identify a registered template or specialized execution path.
+        // - inputs is a dictionary of parameters for the task.
+        // Postconditions:
+        // - Executes the identified task workflow.
+        // - Returns the TaskResult dictionary.
+        // Expected JSON format for inputs: { "param1": "value1", ... }
+        // Expected JSON format for return value: { "status": "string", "content": "Any", "notes": { ... } }
+        dict<string, Any> execute_task(string task_type, string task_subtype, dict<string, Any> inputs);
+    };
+};
+// == !! END IDL TEMPLATE !! ===
+
+"""
 from typing import Dict, List, Any, Optional, Union, Tuple
 import json
 import os

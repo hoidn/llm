@@ -1,4 +1,80 @@
-"""Passthrough handler for processing raw text queries."""
+"""
+// === IDL-CREATION-GUIDLINES === // Object Oriented: Use OO Design. // Design Patterns: Use Factory, Builder and Strategy patterns where possible // ** Complex parameters JSON : Use JSON where primitive params are not possible and document them in IDL like "Expected JSON format: { "key1": "type1", "key2": "type2" }" // == !! BEGIN IDL TEMPLATE !! === // === CODE-CREATION-RULES === // Strict Typing: Always use strict typing. Avoid using ambiguous or variant types. // Primitive Types: Favor the use of primitive types wherever possible. // Portability Mandate: Python code must be written with the intent to be ported to Java, Go, and JavaScript. Consider language-agnostic logic and avoid platform-specific dependencies. // No Side Effects: Functions should be pure, meaning their output should only be determined by their input without any observable side effects. // Testability: Ensure that every function and method is easily testable. Avoid tight coupling and consider dependency injection where applicable. // Documentation: Every function, method, and module should be thoroughly documented, especially if there's a nuance that's not directly evident from its signature. // Contractual Obligation: The definitions provided in this IDL are a strict contract. All specified interfaces, methods, and constraints must be implemented precisely as defined without deviation. // =======================
+
+@module PassthroughHandlerModule
+// Dependencies: BaseHandler, TaskSystem, MemorySystem, ProviderAdapter, CommandExecutor, ContextGenerationInput
+// Description: Handles raw text queries directly, managing conversation state and interacting
+//              with the LLM provider, potentially using tools like Aider or command execution.
+module PassthroughHandlerModule {
+
+    // Interface for the passthrough handler, extending BaseHandler.
+    interface PassthroughHandler extends BaseHandler {
+        // @depends_on(TaskSystem, MemorySystem, ProviderAdapter) // Dependencies primarily via BaseHandler
+
+        // Constructor
+        // Preconditions:
+        // - task_system is a valid TaskSystem instance.
+        // - memory_system is a valid MemorySystem instance.
+        // - model_provider is an optional ProviderAdapter instance.
+        // - config is an optional dictionary.
+        // Postconditions:
+        // - BaseHandler is initialized.
+        // - Passthrough-specific system prompt extension is added.
+        // - Built-in command execution tool is registered.
+        void __init__(TaskSystem task_system, MemorySystem memory_system, optional ProviderAdapter model_provider, optional dict<string, Any> config);
+
+        // Handles a raw text query from the user.
+        // Preconditions:
+        // - query is a non-empty string.
+        // Postconditions:
+        // - Query is added to conversation history.
+        // - Relevant files are retrieved via MemorySystem.
+        // - Query is processed by the LLM via the model provider, potentially involving tool calls.
+        // - Assistant response is added to conversation history.
+        // - Returns a TaskResult dictionary containing the status, content, and metadata.
+        // Expected JSON format for return value: { "status": "string", "content": "string", "metadata": { ... } }
+        dict<string, Any> handle_query(string query);
+
+        // Registers the built-in command execution tool.
+        // Preconditions: None.
+        // Postconditions:
+        // - The 'executeFilePathCommand' tool is registered using `register_tool`.
+        // - Returns true if registration successful, false otherwise.
+        boolean register_command_execution_tool();
+
+        // Resets the conversation state, including the active subtask ID.
+        // Preconditions: None.
+        // Postconditions:
+        // - BaseHandler.reset_conversation() is called.
+        // - `active_subtask_id` is set to None.
+        void reset_conversation();
+
+        // Registers a direct tool (overrides/implements BaseHandler method if needed, specific logic here).
+        // Preconditions:
+        // - name is a non-empty string identifier.
+        // - func is a callable function implementing the tool logic.
+        // Postconditions:
+        // - Tool is registered in `direct_tools` and `tool_executors`.
+        // - A corresponding tool specification is created and registered via `register_tool`.
+        // - Returns true if successful, false otherwise.
+        boolean registerDirectTool(string name, function func);
+
+        // Registers a subtask tool.
+        // Preconditions:
+        // - name is a non-empty string identifier.
+        // - func is a callable function implementing the tool logic (typically expects prompt, file_context).
+        // Postconditions:
+        // - Tool is registered in `subtask_tools` and `tool_executors`.
+        // - A corresponding tool specification is created and registered via `register_tool`.
+        // - Returns true if successful, false otherwise.
+        boolean registerSubtaskTool(string name, function func);
+
+        // Additional methods... (Private/protected methods like _find_matching_template, _create_new_subtask are not part of the public IDL)
+    };
+};
+// == !! END IDL TEMPLATE !! ===
+
+"""
 from typing import Dict, Any, Optional, List, Union
 
 from handler.base_handler import BaseHandler

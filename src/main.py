@@ -1,4 +1,72 @@
-"""Main entry point for the application."""
+"""
+// === IDL-CREATION-GUIDLINES === // Object Oriented: Use OO Design. // Design Patterns: Use Factory, Builder and Strategy patterns where possible // ** Complex parameters JSON : Use JSON where primitive params are not possible and document them in IDL like "Expected JSON format: { "key1": "type1", "key2": "type2" }" // == !! BEGIN IDL TEMPLATE !! === // === CODE-CREATION-RULES === // Strict Typing: Always use strict typing. Avoid using ambiguous or variant types. // Primitive Types: Favor the use of primitive types wherever possible. // Portability Mandate: Python code must be written with the intent to be ported to Java, Go, and JavaScript. Consider language-agnostic logic and avoid platform-specific dependencies. // No Side Effects: Functions should be pure, meaning their output should only be determined by their input without any observable side effects. // Testability: Ensure that every function and method is easily testable. Avoid tight coupling and consider dependency injection where applicable. // Documentation: Every function, method, and module should be thoroughly documented, especially if there's a nuance that's not directly evident from its signature. // Contractual Obligation: The definitions provided in this IDL are a strict contract. All specified interfaces, methods, and constraints must be implemented precisely as defined without deviation. // =======================
+
+@module ApplicationModule
+// Dependencies: MemorySystem, TaskSystem, PassthroughHandler, AiderBridge, Repl, GitRepositoryIndexer, aider_executors, system_executors, template registration functions
+// Description: Main application entry point. Initializes and coordinates core system
+//              components (TaskSystem, MemorySystem, Handler, AiderBridge), registers
+//              templates and tools, handles repository indexing, and manages the
+//              overall application lifecycle (e.g., starting the REPL).
+module ApplicationModule {
+
+    // Interface for the main Application class.
+    interface Application {
+        // @depends_on(MemorySystem, TaskSystem, PassthroughHandler, AiderBridge) // For initialization and core operations
+
+        // Constructor
+        // Preconditions:
+        // - config is an optional configuration dictionary.
+        // Postconditions:
+        // - Initializes core components (TaskSystem, MemorySystem, PassthroughHandler).
+        // - Links components (e.g., gives MemorySystem references to TaskSystem and Handler).
+        // - Registers core task templates (associative matching, debug).
+        // - Initializes AiderBridge and registers Aider tools if available.
+        // - Registers system direct tools (get_context, read_files).
+        void __init__(optional dict<string, Any> config);
+
+        // Indexes a Git repository using the MemorySystem.
+        // Preconditions:
+        // - repo_path is a valid path to a local Git repository.
+        // Postconditions:
+        // - Normalizes the path and validates repository existence.
+        // - Configures and runs GitRepositoryIndexer via MemorySystem.
+        // - Updates the MemorySystem's global index.
+        // - Tracks the indexed repository path.
+        // - Returns true if indexing was successful, false otherwise.
+        boolean index_repository(string repo_path);
+
+        // Handles a user query via the PassthroughHandler.
+        // Preconditions:
+        // - query is a string from the user.
+        // Postconditions:
+        // - Delegates query handling to `passthrough_handler.handle_query`.
+        // - Returns the result dictionary from the handler.
+        // - Returns an error dictionary if query handling fails.
+        // Expected JSON format for return value: { "status": "string", "content": "string", "metadata": { ... } } or { "content": "error string", "metadata": { "error": "string" } }
+        dict<string, Any> handle_query(string query);
+
+        // Resets the conversation state in the handler.
+        // Preconditions: None.
+        // Postconditions:
+        // - Calls `passthrough_handler.reset_conversation`.
+        void reset_conversation();
+
+        // Initializes the AiderBridge and registers its tools.
+        // Preconditions:
+        // - Core components (MemorySystem, PassthroughHandler) must be initialized.
+        // Postconditions:
+        // - Instantiates AiderBridge if not already done.
+        // - Registers Aider tools (interactive, automatic) with the PassthroughHandler via `aider_bridge.tools.register_aider_tools`.
+        // - Registers Aider executor functions (`execute_aider_automatic`, `execute_aider_interactive`) as direct tools in the PassthroughHandler.
+        // - Logs success or failure messages.
+        void initialize_aider();
+
+        // Additional methods... (Private/protected methods like _register_system_tools and the main function are not part of the public IDL)
+    };
+};
+// == !! END IDL TEMPLATE !! ===
+
+"""
 import sys
 import os
 import json

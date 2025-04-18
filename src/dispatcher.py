@@ -1,4 +1,51 @@
-from typing import Dict, List, Any, Optional
+"""
+// === IDL-CREATION-GUIDLINES === // Object Oriented: Use OO Design. // Design Patterns: Use Factory, Builder and Strategy patterns where possible // ** Complex parameters JSON : Use JSON where primitive params are not possible and document them in IDL like "Expected JSON format: { "key1": "type1", "key2": "type2" }" // == !! BEGIN IDL TEMPLATE !! === // === CODE-CREATION-RULES === // Strict Typing: Always use strict typing. Avoid using ambiguous or variant types. // Primitive Types: Favor the use of primitive types wherever possible. // Portability Mandate: Python code must be written with the intent to be ported to Java, Go, and JavaScript. Consider language-agnostic logic and avoid platform-specific dependencies. // No Side Effects: Functions should be pure, meaning their output should only be determined by their input without any observable side effects. // Testability: Ensure that every function and method is easily testable. Avoid tight coupling and consider dependency injection where applicable. // Documentation: Every function, method, and module should be thoroughly documented, especially if there's a nuance that's not directly evident from its signature. // Contractual Obligation: The definitions provided in this IDL are a strict contract. All specified interfaces, methods, and constraints must be implemented precisely as defined without deviation. // =======================
+
+@module DispatcherModule
+// Dependencies: BaseHandler, TaskSystem, SubtaskRequest, Environment, TaskError
+// Description: Routes programmatic task requests (/task command) to the appropriate
+//              executor, either a direct tool registered in the Handler or a template
+//              workflow managed by the TaskSystem. Handles parameter parsing and
+//              result formatting.
+module DispatcherModule {
+
+    // Interface representing the dispatcher functionality (via a function).
+    interface Dispatcher {
+        // @depends_on(BaseHandler, TaskSystem) // Dependencies passed as arguments
+
+        // Routes a programmatic task request to the appropriate executor.
+        // Preconditions:
+        // - identifier is a string (task type:subtype or direct tool name).
+        // - params is a dictionary of task parameters.
+        // - flags is a dictionary of boolean flags (e.g., --use-history).
+        // - handler_instance is a valid BaseHandler instance.
+        // - task_system_instance is a valid TaskSystem instance.
+        // - optional_history_str is an optional string of recent conversation history.
+        // Expected JSON format for params: { "param1": "value1", "file_context": "optional list<string> or JSON string array", ... }
+        // Expected JSON format for flags: { "use-history": "boolean", ... }
+        // Postconditions:
+        // - Parses file_context parameter if present.
+        // - Determines target: Checks TaskSystem templates first, then Handler direct tools.
+        // - If template: Creates SubtaskRequest, calls TaskSystem.execute_subtask_directly.
+        // - If direct tool: Calls the tool function registered in the handler.
+        // - Returns a TaskResult dictionary representing the outcome. Populates 'notes' with execution path and context source info.
+        // - Handles TaskError and unexpected exceptions, returning formatted error results.
+        // Expected JSON format for return value: { "status": "string", "content": "Any", "notes": { "execution_path": "string", "context_source": "string", "context_files_count": "int", ... } }
+        dict<string, Any> execute_programmatic_task(
+            string identifier,
+            dict<string, Any> params,
+            dict<string, boolean> flags,
+            BaseHandler handler_instance,
+            TaskSystem task_system_instance,
+            optional string optional_history_str
+        );
+
+        // Additional functions... (None in this module)
+    };
+};
+// == !! END IDL TEMPLATE !! ===
+
+"""
 import logging
 import json
 

@@ -1,4 +1,83 @@
-"""Evaluator component implementation.
+"""
+// === IDL-CREATION-GUIDLINES === // Object Oriented: Use OO Design. // Design Patterns: Use Factory, Builder and Strategy patterns where possible // ** Complex parameters JSON : Use JSON where primitive params are not possible and document them in IDL like "Expected JSON format: { "key1": "type1", "key2": "type2" }" // == !! BEGIN IDL TEMPLATE !! === // === CODE-CREATION-RULES === // Strict Typing: Always use strict typing. Avoid using ambiguous or variant types. // Primitive Types: Favor the use of primitive types wherever possible. // Portability Mandate: Python code must be written with the intent to be ported to Java, Go, and JavaScript. Consider language-agnostic logic and avoid platform-specific dependencies. // No Side Effects: Functions should be pure, meaning their output should only be determined by their input without any observable side effects. // Testability: Ensure that every function and method is easily testable. Avoid tight coupling and consider dependency injection where applicable. // Documentation: Every function, method, and module should be thoroughly documented, especially if there's a nuance that's not directly evident from its signature. // Contractual Obligation: The definitions provided in this IDL are a strict contract. All specified interfaces, methods, and constraints must be implemented precisely as defined without deviation. // =======================
+
+@module EvaluatorModule
+// Dependencies: TemplateLookupInterface (TaskSystem), BaseHandler, ArgumentNode, FunctionCallNode, Environment, TaskError
+// Description: Evaluates Abstract Syntax Tree (AST) nodes, focusing on function calls.
+//              It resolves arguments, binds them to parameters, and orchestrates template
+//              execution via the TemplateLookupInterface (TaskSystem). Handles the
+//              Director-Evaluator loop execution logic.
+module EvaluatorModule {
+
+    // Interface for the Evaluator component.
+    interface Evaluator extends EvaluatorInterface {
+        // @depends_on(TemplateLookupInterface) // Requires TaskSystem to provide templates
+
+        // Constructor
+        // Preconditions:
+        // - template_provider is an instance implementing TemplateLookupInterface (e.g., TaskSystem).
+        // Postconditions:
+        // - Evaluator is initialized with the template provider dependency.
+        void __init__(TemplateLookupInterface template_provider);
+
+        // Evaluates an AST node within a given environment.
+        // Preconditions:
+        // - node is an AST node (e.g., FunctionCallNode, DirectorEvaluatorLoopNode).
+        // - env is a valid Environment instance.
+        // Postconditions:
+        // - If the node is a recognized type (call, director_evaluator_loop), delegates to the specific evaluation method.
+        // - Otherwise, returns the node itself (e.g., for literals).
+        // - Returns the evaluation result (can be Any type, often a TaskResult dict).
+        // Raises:
+        // - TaskError if evaluation fails.
+        Any evaluate(Any node, Environment env);
+
+        // Evaluates a function call AST node. Canonical path for all function calls.
+        // Preconditions:
+        // - call_node is a valid FunctionCallNode.
+        // - env is a valid Environment instance.
+        // - template is an optional pre-fetched template dictionary.
+        // Postconditions:
+        // - Looks up the template if not provided.
+        // - Evaluates arguments in the caller's environment.
+        // - Binds arguments to template parameters.
+        // - Executes the template via the template_provider's execute_task method.
+        // - Returns the TaskResult dictionary from the template execution.
+        // Raises:
+        // - TaskError if template not found, argument binding fails, or execution fails.
+        // Expected JSON format for return value: { "status": "string", "content": "Any", "notes": { ... } }
+        dict<string, Any> evaluateFunctionCall(FunctionCallNode call_node, Environment env, optional dict<string, Any> template);
+
+        // Executes a subtask template with appropriate environment isolation.
+        // Preconditions:
+        // - inputs is a dictionary of subtask parameters.
+        // - template is the subtask template dictionary.
+        // - parent_env is an optional Environment instance from the caller.
+        // - isolate is a boolean indicating whether the subtask environment should inherit from the parent.
+        // Expected JSON format for inputs: { "param1": "value1", ... }
+        // Expected JSON format for template: { "name": "string", ... }
+        // Postconditions:
+        // - Creates a new environment for the subtask (isolated or extended).
+        // - Executes the subtask template via `_execute_template`.
+        // - Returns the TaskResult dictionary from the subtask execution.
+        // Expected JSON format for return value: { "status": "string", "content": "Any", "notes": { ... } }
+        dict<string, Any> execute_subtask(dict<string, Any> inputs, dict<string, Any> template, optional Environment parent_env, boolean isolate);
+
+        // Additional methods... (Private/protected methods like _evaluate_arguments, _execute_template are not part of the public IDL)
+    };
+
+    // Interface defining the contract for AST evaluation.
+    interface EvaluatorInterface {
+        // Evaluates a function call AST node.
+        // Preconditions: See Evaluator.evaluateFunctionCall
+        // Postconditions: See Evaluator.evaluateFunctionCall
+        // Raises: TaskError
+        dict<string, Any> evaluateFunctionCall(FunctionCallNode call_node, Environment env, optional dict<string, Any> template);
+    };
+};
+// == !! END IDL TEMPLATE !! ===
+
+"""
 
 This module contains the Evaluator class, which is responsible for
 evaluating AST nodes, particularly function calls.
