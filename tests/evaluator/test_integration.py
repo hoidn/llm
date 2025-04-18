@@ -52,8 +52,8 @@ class TestInputOutputBinding:
         result1 = evaluator.evaluateFunctionCall(call1, env)
         
         assert "parsedContent" in result1.notes
-        assert isinstance(result1["parsedContent"], list)
-        assert len(result1["parsedContent"]) == 2
+        assert isinstance(result1.parsedContent, list)
+        assert len(result1.parsedContent) == 2
         
         # Now test a function call using the result of the previous call
         # First store the result in the environment (since we're not implementing automatic storage)
@@ -67,5 +67,5 @@ class TestInputOutputBinding:
         result2 = evaluator.evaluateFunctionCall(call2, env)
         
         # Verify the result
-        assert "parsedContent" in result2
-        assert result2["parsedContent"]["id"] == 1
+        assert hasattr(result2, "parsedContent")
+        assert result2.parsedContent["id"] == 1

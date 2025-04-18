@@ -368,7 +368,7 @@ class TestDirectorEvaluatorLoop:
             assert len(result.notes["iteration_history"]) == 1  # Should terminate after first iteration
             assert result.notes["iterations_completed"] == 1
             assert "final_evaluation" in result.notes
-            assert result.notes["final_evaluation"]["notes"]["success"] is True
+            assert result.notes["final_evaluation"].notes["success"] is True
             
             # Verify evaluate was called for each node
             assert mock_evaluate.call_count == 3  # director, script, evaluator
@@ -427,7 +427,7 @@ class TestDirectorEvaluatorLoop:
             assert len(result.notes["iteration_history"]) == 1
             assert result.notes["iterations_completed"] == 1
             assert "final_evaluation" in result.notes
-            assert result.notes["final_evaluation"]["notes"]["success"] is False
+            assert result.notes["final_evaluation"].notes["success"] is False
             assert "max_iterations_reached" in result.notes["termination_reason"]
     
     def test_evaluator_step_invalid_json(self, evaluator, mock_loop_node, base_environment):
@@ -479,7 +479,7 @@ class TestDirectorEvaluatorLoop:
             assert result.notes["iterations_completed"] == 1
             assert "final_evaluation" in result.notes
             # Should default to failure when success field is missing
-            assert result.notes["final_evaluation"]["notes"]["success"] is False
+            assert result.notes["final_evaluation"].notes["success"] is False
     
     def test_evaluator_step_task_failure(self, evaluator, mock_loop_node, base_environment):
         """Test D-E loop when evaluator step returns a task failure."""
@@ -592,7 +592,7 @@ class TestDirectorEvaluatorLoop:
             assert "iteration_history" in result.notes
             assert len(result.notes["iteration_history"]) == 2  # Should succeed on second iteration
             assert result.notes["iterations_completed"] == 2
-            assert result.notes["final_evaluation"]["notes"]["success"] is True
+            assert result.notes["final_evaluation"].notes["success"] is True
             
             # Verify evaluate was called the expected number of times
             assert mock_evaluate.call_count == 6  # 2 iterations * 3 nodes
@@ -626,9 +626,9 @@ class TestDirectorEvaluatorLoop:
         result = evaluator._execute_template(template, env)
         
         # Verify parsed content
-        assert "parsedContent" in result
-        assert result["parsedContent"]["key"] == "value"
-        assert result["parsedContent"]["items"] == [1, 2, 3]
+        assert hasattr(result, "parsedContent")
+        assert result.parsedContent["key"] == "value"
+        assert result.parsedContent["items"] == [1, 2, 3]
         
         # Test with invalid JSON
         from system.types import TaskResult
@@ -641,7 +641,7 @@ class TestDirectorEvaluatorLoop:
         result = evaluator._execute_template(template, env)
         
         # Verify error handling
-        assert "parsedContent" not in result
-        assert "notes" in result
-        assert "parseError" in result["notes"]
-        assert "Failed to parse output as JSON" in result["notes"]["parseError"]
+        assert not hasattr(result, "parsedContent")
+        assert hasattr(result, "notes")
+        assert "parseError" in result.notes
+        assert "Failed to parse output as JSON" in result.notes["parseError"]
