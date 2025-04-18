@@ -1326,7 +1326,14 @@ class TaskSystem(TemplateLookupInterface):
             
                 # Extract file paths if available
                 if hasattr(context_result, 'matches'):
-                    file_paths = [match[0] for match in context_result.matches]
+                    file_paths = []
+                    for match in context_result.matches:
+                        if hasattr(match, 'path'):
+                            # MatchTuple object
+                            file_paths.append(match.path)
+                        elif isinstance(match, (tuple, list)) and len(match) > 0:
+                            # Legacy tuple format
+                            file_paths.append(match[0])
                 
                     # Create file context if paths are available
                     if file_paths:
