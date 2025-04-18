@@ -131,6 +131,7 @@ class TestTemplateIntegration:
         task_system.register_template(test_template)
         
         # Mock _execute_associative_matching for the test
+        from system.types import TaskResult
         task_system._execute_associative_matching = MagicMock(return_value=TaskResult(
             status="COMPLETE",
             content='[]',
