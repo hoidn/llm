@@ -34,11 +34,12 @@ class TestDispatcher:
         task_system.template_index = {}
         # Mock the methods used by the dispatcher
         task_system.find_template = MagicMock(return_value=None) # Default: template not found
-        task_system.execute_subtask_directly = MagicMock(return_value={
-            "status": "COMPLETE",
-            "content": "Mock Subtask Result",
-            "notes": {"execution_path": "execute_subtask_directly (Phase 1 Stub)"}
-        })
+        from system.types import TaskResult
+        task_system.execute_subtask_directly = MagicMock(return_value=TaskResult(
+            status="COMPLETE",
+            content="Mock Subtask Result",
+            notes={"execution_path": "execute_subtask_directly (Phase 1 Stub)"}
+        ))
         return task_system
 
     def test_routing_to_direct_tool(self, mock_handler, mock_task_system):
