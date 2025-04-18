@@ -155,11 +155,20 @@ def execute_template(inputs: Dict[str, Any], memory_system, handler) -> List[Dic
     logging.debug("Executing associative matching template via handler.model_provider (Handler type: %s)", type(handler).__name__)
 
     # --- 1. Extract resolved inputs ---
-    query = inputs.get("query", "")
-    metadata_str = inputs.get("metadata", "")
-    additional_context = inputs.get("additional_context", {})
-    max_results = inputs.get("max_results", 20)
-    inherited_context = inputs.get("inherited_context", "")
+    # Handle the case where inputs might be a string instead of a dictionary
+    if isinstance(inputs, str):
+        query = inputs
+        metadata_str = ""
+        additional_context = {}
+        max_results = 20
+        inherited_context = ""
+    else:
+        # Normal dictionary access
+        query = inputs.get("query", "")
+        metadata_str = inputs.get("metadata", "")
+        additional_context = inputs.get("additional_context", {})
+        max_results = inputs.get("max_results", 20)
+        inherited_context = inputs.get("inherited_context", "")
 
     if not query:
         logging.warning("No query provided for associative matching.")

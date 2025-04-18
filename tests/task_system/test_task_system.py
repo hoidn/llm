@@ -401,10 +401,10 @@ def test_exec_direct_context_from_request(task_system_for_direct, base_env):
 
     result = task_system_for_direct.execute_subtask_directly(request, base_env)
 
-    assert result["status"] == "COMPLETE" # Phase 1 stub returns COMPLETE
-    assert result["notes"]["context_source"] == "explicit_request"
-    assert result["notes"]["context_files_count"] == 2
-    assert result["notes"]["determined_context_files"] == request_files
+    assert result.status == "COMPLETE" # Phase 1 stub returns COMPLETE
+    assert result.notes["context_source"] == "explicit_request"
+    assert result.notes["context_files_count"] == 2
+    assert result.notes["determined_context_files"] == request_files
 
 def test_exec_direct_context_from_template_literal(task_system_for_direct, base_env):
     """Test context determination using literal file_paths from the template."""
@@ -415,10 +415,10 @@ def test_exec_direct_context_from_template_literal(task_system_for_direct, base_
 
     result = task_system_for_direct.execute_subtask_directly(request, base_env)
 
-    assert result["status"] == "COMPLETE"
-    assert result["notes"]["context_source"] == "template_literal"
-    assert result["notes"]["context_files_count"] == 2
-    assert result["notes"]["determined_context_files"] == template_files
+    assert result.status == "COMPLETE"
+    assert result.notes["context_source"] == "template_literal"
+    assert result.notes["context_files_count"] == 2
+    assert result.notes["determined_context_files"] == template_files
 
 def test_exec_direct_context_request_overrides_template(task_system_for_direct, base_env):
     """Test that request file_paths override template literal file_paths."""
@@ -430,10 +430,10 @@ def test_exec_direct_context_request_overrides_template(task_system_for_direct, 
 
     result = task_system_for_direct.execute_subtask_directly(request, base_env)
 
-    assert result["status"] == "COMPLETE"
-    assert result["notes"]["context_source"] == "explicit_request" # Request takes precedence
-    assert result["notes"]["context_files_count"] == 2
-    assert result["notes"]["determined_context_files"] == request_files
+    assert result.status == "COMPLETE"
+    assert result.notes["context_source"] == "explicit_request" # Request takes precedence
+    assert result.notes["context_files_count"] == 2
+    assert result.notes["determined_context_files"] == request_files
 
 # --- Tests for _determine_context_for_direct_execution ---
 
@@ -557,12 +557,12 @@ def test_exec_direct_context_from_template_command_success(task_system_for_direc
 
     result = task_system_for_direct.execute_subtask_directly(request, base_env)
 
-    assert result["status"] == "COMPLETE"
+    assert result.status == "COMPLETE"
     mock_handler.execute_file_path_command.assert_called_once_with(command)
-    assert result["notes"]["context_source"] == "template_command"
-    assert result["notes"]["context_files_count"] == 1
-    assert result["notes"]["determined_context_files"] == expected_cmd_files
-    assert "context_error" not in result["notes"]
+    assert result.notes["context_source"] == "template_command"
+    assert result.notes["context_files_count"] == 1
+    assert result.notes["determined_context_files"] == expected_cmd_files
+    assert "context_error" not in result.notes
 
 def test_exec_direct_context_from_template_command_error(task_system_for_direct, base_env):
     """Test context determination using a command source from the template (error)."""
@@ -583,13 +583,13 @@ def test_exec_direct_context_from_template_command_error(task_system_for_direct,
 
     result = task_system_for_direct.execute_subtask_directly(request, base_env)
 
-    assert result["status"] == "COMPLETE" # Phase 1 stub still completes
+    assert result.status == "COMPLETE" # Phase 1 stub still completes
     mock_handler.execute_file_path_command.assert_called_once_with(command)
-    assert result["notes"]["context_source"] == "template_command_error"
-    assert result["notes"]["context_files_count"] == 0
-    assert result["notes"]["determined_context_files"] == []
-    assert "context_error" in result["notes"]
-    assert error_msg in result["notes"]["context_error"]
+    assert result.notes["context_source"] == "template_command_error"
+    assert result.notes["context_files_count"] == 0
+    assert result.notes["determined_context_files"] == []
+    assert "context_error" in result.notes
+    assert error_msg in result.notes["context_error"]
 
 def test_exec_direct_context_from_template_command_no_handler(task_system_for_direct, base_env):
     """Test command source when handler is missing."""
@@ -608,11 +608,11 @@ def test_exec_direct_context_from_template_command_no_handler(task_system_for_di
 
     result = task_system_for_direct.execute_subtask_directly(request, base_env)
 
-    assert result["status"] == "COMPLETE" # Phase 1 stub still completes
-    assert result["notes"]["context_source"] == "template_command_error"
-    assert result["notes"]["context_files_count"] == 0
-    assert "context_error" in result["notes"]
-    assert "Handler or method not available" in result["notes"]["context_error"]
+    assert result.status == "COMPLETE" # Phase 1 stub still completes
+    assert result.notes["context_source"] == "template_command_error"
+    assert result.notes["context_files_count"] == 0
+    assert "context_error" in result.notes
+    assert "Handler or method not available" in result.notes["context_error"]
 
 
 def test_exec_direct_no_explicit_context(task_system_for_direct, base_env):
@@ -623,10 +623,10 @@ def test_exec_direct_no_explicit_context(task_system_for_direct, base_env):
 
     result = task_system_for_direct.execute_subtask_directly(request, base_env)
 
-    assert result["status"] == "COMPLETE"
-    assert result["notes"]["context_source"] == "none"
-    assert result["notes"]["context_files_count"] == 0
-    assert result["notes"]["determined_context_files"] == []
+    assert result.status == "COMPLETE"
+    assert result.notes["context_source"] == "none"
+    assert result.notes["context_files_count"] == 0
+    assert result.notes["determined_context_files"] == []
 
 def test_exec_direct_automatic_lookup_deferred(task_system_for_direct, base_env):
     """Test that automatic context lookup is deferred in Phase 1."""
@@ -644,8 +644,8 @@ def test_exec_direct_automatic_lookup_deferred(task_system_for_direct, base_env)
 
     result = task_system_for_direct.execute_subtask_directly(request, base_env)
 
-    assert result["status"] == "COMPLETE"
+    assert result.status == "COMPLETE"
     # Verify the automatic lookup method was NOT called
     task_system_for_direct.memory_system.get_relevant_context_for.assert_not_called()
-    assert result["notes"]["context_source"] == "deferred_lookup" # Check source indicates deferral
-    assert result["notes"]["context_files_count"] == 0
+    assert result.notes["context_source"] == "deferred_lookup" # Check source indicates deferral
+    assert result.notes["context_files_count"] == 0
