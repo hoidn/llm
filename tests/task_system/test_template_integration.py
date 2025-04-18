@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 from task_system.task_system import TaskSystem
 from task_system.templates.associative_matching import ASSOCIATIVE_MATCHING_TEMPLATE, execute_template
 from task_system.template_utils import resolve_function_calls as original_resolve_function_calls
+from src.system.types import TaskResult
 
 def patched_resolve_function_calls(text, task_system, env, **kwargs):
     return original_resolve_function_calls(text, task_system, env)
@@ -132,6 +133,7 @@ class TestTemplateIntegration:
         )
         
         # Verify model selection
-        assert hasattr(result, "notes")
+        assert isinstance(result, TaskResult)
+        assert result.notes is not None
         assert "selected_model" in result.notes
-        assert result.notes["selected_model"] == "llama-3"  # Second fallback
+        assert result.notes.get("selected_model") == "llama-3"  # Second fallback

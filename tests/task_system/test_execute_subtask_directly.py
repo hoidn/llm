@@ -9,9 +9,7 @@ from src.task_system.task_system import TaskSystem
 from src.task_system.ast_nodes import SubtaskRequest
 from src.task_system.template_utils import Environment
 from src.system.errors import TaskError, create_task_failure, INPUT_VALIDATION_FAILURE, UNEXPECTED_ERROR
-
-# Define TaskResult type hint
-TaskResult = Dict[str, Any]
+from src.system.types import TaskResult
 
 
 class TestExecuteSubtaskDirectly:
@@ -88,7 +86,7 @@ class TestExecuteSubtaskDirectly:
         # Assert: Check for failure due to template not found
         assert result.status == "FAILED"
         assert "Template not found" in result.content
-        assert result.notes["error"]["reason"] == INPUT_VALIDATION_FAILURE
+        assert result.notes.get("error", {}).get("reason") == INPUT_VALIDATION_FAILURE
 
     # Patch Environment where it's imported in task_system.py
     @patch('src.task_system.task_system.Environment')
@@ -132,9 +130,9 @@ class TestExecuteSubtaskDirectly:
 
         # Assert: Check notes in the mock success result
         assert result.status == "COMPLETE" # Mock status
-        assert "Using 2 explicit files" in result.content # Check mock content
-        assert result.notes["explicit_paths_used"] is True
-        assert result.notes["context_files_count"] == 2
+        assert result.notes.get("context_source") == "explicit_request"
+        assert result.notes.get("context_files_count") == 2
+        assert result.notes.get("determined_context_files") == ["/path/req1.py", "/path/req2.py"]
         # Evaluator is not called in Phase 1, so no call assertion needed
 
     def test_context_explicit_template_paths(self, task_system_instance, sample_request, sample_template, mock_evaluator):
@@ -152,9 +150,9 @@ class TestExecuteSubtaskDirectly:
 
         # Assert: Check notes in the mock success result
         assert result.status == "COMPLETE"
-        assert "Using 1 explicit files" in result.content
-        assert result.notes["explicit_paths_used"] is True
-        assert result.notes["context_files_count"] == 1
+        assert result.notes.get("context_source") == "template_literal"
+        assert result.notes.get("context_files_count") == 1
+        assert result.notes.get("determined_context_files") == ["/path/tmpl1.py"]
         # Evaluator is not called in Phase 1
 
     def test_context_no_explicit_paths_phase1(self, task_system_instance, sample_request, sample_template, mock_evaluator):
@@ -178,9 +176,9 @@ class TestExecuteSubtaskDirectly:
 
         # Assert: Check notes in the mock success result
         assert result.status == "COMPLETE"
-        assert "No explicit file context provided" in result.content
-        assert result.notes["explicit_paths_used"] is False
-        assert result.notes["context_files_count"] == 0
+        assert result.notes.get("context_source") == "none"
+        assert result.notes.get("context_files_count") == 0
+        assert result.notes.get("determined_context_files") == []
         # Crucially, assert that MemorySystem was NOT called for context (it isn't used here)
         # task_system_instance.memory_system.get_relevant_context_for.assert_not_called()
         # Evaluator is not called in Phase 1
@@ -207,8 +205,8 @@ class TestExecuteSubtaskDirectly:
         # Assert: Check for formatted unexpected error
         assert result.status == "FAILED"
         assert "An unexpected error occurred during direct execution" in result.content
-        assert result.notes["error"]["reason"] == UNEXPECTED_ERROR
-        assert result.notes["error"]["details"]["exception_type"] == "TypeError"
+        assert result.notes.get("error", {}).get("reason") == UNEXPECTED_ERROR
+        assert result.notes.get("error", {}).get("details", {}).get("exception_type") == "TypeError"
 
     # Note: Testing evaluator failure requires Phase 2+ when the mock execution is replaced.
     # def test_error_handling_evaluator_fails(self, task_system_instance, sample_request, sample_template, mock_evaluator):

@@ -8,6 +8,7 @@ from task_system.template_utils import resolve_function_calls as original_resolv
 from src.handler.base_handler import BaseHandler
 from src.task_system.ast_nodes import SubtaskRequest
 from src.system.errors import INPUT_VALIDATION_FAILURE
+from src.system.types import TaskResult
 
 
 def patched_resolve_function_calls(text, task_system, env, **kwargs):
@@ -128,7 +129,7 @@ class TestTaskSystemExecution:
         task_system.register_template(template)
         
         # Mock the _execute_associative_matching method
-        # Return a TaskResult object instead of a dictionary
+        # Return a TaskResult object
         task_system._execute_associative_matching = MagicMock(return_value=TaskResult(
             status="COMPLETE",
             content="[]",
@@ -237,10 +238,11 @@ class TestTaskSystemExecution:
         task_system.register_template(template)
         
         # Mock the _execute_associative_matching method
-        task_system._execute_associative_matching = MagicMock(return_value={
-            "status": "COMPLETE",
-            "content": "Test result"
-        })
+        task_system._execute_associative_matching = MagicMock(return_value=TaskResult(
+            status="COMPLETE",
+            content="Test result",
+            notes={}
+        ))
         
         # Execute task with inputs that will be used for variable resolution
         task_system.execute_task(
@@ -296,7 +298,7 @@ class TestTaskSystemExecution:
         task_system.register_template(template)
         
         # Mock the _execute_associative_matching method
-        # Return a TaskResult object instead of a dictionary
+        # Return a TaskResult object
         task_system._execute_associative_matching = MagicMock(return_value=TaskResult(
             status="COMPLETE",
             content="[]",
@@ -312,7 +314,7 @@ class TestTaskSystemExecution:
         )
         
         assert result.status == "COMPLETE"
-        assert result.notes["selected_model"] == "gpt-4"
+        assert result.notes.get("selected_model") == "gpt-4"
 
     def test_execute_unknown_task(self):
         """Test executing an unknown task type."""
@@ -321,8 +323,8 @@ class TestTaskSystemExecution:
         # Execute unknown task
         result = task_system.execute_task("unknown", "task", {})
         
-        assert result["status"] == "FAILED"
-        assert "Unknown task type" in result["content"]
+        assert result.status == "FAILED"
+        assert "Unknown task type" in result.content
         
     def test_execute_task_with_context_relevance(self):
         """Test execute_task with context relevance settings."""
@@ -368,7 +370,7 @@ class TestTaskSystemExecution:
         assert args[0].context_relevance["unimportant_param"] is False
         
         # Verify result is successful
-        assert result["status"] == "COMPLETE"
+        assert result.status == "COMPLETE"
 
 
 # --- Tests for execute_subtask_directly (Phase 1) ---
