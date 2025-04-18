@@ -12,7 +12,7 @@ from executors.aider_executors import execute_aider_automatic, execute_aider_int
 from task_system.templates.aider_templates import register_aider_templates
 from task_system.templates.debug_templates import register_debug_templates
 # Import system executors
-from executors.system_executors import execute_get_context, execute_read_files
+from executors.system_executors import execute_get_context, execute_read_files, execute_run_script
 
 class Application:
     """
@@ -233,8 +233,15 @@ class Application:
                 lambda params: execute_read_files(params, self.passthrough_handler.file_manager)
             )
 
-            if reg_gc and reg_rf:
-                logging.info("System tools 'system:get_context' and 'system:read_files' registered successfully.")
+            # system:run_script
+            # Uses lambda to pass the handler's file_manager instance
+            reg_rs = self.passthrough_handler.registerDirectTool(
+                "system:run_script",
+                lambda params: execute_run_script(params)
+            )
+
+            if reg_gc and reg_rf and reg_rs:
+                logging.info("System tools 'system:get_context', 'system:read_files', and 'system:run_script' registered successfully.")
             else:
                 logging.warning("Failed to register one or more system tools (check handler capabilities).")
 
