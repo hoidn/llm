@@ -9,11 +9,7 @@ import logging
 from pathlib import Path
 from typing import Dict, Any
 
-# Import src.main explicitly to enable patching with patch.object
-try:
-    import src.main
-except ImportError as e:
-    pytest.skip(f"Critical Error: Cannot import src.main - {e}", allow_module_level=True)
+# We'll import src.main inside the fixture to handle errors properly
 
 # Configure logging for this test file
 logging.basicConfig(level=logging.DEBUG, 
@@ -97,28 +93,45 @@ def app_instance(test_files, mocker):
     # e.g., export OPENAI_API_KEY=sk-... or ANTHROPIC_API_KEY=...
     # Mock components that should NOT make external calls unless intended
     logger.info("Patching template registration functions using patch.object...")
-    # Use patch.object now that src.main is imported
-    mocker.patch.object(src.main, 'register_aider_templates', return_value=None)
-    # Use the correct import path as used in src/main.py
-    mocker.patch('task_system.templates.associative_matching.register_template')
-    # mocker.patch.object(src.main, 'register_debug_templates') # Keep this if testing template loading
+    try:
+        # Import modules NEEDED for patching targets *inside* the fixture
+        # Use the correct paths from the project root (src. ...)
+        from src.task_system.templates import aider_templates
+        from src.task_system.templates import associative_matching
+        from src.task_system.templates import debug_templates
+
+        # Patch using patch.object targeting the DEFINITION module
+        mock_register_aider = mocker.patch.object(
+            aider_templates, 'register_aider_templates', return_value=None, autospec=True
+        )
+        mock_register_assoc = mocker.patch.object(
+            associative_matching, 'register_template', return_value=None, autospec=True
+        )
+        mock_register_debug = mocker.patch.object(
+            debug_templates, 'register_debug_templates', return_value=None, autospec=True
+        )
+        logger.info("Successfully patched template registration functions.")
+    except ImportError as e:
+        # If the template modules themselves can't be imported, skip test.
+        logger.error(f"Failed to import template modules for patching: {e}", exc_info=True)
+        pytest.skip(f"[SKIP 115] Skipping test: Required template modules not found - {e}")
 
     # --- Crucially, import the *real* components needed for the loop ---
     # This assumes your Application structure allows selective component use/mocking
     # You might need to adjust based on how Application.__init__ works
+    # Import Application AFTER patching
     try:
-        logger.info("Attempting required imports for Application...")
+        logger.info("Attempting to import Application class...")
+        # Import Application class - usually found in src/main.py
         from src.main import Application
         from src.task_system.task_system import TaskSystem
         from src.evaluator.evaluator import Evaluator
         from src.handler.passthrough_handler import PassthroughHandler # Needed for tools like run_script
         from src.memory.memory_system import MemorySystem
-        # Import bridge only if needed and intended for real calls/mocking specific methods
-        # from src.aider_bridge.bridge import AiderBridge
-        logger.info("Required imports successful.")
+        logger.info("Application class imported successfully.")
     except ImportError as e:
-        logger.error(f"ImportError during app_instance setup: {e}", exc_info=True)
-        pytest.skip(f"[SKIP 103] Skipping integration test due to missing component: {e}")
+        logger.error(f"Failed to import Application after patching: {e}", exc_info=True)
+        pytest.skip(f"[SKIP 127] Skipping test: Cannot import Application - {e}")
 
 
     logger.info(f"Changing directory to: {test_files['dir']}")
@@ -133,6 +146,12 @@ def app_instance(test_files, mocker):
         logger.info("Application instantiated successfully.")
         # Log details about the created app instance
         logger.debug(f"App instance attributes: {list(app.__dict__.keys())}")
+        
+        # Debug log to show components (optional but helpful)
+        logging.debug(f"  App instance has task_system: {hasattr(app, 'task_system')}")
+        logging.debug(f"  App instance has memory_system: {hasattr(app, 'memory_system')}")
+        logging.debug(f"  App instance has passthrough_handler: {hasattr(app, 'passthrough_handler')}")
+        logging.debug(f"  App instance has aider_bridge: {hasattr(app, 'aider_bridge')}")
 
         # Ensure evaluator is linked if not done in App init
         if not hasattr(app.task_system, 'evaluator'):
@@ -160,13 +179,16 @@ def app_instance(test_files, mocker):
 
     except Exception as e:
         logger.exception("!!! Exception during Application instantiation !!!")
-        pytest.skip(f"[SKIP 140] Failed to instantiate Application: {e}")
+        # Restore CWD before raising/skipping
+        os.chdir(original_cwd)
+        pytest.fail(f"Failed to instantiate Application: {e}") # Fail explicitly
 
     logger.info("Yielding app instance to test...")
     yield app # Provide the app instance to the test
 
     logger.info("Finished app_instance fixture, cleaning up...")
     os.chdir(original_cwd) # Change back directory
+    logger.info(f"Restored CWD to: {original_cwd}")
 
 # ---- Mock Fixtures ----
 
