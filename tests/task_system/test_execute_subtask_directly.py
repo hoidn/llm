@@ -120,9 +120,12 @@ class TestExecuteSubtaskDirectly:
         task_system_instance.find_template.return_value = sample_template
         sample_request.file_paths = ["/path/req1.py", "/path/req2.py"]
         # No need to mock evaluator call for Phase 1 result check
+        
+        # Create base environment
+        base_env = Environment({})
 
-        # Act: Call the method
-        result = task_system_instance.execute_subtask_directly(sample_request)
+        # Act: Call the method with environment
+        result = task_system_instance.execute_subtask_directly(sample_request, base_env)
 
         # Assert: Check notes in the mock success result
         assert result.status == "COMPLETE" # Mock status
@@ -137,9 +140,12 @@ class TestExecuteSubtaskDirectly:
         sample_template["file_paths"] = ["/path/tmpl1.py"] # Paths defined in template
         task_system_instance.find_template.return_value = sample_template
         # No need to mock evaluator call for Phase 1 result check
+        
+        # Create base environment
+        base_env = Environment({})
 
-        # Act: Call the method
-        result = task_system_instance.execute_subtask_directly(sample_request)
+        # Act: Call the method with environment
+        result = task_system_instance.execute_subtask_directly(sample_request, base_env)
 
         # Assert: Check notes in the mock success result
         assert result.status == "COMPLETE"
@@ -160,9 +166,12 @@ class TestExecuteSubtaskDirectly:
         # TaskSystem doesn't directly use MemorySystem in this method in Phase 1
         # task_system_instance.memory_system = MagicMock()
         # task_system_instance.memory_system.get_relevant_context_for = MagicMock()
+        
+        # Create base environment
+        base_env = Environment({})
 
-        # Act: Call the method
-        result = task_system_instance.execute_subtask_directly(sample_request)
+        # Act: Call the method with environment
+        result = task_system_instance.execute_subtask_directly(sample_request, base_env)
 
         # Assert: Check notes in the mock success result
         assert result.status == "COMPLETE"
@@ -185,9 +194,12 @@ class TestExecuteSubtaskDirectly:
         # Make Environment creation raise an unexpected error
         env_error = TypeError("Unexpected environment issue")
         mock_env_class.side_effect = env_error
+        
+        # Create base environment
+        base_env = Environment({})
 
-        # Act: Call the method
-        result = task_system_instance.execute_subtask_directly(sample_request)
+        # Act: Call the method with environment
+        result = task_system_instance.execute_subtask_directly(sample_request, base_env)
 
         # Assert: Check for formatted unexpected error
         assert result.status == "FAILED"
