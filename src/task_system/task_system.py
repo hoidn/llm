@@ -380,11 +380,13 @@ class TaskSystem(TemplateLookupInterface):
             template = self.find_template(identifier)
             if not template:
                 logging.error(f"Template not found for identifier: '{identifier}'")
-                return format_error_result(create_task_failure(
+                error_result = format_error_result(create_task_failure(
                     message=f"Template not found for identifier: '{identifier}'",
                     reason=INPUT_VALIDATION_FAILURE,
                     details={"identifier": identifier}
                 ))
+                # Ensure we return a TaskResult object
+                return TaskResult(**error_result)
             logging.debug(f"Found template: {template.get('name')}")
 
             # 2. Create a new top-level Environment for this execution
@@ -623,7 +625,9 @@ class TaskSystem(TemplateLookupInterface):
             if not template:
                 msg = f"Template not found for identifier: '{identifier}'"
                 logging.error(msg)
-                return format_error_result(create_task_failure(msg, INPUT_VALIDATION_FAILURE))
+                error_result = format_error_result(create_task_failure(msg, INPUT_VALIDATION_FAILURE))
+                # Ensure we return a TaskResult object
+                return TaskResult(**error_result)
             logging.debug(f"TaskSystem Stub: Found template: {template.get('name', identifier)}")
 
             # 2. Determine context using the helper method
