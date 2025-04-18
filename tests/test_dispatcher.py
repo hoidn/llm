@@ -10,8 +10,8 @@ from src.task_system.task_system import TaskSystem
 from src.task_system.ast_nodes import SubtaskRequest
 from src.system.errors import TaskError, create_task_failure, format_error_result, UNEXPECTED_ERROR, INPUT_VALIDATION_FAILURE, TASK_FAILURE # Import TASK_FAILURE
 
-# Define TaskResult type hint for clarity
-TaskResult = Dict[str, Any]
+# Import TaskResult model
+from src.system.types import TaskResult
 
 class TestDispatcher:
 
@@ -59,9 +59,9 @@ class TestDispatcher:
         mock_task_system.find_template.assert_called_once_with(identifier) # Should still check templates
         mock_tool_func.assert_called_once_with(params)
         mock_task_system.execute_subtask_directly.assert_not_called()
-        assert result["status"] == "COMPLETE"
-        assert result["content"] == "Direct Tool Output"
-        assert result["notes"]["execution_path"] == "direct_tool"
+        assert result.status == "COMPLETE"
+        assert result.content == "Direct Tool Output"
+        assert result.notes["execution_path"] == "direct_tool"
 
     def test_routing_to_subtask_template(self, mock_handler, mock_task_system):
         """Verify routing to a TaskSystem Template."""
@@ -99,7 +99,10 @@ class TestDispatcher:
         # Optional: Check class name string if needed, though attribute checks are often sufficient
         # assert request_arg.__class__.__name__ == 'SubtaskRequest'
         assert request_arg.history_context is None
-        assert result == expected_subtask_result
+        # Compare attributes instead of direct equality
+        assert result.status == expected_subtask_result["status"]
+        assert result.content == expected_subtask_result["content"]
+        assert result.notes.get("execution_path") == expected_subtask_result["notes"]["execution_path"]
 
     def test_template_overrides_direct_tool(self, mock_handler, mock_task_system):
         """Verify TaskSystem Template takes precedence over Handler Direct Tool."""
@@ -121,7 +124,7 @@ class TestDispatcher:
         mock_task_system.find_template.assert_called_once_with(identifier)
         mock_tool_func.assert_not_called() # Direct tool should NOT be called
         mock_task_system.execute_subtask_directly.assert_called_once() # Subtask path taken
-        assert result["notes"]["execution_path"] == "execute_subtask_directly (Phase 1 Stub)"
+        assert result.notes["execution_path"] == "execute_subtask_directly (Phase 1 Stub)"
 
     def test_identifier_not_found(self, mock_handler, mock_task_system):
         """Verify error when identifier is not found in either registry."""
@@ -140,9 +143,9 @@ class TestDispatcher:
         # Assert
         mock_task_system.find_template.assert_called_once_with(identifier)
         mock_task_system.execute_subtask_directly.assert_not_called()
-        assert result["status"] == "FAILED"
-        assert "not found" in result["content"]
-        assert result["notes"]["error"]["reason"] == INPUT_VALIDATION_FAILURE
+        assert result.status == "FAILED"
+        assert "not found" in result.content
+        assert result.notes["error"]["reason"] == INPUT_VALIDATION_FAILURE
 
     @pytest.mark.parametrize("file_context_param, expected_paths, expect_error", [
         ('["file1.py", "path/to/file2.txt"]', ["file1.py", "path/to/file2.txt"], False),
@@ -172,20 +175,20 @@ class TestDispatcher:
 
         # Assert
         if expect_error:
-            assert result["status"] == "FAILED"
+            assert result.status == "FAILED"
             # Check if the specific error message for invalid JSON/list content is present
             # This covers json.JSONDecodeError and the ValueError("Parsed JSON is not a list of strings.")
             # Also handles the invalid type case (e.g., int) which was previously asserted separately
             if isinstance(file_context_param, str):
-                 assert "Invalid file_context parameter: must be a JSON string array or already a list of strings." in result["content"]
+                 assert "Invalid file_context parameter: must be a JSON string array or already a list of strings." in result.content
             else:
                  # Handle the non-string, non-list invalid type case
-                 assert f"Invalid type for file_context parameter: {type(file_context_param).__name__}" in result["content"]
+                 assert f"Invalid type for file_context parameter: {type(file_context_param).__name__}" in result.content
 
-            assert result["notes"]["error"]["reason"] == INPUT_VALIDATION_FAILURE
+            assert result.notes["error"]["reason"] == INPUT_VALIDATION_FAILURE
             mock_task_system.execute_subtask_directly.assert_not_called()
         else:
-            assert result["status"] == "COMPLETE" # Stub returns complete
+            assert result.status == "COMPLETE" # Stub returns complete
             mock_task_system.execute_subtask_directly.assert_called_once()
             call_args, _ = mock_task_system.execute_subtask_directly.call_args
             request_arg = call_args[0]
@@ -214,7 +217,7 @@ class TestDispatcher:
         )
 
         # Assert
-        assert result["status"] == "COMPLETE" # Stub returns complete
+        assert result.status == "COMPLETE" # Stub returns complete
         mock_task_system.execute_subtask_directly.assert_called_once()
         call_args, _ = mock_task_system.execute_subtask_directly.call_args
         request_arg = call_args[0]
@@ -235,11 +238,11 @@ class TestDispatcher:
         )
 
         # Assert
-        assert result["status"] == "FAILED"
-        assert "An unexpected error occurred" in result["content"]
-        assert "Tool Error" in result["content"]
-        assert result["notes"]["error"]["reason"] == UNEXPECTED_ERROR
-        assert result["notes"]["error"]["details"]["exception_type"] == "ValueError"
+        assert result.status == "FAILED"
+        assert "An unexpected error occurred" in result.content
+        assert "Tool Error" in result.content
+        assert result.notes["error"]["reason"] == UNEXPECTED_ERROR
+        assert result.notes["error"]["details"]["exception_type"] == "ValueError"
 
     def test_subtask_exception_handling(self, mock_handler, mock_task_system):
         """Verify exception handling for Subtask execution (TaskError)."""
@@ -259,11 +262,11 @@ class TestDispatcher:
 
         # Assert
         # Keep the status check
-        assert result["status"] == "FAILED"
+        assert result.status == "FAILED"
 
         # Focus on the structured error information in notes
-        assert "error" in result["notes"], "Error details missing in notes"
-        error_details = result["notes"]["error"]
+        assert "error" in result.notes, "Error details missing in notes"
+        error_details = result.notes["error"]
 
         # Assert the WRAPPED error type and reason observed in the test output
         assert error_details.get("type") == TASK_FAILURE, "Wrapped error type should be TASK_FAILURE"
@@ -272,7 +275,7 @@ class TestDispatcher:
         # Assert that the ORIGINAL error message is still present somewhere
         original_message = "Subtask Failed"
         # The generic wrapper includes the original exception string
-        assert original_message in result["content"] or \
+        assert original_message in result.content or \
                original_message in error_details.get("message", "") or \
                original_message in error_details.get("details", {}).get("original_exception", ""), \
                f"Original error message '{original_message}' not found in wrapped result"
@@ -297,8 +300,8 @@ class TestDispatcher:
 
         # Assert
         # The dispatcher should catch the generic Exception and format it
-        assert result["status"] == "FAILED"
-        assert "An unexpected error occurred" in result["content"]
-        assert "Bad Type" in result["content"]
-        assert result["notes"]["error"]["reason"] == UNEXPECTED_ERROR
-        assert result["notes"]["error"]["details"]["exception_type"] == "TypeError"
+        assert result.status == "FAILED"
+        assert "An unexpected error occurred" in result.content
+        assert "Bad Type" in result.content
+        assert result.notes["error"]["reason"] == UNEXPECTED_ERROR
+        assert result.notes["error"]["details"]["exception_type"] == "TypeError"
