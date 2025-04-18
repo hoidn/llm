@@ -1,7 +1,7 @@
 """Task templates for specialized operations."""
 
-from task_system.templates.associative_matching import register_template as register_associative_matching
-from task_system.templates.function_examples import register_function_templates
+from .associative_matching import register_template as register_associative_matching
+from .function_examples import register_function_templates
 from .aider_templates import register_aider_templates
 from .debug_templates import register_debug_templates
 
