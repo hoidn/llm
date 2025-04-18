@@ -41,14 +41,15 @@ def app_instance():
         mock_memory_system_instance.get_relevant_context_for.return_value = mock_context_result
 
         # Configure mock AiderBridge methods
-        mock_aider_bridge_instance.execute_automatic_task.return_value = {
-            "status": "COMPLETE", "content": "Mock Aider Auto Result", "notes": {}
-        }
-        mock_aider_bridge_instance.start_interactive_session.return_value = {
-            "status": "COMPLETE",
-            "content": "Interactive session completed",
-            "notes": {"session_summary": "Made changes to file1.py"}
-        }
+        from system.types import TaskResult
+        mock_aider_bridge_instance.execute_automatic_task.return_value = TaskResult(
+            status="COMPLETE", content="Mock Aider Auto Result", notes={}
+        )
+        mock_aider_bridge_instance.start_interactive_session.return_value = TaskResult(
+            status="COMPLETE",
+            content="Interactive session completed",
+            notes={"session_summary": "Made changes to file1.py"}
+        )
         # ... configure other mock bridge methods if needed ...
 
         # Configure mock Handler methods/attributes
@@ -198,6 +199,7 @@ class TestTaskCommandIntegration:
                      tool_mock.reset_mock()
         from system.types import TaskResult
         # Mock the return value for this specific call
+        from system.types import TaskResult
         app_instance.aider_bridge.execute_automatic_task.return_value = TaskResult(
             status="COMPLETE", 
             content="Aider Auto Success", 
