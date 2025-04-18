@@ -331,7 +331,15 @@ class TaskSystem(TemplateLookupInterface):
             # Convert to TaskResult if it's a dict
             if isinstance(result, dict) and "status" in result:
                 return TaskResult(**result)
-            return result
+            # If it's already a TaskResult, return it directly
+            if isinstance(result, TaskResult):
+                return result
+            # For any other type, wrap it in a TaskResult
+            return TaskResult(
+                status="COMPLETE",
+                content=str(result),
+                notes={}
+            )
 
         except TaskError as e:
             # Format error as TaskResult
@@ -883,15 +891,25 @@ class TaskSystem(TemplateLookupInterface):
         # Extract relevant files from result (which now includes scores)
         file_matches = []
         try:
-            logging.debug("Content received from context gen task: %s...", result.get('content', 'No content')[:200]) # Log received content
-            import json
-            content = result.get("content", "[]")
-            # Add check for error status before attempting parse
-            if result.get("status") == "FAILED":
-                logging.error("Context generation task failed: %s", content)
-                matches_data = []
+            # Ensure proper attribute access for TaskResult objects
+            if isinstance(result, TaskResult):
+                logging.debug("Content received from context gen task: %s...", result.content[:200] if result.content else 'No content') # Log received content
+                content = result.content or "[]"
+                # Add check for error status before attempting parse
+                if result.status == "FAILED":
+                    logging.error("Context generation task failed: %s", content)
+                    matches_data = []
+                else:
+                    matches_data = json.loads(content) if isinstance(content, str) and content.strip() else content
             else:
-                matches_data = json.loads(content) if isinstance(content, str) and content.strip() else content
+                # Handle case where result is a dict (for backward compatibility)
+                logging.debug("Content received from context gen task (dict): %s...", result.get('content', 'No content')[:200]) # Log received content
+                content = result.get("content", "[]")
+                if result.get("status") == "FAILED":
+                    logging.error("Context generation task failed: %s", content)
+                    matches_data = []
+                else:
+                    matches_data = json.loads(content) if isinstance(content, str) and content.strip() else content
             
             if isinstance(matches_data, list):
                 logging.debug("Parsed %d items from LLM JSON response", len(matches_data))
@@ -938,7 +956,14 @@ class TaskSystem(TemplateLookupInterface):
         
         # Create standardized result (AssociativeMatchResult expects List[Tuple[str, str]])
         from memory.context_generation import AssociativeMatchResult
-        context = f"Found {len(file_matches)} relevant files." if file_matches else result.get("content", "Context generation failed")
+        
+        # Ensure proper attribute access for TaskResult objects
+        if isinstance(result, TaskResult):
+            context = f"Found {len(file_matches)} relevant files." if file_matches else result.content or "Context generation failed"
+        else:
+            # Handle case where result is a dict (for backward compatibility)
+            context = f"Found {len(file_matches)} relevant files." if file_matches else result.get("content", "Context generation failed")
+            
         logging.debug("Returning AssociativeMatchResult with %d matches (as 2-tuples). First match: %s",
                      len(file_matches), file_matches[0] if file_matches else 'None')
         # Ensure file_matches is now List[Tuple[str, str]]

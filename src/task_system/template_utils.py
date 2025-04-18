@@ -725,14 +725,27 @@ def resolve_function_calls(text: str, task_system, env: Environment, max_depth: 
             # This is the key part where we unify the execution path
             execution_result = task_system.executeCall(func_call_node, env)
             
-            # Extract content from result
-            replacement = str(execution_result.get("content", ""))
+            # Extract content from result - use attribute access for TaskResult objects
+            if isinstance(execution_result, TaskResult):
+                replacement = str(execution_result.content or "")
+                
+                # If content is empty or just "[]", try to get something from notes
+                if replacement == "[]" or not replacement.strip():
+                    if execution_result.notes and "system_prompt" in execution_result.notes:
+                        replacement = f"[Function result: {func_name}]"
+            else:
+                # Handle case where result is a dict (for backward compatibility)
+                replacement = str(execution_result.get("content", ""))
+                
+                # If content is empty or just "[]", try to get something from notes
+                if replacement == "[]" or not replacement.strip():
+                    if "notes" in execution_result and "system_prompt" in execution_result["notes"]:
+                        replacement = f"[Function result: {func_name}]"
             
-            # If content is empty or just "[]", try to get something from notes
-            if replacement == "[]" or not replacement.strip():
-                if "notes" in execution_result and "system_prompt" in execution_result["notes"]:
-                    replacement = f"[Function result: {func_name}]"
-            
+        except TaskError as e:
+            # Format error message to include detailed information - use attribute access
+            error_msg = e.message if hasattr(e, 'message') else str(e)
+            replacement = f"{{{{error in {func_name}(): TaskError - {error_msg}}}}}"
         except Exception as e:
             # Format error message to include detailed information
             error_msg = str(e)
