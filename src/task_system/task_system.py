@@ -509,15 +509,14 @@ class TaskSystem(TemplateLookupInterface):
                 result = TaskResult(**result)
             else:
                 # Already a TaskResult
-                if not hasattr(result, "notes") or result.notes is None:
-                    result.notes = {}
+                # No need to check if notes is None, Pydantic default_factory ensures it exists
                 result.notes.update({
                     "template_used": template.get('name'),
                     "context_source": context_source,
                     "context_files_count": len(determined_file_context) if determined_file_context else 0
                 })
 
-            logging.info(f"Direct execution finished for '{identifier}'. Status: {result.get('status')}")
+            logging.info(f"Direct execution finished for '{identifier}'. Status: {result.status}")
             return result
 
         except TaskError as e:
@@ -1029,8 +1028,13 @@ class TaskSystem(TemplateLookupInterface):
                 
                 # Extract file paths from matches
                 if hasattr(context_result, 'matches'):
-                    context_file_paths = [match[0] for match in context_result.matches]
-                    file_paths.extend(context_file_paths)
+                    for match in context_result.matches:
+                        if hasattr(match, 'path'):
+                            # MatchTuple object
+                            file_paths.append(match.path)
+                        elif isinstance(match, (tuple, list)) and len(match) > 0:
+                            # Legacy tuple format
+                            file_paths.append(match[0])
             except Exception as e:
                 error_message = f"Error retrieving context: {str(e)}"
                 print(error_message)
@@ -1051,8 +1055,13 @@ class TaskSystem(TemplateLookupInterface):
                     )
                     # Extract file paths from matches
                     if hasattr(context_result, 'matches'):
-                        desc_file_paths = [match[0] for match in context_result.matches]
-                        file_paths.extend(desc_file_paths)
+                        for match in context_result.matches:
+                            if hasattr(match, 'path'):
+                                # MatchTuple object
+                                file_paths.append(match.path)
+                            elif isinstance(match, (tuple, list)) and len(match) > 0:
+                                # Legacy tuple format
+                                file_paths.append(match[0])
                 except Exception as e:
                     error_message = f"Error retrieving context files: {str(e)}"
                     print(error_message)
@@ -1176,7 +1185,7 @@ class TaskSystem(TemplateLookupInterface):
                     
                 # Add model info if selected
                 if selected_model:
-                    result["notes"]["selected_model"] = selected_model
+                    result.notes["selected_model"] = selected_model
                     
                 return result
                     
@@ -1383,9 +1392,8 @@ class TaskSystem(TemplateLookupInterface):
                 if "notes" not in result:
                     result["notes"] = {}
                 result["notes"]["selected_model"] = selected_model
-            elif hasattr(result, "notes"):
-                if result.notes is None:
-                    result.notes = {}
+            else:
+                # For TaskResult objects, notes is always initialized
                 result.notes["selected_model"] = selected_model
                 
         # Include context management info in result for debugging
@@ -1397,9 +1405,8 @@ class TaskSystem(TemplateLookupInterface):
                 "accumulate_data": accumulate_data,
                 "fresh_context": fresh_context
             }
-        elif hasattr(result, "notes"):
-            if result.notes is None:
-                result.notes = {}
+        else:
+            # For TaskResult objects, notes is always initialized
             result.notes["context_management"] = {
                 "inherit_context": inherit_context,
                 "accumulate_data": accumulate_data,
@@ -1532,9 +1539,16 @@ class TaskSystem(TemplateLookupInterface):
             if not isinstance(inputs, dict):
                 logging.error("Invalid inputs type: %s, expected dict", type(inputs))
                 inputs = {"query": str(inputs)} if inputs else {}
+            
+            # Make sure we have a complete inputs dictionary for the template
+            inputs_for_template = inputs.copy()
+            
+            # Ensure required keys exist
+            if "query" not in inputs_for_template and "template_description" in inputs:
+                inputs_for_template["query"] = inputs["template_description"]
                 
-            # Pass handler to execute_template
-            relevant_file_objects = execute_template(inputs, memory_system, handler)
+            # Pass the properly constructed inputs dictionary to execute_template
+            relevant_file_objects = execute_template(inputs_for_template, memory_system, handler)
             
             # Convert to JSON string
             import json

@@ -144,25 +144,23 @@ def execute_programmatic_task(
                 # Basic result wrapping
                 if isinstance(raw_result, dict) and "status" in raw_result:
                      result = TaskResult(**raw_result)
-                     if "notes" not in raw_result: 
-                         result.notes = {}
                 else:
                      result = TaskResult(status="COMPLETE", content=str(raw_result), notes={})
 
                 # ---> ENSURE NOTES POPULATION FOR DIRECT TOOLS <---
                 # Only add these if they don't already exist (executor might have added them)
-                if "execution_path" not in result["notes"]:
-                    result["notes"]["execution_path"] = "direct_tool"
-                if "context_source" not in result["notes"]:
+                if "execution_path" not in result.notes:
+                    result.notes["execution_path"] = "direct_tool"
+                if "context_source" not in result.notes:
                     if explicit_file_paths is not None:
-                        result["notes"]["context_source"] = "explicit_request"
+                        result.notes["context_source"] = "explicit_request"
                     else:
-                        result["notes"]["context_source"] = "none"
-                if "context_file_count" not in result["notes"] and "context_files_count" not in result["notes"]:
+                        result.notes["context_source"] = "none"
+                if "context_file_count" not in result.notes and "context_files_count" not in result.notes:
                     count = len(explicit_file_paths) if explicit_file_paths is not None else 0
-                    result["notes"]["context_file_count"] = count
+                    result.notes["context_file_count"] = count
                     # Also add the standard key for consistency
-                    result["notes"]["context_files_count"] = count
+                    result.notes["context_files_count"] = count
                 # ---> END ENSURE NOTES <---
 
                 logger.debug(f"Dispatcher (Direct Tool Path): Returning notes: {result.notes}")
@@ -379,7 +377,7 @@ def execute_programmatic_task(
 
                 # Before returning the result for the template path
                 logger.debug(f"Dispatcher (Template Path): Returning TaskSystem result with notes: {result.notes if hasattr(result, 'notes') else {}}")
-                logger.info(f"TaskSystem template execution complete. Status: {result.status if hasattr(result, 'status') else result.get('status')}")
+                logger.info(f"TaskSystem template execution complete. Status: {result.status}")
                 return result
         else:
             # --- Identifier Not Found ---

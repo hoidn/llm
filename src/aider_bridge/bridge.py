@@ -313,7 +313,14 @@ class AiderBridge:
             # Extract file paths from matches
             relevant_files = []
             if hasattr(context_result, 'matches') and context_result.matches:
-                relevant_files = [match[0] for match in context_result.matches]
+                for match in context_result.matches:
+                    # Handle both MatchTuple objects and legacy tuple format
+                    if hasattr(match, 'path'):
+                        # MatchTuple object
+                        relevant_files.append(match.path)
+                    elif isinstance(match, (tuple, list)) and len(match) > 0:
+                        # Legacy tuple format
+                        relevant_files.append(match[0])
             
             # Update file context - use absolute paths to avoid file not found warnings in tests
             if relevant_files:
