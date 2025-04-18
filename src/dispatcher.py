@@ -378,8 +378,8 @@ def execute_programmatic_task(
                 result = task_system_instance.execute_subtask_directly(subtask_request, base_env)
 
                 # Before returning the result for the template path
-                logger.debug(f"Dispatcher (Template Path): Returning TaskSystem result with notes: {result.get('notes', {})}")
-                logger.info(f"TaskSystem template execution complete. Status: {result.get('status')}")
+                logger.debug(f"Dispatcher (Template Path): Returning TaskSystem result with notes: {result.notes if hasattr(result, 'notes') else {}}")
+                logger.info(f"TaskSystem template execution complete. Status: {result.status if hasattr(result, 'status') else result.get('status')}")
                 return result
         else:
             # --- Identifier Not Found ---

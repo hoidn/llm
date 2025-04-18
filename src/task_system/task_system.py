@@ -1374,18 +1374,32 @@ class TaskSystem(TemplateLookupInterface):
         
         # Add model info if selected
         if selected_model:
-            if "notes" not in result:
-                result["notes"] = {}
-            result["notes"]["selected_model"] = selected_model
+            if isinstance(result, dict):
+                if "notes" not in result:
+                    result["notes"] = {}
+                result["notes"]["selected_model"] = selected_model
+            elif hasattr(result, "notes"):
+                if result.notes is None:
+                    result.notes = {}
+                result.notes["selected_model"] = selected_model
                 
         # Include context management info in result for debugging
-        if "notes" not in result:
-            result["notes"] = {}
-        result["notes"]["context_management"] = {
-            "inherit_context": inherit_context,
-            "accumulate_data": accumulate_data,
-            "fresh_context": fresh_context
-        }
+        if isinstance(result, dict):
+            if "notes" not in result:
+                result["notes"] = {}
+            result["notes"]["context_management"] = {
+                "inherit_context": inherit_context,
+                "accumulate_data": accumulate_data,
+                "fresh_context": fresh_context
+            }
+        elif hasattr(result, "notes"):
+            if result.notes is None:
+                result.notes = {}
+            result.notes["context_management"] = {
+                "inherit_context": inherit_context,
+                "accumulate_data": accumulate_data,
+                "fresh_context": fresh_context
+            }
             
         return result
     

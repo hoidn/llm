@@ -208,7 +208,7 @@ class TestTemplateAwareContextGeneration:
             
             # Verify the mock was called
             mock_execute_template.assert_called_once()
-            
+        
             # Verify arguments passed to the mocked function
             call_args, call_kwargs = mock_execute_template.call_args
             passed_inputs = call_args[0]  # First arg is 'inputs' dict

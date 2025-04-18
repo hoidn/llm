@@ -82,10 +82,10 @@ class TestTaskSystemMediator:
         # Verify the number of matches
         assert len(result.matches) == 2
         # Verify the structure and content of the matches
-        assert result.matches[0][0] == "file1.py"
-        assert result.matches[0][1] == "Contains auth logic"
-        assert result.matches[1][0] == "file2.py"
-        assert result.matches[1][1] == "Contains user model"
+        assert result.matches[0].path == "file1.py"
+        assert result.matches[0].relevance == "Contains auth logic"
+        assert result.matches[1].path == "file2.py"
+        assert result.matches[1].relevance == "Contains user model"
 
         # Verify the mocked template execution function was called once
         mock_execute_assoc_template.assert_called_once()

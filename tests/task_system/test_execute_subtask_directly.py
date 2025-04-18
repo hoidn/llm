@@ -101,8 +101,11 @@ class TestExecuteSubtaskDirectly:
         mock_env_class.return_value = mock_base_env
         mock_base_env.extend.return_value = mock_extended_env
 
-        # Act: Call the method
-        task_system_instance.execute_subtask_directly(sample_request)
+        # Create base environment
+        base_env = Environment({})
+
+        # Act: Call the method with environment
+        task_system_instance.execute_subtask_directly(sample_request, base_env)
 
         # Assert:
         # 1. Check that Environment was instantiated for the base environment
