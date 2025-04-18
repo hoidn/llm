@@ -76,11 +76,12 @@ module EvaluatorModule {
     };
 };
 // == !! END IDL TEMPLATE !! ===
-
 """
 
+"""
 This module contains the Evaluator class, which is responsible for
 evaluating AST nodes, particularly function calls.
+"""
 """
 import logging
 import re
