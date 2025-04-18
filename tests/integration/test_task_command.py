@@ -132,11 +132,12 @@ class TestTaskCommandIntegration:
         if hasattr(app_instance.task_system, 'execute_task') and isinstance(app_instance.task_system.execute_task, MagicMock):
             app_instance.task_system.execute_task.reset_mock()
             # Reset to default return value from fixture if needed, or set specific one per test
-            app_instance.task_system.execute_task.return_value = {
-                 "status": "COMPLETE",
-                 "content": "Mock TaskSystem.execute_task Result",
-                 "notes": {}
-            }
+            from system.types import TaskResult
+            app_instance.task_system.execute_task.return_value = TaskResult(
+                 status="COMPLETE",
+                 content="Mock TaskSystem.execute_task Result",
+                 notes={}
+            )
 
         # Reset other relevant mocks if they are MagicMock instances
         if isinstance(app_instance.aider_bridge.execute_automatic_task, MagicMock):
