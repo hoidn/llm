@@ -83,7 +83,8 @@ def app_instance(test_files, mocker):
     # e.g., export OPENAI_API_KEY=sk-... or ANTHROPIC_API_KEY=...
     # Mock components that should NOT make external calls unless intended
     mocker.patch('src.main.register_aider_templates') # Avoid issues if Aider isn't fully mocked/available
-    mocker.patch('src.main.register_assoc_template')
+    # Use the correct import path as used in src/main.py
+    mocker.patch('task_system.templates.associative_matching.register_template')
     # mocker.patch('src.main.register_debug_templates') # Keep this if testing template loading
 
     # --- Crucially, import the *real* components needed for the loop ---
