@@ -467,7 +467,7 @@ class TestTaskCommandIntegration:
         # Verify MemorySystem was NOT called for lookup because template path took precedence
         app_instance.memory_system.get_relevant_context_for.assert_not_called()
         # Check the file context determined by execute_subtask_directly (using template path)
-        handler_config = execute_task_call_args.kwargs.get('handler_config', {})
+        handler_config = call_kwargs.get('handler_config', {})
         assert handler_config.get('file_context') == ["/template/path.py"] # Template path used
         # Check the content returned by the stub
         assert "Executed template 'template:with_context' with inputs." in result.content
