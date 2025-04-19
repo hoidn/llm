@@ -210,6 +210,11 @@ class TestAiderInteractiveSession:
         result = session.start_session("Implement a factorial function")
         
         # Check result
+        # Convert dict to TaskResult if needed
+        if isinstance(result, dict):
+            from system.types import TaskResult
+            result = TaskResult(**result)
+            
         assert result.status == "FAILED"
         assert "Aider is not available" in result.content
         assert "error" in result.notes
@@ -229,6 +234,11 @@ class TestAiderInteractiveSession:
         result = session.start_session("Implement a factorial function")
         
         # Check result
+        # Convert dict to TaskResult if needed
+        if isinstance(result, dict):
+            from system.types import TaskResult
+            result = TaskResult(**result)
+            
         assert result.status == "FAILED"
         assert "already active" in result.content
         assert "error" in result.notes
@@ -283,6 +293,11 @@ class TestAiderInteractiveSession:
         result = session.terminate_session()
         
         # Check result
+        # Convert dict to TaskResult if needed
+        if isinstance(result, dict):
+            from system.types import TaskResult
+            result = TaskResult(**result)
+            
         assert result.status == "FAILED"
         assert "No active Aider session" in result.content
         assert "error" in result.notes
@@ -309,6 +324,11 @@ class TestAiderInteractiveSession:
             result = session.terminate_session()
             
             # Check result
+            # Convert dict to TaskResult if needed
+            if isinstance(result, dict):
+                from system.types import TaskResult
+                result = TaskResult(**result)
+                
             assert result.status == "COMPLETE"
             assert "terminated successfully" in result.content
             assert "files_modified" in result.notes
