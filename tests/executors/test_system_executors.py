@@ -2,8 +2,12 @@
 import pytest
 import json
 from unittest.mock import MagicMock, patch
+from pydantic import ValidationError # Import for expected errors
 
+# Import the functions to test
 from src.executors.system_executors import execute_get_context, execute_read_files
+# Import conceptual Pydantic models for type hinting in tests
+# from src.executors.system_executors import GetContextParams, ReadFilesParams, RunScriptParams
 from memory.context_generation import ContextGenerationInput, AssociativeMatchResult
 from memory.memory_system import MemorySystem  # Import for type hinting mock
 from handler.file_access import FileAccessManager  # Import for type hinting mock
@@ -16,7 +20,8 @@ def mock_memory():
     mock = MagicMock(spec=MemorySystem)
     # Configure default return value for get_relevant_context_for
     mock_result = MagicMock(spec=AssociativeMatchResult)
-    mock_result.context = "Mock context"
+    mock_result.context = "Mock context" # Use attribute access
+    # Use 3-tuples for matches as AssociativeMatchResult expects
     mock_result.matches = [("file1.py", "rel1", 0.9), ("file2.txt", "rel2", 0.8)]
     mock.get_relevant_context_for.return_value = mock_result
     return mock

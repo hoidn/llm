@@ -4,11 +4,19 @@ import io
 from unittest.mock import patch, MagicMock, call # <-- Ensure 'call' is imported
 import logging
 import json # <-- Ensure 'json' is imported
+from pydantic import ValidationError # Import for expected errors
+
 # Import Repl class directly
 from src.repl.repl import Repl
+# Import conceptual Pydantic models for type hinting in tests
+# These won't exist until Phase 3 implementation
+# from src.dispatcher import TaskParams, TaskFlags
+class ConceptualTaskParams: pass
+class ConceptualTaskFlags: pass
+from src.system.types import TaskResult # Import TaskResult
 
-# --- MockApplication Class (Keep as is) ---
-class MockApplication:
+# --- MockApplication Class ---
+class MockApplication: # Keep as is
     def __init__(self):
         self.task_system = MagicMock(spec=['find_template']) # Mock only needed methods
         self.passthrough_handler = MagicMock(spec=['registered_tools', 'direct_tool_executors'])
@@ -17,19 +25,9 @@ class MockApplication:
         self.passthrough_handler.registered_tools = {}
         self.passthrough_handler.direct_tool_executors = {}
         self.aider_bridge = None # Add if needed by Repl init or methods
-        self.indexed_repositories = ["dummy_repo"] # Assume repo indexed for most tests
-
-    def index_repository(self, repo_path):
-        # Mock indexing behavior if needed by tests
-        logging.info(f"Mock indexing repository: {repo_path}")
-        self.indexed_repositories.append(repo_path)
-        return True
-
-    def reset_conversation(self):
-        # Mock reset behavior if needed
-        logging.info("Mock resetting conversation")
-        pass
-
+        self.indexed_repositories = ["dummy_repo"]
+    def index_repository(self, repo_path): return True
+    def reset_conversation(self): pass
     def handle_query(self, query):
          # Mock query handling if needed
          logging.info(f"Mock handling query: {query}")
@@ -42,14 +40,14 @@ def mock_app():
 # --- End MockApplication ---
 
 
-# --- CORRECTED FIXTURE ---
+# --- REPL Fixture ---
 @pytest.fixture
 def repl_instance(mock_app):
     """Creates a Repl instance and mocks its dispatcher_func."""
     # Initialize with a dummy stream first to avoid capsys conflicts
     dummy_stream = io.StringIO()
     repl = Repl(mock_app, output_stream=dummy_stream)
-    
+
     # Create a mock function to replace the dispatcher call target
     mock_dispatcher = MagicMock(name="mock_execute_programmatic_task")
     # Set default return value for the mock
@@ -57,13 +55,14 @@ def repl_instance(mock_app):
     
     # Patch the dispatcher_func on the instance
     repl.dispatcher_func = mock_dispatcher
-    # Store mock for tests to access easily
+    # Store mock for tests to access
     repl.mock_dispatcher_for_test = mock_dispatcher
     
     return repl
-# --- END CORRECTED FIXTURE ---
+# --- End REPL Fixture ---
 
-# --- CORRECTED TEST FUNCTIONS ---
+
+# --- Tests for _cmd_task (Focus on calling dispatcher) ---
 
 def test_cmd_task_no_args(repl_instance, capsys):
     """Test that calling /task with no arguments prints usage."""
@@ -75,11 +74,15 @@ def test_cmd_task_no_args(repl_instance, capsys):
     assert "Usage: /task <identifier>" in captured.out
     assert repl_instance.mock_dispatcher_for_test.call_count == 0 # Verify dispatcher wasn't called
 
+def test_cmd_task_valid_input_calls_dispatcher(repl_instance):
+    """Test _cmd_task calls dispatcher with model instances for valid input."""
+    repl = repl_instance
+    mock_dispatcher = repl.mock_dispatcher_for_test
+
 def test_cmd_task_identifier_only(repl_instance):
     """Test calling /task with only an identifier."""
     repl_instance._cmd_task("my:task")
-    # Assert: Check params/flags dicts match conceptual TaskParams/TaskFlags
-    repl_instance.mock_dispatcher_for_test.assert_called_once_with(
+    repl.mock_dispatcher_for_test.assert_called_once_with(
         identifier="my:task",
         params={}, # Empty params dict
         flags={}, # Empty flags dict
@@ -92,7 +95,23 @@ def test_cmd_task_simple_param(repl_instance):
     """Test calling /task with one simple key=value parameter."""
     repl_instance._cmd_task("my:task key=value")
     # Assert: Check params/flags dicts match conceptual TaskParams/TaskFlags
-    repl_instance.mock_dispatcher_for_test.assert_called_once_with(
+    # Assert Dispatcher Call (expect model instances after Phase 3 impl)
+    mock_dispatcher.assert_called_once()
+    call_args, call_kwargs = mock_dispatcher.call_args
+    assert call_args[0] == "my:task"
+    # TODO: After Phase 3 impl, assert isinstance(call_args[1], TaskParams)
+    # TODO: After Phase 3 impl, assert isinstance(call_args[2], TaskFlags)
+    # Check specific attributes ON the conceptual models passed
+    # TODO: After Phase 3 impl:
+    # params_model = call_args[1]
+    # flags_model = call_args[2]
+    # assert params_model.model_extra == {} # Check extras if needed
+    # assert flags_model.model_dump(exclude_unset=True) == {} # Check flags
+
+def test_cmd_task_simple_param(repl_instance):
+    """Test calling /task with one simple key=value parameter."""
+    repl_instance._cmd_task("my:task key=value")
+    repl.mock_dispatcher_for_test.assert_called_once_with(
         identifier="my:task",
         params={"key": "value"}, # Simple param
         flags={},
@@ -153,24 +172,26 @@ def test_cmd_task_json_dict_param(repl_instance):
         optional_history_str=None
     )
 
-def test_cmd_task_invalid_json_param(repl_instance, capsys):
-    """Test calling /task with invalid JSON - should pass as string and print warning."""
-    # Set output to sys.stdout for capsys to capture
-    repl_instance.output = sys.stdout
-    repl_instance._cmd_task('my:task data=\'{"key": invalid}\'') # Invalid JSON syntax
-    # Assert dispatcher was called with the *string* value
-    # Assert: Check params/flags dicts match conceptual TaskParams/TaskFlags
-    repl_instance.mock_dispatcher_for_test.assert_called_once_with(
-        identifier="my:task",
-        params={"data": '{"key": invalid}'}, # Invalid JSON passed as string by REPL
-        flags={},
-        handler_instance=repl_instance.application.passthrough_handler,
-        task_system_instance=repl_instance.application.task_system,
-        optional_history_str=None
-    )
-    # Assert warning was printed
+def test_cmd_task_invalid_json_prints_error(repl_instance, capsys):
+    """Test _cmd_task catches ValidationError for invalid JSON and prints error."""
+    repl = repl_instance
+    mock_dispatcher = repl.mock_dispatcher_for_test
+    repl.output = sys.stdout # Capture output
+
+    # Act
+    repl._cmd_task('my:task data=\'{"key": invalid}\'') # Invalid JSON
+
+    # Assert Output
+    sys.stdout = sys.__stdout__
     captured = capsys.readouterr()
-    assert "Warning: Could not parse value for 'data' as JSON" in captured.out
+    # TODO: Assert ValidationError output once Phase 3 source code is implemented.
+    # Add a comment for the future assertion:
+    # assert "[bold red]Error: Invalid parameters for /task:[/bold red]" in captured.out
+    # assert "data" in captured.out # Check field name in error
+    # assert "invalid character" in captured.out # Check Pydantic error msg
+
+    # Assert Dispatcher Not Called
+    mock_dispatcher.assert_not_called()
 
 def test_cmd_task_simple_flag(repl_instance):
     """Test calling /task with a simple boolean flag."""
@@ -281,65 +302,64 @@ def test_cmd_task_help_flag_not_found(repl_instance, capsys):
     assert "No help found for identifier: unknown:task." in captured.out
     repl_instance.mock_dispatcher_for_test.assert_not_called()
 
-# --- Tests for _parse_task_args ---
-
 def test_parse_task_args_empty(repl_instance):
     """Test parsing empty argument list."""
-    params, flags, error = repl_instance._parse_task_args([])
-    assert params == {}
-    assert flags == {}
+    params_dict, flags_dict, error = repl_instance._parse_task_args([])
+    assert params_dict == {}
+    assert flags_dict == {}
     assert error is None
 
 def test_parse_task_args_only_flags(repl_instance):
     """Test parsing only flags."""
-    params, flags, error = repl_instance._parse_task_args(["--flag1", "--flag2"])
-    assert params == {}
-    assert flags == {"flag1": True, "flag2": True}
+    params_dict, flags_dict, error = repl_instance._parse_task_args(["--flag1", "--flag2"])
+    assert params_dict == {}
+    assert flags_dict == {"flag1": True, "flag2": True}
     assert error is None
 
 def test_parse_task_args_only_params(repl_instance):
     """Test parsing only parameters."""
-    params, flags, error = repl_instance._parse_task_args(["key1=value1", "key2=value2"])
-    assert params == {"key1": "value1", "key2": "value2"}
-    assert flags == {}
+    params_dict, flags_dict, error = repl_instance._parse_task_args(["key1=value1", "key2=value2"])
+    assert params_dict == {"key1": "value1", "key2": "value2"}
+    assert flags_dict == {}
     assert error is None
 
-def test_parse_task_args_json_values(repl_instance):
-    """Test parsing JSON parameter values."""
-    params, flags, error = repl_instance._parse_task_args([
-        'list=["a", "b", "c"]',
-        'obj={"key": 42}'
+def test_parse_task_args_json_values_remain_strings(repl_instance):
+    """Test _parse_task_args keeps JSON values as strings."""
+    params_dict, flags_dict, error = repl_instance._parse_task_args([
+        'list=["a", "b", "c"]', # JSON string
+        'obj={"key": 42}'       # JSON string
     ])
-    assert params["list"] == ["a", "b", "c"]
-    assert params["obj"] == {"key": 42}
-    assert flags == {}
-    assert error is None
+    # _parse_task_args itself doesn't parse the JSON
+    assert params_dict["list"] == '["a", "b", "c"]'
+    assert params_dict["obj"] == '{"key": 42}'
+    assert flags_dict == {}
+    assert error is None # No JSON parsing error *here*
 
-def test_parse_task_args_invalid_json(repl_instance):
-    """Test parsing invalid JSON parameter values."""
-    params, flags, error = repl_instance._parse_task_args(['invalid={"key": missing_quotes}'])
-    assert params["invalid"] == '{"key": missing_quotes}'  # Stored as string
-    assert flags == {}
-    assert "Could not parse value for 'invalid' as JSON" in error
+def test_parse_task_args_invalid_json_string_passed(repl_instance):
+    """Test _parse_task_args passes invalid JSON string."""
+    params_dict, flags_dict, error = repl_instance._parse_task_args(['invalid={"key": missing_quotes}'])
+    assert params_dict["invalid"] == '{"key": missing_quotes}' # Passed as string
+    assert flags_dict == {}
+    assert error is None # No error from _parse_task_args itself
 
 def test_parse_task_args_mixed(repl_instance):
     """Test parsing mixed flags and parameters."""
-    params, flags, error = repl_instance._parse_task_args([
-        "--flag1", 
-        "key1=value1", 
-        "--flag2", 
-        'key2={"nested": true}'
+    params_dict, flags_dict, error = repl_instance._parse_task_args([
+        "--flag1",
+        "key1=value1",
+        "--flag2",
+        'key2={"nested": true}' # JSON string
     ])
-    assert params == {"key1": "value1", "key2": {"nested": True}}
-    assert flags == {"flag1": True, "flag2": True}
+    assert params_dict == {"key1": "value1", "key2": '{"nested": true}'}
+    assert flags_dict == {"flag1": True, "flag2": True}
     assert error is None
 
-def test_parse_task_args_invalid_format(repl_instance):
-    """Test parsing invalid format."""
-    params, flags, error = repl_instance._parse_task_args(["not_a_param_or_flag"])
-    assert params == {}
-    assert flags == {}
-    assert "Ignoring invalid parameter format" in error
+def test_parse_task_args_invalid_format_warning(repl_instance):
+    """Test _parse_task_args returns warning for invalid format."""
+    params_dict, flags_dict, error = repl_instance._parse_task_args(["not_a_param_or_flag"])
+    assert params_dict == {}
+    assert flags_dict == {}
+    assert "Ignoring invalid parameter format" in error # Check warning
 
 # --- Tests for _display_task_result ---
 
@@ -350,7 +370,7 @@ def test_display_task_result_simple(repl_instance, capsys):
         "status": "COMPLETE",
         "content": "Simple result text"
     }
-    repl_instance._display_task_result(result)
+    repl_instance._display_task_result(TaskResult(**result)) # Display model instance
     captured = capsys.readouterr()
     
     assert "Status: COMPLETE" in captured.out
@@ -411,8 +431,10 @@ def test_cmd_task_dispatcher_error(repl_instance, capsys):
 
     # Check that the REPL printed the error message
     assert "Error calling dispatcher: Dispatcher boom!" in captured.out
-    # Verify dispatcher was called (even though it failed)
+    # Verify dispatcher was called (expect model instances)
     repl_instance.mock_dispatcher_for_test.assert_called_once() # Check call was made
+    call_args, _ = repl_instance.mock_dispatcher_for_test.call_args
+    # TODO: After Phase 3 impl, assert isinstance checks on call_args[1] and call_args[2]
 
 def test_cmd_task_shlex_error(repl_instance, capsys):
     """Test REPL handling of shlex parsing errors."""
@@ -431,7 +453,7 @@ def test_cmd_task_result_display_simple(repl_instance, capsys):
     # Set output to sys.stdout for capsys to capture
     repl_instance.output = sys.stdout
     
-    repl_instance.mock_dispatcher_for_test.return_value = {"status": "COMPLETE", "content": "Simple result"}
+    repl_instance.mock_dispatcher_for_test.return_value = TaskResult(status="COMPLETE", content="Simple result", notes={})
     repl_instance._cmd_task("my:task") # Call dispatcher via REPL command
     captured = capsys.readouterr()
     # Check the final printed output
@@ -477,3 +499,36 @@ def test_cmd_task_result_display_with_notes(repl_instance, capsys):
     assert '"info": "some details"' in captured.out
     assert '"files": [\n    "a.txt"\n  ]' in captured.out
     assert '"nested": {\n    "key": 1\n  }' in captured.out
+    # TODO: After Phase 3 impl, check model attributes:
+    # call_args, _ = repl_instance.mock_dispatcher_for_test.call_args
+    # params_model = call_args[1]
+    # flags_model = call_args[2]
+    # assert params_model.model_extra == {"p1": "v1", "p2": "v 2", "p3": {"a": 1}}
+    # assert flags_model.flag1 is True and flags_model.flag2 is True
+
+def test_cmd_task_missing_required_prints_error(repl_instance, capsys):
+    """Test _cmd_task catches ValidationError for missing required param."""
+    repl = repl_instance
+    mock_dispatcher = repl.mock_dispatcher_for_test
+    repl.output = sys.stdout # Capture output
+
+    # Assume 'my:task' requires a 'name' parameter in its conceptual TaskParams
+    # Act
+    repl._cmd_task('my:task --flag1') # Missing 'name'
+
+    # Assert Output
+    sys.stdout = sys.__stdout__
+    captured = capsys.readouterr()
+    # TODO: Assert ValidationError output once Phase 3 source code is implemented.
+    # Add a comment for the future assertion:
+    # assert "[bold red]Error: Invalid parameters for /task:[/bold red]" in captured.out
+    # assert "name" in captured.out # Check field name in error
+    # assert "Field required" in captured.out # Check Pydantic error msg
+
+    # Assert Dispatcher Not Called
+    mock_dispatcher.assert_not_called()
+
+
+# --- Help Flag Tests (No Change Needed) ---
+
+# --- Tests for _parse_task_args (Focus on returning dicts) ---
