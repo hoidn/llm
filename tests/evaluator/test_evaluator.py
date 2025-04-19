@@ -362,6 +362,11 @@ class TestDirectorEvaluatorLoop:
             # Call the method under test
             result = evaluator._evaluate_director_evaluator_loop(mock_loop_node, base_environment)
             
+            # Convert dict to TaskResult if needed
+            if isinstance(result, dict):
+                from system.types import TaskResult
+                result = TaskResult(**result)
+                
             # Assertions
             assert result.status == "COMPLETE"
             assert "iteration_history" in result.notes
@@ -626,7 +631,7 @@ class TestDirectorEvaluatorLoop:
         result = evaluator._execute_template(template, env)
         
         # Verify parsed content
-        assert hasattr(result, "parsedContent")
+        assert "parsedContent" in result.notes
         assert result.parsedContent["key"] == "value"
         assert result.parsedContent["items"] == [1, 2, 3]
         

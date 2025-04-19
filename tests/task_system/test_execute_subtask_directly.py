@@ -194,6 +194,9 @@ class TestExecuteSubtaskDirectly:
         original_execute_task = task_system_instance.execute_task
         task_system_instance.execute_task = MagicMock(side_effect=TypeError("Unexpected environment issue"))
         
+        # Import TaskResult for error handling
+        from src.system.types import TaskResult
+        
         try:
             # Act: Call the method with environment
             result = task_system_instance.execute_subtask_directly(sample_request, base_env)

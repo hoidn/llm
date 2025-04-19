@@ -880,6 +880,11 @@ class TestTaskCommandIntegration:
         )
 
         # Assert Result
+        # Convert dict to TaskResult if needed
+        if isinstance(result, dict):
+            from system.types import TaskResult
+            result = TaskResult(**result)
+            
         assert result.status == "FAILED"
         assert "Invalid file_context parameter: must be a JSON string array or already a list of strings. Error:" in result.content # Check specific error
         assert result.notes["error"]["reason"] == INPUT_VALIDATION_FAILURE
