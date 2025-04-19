@@ -531,12 +531,12 @@ class TestTaskCommandIntegration:
         # Verify TaskSystem's internal execute_task was called
         app_instance.task_system.execute_task.assert_called_once()
         # Verify the arguments passed to the internal execute_task
-        call_args, call_kwargs = app_instance.task_system.execute_task.call_args
-        assert call_kwargs['task_type'] == "template"
-        assert call_kwargs['task_subtype'] == "auto_context"
-        assert call_kwargs['inputs'] == params_dict # Pass original params dict
+        execute_task_call_args = app_instance.task_system.execute_task.call_args
+        assert execute_task_call_args.args[0] == "template"
+        assert execute_task_call_args.args[1] == "auto_context"
+        assert execute_task_call_args.args[2] == {"input": "Auto context test"}
         # Check the file context determined by execute_subtask_directly (should be empty for deferred lookup in Phase 1)
-        handler_config = call_kwargs.get('handler_config', {})
+        handler_config = execute_task_call_args.kwargs.get('handler_config', {})
         assert handler_config.get('file_context') == [] # Empty list for deferred lookup in Phase 1
 
         # Verify AiderBridge (or other direct tools) were NOT called directly
@@ -594,12 +594,12 @@ class TestTaskCommandIntegration:
         # Verify TaskSystem's internal execute_task was called
         app_instance.task_system.execute_task.assert_called_once()
         # Verify the arguments passed to the internal execute_task
-        call_args, call_kwargs = app_instance.task_system.execute_task.call_args
-        assert call_kwargs['task_type'] == "template"
-        assert call_kwargs['task_subtype'] == "no_context"
-        assert call_kwargs['inputs'] == params_dict # Pass original params dict
+        execute_task_call_args = app_instance.task_system.execute_task.call_args
+        assert execute_task_call_args.args[0] == "template"
+        assert execute_task_call_args.args[1] == "no_context"
+        assert execute_task_call_args.args[2] == {"input": "No context expected test"}
         # Check the file context determined by execute_subtask_directly (should be empty)
-        handler_config = call_kwargs.get('handler_config', {})
+        handler_config = execute_task_call_args.kwargs.get('handler_config', {})
         assert handler_config.get('file_context') == [] # No context files determined
 
         # Verify AiderBridge (or other direct tools) were NOT called directly
@@ -668,12 +668,12 @@ class TestTaskCommandIntegration:
         # Verify TaskSystem's internal execute_task was called
         app_instance.task_system.execute_task.assert_called_once()
         # Verify the arguments passed to the internal execute_task
-        call_args, call_kwargs = app_instance.task_system.execute_task.call_args
-        assert call_kwargs['task_type'] == "template"
-        assert call_kwargs['task_subtype'] == "history_context"
-        assert call_kwargs['inputs'] == params_dict # Pass original params dict
+        execute_task_call_args = app_instance.task_system.execute_task.call_args
+        assert execute_task_call_args.args[0] == "template"
+        assert execute_task_call_args.args[1] == "history_context"
+        assert execute_task_call_args.args[2] == {"input": "History context test"}
         # Check the file context determined by execute_subtask_directly (should be empty for deferred lookup in Phase 1)
-        handler_config = call_kwargs.get('handler_config', {})
+        handler_config = execute_task_call_args.kwargs.get('handler_config', {})
         assert handler_config.get('file_context') == [] # Empty list for deferred lookup in Phase 1
 
         # Verify AiderBridge (or other direct tools) were NOT called directly
