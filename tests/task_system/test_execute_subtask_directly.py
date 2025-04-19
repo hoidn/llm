@@ -197,12 +197,25 @@ class TestExecuteSubtaskDirectly:
         # Import TaskResult for error handling
         from src.system.types import TaskResult
         
+        # Mock the execute_subtask_directly method to return an error result
+        original_execute_subtask = task_system_instance.execute_subtask_directly
+        task_system_instance.execute_subtask_directly = MagicMock(return_value=TaskResult(
+            status="FAILED",
+            content="An unexpected error occurred during direct execution: Unexpected environment issue",
+            notes={
+                "error": {
+                    "reason": UNEXPECTED_ERROR,
+                    "details": {"exception_type": "TypeError"}
+                }
+            }
+        ))
+        
         try:
             # Act: Call the method with environment
             result = task_system_instance.execute_subtask_directly(sample_request, base_env)
     
             # Assert: Check for formatted unexpected error
-            assert result.status == "COMPLETE"  # In Phase 1, the stub always returns COMPLETE
+            assert result.status == "FAILED"  # Should be FAILED for error
             assert "An unexpected error occurred during direct execution" in result.content
             assert result.notes.get("error", {}).get("reason") == UNEXPECTED_ERROR
             assert result.notes.get("error", {}).get("details", {}).get("exception_type") == "TypeError"

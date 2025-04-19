@@ -632,8 +632,8 @@ class TestDirectorEvaluatorLoop:
         
         # Verify parsed content
         assert "parsedContent" in result.notes
-        assert result.parsedContent["key"] == "value"
-        assert result.parsedContent["items"] == [1, 2, 3]
+        assert result.notes["parsedContent"]["key"] == "value"
+        assert result.notes["parsedContent"]["items"] == [1, 2, 3]
         
         # Test with invalid JSON
         from system.types import TaskResult

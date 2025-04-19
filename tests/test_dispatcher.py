@@ -175,6 +175,11 @@ class TestDispatcher:
         result = execute_programmatic_task(
             identifier, params, flags, mock_handler, mock_task_system
         )
+        
+        # Convert dict to TaskResult if needed
+        if isinstance(result, dict):
+            from src.system.types import TaskResult
+            result = TaskResult(**result)
 
         # Assert
         if expect_error:

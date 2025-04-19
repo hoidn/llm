@@ -60,7 +60,7 @@ class TestInputOutputBinding:
         env.bindings["result"] = result1
         
         # Create an argument using array indexing
-        arg = ArgumentNode("{{result.parsedContent[0].id}}")
+        arg = ArgumentNode("{{result.notes.parsedContent[0].id}}")
         call2 = FunctionCallNode("get_item", [arg])
         
         # Execute the second function call

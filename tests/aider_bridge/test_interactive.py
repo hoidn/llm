@@ -103,13 +103,25 @@ class TestAiderInteractiveSession:
              patch.object(AiderInteractiveSession, '_run_aider_in_process'), \
              patch.object(AiderInteractiveSession, '_get_file_states') as mock_get_states, \
              patch.object(AiderInteractiveSession, '_get_modified_files', return_value=[str(file1)]), \
-             patch.object(AiderInteractiveSession, '_cleanup_session'):
+             patch.object(AiderInteractiveSession, '_cleanup_session'), \
+             patch('aider_bridge.result_formatter.format_interactive_result') as mock_formatter:
             
             # Set up file states mock
             mock_get_states.side_effect = [
                 {str(file1): {"size": 100, "mtime": 123456789, "hash": 12345}},
                 {str(file1): {"size": 120, "mtime": 123456790, "hash": 67890}}
             ]
+            
+            # Set up mock formatter to return a TaskResult
+            from system.types import TaskResult
+            mock_formatter.return_value = TaskResult(
+                status="COMPLETE",
+                content="Interactive Aider session completed",
+                notes={
+                    "files_modified": [str(file1)],
+                    "session_summary": "Session initiated with query: Implement a factorial function"
+                }
+            )
             
             # Create session
             session = AiderInteractiveSession(bridge)
@@ -161,7 +173,26 @@ class TestAiderInteractiveSession:
              patch.object(AiderInteractiveSession, '_run_aider_subprocess'), \
              patch.object(AiderInteractiveSession, '_get_file_states') as mock_get_states, \
              patch.object(AiderInteractiveSession, '_get_modified_files', return_value=[str(file1)]) as mock_get_modified, \
-             patch.object(AiderInteractiveSession, '_cleanup_session') as mock_cleanup:
+             patch.object(AiderInteractiveSession, '_cleanup_session') as mock_cleanup, \
+             patch('subprocess.run') as mock_subprocess_run, \
+             patch('aider_bridge.result_formatter.format_interactive_result') as mock_formatter:
+            
+            # Configure mock_subprocess_run to return a CompletedProcess with stdout and stderr
+            mock_subprocess_run.return_value = MagicMock(stdout="test output", stderr="", returncode=0)
+            
+            # Set up mock formatter to return a TaskResult
+            from system.types import TaskResult
+            mock_formatter.return_value = TaskResult(
+                status="COMPLETE",
+                content="Interactive Aider session completed",
+                notes={
+                    "files_modified": [str(file1)],
+                    "session_summary": "Session initiated with query: Implement a factorial function"
+                }
+            )
+            
+            # Configure mock_run_subprocess to return expected values
+            mock_run_subprocess.return_value = (0, "test output", "")
             
             # Create session
             session = AiderInteractiveSession(bridge)
