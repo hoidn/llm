@@ -229,8 +229,10 @@ class TestTaskCommandIntegration:
 
         # Assert Mock Calls
         # Verify the dispatcher routed to the direct tool executor, which called the bridge
+        # The executor receives the params dict, and then calls the bridge
+        # Assert bridge call reflects data derived from conceptual AiderAutoParams
         app_instance.aider_bridge.execute_automatic_task.assert_called_once_with(
-            "Add docstrings", ["src/main.py"] # Expect positional args
+            prompt="Add docstrings", file_context=["src/main.py"]
         )
         # Verify TaskSystem wasn't involved for direct tool execution
         app_instance.task_system.execute_task.assert_not_called()
@@ -263,8 +265,9 @@ class TestTaskCommandIntegration:
         assert '"summary": "Session summary"' in output
 
         # Assert Mock Calls
+        # Assert bridge call reflects data derived from conceptual AiderInteractiveParams
         app_instance.aider_bridge.start_interactive_session.assert_called_once_with(
-            "Refactor this class", ["src/utils.py"] # Expect positional args
+            query="Refactor this class", file_context=["src/utils.py"]
         )
         app_instance.task_system.execute_task.assert_not_called()
 
@@ -275,11 +278,15 @@ class TestTaskCommandIntegration:
         from src.dispatcher import execute_programmatic_task
         from system.errors import INPUT_VALIDATION_FAILURE # Import error code
 
-        # Act: Call dispatcher directly with invalid JSON string
+        # Arrange: Simulate REPL passing invalid JSON string
+        params_dict = {"prompt": "Invalid JSON", "file_context": '["unclosed_array\''} # Invalid JSON string
+        flags_dict = {}
+
+        # Act: Call dispatcher directly
         result = execute_programmatic_task(
             identifier="aider:automatic",
-            params={"prompt": "Invalid JSON", "file_context": '["unclosed_array\''}, # Invalid JSON
-            flags={},
+            params=params_dict,
+            flags=flags_dict,
             handler_instance=app_instance.passthrough_handler,
             task_system_instance=app_instance.task_system
         )
@@ -363,13 +370,16 @@ class TestTaskCommandIntegration:
              for tool_mock in app_instance.passthrough_handler.direct_tool_executors.values():
                  if isinstance(tool_mock, MagicMock):
                      tool_mock.reset_mock()
+        # Arrange: Params dict matching conceptual TaskParams
+        params_dict = {"prompt": "Explicit context test", "file_context": ["/request/path.py"]}
+        flags_dict = {}
+
         # Act: Call dispatcher directly (simulating REPL call)
         from src.dispatcher import execute_programmatic_task # Adjust import
         result = execute_programmatic_task(
             identifier="aider:automatic",
-            # Pass file_context as a list, simulating REPL's JSON parsing
-            params={"prompt": "Explicit context test", "file_context": ["/request/path.py"]},
-            flags={},
+            params=params_dict,
+            flags=flags_dict,
             handler_instance=app_instance.passthrough_handler,
             task_system_instance=app_instance.task_system
         )
@@ -378,12 +388,12 @@ class TestTaskCommandIntegration:
         assert result.status == "COMPLETE"
         assert result.notes["execution_path"] == "direct_tool"
         assert result.notes["context_source"] == "explicit_request"
-        assert result.notes["context_file_count"] == 1
-        # Verify bridge call used the explicit path
+        assert result.notes["context_file_count"] == 1 # Check standard key
+        # Verify bridge call used the explicit path derived from params
         app_instance.aider_bridge.execute_automatic_task.assert_called_once_with(
             prompt="Explicit context test", file_context=["/request/path.py"]
         )
-        # Verify TaskSystem and MemorySystem were not involved for context
+        # Verify TaskSystem was not involved for context
         app_instance.task_system.execute_task.assert_not_called()
         app_instance.memory_system.get_relevant_context_for.assert_not_called()
 
@@ -413,12 +423,16 @@ class TestTaskCommandIntegration:
         # Configure the REAL TaskSystem's mock find_template for this test
         app_instance.task_system.find_template.return_value = mock_template
 
+        # Arrange: Params dict matching conceptual TaskParams
+        params_dict = {"input": "Template context test"} # No file_context here
+        flags_dict = {}
+
         # Act: Call dispatcher (simulating REPL) without explicit file_context
         from src.dispatcher import execute_programmatic_task
         result = execute_programmatic_task(
             identifier="template:with_context",
-            params={"input": "Template context test"}, # No file_context here
-            flags={},
+            params=params_dict,
+            flags=flags_dict,
             handler_instance=app_instance.passthrough_handler,
             task_system_instance=app_instance.task_system
         )
@@ -433,12 +447,12 @@ class TestTaskCommandIntegration:
         # Verify TaskSystem's internal execute_task was called
         app_instance.task_system.execute_task.assert_called_once()
         # Verify the arguments passed to the internal execute_task
-        execute_task_call_args = app_instance.task_system.execute_task.call_args
-        assert execute_task_call_args.kwargs['task_type'] == "template"
-        assert execute_task_call_args.kwargs['task_subtype'] == "with_context"
-        assert execute_task_call_args.kwargs['inputs'] == {"input": "Template context test"}
+        call_args, call_kwargs = app_instance.task_system.execute_task.call_args
+        assert call_kwargs['task_type'] == "template"
+        assert call_kwargs['task_subtype'] == "with_context"
+        assert call_kwargs['inputs'] == params_dict # Pass original params dict
         # Check the file context determined by execute_subtask_directly (using template path)
-        handler_config = execute_task_call_args.kwargs.get('handler_config', {})
+        handler_config = call_kwargs.get('handler_config', {})
         assert handler_config.get('file_context') == ["/template/path.py"] # Template path used
 
         # Verify AiderBridge (or other direct tools) were NOT called directly
@@ -482,12 +496,16 @@ class TestTaskCommandIntegration:
         )
         app_instance.memory_system.get_relevant_context_for.return_value = mock_context_result
 
+        # Arrange: Params dict matching conceptual TaskParams
+        params_dict = {"input": "Auto context test"} # No file_context
+        flags_dict = {}
+
         # Act: Call dispatcher without explicit file_context
         from src.dispatcher import execute_programmatic_task
         result = execute_programmatic_task(
             identifier="template:auto_context",
-            params={"input": "Auto context test"}, # No file_context
-            flags={},
+            params=params_dict,
+            flags=flags_dict,
             handler_instance=app_instance.passthrough_handler,
             task_system_instance=app_instance.task_system
         )
@@ -503,20 +521,15 @@ class TestTaskCommandIntegration:
         # Check the content returned by the stub
         assert "Executed template 'template:auto_context' with inputs." in result.content
         
-        # Verify the arguments passed to the internal execute_task
-        execute_task_call_args = app_instance.task_system.execute_task.call_args
-        # Check the file context determined by execute_subtask_directly (should be empty for deferred lookup)
-        handler_config = execute_task_call_args.kwargs.get('handler_config', {})
-        assert handler_config.get('file_context') == [] # Empty list for deferred lookup in Phase 1
         # Verify TaskSystem's internal execute_task was called
         app_instance.task_system.execute_task.assert_called_once()
         # Verify the arguments passed to the internal execute_task
-        execute_task_call_args = app_instance.task_system.execute_task.call_args
-        assert execute_task_call_args.kwargs['task_type'] == "template"
-        assert execute_task_call_args.kwargs['task_subtype'] == "auto_context"
-        assert execute_task_call_args.kwargs['inputs'] == {"input": "Auto context test"}
+        call_args, call_kwargs = app_instance.task_system.execute_task.call_args
+        assert call_kwargs['task_type'] == "template"
+        assert call_kwargs['task_subtype'] == "auto_context"
+        assert call_kwargs['inputs'] == params_dict # Pass original params dict
         # Check the file context determined by execute_subtask_directly (should be empty for deferred lookup in Phase 1)
-        handler_config = execute_task_call_args.kwargs.get('handler_config', {})
+        handler_config = call_kwargs.get('handler_config', {})
         assert handler_config.get('file_context') == [] # Empty list for deferred lookup in Phase 1
 
         # Verify AiderBridge (or other direct tools) were NOT called directly
@@ -548,12 +561,16 @@ class TestTaskCommandIntegration:
         }
         app_instance.task_system.find_template.return_value = mock_template
 
+        # Arrange: Params dict matching conceptual TaskParams
+        params_dict = {"input": "No context expected test"}
+        flags_dict = {}
+
         # Act: Call dispatcher without explicit file_context
         from src.dispatcher import execute_programmatic_task
         result = execute_programmatic_task(
             identifier="template:no_context",
-            params={"input": "No context expected test"},
-            flags={},
+            params=params_dict,
+            flags=flags_dict,
             handler_instance=app_instance.passthrough_handler,
             task_system_instance=app_instance.task_system
         )
@@ -570,16 +587,12 @@ class TestTaskCommandIntegration:
         # Verify TaskSystem's internal execute_task was called
         app_instance.task_system.execute_task.assert_called_once()
         # Verify the arguments passed to the internal execute_task
-        execute_task_call_args = app_instance.task_system.execute_task.call_args
-        assert execute_task_call_args.kwargs['task_type'] == "template"
-        assert execute_task_call_args.kwargs['task_subtype'] == "no_context"
-        assert execute_task_call_args.kwargs['inputs'] == {"input": "No context expected test"}
+        call_args, call_kwargs = app_instance.task_system.execute_task.call_args
+        assert call_kwargs['task_type'] == "template"
+        assert call_kwargs['task_subtype'] == "no_context"
+        assert call_kwargs['inputs'] == params_dict # Pass original params dict
         # Check the file context determined by execute_subtask_directly (should be empty)
-        handler_config = execute_task_call_args.kwargs.get('handler_config', {})
-        assert handler_config.get('file_context') == [] # No context files determined
-        handler_config = execute_task_call_args.kwargs.get('handler_config', {})
-        assert handler_config.get('file_context') == [] # No context files determined
-        handler_config = execute_task_call_args.kwargs.get('handler_config', {})
+        handler_config = call_kwargs.get('handler_config', {})
         assert handler_config.get('file_context') == [] # No context files determined
 
         # Verify AiderBridge (or other direct tools) were NOT called directly
@@ -618,13 +631,17 @@ class TestTaskCommandIntegration:
         )
         app_instance.memory_system.get_relevant_context_for.return_value = mock_context_result
 
+        # Arrange: Params dict matching conceptual TaskParams
+        params_dict = {"input": "History context test"} # No file_context
+        flags_dict = {"use_history": True} # Enable history flag
+        history_string = "User: Previous question\nAssistant: Previous answer"
+
         # Act: Call dispatcher with --use-history flag and history string
         from src.dispatcher import execute_programmatic_task
-        history_string = "User: Previous question\nAssistant: Previous answer"
         result = execute_programmatic_task(
             identifier="template:history_context",
-            params={"input": "History context test"}, # No file_context
-            flags={"use-history": True}, # Enable history flag
+            params=params_dict,
+            flags=flags_dict,
             handler_instance=app_instance.passthrough_handler,
             task_system_instance=app_instance.task_system,
             optional_history_str=history_string # Provide history
@@ -641,21 +658,15 @@ class TestTaskCommandIntegration:
         # Check that context_source is correctly marked as deferred
         assert result.notes["context_source"] == "deferred_lookup"
         
-        # Verify the arguments passed to the internal execute_task
-        execute_task_call_args = app_instance.task_system.execute_task.call_args
-        # Check the file context determined by execute_subtask_directly (should be empty for deferred lookup)
-        handler_config = execute_task_call_args.kwargs.get('handler_config', {})
-        assert handler_config.get('file_context') == [] # Empty list for deferred lookup in Phase 1
-
         # Verify TaskSystem's internal execute_task was called
         app_instance.task_system.execute_task.assert_called_once()
         # Verify the arguments passed to the internal execute_task
-        execute_task_call_args = app_instance.task_system.execute_task.call_args
-        assert execute_task_call_args.kwargs['task_type'] == "template"
-        assert execute_task_call_args.kwargs['task_subtype'] == "history_context"
-        assert execute_task_call_args.kwargs['inputs'] == {"input": "History context test"}
+        call_args, call_kwargs = app_instance.task_system.execute_task.call_args
+        assert call_kwargs['task_type'] == "template"
+        assert call_kwargs['task_subtype'] == "history_context"
+        assert call_kwargs['inputs'] == params_dict # Pass original params dict
         # Check the file context determined by execute_subtask_directly (should be empty for deferred lookup in Phase 1)
-        handler_config = execute_task_call_args.kwargs.get('handler_config', {})
+        handler_config = call_kwargs.get('handler_config', {})
         assert handler_config.get('file_context') == [] # Empty list for deferred lookup in Phase 1
 
         # Verify AiderBridge (or other direct tools) were NOT called directly
@@ -680,13 +691,17 @@ class TestTaskCommandIntegration:
              for tool_mock in app_instance.passthrough_handler.direct_tool_executors.values():
                  if isinstance(tool_mock, MagicMock):
                      tool_mock.reset_mock()
+        # Arrange: Params dict matching conceptual TaskParams
+        params_dict = {"prompt": "History with explicit context", "file_context": ["/explicit/path.py"]} # Explicit context
+        flags_dict = {"use_history": True} # History flag enabled
+        history_string = "User: Previous question\nAssistant: Previous answer"
+
         # Act: Call dispatcher with explicit context and history flag
         from src.dispatcher import execute_programmatic_task
-        history_string = "User: Previous question\nAssistant: Previous answer"
         result = execute_programmatic_task(
             identifier="aider:automatic",
-            params={"prompt": "History with explicit context", "file_context": ["/explicit/path.py"]}, # Explicit context
-            flags={"use-history": True}, # History flag enabled
+            params=params_dict,
+            flags=flags_dict,
             handler_instance=app_instance.passthrough_handler,
             task_system_instance=app_instance.task_system,
             optional_history_str=history_string # History provided
@@ -696,9 +711,9 @@ class TestTaskCommandIntegration:
         assert result.status == "COMPLETE"
         assert result.notes["execution_path"] == "direct_tool"
         assert result.notes["context_source"] == "explicit_request"
-        assert result.notes["context_file_count"] == 1
+        assert result.notes["context_file_count"] == 1 # Check standard key
 
-        # Verify bridge call used the explicit path
+        # Verify bridge call used the explicit path derived from params
         app_instance.aider_bridge.execute_automatic_task.assert_called_once_with(
             prompt="History with explicit context", file_context=["/explicit/path.py"]
         )
@@ -814,23 +829,21 @@ class TestTaskCommandIntegration:
         # Ensure find_template returns None to force direct tool path
         app_instance.task_system.find_template.return_value = None
         
+        # --- Arrange: Prepare params matching conceptual TaskParams ---
+        params_dict = {
+            "prompt": "Complex JSON test",
+            "file_context": ["/f1"], # Already list
+            "config": {"nested": {"value": 42}, "array": [1, 2, 3]} # Already dict
+        }
+        flags_dict = {}
+
         # --- Act: Call the REAL dispatcher directly ---
         from src.dispatcher import execute_programmatic_task
-        
-        identifier = "aider:automatic"
-        params_for_dispatcher = {
-            "prompt": "Complex JSON test",
-            # Simulate REPL parsing the JSON string into a list
-            "file_context": ["/f1"],
-            # Simulate REPL parsing the JSON string into a dict
-            "config": {"nested": {"value": 42}, "array": [1, 2, 3]}
-        }
-        flags_for_dispatcher = {}
 
         result = execute_programmatic_task(
-            identifier=identifier,
-            params=params_for_dispatcher,
-            flags=flags_for_dispatcher,
+            identifier="aider:automatic",
+            params=params_dict,
+            flags=flags_dict,
             handler_instance=app_instance.passthrough_handler, # Pass the mock handler
             task_system_instance=app_instance.task_system, # Pass the mock task system
             optional_history_str=None
@@ -844,10 +857,8 @@ class TestTaskCommandIntegration:
         # Assert Mock Calls: Verify direct tool executor was called
         direct_tool_mock.assert_called_once()
         
-        # Check that all parameters were correctly parsed and passed to the executor
-        assert received_params["prompt"] == "Complex JSON test"
-        assert received_params["file_context"] == ["/f1"]
-        assert received_params["config"] == {"nested": {"value": 42}, "array": [1, 2, 3]}
+        # Check that the params dictionary was passed correctly to the executor
+        assert received_params == params_dict
 
 
     def test_task_error_handling_invalid_json_repl(self, app_instance):
@@ -914,12 +925,16 @@ class TestTaskCommandIntegration:
         app_instance.task_system.find_template.return_value = None
         app_instance.passthrough_handler.direct_tool_executors = {}
 
+        # Arrange
+        params_dict = {"prompt": "This should fail"}
+        flags_dict = {}
+
         # Act: Call dispatcher directly
         from src.dispatcher import execute_programmatic_task
         result = execute_programmatic_task(
             identifier="nonexistent:template",
-            params={"prompt": "This should fail"},
-            flags={},
+            params=params_dict,
+            flags=flags_dict,
             handler_instance=app_instance.passthrough_handler,
             task_system_instance=app_instance.task_system
         )
@@ -952,12 +967,16 @@ class TestTaskCommandIntegration:
                      tool_mock.reset_mock()
         app_instance.aider_bridge.execute_automatic_task.side_effect = Exception("Simulated bridge error")
 
+        # Arrange
+        params_dict = {"prompt": "This will fail"}
+        flags_dict = {}
+
         # Act: Call dispatcher for the direct tool
         from src.dispatcher import execute_programmatic_task
         result = execute_programmatic_task(
             identifier="aider:automatic", # This is registered as a direct tool
-            params={"prompt": "This will fail"},
-            flags={},
+            params=params_dict,
+            flags=flags_dict,
             handler_instance=app_instance.passthrough_handler,
             task_system_instance=app_instance.task_system
         )
@@ -969,7 +988,10 @@ class TestTaskCommandIntegration:
         assert result.notes["error"]["reason"] == "unexpected_error"
 
         # Verify the bridge was called (and raised the error)
-        app_instance.aider_bridge.execute_automatic_task.assert_called_once()
+        # The direct tool executor receives params_dict and calls the bridge
+        app_instance.aider_bridge.execute_automatic_task.assert_called_once_with(
+            prompt="This will fail", file_context=None # Derived from params_dict
+        )
 
 
     def test_task_template_precedence_over_direct_tool(self, app_instance):
@@ -998,12 +1020,16 @@ class TestTaskCommandIntegration:
              for tool_mock in app_instance.passthrough_handler.direct_tool_executors.values():
                  if isinstance(tool_mock, MagicMock):
                      tool_mock.reset_mock()
+        # Arrange
+        params_dict = {}
+        flags_dict = {}
+
         # Act: Call dispatcher with the common identifier
         from src.dispatcher import execute_programmatic_task
         result = execute_programmatic_task(
             identifier="common:id",
-            params={},
-            flags={},
+            params=params_dict,
+            flags=flags_dict,
             handler_instance=app_instance.passthrough_handler,
             task_system_instance=app_instance.task_system
         )

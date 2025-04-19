@@ -80,9 +80,10 @@ class TestAiderExecutors:
     def test_automatic_success_no_context(self, mock_aider_bridge_class):
         mock_bridge_instance = mock_aider_bridge_class.return_value
         mock_bridge_instance.execute_automatic_task.return_value = {"status": "COMPLETE", "content": "Success!"}
-        params = {"prompt": "Test prompt"}
+        # Arrange: Params dict matching conceptual AiderAutoParams
+        params_dict = {"prompt": "Test prompt"}
 
-        result = execute_aider_automatic(params, mock_bridge_instance)
+        result = execute_aider_automatic(params_dict, mock_bridge_instance)
 
         assert result == {"status": "COMPLETE", "content": "Success!"}
         mock_bridge_instance.execute_automatic_task.assert_called_once_with(prompt="Test prompt", file_context=None)
@@ -91,40 +92,47 @@ class TestAiderExecutors:
         mock_bridge_instance = mock_aider_bridge_class.return_value
         mock_bridge_instance.execute_automatic_task.return_value = {"status": "COMPLETE", "content": "Success!"}
         file_list = ["f1.py", "f2.py"]
-        params = {"prompt": "Test prompt", "file_context": file_list}
+        # Arrange: Params dict matching conceptual AiderAutoParams (file_context is list)
+        params_dict = {"prompt": "Test prompt", "file_context": file_list}
 
-        result = execute_aider_automatic(params, mock_bridge_instance)
+        result = execute_aider_automatic(params_dict, mock_bridge_instance)
 
         assert result == {"status": "COMPLETE", "content": "Success!"}
         mock_bridge_instance.execute_automatic_task.assert_called_once_with(prompt="Test prompt", file_context=file_list)
 
-    def test_automatic_success_with_json_context(self, mock_aider_bridge_class):
+    def test_automatic_success_with_json_context_string(self, mock_aider_bridge_class):
+        """Test executor handling JSON string context (current behavior via helper)."""
         mock_bridge_instance = mock_aider_bridge_class.return_value
         mock_bridge_instance.execute_automatic_task.return_value = {"status": "COMPLETE", "content": "Success!"}
         file_json = '["f1.py", "f2.py"]'
         expected_list = ["f1.py", "f2.py"]
-        params = {"prompt": "Test prompt", "file_context": file_json}
+        # Arrange: Params dict with file_context as JSON string (as received from dispatcher currently)
+        params_dict = {"prompt": "Test prompt", "file_context": file_json}
 
-        result = execute_aider_automatic(params, mock_bridge_instance)
+        result = execute_aider_automatic(params_dict, mock_bridge_instance)
 
         assert result == {"status": "COMPLETE", "content": "Success!"}
         mock_bridge_instance.execute_automatic_task.assert_called_once_with(prompt="Test prompt", file_context=expected_list)
 
-    def test_automatic_missing_prompt(self, mock_aider_bridge_class):
+    def test_automatic_missing_prompt_param(self, mock_aider_bridge_class):
+        """Test executor failure when prompt param is missing (current behavior)."""
         mock_bridge_instance = mock_aider_bridge_class.return_value
-        params = {} # Missing prompt
+        # Arrange: Params dict missing 'prompt'
+        params_dict = {}
 
-        result = execute_aider_automatic(params, mock_bridge_instance)
+        result = execute_aider_automatic(params_dict, mock_bridge_instance)
 
         assert result["status"] == "FAILED"
         assert "Missing required parameter: prompt" in result["content"]
         mock_bridge_instance.execute_automatic_task.assert_not_called()
 
-    def test_automatic_invalid_context(self, mock_aider_bridge_class):
+    def test_automatic_invalid_context_string(self, mock_aider_bridge_class):
+        """Test executor failure with invalid JSON context string (current behavior via helper)."""
         mock_bridge_instance = mock_aider_bridge_class.return_value
-        params = {"prompt": "Test prompt", "file_context": '["f1.py",'} # Invalid JSON
+        # Arrange: Params dict with invalid JSON string
+        params_dict = {"prompt": "Test prompt", "file_context": '["f1.py",'}
 
-        result = execute_aider_automatic(params, mock_bridge_instance)
+        result = execute_aider_automatic(params_dict, mock_bridge_instance)
 
         assert result["status"] == "FAILED"
         assert "Invalid file_context" in result["content"]
@@ -133,51 +141,113 @@ class TestAiderExecutors:
     def test_automatic_bridge_exception(self, mock_aider_bridge_class):
         mock_bridge_instance = mock_aider_bridge_class.return_value
         mock_bridge_instance.execute_automatic_task.side_effect = Exception("Bridge exploded")
-        params = {"prompt": "Test prompt"}
+        # Arrange: Params dict matching conceptual AiderAutoParams
+        params_dict = {"prompt": "Test prompt"}
 
-        result = execute_aider_automatic(params, mock_bridge_instance)
+        result = execute_aider_automatic(params_dict, mock_bridge_instance)
 
         assert result["status"] == "FAILED"
         assert "Aider execution failed: Bridge exploded" in result["content"]
         assert result["notes"]["error"]["reason"] == "unexpected_error"
 
+    @pytest.mark.xfail(reason="Pydantic validation not implemented in executor yet (Phase 3 Part 2)")
+    def test_interactive_missing_query_validation(self, mock_aider_bridge_class):
+        """Test validation error when query is missing."""
+        from pydantic import ValidationError # Import locally for test
+        mock_bridge_instance = mock_aider_bridge_class.return_value
+        params_dict = {} # Missing required 'query'
+
+        with pytest.raises(ValidationError, match="query"):
+            # Hypothetical future call with Pydantic model:
+            # execute_aider_interactive(AiderInteractiveParams(**params_dict), mock_bridge_instance)
+            # For now, call current signature and expect xfail
+            execute_aider_interactive(params_dict, mock_bridge_instance)
+
+    @pytest.mark.xfail(reason="Pydantic validation not implemented in executor yet (Phase 3 Part 2)")
+    def test_interactive_invalid_context_type_validation(self, mock_aider_bridge_class):
+        """Test validation error for wrong file_context type."""
+        from pydantic import ValidationError # Import locally for test
+        mock_bridge_instance = mock_aider_bridge_class.return_value
+        # Pass invalid type directly, assuming dispatcher/Pydantic handles JSON string -> list conversion
+        params_dict = {"query": "Test", "file_context": {"invalid": "type"}}
+
+        with pytest.raises(ValidationError, match="file_context"):
+            # Hypothetical future call with Pydantic model:
+            # execute_aider_interactive(AiderInteractiveParams(**params_dict), mock_bridge_instance)
+            # For now, call current signature and expect xfail
+            execute_aider_interactive(params_dict, mock_bridge_instance)
+
+    @pytest.mark.xfail(reason="Pydantic validation not implemented in executor yet (Phase 3 Part 2)")
+    def test_automatic_missing_prompt_validation(self, mock_aider_bridge_class):
+        """Test validation error when prompt is missing."""
+        from pydantic import ValidationError # Import locally for test
+        mock_bridge_instance = mock_aider_bridge_class.return_value
+        params_dict = {} # Missing required 'prompt'
+
+        with pytest.raises(ValidationError, match="prompt"):
+            # Hypothetical future call with Pydantic model:
+            # execute_aider_automatic(AiderAutoParams(**params_dict), mock_bridge_instance)
+            # For now, call current signature and expect xfail
+            execute_aider_automatic(params_dict, mock_bridge_instance)
+
+    @pytest.mark.xfail(reason="Pydantic validation not implemented in executor yet (Phase 3 Part 2)")
+    def test_automatic_invalid_context_type_validation(self, mock_aider_bridge_class):
+        """Test validation error for wrong file_context type."""
+        from pydantic import ValidationError # Import locally for test
+        mock_bridge_instance = mock_aider_bridge_class.return_value
+        # Pass invalid type directly, assuming dispatcher/Pydantic handles JSON string -> list conversion
+        params_dict = {"prompt": "Test", "file_context": "not_a_list_or_none"}
+
+        with pytest.raises(ValidationError, match="file_context"):
+            # Hypothetical future call with Pydantic model:
+            # execute_aider_automatic(AiderAutoParams(**params_dict), mock_bridge_instance)
+            # For now, call current signature and expect xfail
+            execute_aider_automatic(params_dict, mock_bridge_instance)
+
+
     # --- Tests for execute_aider_interactive ---
     def test_interactive_success_no_context(self, mock_aider_bridge_class):
         mock_bridge_instance = mock_aider_bridge_class.return_value
         mock_bridge_instance.start_interactive_session.return_value = {"status": "COMPLETE", "content": "Session ended"}
-        params = {"query": "Test query"}
+        # Arrange: Params dict matching conceptual AiderInteractiveParams
+        params_dict = {"query": "Test query"}
 
-        result = execute_aider_interactive(params, mock_bridge_instance)
+        result = execute_aider_interactive(params_dict, mock_bridge_instance)
 
         assert result == {"status": "COMPLETE", "content": "Session ended"}
         mock_bridge_instance.start_interactive_session.assert_called_once_with(query="Test query", file_context=None)
 
-    def test_interactive_success_with_context(self, mock_aider_bridge_class):
+    def test_interactive_success_with_list_context(self, mock_aider_bridge_class):
         mock_bridge_instance = mock_aider_bridge_class.return_value
         mock_bridge_instance.start_interactive_session.return_value = {"status": "COMPLETE", "content": "Session ended"}
         file_list = ["f1.py", "f2.py"]
-        params = {"query": "Test query", "file_context": file_list}
+        # Arrange: Params dict matching conceptual AiderInteractiveParams
+        params_dict = {"query": "Test query", "file_context": file_list}
 
-        result = execute_aider_interactive(params, mock_bridge_instance)
+        result = execute_aider_interactive(params_dict, mock_bridge_instance)
 
         assert result == {"status": "COMPLETE", "content": "Session ended"}
         mock_bridge_instance.start_interactive_session.assert_called_once_with(query="Test query", file_context=file_list)
 
-    def test_interactive_missing_query(self, mock_aider_bridge_class):
+    def test_interactive_missing_query_param(self, mock_aider_bridge_class):
+        """Test executor failure when query param is missing (current behavior)."""
         mock_bridge_instance = mock_aider_bridge_class.return_value
-        params = {} # Missing query
+        # Arrange: Params dict missing 'query'
+        params_dict = {}
 
-        result = execute_aider_interactive(params, mock_bridge_instance)
+        result = execute_aider_interactive(params_dict, mock_bridge_instance)
 
         assert result["status"] == "FAILED"
         assert "Missing required parameter: query" in result["content"]
         mock_bridge_instance.start_interactive_session.assert_not_called()
 
-    def test_interactive_invalid_context(self, mock_aider_bridge_class):
+    def test_interactive_invalid_context_type(self, mock_aider_bridge_class):
+        """Test executor failure with invalid context type (current behavior via helper)."""
         mock_bridge_instance = mock_aider_bridge_class.return_value
-        params = {"query": "Test query", "file_context": 123} # Invalid type
+        # Arrange: Params dict with invalid type for file_context
+        params_dict = {"query": "Test query", "file_context": 123}
 
-        result = execute_aider_interactive(params, mock_bridge_instance)
+        result = execute_aider_interactive(params_dict, mock_bridge_instance)
 
         assert result["status"] == "FAILED"
         assert "Invalid type for file_context" in result["content"]
@@ -186,9 +256,10 @@ class TestAiderExecutors:
     def test_interactive_bridge_exception(self, mock_aider_bridge_class):
         mock_bridge_instance = mock_aider_bridge_class.return_value
         mock_bridge_instance.start_interactive_session.side_effect = Exception("Session failed to start")
-        params = {"query": "Test query"}
+        # Arrange: Params dict matching conceptual AiderInteractiveParams
+        params_dict = {"query": "Test query"}
 
-        result = execute_aider_interactive(params, mock_bridge_instance)
+        result = execute_aider_interactive(params_dict, mock_bridge_instance)
 
         assert result["status"] == "FAILED"
         assert "Aider session failed: Session failed to start" in result["content"]

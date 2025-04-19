@@ -78,10 +78,11 @@ def test_cmd_task_no_args(repl_instance, capsys):
 def test_cmd_task_identifier_only(repl_instance):
     """Test calling /task with only an identifier."""
     repl_instance._cmd_task("my:task")
+    # Assert: Check params/flags dicts match conceptual TaskParams/TaskFlags
     repl_instance.mock_dispatcher_for_test.assert_called_once_with(
         identifier="my:task",
-        params={},
-        flags={},
+        params={}, # Empty params dict
+        flags={}, # Empty flags dict
         handler_instance=repl_instance.application.passthrough_handler,
         task_system_instance=repl_instance.application.task_system,
         optional_history_str=None
@@ -90,9 +91,10 @@ def test_cmd_task_identifier_only(repl_instance):
 def test_cmd_task_simple_param(repl_instance):
     """Test calling /task with one simple key=value parameter."""
     repl_instance._cmd_task("my:task key=value")
+    # Assert: Check params/flags dicts match conceptual TaskParams/TaskFlags
     repl_instance.mock_dispatcher_for_test.assert_called_once_with(
         identifier="my:task",
-        params={"key": "value"},
+        params={"key": "value"}, # Simple param
         flags={},
         handler_instance=repl_instance.application.passthrough_handler,
         task_system_instance=repl_instance.application.task_system,
@@ -102,9 +104,10 @@ def test_cmd_task_simple_param(repl_instance):
 def test_cmd_task_quoted_param(repl_instance):
     """Test calling /task with a parameter value containing spaces (quoted)."""
     repl_instance._cmd_task("my:task message='Hello world!'")
+    # Assert: Check params/flags dicts match conceptual TaskParams/TaskFlags
     repl_instance.mock_dispatcher_for_test.assert_called_once_with(
         identifier="my:task",
-        params={"message": "Hello world!"},
+        params={"message": "Hello world!"}, # Quoted param
         flags={},
         handler_instance=repl_instance.application.passthrough_handler,
         task_system_instance=repl_instance.application.task_system,
@@ -114,9 +117,10 @@ def test_cmd_task_quoted_param(repl_instance):
 def test_cmd_task_param_with_equals(repl_instance):
     """Test calling /task with a parameter value containing an equals sign."""
     repl_instance._cmd_task("my:task filter='status=active'")
+    # Assert: Check params/flags dicts match conceptual TaskParams/TaskFlags
     repl_instance.mock_dispatcher_for_test.assert_called_once_with(
         identifier="my:task",
-        params={"filter": "status=active"}, # Value includes equals
+        params={"filter": "status=active"}, # Param with equals
         flags={},
         handler_instance=repl_instance.application.passthrough_handler,
         task_system_instance=repl_instance.application.task_system,
@@ -126,9 +130,10 @@ def test_cmd_task_param_with_equals(repl_instance):
 def test_cmd_task_json_list_param(repl_instance):
     """Test calling /task with a parameter value that is a JSON list."""
     repl_instance._cmd_task('my:task files=\'["file1.py", "file2.py"]\'')
+    # Assert: Check params/flags dicts match conceptual TaskParams/TaskFlags
     repl_instance.mock_dispatcher_for_test.assert_called_once_with(
         identifier="my:task",
-        params={"files": ["file1.py", "file2.py"]}, # Expect parsed list
+        params={"files": ["file1.py", "file2.py"]}, # JSON list parsed by REPL
         flags={},
         handler_instance=repl_instance.application.passthrough_handler,
         task_system_instance=repl_instance.application.task_system,
@@ -138,9 +143,10 @@ def test_cmd_task_json_list_param(repl_instance):
 def test_cmd_task_json_dict_param(repl_instance):
     """Test calling /task with a parameter value that is a JSON object."""
     repl_instance._cmd_task('my:task config=\'{"retries": 3, "active": true}\'')
+    # Assert: Check params/flags dicts match conceptual TaskParams/TaskFlags
     repl_instance.mock_dispatcher_for_test.assert_called_once_with(
         identifier="my:task",
-        params={"config": {"retries": 3, "active": True}}, # Expect parsed dict
+        params={"config": {"retries": 3, "active": True}}, # JSON dict parsed by REPL
         flags={},
         handler_instance=repl_instance.application.passthrough_handler,
         task_system_instance=repl_instance.application.task_system,
@@ -153,9 +159,10 @@ def test_cmd_task_invalid_json_param(repl_instance, capsys):
     repl_instance.output = sys.stdout
     repl_instance._cmd_task('my:task data=\'{"key": invalid}\'') # Invalid JSON syntax
     # Assert dispatcher was called with the *string* value
+    # Assert: Check params/flags dicts match conceptual TaskParams/TaskFlags
     repl_instance.mock_dispatcher_for_test.assert_called_once_with(
         identifier="my:task",
-        params={"data": '{"key": invalid}'}, # Expect raw string
+        params={"data": '{"key": invalid}'}, # Invalid JSON passed as string by REPL
         flags={},
         handler_instance=repl_instance.application.passthrough_handler,
         task_system_instance=repl_instance.application.task_system,
@@ -168,10 +175,11 @@ def test_cmd_task_invalid_json_param(repl_instance, capsys):
 def test_cmd_task_simple_flag(repl_instance):
     """Test calling /task with a simple boolean flag."""
     repl_instance._cmd_task("my:task --force")
+    # Assert: Check params/flags dicts match conceptual TaskParams/TaskFlags
     repl_instance.mock_dispatcher_for_test.assert_called_once_with(
         identifier="my:task",
         params={},
-        flags={"force": True}, # Expect flag set to True
+        flags={"force": True}, # Simple flag
         handler_instance=repl_instance.application.passthrough_handler,
         task_system_instance=repl_instance.application.task_system,
         optional_history_str=None
@@ -180,10 +188,11 @@ def test_cmd_task_simple_flag(repl_instance):
 def test_cmd_task_multiple_params_and_flags(repl_instance):
     """Test calling /task with a mix of parameters and flags."""
     repl_instance._cmd_task("my:task p1=v1 --flag1 p2='v 2' --flag2 p3='{\"a\":1}'")
+    # Assert: Check params/flags dicts match conceptual TaskParams/TaskFlags
     repl_instance.mock_dispatcher_for_test.assert_called_once_with(
         identifier="my:task",
-        params={"p1": "v1", "p2": "v 2", "p3": {"a": 1}},
-        flags={"flag1": True, "flag2": True},
+        params={"p1": "v1", "p2": "v 2", "p3": {"a": 1}}, # Mixed params (JSON parsed by REPL)
+        flags={"flag1": True, "flag2": True}, # Mixed flags
         handler_instance=repl_instance.application.passthrough_handler,
         task_system_instance=repl_instance.application.task_system,
         optional_history_str=None
