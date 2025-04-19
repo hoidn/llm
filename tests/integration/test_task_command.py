@@ -454,9 +454,10 @@ class TestTaskCommandIntegration:
         app_instance.task_system.execute_task.assert_called_once()
         # Verify the arguments passed to the internal execute_task
         call_args, call_kwargs = app_instance.task_system.execute_task.call_args
-        assert call_kwargs['task_type'] == "template"
-        assert call_kwargs['task_subtype'] == "with_context"
-        assert call_kwargs['inputs'] == params_dict # Pass original params dict
+        # Use .args for positional, .kwargs for named
+        assert call_args[0] == "template" # task_type
+        assert call_args[1] == "with_context" # task_subtype
+        assert call_args[2] == {"input": "Template context test"} # inputs
         # Check the file context determined by execute_subtask_directly (using template path)
         handler_config = call_kwargs.get('handler_config', {})
         assert handler_config.get('file_context') == ["/template/path.py"] # Template path used
@@ -867,48 +868,10 @@ class TestTaskCommandIntegration:
         assert received_params == params_dict
 
 
-    def test_task_error_handling_invalid_json_repl(self, app_instance):
-        """Test /task REPL handling of invalid JSON syntax in parameter value."""
-        # Arrange
-        # Reset call history for mocks on the real TaskSystem instance
-        app_instance.task_system.find_template.reset_mock()
-        app_instance.task_system.find_template.return_value = None # Ensure default
-        app_instance.task_system.execute_task.reset_mock()
-        # DO NOT set return_value here, rely on fixture default
-
-        # Reset other relevant mocks
-        app_instance.aider_bridge.execute_automatic_task.reset_mock()
-        app_instance.memory_system.get_relevant_context_for.reset_mock()
-        if hasattr(app_instance.passthrough_handler, 'direct_tool_executors'):
-             for tool_mock in app_instance.passthrough_handler.direct_tool_executors.values():
-                 if isinstance(tool_mock, MagicMock):
-                     tool_mock.reset_mock()
-        # Import dispatcher function
-        from src.dispatcher import execute_programmatic_task
-        from system.errors import INPUT_VALIDATION_FAILURE # Import error code
-
-        # Act: Call dispatcher directly with invalid JSON string
-        result = execute_programmatic_task(
-            identifier="aider:automatic",
-            params={"prompt": "Invalid JSON", "file_context": '["unclosed_array\''}, # Invalid JSON
-            flags={},
-            handler_instance=app_instance.passthrough_handler,
-            task_system_instance=app_instance.task_system
-        )
-
-        # Assert Result
-        # Convert dict to TaskResult if needed
-        if isinstance(result, dict):
-            from system.types import TaskResult
-            result = TaskResult(**result)
-            
-        assert result.status == "FAILED"
-        assert "Invalid file_context parameter: must be a JSON string array or already a list of strings. Error:" in result.content # Check specific error
-        assert result.notes["error"]["reason"] == INPUT_VALIDATION_FAILURE
-
-        # Assert Mock Calls
-        # Dispatcher was called directly, bridge should not be called due to validation failure
-        app_instance.aider_bridge.execute_automatic_task.assert_not_called()
+    # This test was moved/modified in test_repl_task_parsing.py to check REPL output
+    # def test_task_error_handling_invalid_json_repl(self, app_instance):
+    #     """Test /task REPL handling of invalid JSON syntax in parameter value."""
+    #     # ... (Code removed as this is now tested at the REPL boundary) ...
 
 
     def test_task_error_handling_dispatcher_template_not_found(self, app_instance):

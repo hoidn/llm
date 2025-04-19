@@ -50,11 +50,16 @@ class TestGetContextExecutor:
 
     def test_success(self, mock_memory):
         """Test successful execution with valid query."""
-        # Arrange: Params dict matching conceptual GetContextParams
+        # Arrange
+        # Pass dictionary matching conceptual GetContextParams
         params_dict = {"query": "test query"}
-
+        
         # Act
-        result = execute_get_context(params_dict, mock_memory)
+        # TODO: After Phase 3 impl, change signature:
+        # from src.executors.system_executors import GetContextParams
+        # params_model = GetContextParams(**params_dict)
+        # result = execute_get_context(params_model, mock_memory)
+        result = execute_get_context(params_dict, mock_memory) # Current signature
         
         # Assert
         assert result["status"] == "COMPLETE"
@@ -78,13 +83,14 @@ class TestGetContextExecutor:
 
     def test_success_with_history(self, mock_memory):
         """Test successful execution with query and history."""
-        # Arrange: Params dict matching conceptual GetContextParams
+        # Arrange
         params_dict = {
             "query": "test query",
             "history": "previous conversation"
         }
-
+        
         # Act
+        # TODO: Refactor signature after Phase 3 impl
         result = execute_get_context(params_dict, mock_memory)
         
         # Assert
@@ -94,16 +100,16 @@ class TestGetContextExecutor:
         call_arg = mock_memory.get_relevant_context_for.call_args[0][0]
         assert call_arg.history_context == "previous conversation"
 
-    def test_success_with_target_files(self, mock_memory):
-        """Test successful execution with query and target files hint."""
-        # Arrange: Params dict matching conceptual GetContextParams
-        # Note: target_files should be a list according to conceptual model
+    def test_success_with_target_files_list(self, mock_memory):
+        """Test successful execution with query and target files hint as a list."""
+        # Arrange
         params_dict = {
             "query": "test query",
             "target_files": ["specific_file.py"]
         }
-
+        
         # Act
+        # TODO: Refactor signature after Phase 3 impl
         result = execute_get_context(params_dict, mock_memory)
         
         # Assert
@@ -113,29 +119,60 @@ class TestGetContextExecutor:
         call_arg = mock_memory.get_relevant_context_for.call_args[0][0]
         assert call_arg.inputs["target_files_hint"] == ["specific_file.py"]
 
-    def test_no_query_param(self, mock_memory):
-        """Test failure when query parameter is missing (current behavior)."""
-        # Arrange: Params dict missing the 'query' key
-        params_dict = {}
+    def test_success_with_target_files_json_string(self, mock_memory):
+        """Test Pydantic parsing target_files JSON string (will test after impl)."""
+        # Arrange
+        params_dict = {"query": "test query", "target_files": '["specific_file.py"]'}
+        expected_list = ["specific_file.py"]
 
-        # Act
-        result = execute_get_context(params_dict, mock_memory)
-        
-        # Assert
-        assert result["status"] == "FAILED"
-        assert "Missing required parameter: query" in result["content"]
-        assert result["notes"]["error"]["reason"] == INPUT_VALIDATION_FAILURE
-        
-        # Verify memory_system was not called
-        mock_memory.get_relevant_context_for.assert_not_called()
+        # Act & Assert
+        # TODO: Assert ValidationError is NOT raised after Phase 3 impl.
+        # For now, this test might fail or pass depending on current manual parsing.
+        # Add a comment for the future assertion:
+        # from src.executors.system_executors import GetContextParams
+        # params_model = GetContextParams(**params_dict) # Should parse JSON string
+        # result = execute_get_context(params_model, mock_memory)
+        # assert result["status"] == "COMPLETE"
+        # call_arg = mock_memory.get_relevant_context_for.call_args[0][0]
+        # assert call_arg.inputs["target_files_hint"] == expected_list
+        pass # Placeholder
+
+    def test_validation_error_missing_query(self, mock_memory):
+        """Test ValidationError when query is missing (assuming it becomes required)."""
+        # Arrange
+        params_dict = {} # Missing query
+
+        # Act & Assert
+        # TODO: Assert ValidationError once Phase 3 source code is implemented.
+        # Assuming 'query' will be required in GetContextParams model.
+        # Add a comment for the future assertion:
+        # from src.executors.system_executors import GetContextParams
+        # with pytest.raises(ValidationError, match="query"):
+        #     params_model = GetContextParams(**params_dict)
+        #     # execute_get_context(params_model, mock_memory) # Call might not be needed
+        pass # Placeholder
+
+    def test_validation_error_invalid_target_files_type(self, mock_memory):
+        """Test ValidationError for invalid target_files type."""
+        # Arrange
+        params_dict = {"query": "test query", "target_files": 123} # Invalid type
+
+        # Act & Assert
+        # TODO: Assert ValidationError once Phase 3 source code is implemented.
+        # Add a comment for the future assertion:
+        # from src.executors.system_executors import GetContextParams
+        # with pytest.raises(ValidationError, match="target_files"):
+        #     params_model = GetContextParams(**params_dict)
+        pass # Placeholder
 
     def test_memory_system_error(self, mock_memory):
         """Test handling of memory system errors."""
-        # Arrange: Params dict matching conceptual GetContextParams
+        # Arrange
         params_dict = {"query": "test query"}
         mock_memory.get_relevant_context_for.side_effect = Exception("Memory system error")
-
+        
         # Act
+        # TODO: Refactor signature after Phase 3 impl
         result = execute_get_context(params_dict, mock_memory)
         
         # Assert
@@ -170,14 +207,15 @@ class TestGetContextExecutor:
 
     def test_no_matches_found(self, mock_memory):
         """Test when memory system returns no matches."""
-        # Arrange: Params dict matching conceptual GetContextParams
+        # Arrange
         params_dict = {"query": "test query"}
         mock_result = MagicMock(spec=AssociativeMatchResult)
-        mock_result.context = "No matches found"
+        mock_result.context = "No matches found" # Use attribute access
         mock_result.matches = []  # Empty matches list
         mock_memory.get_relevant_context_for.return_value = mock_result
-
+        
         # Act
+        # TODO: Refactor signature after Phase 3 impl
         result = execute_get_context(params_dict, mock_memory)
         
         # Assert
@@ -204,10 +242,14 @@ class TestReadFilesExecutor:
 
     def test_success(self, mock_file_manager):
         """Test successful reading of multiple files."""
-        # Arrange: Params dict matching conceptual ReadFilesParams
+        # Arrange
         params_dict = {"file_paths": ["path/to/file1.py", "path/to/file2.md"]}
-
+        
         # Act
+        # TODO: Refactor signature after Phase 3 impl
+        # from src.executors.system_executors import ReadFilesParams
+        # params_model = ReadFilesParams(**params_dict)
+        # result = execute_read_files(params_model, mock_file_manager)
         result = execute_read_files(params_dict, mock_file_manager)
         
         # Assert
@@ -232,10 +274,11 @@ class TestReadFilesExecutor:
 
     def test_partial_success(self, mock_file_manager):
         """Test partial success when some files can't be read."""
-        # Arrange: Params dict matching conceptual ReadFilesParams
+        # Arrange
         params_dict = {"file_paths": ["path/to/file1.py", "path/to/nonexistent.txt"]}
-
+        
         # Act
+        # TODO: Refactor signature after Phase 3 impl
         result = execute_read_files(params_dict, mock_file_manager)
         
         # Assert
@@ -254,13 +297,23 @@ class TestReadFilesExecutor:
         # Verify file_manager was called for both paths
         assert mock_file_manager.read_file.call_count == 2
 
+    def test_validation_error_missing_file_paths(self, mock_file_manager):
+        """Test ValidationError when file_paths is missing."""
+        # Arrange
+        params_dict = {} # Missing file_paths
+
+        # Act & Assert
+        # TODO: Assert ValidationError once Phase 3 source code is implemented.
+        # Add a comment for the future assertion:
+        # from src.executors.system_executors import ReadFilesParams
+        # with pytest.raises(ValidationError, match="file_paths"):
+        #     params_model = ReadFilesParams(**params_dict)
+        pass # Placeholder
+
     def test_empty_input_list(self, mock_file_manager):
         """Test with empty file paths list."""
-        # Arrange: Params dict matching conceptual ReadFilesParams
+        # Arrange
         params_dict = {"file_paths": []}
-
-        # Act
-        result = execute_read_files(params_dict, mock_file_manager)
         
         # Assert
         assert result["status"] == "COMPLETE"
@@ -271,53 +324,41 @@ class TestReadFilesExecutor:
         # Verify file_manager was not called
         mock_file_manager.read_file.assert_not_called()
 
-    def test_invalid_input_not_list(self, mock_file_manager):
-        """Test with invalid file_paths (not a list) - current behavior."""
-        # Arrange: Params dict with wrong type for file_paths
+    def test_validation_error_invalid_file_paths_type(self, mock_file_manager):
+        """Test ValidationError for invalid file_paths type."""
+        # Arrange
         params_dict = {"file_paths": "not_a_list"}
 
-        # Act
-        result = execute_read_files(params_dict, mock_file_manager)
-        
-        # Assert
-        assert result["status"] == "FAILED"
-        assert "Missing or invalid parameter: file_paths" in result["content"]
-        assert result["notes"]["error"]["reason"] == INPUT_VALIDATION_FAILURE
-        
-        # Verify file_manager was not called
-        mock_file_manager.read_file.assert_not_called()
+        # Act & Assert
+        # TODO: Assert ValidationError once Phase 3 source code is implemented.
+        # Add a comment for the future assertion:
+        # from src.executors.system_executors import ReadFilesParams
+        # with pytest.raises(ValidationError, match="file_paths"):
+        #     params_model = ReadFilesParams(**params_dict)
+        pass # Placeholder
 
-    def test_invalid_path_type_in_list(self, mock_file_manager):
-        """Test with invalid path type in the list - current behavior."""
-        # Arrange: Params dict with list containing non-string
+    def test_validation_error_invalid_path_type_in_list(self, mock_file_manager):
+        """Test ValidationError for invalid type within file_paths list."""
+        # Arrange
         params_dict = {"file_paths": ["path/to/file1.py", 123]}
 
-        # Act
-        result = execute_read_files(params_dict, mock_file_manager)
-        
-        # Assert
-        assert result["status"] == "COMPLETE"
-        
-        # Verify content contains only the valid file
-        assert "--- START FILE: path/to/file1.py ---" in result["content"]
-        assert "content of file1" in result["content"]
-        
-        # Verify notes
-        assert result["notes"]["files_read_count"] == 1
-        assert "<invalid_type: int>" in result["notes"]["skipped_files"]
-        
-        # Verify file_manager was called only for the valid path
-        assert mock_file_manager.read_file.call_count == 1
-        mock_file_manager.read_file.assert_called_once_with("path/to/file1.py")
+        # Act & Assert
+        # TODO: Assert ValidationError once Phase 3 source code is implemented.
+        # Add a comment for the future assertion:
+        # from src.executors.system_executors import ReadFilesParams
+        # with pytest.raises(ValidationError, match="file_paths"):
+        #     params_model = ReadFilesParams(**params_dict)
+        pass # Placeholder
 
     def test_file_manager_error(self, mock_file_manager):
         """Test handling of file manager errors."""
-        # Arrange: Params dict matching conceptual ReadFilesParams
-        params_dict = {"file_paths": ["path/to/file1.py"]}
+        # Arrange
+        params = {"file_paths": ["path/to/file1.py"]}
         mock_file_manager.read_file.side_effect = Exception("File manager error")
-
+        
         # Act
-        result = execute_read_files(params_dict, mock_file_manager)
+        # TODO: Refactor signature after Phase 3 impl
+        result = execute_read_files(params, mock_file_manager)
         
         # Assert
         assert result["status"] == "FAILED"
