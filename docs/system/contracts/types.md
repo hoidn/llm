@@ -138,11 +138,11 @@ interface ContextManagement {
     
     /**
      * Controls what information is preserved during sequential task execution:
-     * - notes_only: Only the notes field is preserved (default)
-     * - full_output: Both content and notes fields are preserved
+     * - notes_only: Only the notes field is preserved (default for atomic tasks)
+     * - full_output: Both content and notes fields are preserved (affects partial output on atomic task failure)
      */
-    accumulationFormat: 'full_output' | 'notes_only';
-    
+    accumulationFormat: 'full_output' | 'notes_only'; // Note: This primarily affects atomic task partial output format on failure now.
+
     /**
      * Controls whether new context is fetched via associative matching
      * - enabled: Fresh context is retrieved for this task
