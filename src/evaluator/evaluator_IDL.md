@@ -4,6 +4,10 @@ module src.evaluator.evaluator {
     # @depends_on(src.evaluator.interfaces.TemplateLookupInterface) // Provided by TaskSystem
     # @depends_on(src.task_system.template_utils.Environment) // For environment management
 
+    // Note: This IDL describes the core **Template Evaluator** responsible for executing the internal AST derived from **atomic XML task templates** when invoked by the TaskSystem (e.g., via `execute_subtask_directly`).
+    // It does **not** evaluate the S-expression DSL. It does **not** handle composite tasks like sequential, reduce, or loops defined in XML (these are removed).
+    // For evaluation of the S-expression DSL used in programmatic workflows (`/task '(...)`), refer to the `SexpEvaluator` component defined in `src/sexp_evaluator/sexp_evaluator_IDL.md`.
+    // The `SexpEvaluator` utilizes core system services (TaskSystem, Handler, MemorySystem) as its backend, which may indirectly involve this Template Evaluator for executing atomic steps defined in XML.
     // Interface for the Evaluator component, responsible for evaluating AST nodes.
     // Conceptually implements src.evaluator.interfaces.EvaluatorInterface.
     interface Evaluator { // implements EvaluatorInterface
@@ -21,37 +25,16 @@ module src.evaluator.evaluator {
         // - env is a valid Environment instance.
         // Postconditions:
         // - Returns the result of evaluating the node. The type depends on the node evaluated.
-        // - Often returns a TaskResult dictionary for executable nodes like function calls or loops.
-        // - Returns literals or unresolved variable references as is.
+        // - Often returns a TaskResult dictionary for executable nodes.
+        // - Returns literals or unresolved variable references as is (though typically called on executable nodes).
         // Behavior:
-        // - Checks the type of the node.
-        // - Delegates evaluation to specific methods based on node type (e.g., `evaluateFunctionCall`, `_evaluate_director_evaluator_loop`).
-        // - Returns the node itself for unrecognized or literal types.
+        // - Checks the type of the node (expected to be the root of an atomic task's body).
+        // - Executes the logic defined within the atomic task template's body.
+        // - Returns literals or unresolved variable references as is (though typically called on executable nodes).
+        // - Does not handle composite task types (sequential, reduce, etc.) or S-expressions.
         // @raises_error(condition="TASK_FAILURE", description="Raised if evaluation of a sub-node fails.")
         Any evaluate(Any node, object env); // Second arg represents Environment
 
-        // Evaluates a function call AST node. Canonical path for all function calls.
-        // Preconditions:
-        // - call_node is a valid FunctionCallNode object.
-        // - env is a valid Environment instance.
-        // - template is an optional pre-fetched template dictionary to avoid redundant lookups.
-        // Postconditions:
-        // - Returns a TaskResult dictionary representing the outcome of the function execution.
-        // - Returns a FAILED TaskResult if template lookup, argument binding, or execution fails.
-        // - If the template specifies JSON output and parsing succeeds, the parsed object is available in `TaskResult.parsedContent`.
-        // Behavior:
-        // - Looks up the template using the `template_provider` if not provided.
-        // - Evaluates function call arguments in the caller's environment (`env`) using `_evaluate_arguments`.
-        // - Binds the evaluated arguments to the template's parameters using `_bind_arguments_to_parameters`.
-        // - Creates a new function execution environment by extending `env` with the parameter bindings.
-        // - Executes the template logic via `_execute_template` (which calls `template_provider.execute_task`).
-        // - Handles TaskErrors and other exceptions during the process.
-        // @raises_error(condition="INPUT_VALIDATION_FAILURE", description="Handled internally, returns FAILED TaskResult if template not found.")
-        // @raises_error(condition="INPUT_VALIDATION_FAILURE", description="Handled internally, returns FAILED TaskResult if argument binding fails.")
-        // @raises_error(condition="TASK_FAILURE", description="Handled internally, returns FAILED TaskResult if execution fails.")
-        // @raises_error(condition="UNEXPECTED_ERROR", description="Handled internally, returns FAILED TaskResult for other exceptions.")
-        // Expected JSON format for return value: TaskResult structure { "status": "string", "content": "Any", "notes": { ... } }
-        dict<string, Any> evaluateFunctionCall(object call_node, object env, optional dict<string, Any> template); // Args represent FunctionCallNode, Environment
 
         // Executes a subtask template with appropriate environment isolation.
         // Preconditions:

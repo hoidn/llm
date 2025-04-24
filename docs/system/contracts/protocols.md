@@ -9,6 +9,8 @@ This document defines the core protocols used throughout the system for task exe
 - LLM interaction protocol
 - Cross-component communication standards
 
+**Architectural Note:** Task definitions in XML are restricted to **atomic tasks only**. All workflow composition, including sequences, mapping/reduction, conditionals, and loops, is handled via the **S-expression DSL**. This document defines the schema for atomic task XML definitions. Refer to [Link to Sexp DSL Docs - TBD] for the composition language.
+
 ## Task Template Schema [Contract:Tasks:TemplateSchema:1.0]
 
 **Note:** This document is the authoritative specification for the XML schema used to define **atomic task templates**. All workflow composition (sequences, loops, conditionals, etc.) is handled by the S-expression DSL, not by XML structure.
@@ -155,9 +157,8 @@ The following schema defines the structure for `<task type="atomic">` elements.
         <xs:simpleType>
           <xs:restriction base="xs:string">
             <xs:enumeration value="atomic"/>
-            <!-- Removed sequential, reduce, director_evaluator_loop -->
-            <!-- Keep script if it's fundamentally atomic? Let's assume script is handled by S-exp call for now -->
-            <!-- <xs:enumeration value="script"/> -->
+            <!-- Composite types like sequential, reduce, director_evaluator_loop are removed. -->
+            <!-- Script execution is handled via S-expression primitive, e.g., (system:run_script ...) -->
           </xs:restriction>
         </xs:simpleType>
       </xs:attribute>
@@ -234,8 +235,9 @@ The following schema defines the structure for `<task type="atomic">` elements.
             <xs:enumeration value="full_output"/>
             <!-- When 'notes_only' is specified, only essential metadata is preserved -->
             <xs:enumeration value="notes_only"/>
-<!-- Removed complexType definitions for steps, inner_task, reduction_task, director_evaluator_loop, cond, case -->
-<!-- Removed script execution example within sequential task -->
+
+<!-- Definitions for composite task types (sequential, reduce, director_evaluator_loop, steps, inner_task, reduction_task, cond, case, etc.) have been removed. -->
+<!-- Composition is now handled by the S-expression DSL. -->
 
 ### Aider Integration Templates (Atomic)
 
@@ -647,8 +649,8 @@ Default context management settings apply when the `<context_management>` elemen
 |---------------------|-----------------|-----------------|---------------------|---------------|
 | standard            | full            | false           | notes_only          | disabled      |
 | subtask             | subset          | false           | notes_only          | enabled       |
-| director            | full            | false           | notes_only          | disabled      |
-| evaluator           | full            | false           | notes_only          | disabled      |
+| director            | full            | false           | notes_only          | disabled      | <!-- Note: Director/Evaluator subtypes might be less relevant if logic moves to S-exp -->
+| evaluator           | full            | false           | notes_only          | disabled      | <!-- Note: Director/Evaluator subtypes might be less relevant if logic moves to S-exp -->
 | aider_interactive   | subset          | true            | notes_only          | enabled       |
 | aider_automatic     | subset          | false           | notes_only          | enabled       |
 | *(default)*         | full            | false           | notes_only          | disabled      |

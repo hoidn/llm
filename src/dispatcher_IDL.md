@@ -30,6 +30,13 @@ module src.dispatcher {
         // - Returns a FAILED TaskResult if the identifier is not found, input validation fails, or execution fails.
         // - If the executed task/template specifies JSON output and parsing succeeds, the parsed object is available in `TaskResult.parsedContent`.
         // Behavior:
+        // - Checks if the `identifier` string starts with `'(`. If so, assumes it's an S-expression workflow:
+        //   - Instantiates or accesses the S-expression evaluator component (`SexpEvaluator`).
+        //   - Calls `sexp_evaluator.evaluate_string(identifier, initial_environment)` where `identifier` contains the full S-expression string and `initial_environment` might contain bindings for `params`.
+        //   - Takes the raw result from `evaluate_string`. If it's not already a TaskResult dictionary, formats it into one (e.g., placing the result in `content`, setting `status` to `COMPLETE`). Handles potential exceptions from `evaluate_string` by creating a `FAILED` TaskResult.
+        //   - Returns the formatted TaskResult.
+        //   - Skips the subsequent template/tool lookup steps.
+        // - If the identifier is *not* an S-expression, performs routing lookup with the following precedence:
         // - Parses 'file_context' parameter if present (handles list or JSON string array).
         // - Routing Precedence: Checks TaskSystem templates first using `task_system_instance.find_template`.
         // - If not found as a template, checks Handler's unified tool registry using `handler_instance.tool_executors`.

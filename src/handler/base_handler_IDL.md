@@ -42,6 +42,7 @@ module src.handler.base_handler {
         // - Validates that tool_spec contains a 'name'.
         // - Stores the spec and executor function in internal registries.
         // - This method populates both the `registered_tools` (schema for LLM) and `tool_executors` (function for execution) internal registries.
+        // The `tool_executors` registry populated by this method is used by the `SexpEvaluator` for resolving identifiers during S-expression invocation when checking for Direct Tools.
         boolean register_tool(dict<string, Any> tool_spec, function executor_func);
 
         // Executes a shell command expected to output file paths and parses the result.

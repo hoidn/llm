@@ -80,6 +80,7 @@ module src.memory.memory_system {
         // - If sharding is disabled or not applicable, calls `_get_relevant_context_with_mediator`.
         // - The mediator method (`_get_relevant_context_with_mediator`) delegates the actual context generation (LLM call) to `TaskSystem.generate_context_for_memory_system`.
         // - Handles exceptions during context generation.
+        // This method is invoked by the `SexpEvaluator` when processing the `(get_context ...)` S-expression primitive.
         // @raises_error(condition="TASK_FAILURE", reason="dependency_error", description="Handled internally, returns error result if TaskSystem is unavailable.")
         // @raises_error(condition="CONTEXT_RETRIEVAL_FAILURE", description="Handled internally, returns error result.")
         // Expected JSON format for legacy input_data: { "taskText": "string", ... }

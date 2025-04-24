@@ -44,7 +44,6 @@ module src.task_system.task_system {
         // @raises_error(condition="TASK_FAILURE", description="Handled internally, returns FAILED TaskResult.")
         // @raises_error(condition="UNEXPECTED_ERROR", description="Handled internally, returns FAILED TaskResult.")
         // Expected JSON format for return value: TaskResult structure { "status": "string", "content": "Any", "notes": { ... } }
-        dict<string, Any> executeCall(object call, optional object env); // Args represent FunctionCallNode, Environment
 
         // Executes a Task System template workflow directly from a SubtaskRequest.
         // This is a primary entry point for programmatic task execution via Dispatcher.
@@ -56,11 +55,15 @@ module src.task_system.task_system {
         // - The result's 'notes' dictionary includes 'template_used', 'context_source', and 'context_files_count'.
         // - Returns a FAILED TaskResult if the template is not found or execution fails.
         // Behavior:
-        // - Identifies the target template using request.type and request.subtype.
-        // - Determines the file context based on a priority order: template definition, request.file_paths, automatic lookup (if enabled and MemorySystem available).
+        // - Executes the workflow defined within a single *atomic* task template. Composite task types (sequential, reduce, etc.) are not supported here.
+        // - This method is invoked by the `SexpEvaluator` when an S-expression calls a registered atomic task template identifier.
+        // - Identifies the target *atomic* template using request.type and request.subtype. Returns error if not atomic or not found.
+        // - Determines the file context based on template definition, request.file_paths, or automatic lookup (via MemorySystem) as configured in the template's context_management and the request.
         // - Creates a new execution environment based on the provided base 'env' and request.inputs.
-        // - Delegates the actual template execution to the `execute_task` method, passing the determined context.
+        // - Obtains an appropriate Handler instance via `_get_handler`.
+        // - Calls the core **Template Evaluator** to execute the atomic template's body within the created environment and context.
         // - Handles TaskErrors and unexpected exceptions, returning formatted error results.
+        // - Includes execution metadata (template used, context source/count) in the result notes.
         // @raises_error(condition="INPUT_VALIDATION_FAILURE", description="Handled internally, returns FAILED TaskResult if template not found.")
         // @raises_error(condition="TASK_FAILURE", description="Handled internally, returns FAILED TaskResult.")
         // @raises_error(condition="UNEXPECTED_ERROR", description="Handled internally, returns FAILED TaskResult.")
@@ -103,6 +106,7 @@ module src.task_system.task_system {
         // Behavior:
         // - First attempts lookup by direct name in the `templates` dictionary.
         // - If not found by name, attempts lookup using the identifier as a 'type:subtype' key in the `template_index`.
+        // Only searches for templates of type 'atomic'.
         optional dict<string, Any> find_template(string identifier);
 
         // Generates context for the Memory System, acting as a mediator.

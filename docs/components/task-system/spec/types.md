@@ -109,12 +109,12 @@ interface TaskTemplate {
     readonly inputs?: Record<string, string>;
     readonly isManualXML?: boolean;   // Maps to <manual_xml> in schema
     readonly disableReparsing?: boolean; // Maps to <disable_reparsing> in schema
-    readonly taskType?: TaskType;     // The type of task this template defines
+    readonly taskType?: "atomic";     // The type of task this template defines (Only atomic supported via XML)
     readonly atomicSubtype?: AtomicTaskSubtype; // Only for atomic task templates
 }
 
-/**
-<!-- Removed SequentialTask interface -->
+// Definitions for composite task interfaces (SequentialTask, ReduceTask, etc.) have been removed.
+// Composition is handled by the S-expression DSL.
 
 /**
  * Represents a function call expression within the S-expression DSL or potentially
@@ -139,6 +139,12 @@ interface ArgumentNode {
 /**
  * Represents a template definition node (e.g., from XML <template> element).
  * May also be relevant for S-expression function definitions (`define`) in the future.
+ * [Type:TaskSystem:TemplateNode:1.0]
+/**
+ * Represents a template node in the AST.
+ * NOTE: With XML composites removed, this might primarily represent S-expression
+ * function definitions in the future, or potentially be removed if only atomic
+ * XML templates are used. Kept for now.
  * [Type:TaskSystem:TemplateNode:1.0]
  */
 interface TemplateNode {
@@ -218,7 +224,8 @@ interface EvaluationResult extends TaskResult {
 ## Type References
 
 For system-wide types, see [Type:System:1.0] in `/system/contracts/types.md`, which includes:
-- TaskType (`atomic`) and AtomicTaskSubtype enums
+- TaskType (`atomic`) - Note: Composite types removed.
+- AtomicTaskSubtype enums
 - ReturnStatus enum (`COMPLETE`, `CONTINUATION`, `FAILED`)
 - ContextManagement interface (applies to atomic tasks)
 - TaskError types
