@@ -20,7 +20,7 @@ module src.main {
         // - Establishes necessary dependencies between core components (e.g., MemorySystem gets TaskSystem/Handler refs).
         // - Registers core task templates (associative_matching, aider metadata, debug) with TaskSystem.
         // - Calls `initialize_aider` to set up AiderBridge and register Aider tools/executors.
-        // - Calls internal `_register_system_tools` to register 'system:get_context' and 'system:read_files' direct tools.
+        // - Calls internal `_register_system_tools` to register 'system:get_context' and 'system:read_files' tools and their executor functions using `handler.register_tool(...)`.
         // - Initializes `indexed_repositories` list.
         void __init__(optional dict<string, Any> config);
 
@@ -68,8 +68,7 @@ module src.main {
         // Postconditions:
         // - Instantiates `AiderBridge` if not already done and stores it in `aider_bridge`.
         // - If AiderBridge initializes successfully (Aider is available):
-        //   - Registers Aider tools ('aiderInteractive', 'aiderAutomatic') with the PassthroughHandler via `aider_bridge.tools.register_aider_tools`.
-        //   - Registers direct tool executors ('aider:automatic', 'aider:interactive') with the PassthroughHandler using `passthrough_handler.registerDirectTool`, wrapping the executor functions (`execute_aider_automatic`, `execute_aider_interactive`) to pass the `aider_bridge` instance.
+        //   - Registers Aider tools ('aiderInteractive', 'aiderAutomatic') and their corresponding executor functions (wrapping `execute_aider_automatic`, `execute_aider_interactive` to pass the `aider_bridge` instance) with the PassthroughHandler using `handler.register_tool(...)`.
         // - Logs success or failure messages related to Aider initialization and registration.
         // Behavior:
         // - Performs lazy initialization of `aider_bridge`.

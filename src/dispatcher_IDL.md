@@ -32,9 +32,10 @@ module src.dispatcher {
         // Behavior:
         // - Parses 'file_context' parameter if present (handles list or JSON string array).
         // - Routing Precedence: Checks TaskSystem templates first using `task_system_instance.find_template`.
-        // - If not found as a template, checks Handler direct tools using `handler_instance.direct_tool_executors`.
+        // - If not found as a template, checks Handler's unified tool registry using `handler_instance.tool_executors`.
         // - If template found: Creates a SubtaskRequest and calls `task_system_instance.execute_subtask_directly`.
         // - If direct tool found: Calls the tool function directly with `params`. Wraps result in TaskResult if needed. Populates standard notes if the tool didn't.
+        // - Checks the return value from the executed tool. If the result is a dictionary containing `status: "CONTINUATION"`, treats this as an error for a direct programmatic call and returns a FAILED TaskResult.
         // - If identifier not found: Returns a FAILED TaskResult.
         // - Handles TaskError exceptions from underlying calls and formats them into a FAILED TaskResult.
         // - Handles unexpected Python exceptions and formats them into a FAILED TaskResult with reason UNEXPECTED_ERROR.

@@ -21,7 +21,7 @@ module src.handler.passthrough_handler {
         // - BaseHandler is initialized with dependencies.
         // - Passthrough-specific system prompt instructions are appended to the base system prompt.
         // - Internal state `active_subtask_id` is initialized to None.
-        // - The built-in command execution tool ('executeFilePathCommand') is registered.
+        // - The built-in command execution tool ('executeFilePathCommand') is registered using `register_tool`.
         void __init__(
             object task_system, // Represents TaskSystem
             object memory_system, // Represents MemorySystem
@@ -70,33 +70,6 @@ module src.handler.passthrough_handler {
         // - Calls `BaseHandler.reset_conversation()` to clear history.
         // - Resets the internal `active_subtask_id` to None.
         void reset_conversation();
-
-        // Registers a direct tool (for programmatic invocation).
-        // Overrides/implements BaseHandler.registerDirectTool.
-        // Preconditions:
-        // - name is a non-empty string identifier.
-        // - func is a callable function implementing the tool logic.
-        // Postconditions:
-        // - Stores the original function in the internal `direct_tools` dictionary.
-        // - Creates a wrapper function to adapt the input format if necessary (e.g., extracting 'query' from dict).
-        // - Registers the wrapper function in `tool_executors` (for potential LLM use).
-        // - Creates a default tool specification (assuming 'query' and optional 'file_context' inputs).
-        // - Registers the default spec and wrapper function using `register_tool`.
-        // - Returns true if successful, false otherwise.
-        boolean registerDirectTool(string name, function func);
-
-        // Registers a subtask tool (typically expects prompt, file_context).
-        // Preconditions:
-        // - name is a non-empty string identifier.
-        // - func is a callable function implementing the tool logic.
-        // Postconditions:
-        // - Stores the original function in the internal `subtask_tools` dictionary.
-        // - Creates a wrapper function to adapt input format (e.g., extracting 'prompt').
-        // - Registers the wrapper function in `tool_executors` (for potential LLM use).
-        // - Creates a default tool specification (assuming 'prompt' and optional 'file_context' inputs).
-        // - Registers the default spec and wrapper function using `register_tool`.
-        // - Returns true if successful, false otherwise.
-        boolean registerSubtaskTool(string name, function func);
 
         // Invariants:
         // - Inherits invariants from BaseHandler.

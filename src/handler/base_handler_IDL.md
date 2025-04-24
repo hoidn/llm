@@ -16,7 +16,7 @@ module src.handler.base_handler {
         // Postconditions:
         // - Handler is initialized with references to core systems (TaskSystem, MemorySystem, ProviderAdapter).
         // - FileAccessManager is instantiated.
-        // - Tool registries (registered_tools, tool_executors, direct_tool_executors) are initialized as empty dictionaries.
+        // - Tool registries (registered_tools, tool_executors) are initialized as empty dictionaries.
         // - Conversation history is initialized as an empty list.
         // - Base system prompt is set from config or default.
         // - Debug mode is initialized to false.
@@ -38,20 +38,11 @@ module src.handler.base_handler {
         // - Returns true if registration is successful (tool_spec has a name).
         // - Returns false if registration fails (e.g., missing name in tool_spec).
         // Behavior:
+        // - This is the single, unified method for registering any callable action (tool) intended for LLM use or programmatic invocation.
         // - Validates that tool_spec contains a 'name'.
         // - Stores the spec and executor function in internal registries.
+        // - This method populates both the `registered_tools` (schema for LLM) and `tool_executors` (function for execution) internal registries.
         boolean register_tool(dict<string, Any> tool_spec, function executor_func);
-
-        // Registers a direct tool executor function for programmatic invocation (e.g., via Dispatcher).
-        // These tools are not necessarily intended for direct LLM tool use but are callable via identifiers.
-        // Preconditions:
-        // - tool_name is a non-empty string identifier for the tool.
-        // - executor_func is a callable function implementing the tool's logic. The expected signature may vary depending on the tool.
-        // Postconditions:
-        // - If successful, the executor_func is added to the `direct_tool_executors` dictionary (keyed by tool_name).
-        // - Returns true if registration is successful (tool_name is provided).
-        // - Returns false if registration fails (e.g., empty tool_name).
-        boolean registerDirectTool(string tool_name, function executor_func);
 
         // Executes a shell command expected to output file paths and parses the result.
         // Preconditions:
