@@ -1,158 +1,158 @@
 <idl>
-**--- IDL Guidelines ---**
+**--- idl guidelines ---**
 
-**I. Overview & Purpose**
+**i. overview & purpose**
 
-These guidelines define a system for creating and understanding Interface Definition Language (IDL) specifications and their corresponding code implementations. The process is designed to be **bidirectional**:
+these guidelines define a system for creating and understanding interface definition language (idl) specifications and their corresponding code implementations. the process is designed to be **bidirectional**:
 
-1.  **IDL-to-Code:** Use a defined IDL as a strict contract to generate compliant, high-quality code. 
-2.  **Code-to-IDL:** Reduce existing code to its essential IDL specification, abstracting away implementation details to reveal the core functional contract. See <code to idl>.
+1.  **idl-to-code:** use a defined idl as a strict contract to generate compliant, high-quality code. 
+2.  **code-to-idl:** reduce existing code to its essential idl specification, abstracting away implementation details to reveal the core functional contract. see <code to idl>.
 
-The goal is a clear separation between the *what* (the functional contract defined in the IDL) and the *how* (the implementation details within the code).
+the goal is a clear separation between the *what* (the functional contract defined in the idl) and the *how* (the implementation details within the code).
 
-**II. IDL Creation & Structure Guidelines**
+**ii. idl creation & structure guidelines**
 
-*(These apply both when writing IDL from scratch and when reducing code TO IDL)*
+*(these apply both when writing idl from scratch and when reducing code to idl)*
 
-1.  **Object Oriented:** Structure the IDL using modules and interfaces to represent logical components and entities.
-2.  **Dependency Declaration:**
-    *   **Purpose:** To explicitly declare which other IDL-defined modules or interfaces a given interface relies upon to fulfill its contract. This clarifies coupling at the design level.
-    *   **Syntax:** Use a comment line placed immediately before the `interface` definition. The format is:
-        `# @depends_on(Dependency1, Dependency2, ...)`
-    *   **Target:** `Dependency1`, `Dependency2`, etc., must refer to the names of other `module` or `interface` definitions within the scope of the overall IDL system.
-    *   **Implication:** This declaration signals that an implementation of the interface will likely require access (e.g., via instantiation or dependency injection) to implementations conforming to the dependent interfaces/modules. It defines a dependency on the *contract*, not a specific implementation detail.
-3.  **Design Patterns:** Utilize (when creating IDL) or identify (when reducing code) interfaces supporting established design patterns like Factory, Builder, and Strategy where they clarify the design or improve flexibility. The IDL defines the *contract* for these patterns, not their internal implementation.
-4.  **Complex Parameters (JSON):**
-    *   **Preference for Structure:** If the IDL syntax supports defining custom structures/records/data classes, prefer them for complex data transfer to maximize type safety at the interface level.
-    *   **JSON Fallback:** Where structured types are not feasible in IDL or cross-language string simplicity is paramount, use a single JSON string parameter.
-    *   **Mandatory Documentation:** *Always* document the exact expected JSON format within the IDL comment block (e.g., `// Expected JSON format: { "key1": "type1", "key2": "type2" }`).
-5.  **Clarity and Intent:** The IDL should clearly express the *purpose* and *expected behavior* of each interface and method through well-chosen names and comprehensive documentation (Pre/Postconditions, Invariants).
-6.  **Completeness (Functional Contract):** The IDL must represent the *complete functional contract* of the component's public interface.
+1.  **object oriented:** structure the idl using modules and interfaces to represent logical components and entities.
+2.  **dependency declaration:**
+    *   **purpose:** to explicitly declare which other idl-defined modules or interfaces a given interface relies upon to fulfill its contract. this clarifies coupling at the design level.
+    *   **syntax:** use a comment line placed immediately before the `interface` definition. the format is:
+        `# @depends_on(dependency1, dependency2, ...)`
+    *   **target:** `dependency1`, `dependency2`, etc., must refer to the names of other `module` or `interface` definitions within the scope of the overall idl system.
+    *   **implication:** this declaration signals that an implementation of the interface will likely require access (e.g., via instantiation or dependency injection) to implementations conforming to the dependent interfaces/modules. it defines a dependency on the *contract*, not a specific implementation detail.
+3.  **design patterns:** utilize (when creating idl) or identify (when reducing code) interfaces supporting established design patterns like factory, builder, and strategy where they clarify the design or improve flexibility. the idl defines the *contract* for these patterns, not their internal implementation.
+4.  **complex parameters (json):**
+    *   **preference for structure:** if the idl syntax supports defining custom structures/records/data classes, prefer them for complex data transfer to maximize type safety at the interface level.
+    *   **json fallback:** where structured types are not feasible in idl or cross-language string simplicity is paramount, use a single json string parameter.
+    *   **mandatory documentation:** *always* document the exact expected json format within the idl comment block (e.g., `// expected json format: { "key1": "type1", "key2": "type2" }`).
+5.  **clarity and intent:** the idl should clearly express the *purpose* and *expected behavior* of each interface and method through well-chosen names and comprehensive documentation (pre/postconditions, invariants).
+6.  **completeness (functional contract):** the idl must represent the *complete functional contract* of the component's public interface.
 
-**III. Code-to-IDL Reduction Guidelines**
+**iii. code-to-idl reduction guidelines**
 
-*(These specific rules apply ONLY when generating an IDL FROM existing code)*
+*(these specific rules apply only when generating an idl from existing code)*
 
-1.  **Goal: Extract the Contract:** The primary objective is to distill the code down to its public interface and functional guarantees, omitting all non-essential implementation details.
-2.  **Mapping:**
-    *   Public classes/modules generally map to IDL `module` or `interface`.
-    *   Public methods/functions map to IDL method definitions.
-    *   Method signatures (name, parameter types, return type) must be accurately reflected.
-3.  **Dependency Identification:** Identify dependencies on other components *that are also being defined via IDL*. Represent these using the **Dependency Declaration** syntax (`# @depends_on(...)`) described in Section II.2. Exclude dependencies on third-party libraries or internal implementation details not represented by an interface in the IDL.
-4.  **Documentation Extraction:**
-    *   Infer **Preconditions** from input validation, assertions, and documentation comments in the code.
-    *   Infer **Postconditions** from return value guarantees, state changes described in documentation, or observable outcomes.
-    *   Identify and document **Invariants** – properties of the object's state that hold true between public method calls.
-    *   If complex objects/dictionaries are passed as parameters, represent them using the **Complex Parameters (JSON)** guideline (II.4) and document the format.
-5.  **EXCLUSION CRITERIA:** The following elements **MUST BE EXCLUDED** from the generated IDL as they are considered implementation details or non-functional aspects:
-    *   **Presentation Logic:** Any code related to Graphical User Interfaces (GUI), Text User Interfaces (TUI), web page rendering, console output formatting, or specific presentation frameworks.
-    *   **Internal Implementation Details:** Private methods, helper functions not part of the public API, internal data structures (unless their *structure* is inherently part of the public contract, e.g., via JSON), specific algorithms used (unless the choice of algorithm is selectable via the interface, like a Strategy pattern).
-    *   **Type Enforcement/Validation Code:** The *internal logic* for validating inputs or enforcing type constraints (e.g., `if` checks, `try-except` blocks for type errors, calls to validation libraries). The *requirement* for valid input should be captured as a Precondition.
-    *   **Non-Functional Code:** Logging statements, metrics collection, performance monitoring, debugging utilities, internal comments explaining *how* the code works (vs. *what* it guarantees).
-    *   **Language/Platform Specifics:** Boilerplate code generated by frameworks (unless it directly defines a public contract method), language-specific idioms with no direct equivalent, environment configuration loading, build system artifacts, specific library dependencies (unless they form part of the public method signatures).
-    *   **Error Handling Mechanisms:** Specific exception types thrown/caught internally, error reporting mechanisms. The IDL should focus on the successful execution path (Postconditions) and potentially define expected error *conditions* or *states* abstractly if they are part of the contract, rather than specific language exceptions.
-    *   Dependencies on concrete libraries or modules *not* represented by an IDL interface within the system.
+1.  **goal: extract the contract:** the primary objective is to distill the code down to its public interface and functional guarantees, omitting all non-essential implementation details.
+2.  **mapping:**
+    *   public classes/modules generally map to idl `module` or `interface`.
+    *   public methods/functions map to idl method definitions.
+    *   method signatures (name, parameter types, return type) must be accurately reflected.
+3.  **dependency identification:** identify dependencies on other components *that are also being defined via idl*. represent these using the **dependency declaration** syntax (`# @depends_on(...)`) described in section ii.2. exclude dependencies on third-party libraries or internal implementation details not represented by an interface in the idl.
+4.  **documentation extraction:**
+    *   infer **preconditions** from input validation, assertions, and documentation comments in the code.
+    *   infer **postconditions** from return value guarantees, state changes described in documentation, or observable outcomes.
+    *   identify and document **invariants** – properties of the object's state that hold true between public method calls.
+    *   if complex objects/dictionaries are passed as parameters, represent them using the **complex parameters (json)** guideline (ii.4) and document the format.
+5.  **exclusion criteria:** the following elements **must be excluded** from the generated idl as they are considered implementation details or non-functional aspects:
+    *   **presentation logic:** any code related to graphical user interfaces (gui), text user interfaces (tui), web page rendering, console output formatting, or specific presentation frameworks.
+    *   **internal implementation details:** private methods, helper functions not part of the public api, internal data structures (unless their *structure* is inherently part of the public contract, e.g., via json), specific algorithms used (unless the choice of algorithm is selectable via the interface, like a strategy pattern).
+    *   **type enforcement/validation code:** the *internal logic* for validating inputs or enforcing type constraints (e.g., `if` checks, `try-except` blocks for type errors, calls to validation libraries). the *requirement* for valid input should be captured as a precondition.
+    *   **non-functional code:** logging statements, metrics collection, performance monitoring, debugging utilities, internal comments explaining *how* the code works (vs. *what* it guarantees).
+    *   **language/platform specifics:** boilerplate code generated by frameworks (unless it directly defines a public contract method), language-specific idioms with no direct equivalent, environment configuration loading, build system artifacts, specific library dependencies (unless they form part of the public method signatures).
+    *   **error handling mechanisms:** specific exception types thrown/caught internally, error reporting mechanisms. the idl should focus on the successful execution path (postconditions) and potentially define expected error *conditions* or *states* abstractly if they are part of the contract, rather than specific language exceptions.
+    *   dependencies on concrete libraries or modules *not* represented by an idl interface within the system.
 
-**IV. IDL Template**
+**iv. idl template**
 
 ```idl
-// == !! BEGIN IDL TEMPLATE !! ===
-module GenericSystemName {
+// == !! begin idl template !! ===
+module genericsystemname {
 
-    // Optional: Define shared data structures if IDL syntax allows
-    // struct SharedData { ... }
+    // optional: define shared data structures if idl syntax allows
+    // struct shareddata { ... }
 
-    // Example interface demonstrating dependency declaration
-    # @depends_on(AnotherInterfaceName, SharedModuleName)
-    interface EntityName {
+    // example interface demonstrating dependency declaration
+    # @depends_on(anotherinterfacename, sharedmodulename)
+    interface entityname {
 
-        // Action/method definition
-        // Preconditions:
-        // - Define necessary conditions before calling.
-        // - (If using JSON param) Expected JSON format: { "key1": "type1", ... }
-        // Postconditions:
-        // - Define expected outcomes and state changes after successful execution.
-        returnType methodName(parameterType parameterName);
+        // action/method definition
+        // preconditions:
+        // - define necessary conditions before calling.
+        // - (if using json param) expected json format: { "key1": "type1", ... }
+        // postconditions:
+        // - define expected outcomes and state changes after successful execution.
+        returntype methodname(parametertype parametername);
 
-        // Additional methods...
+        // additional methods...
 
-        // Invariants: (Optional: Define properties that always hold true for this entity)
-        // - Describe state invariants here.
+        // invariants: (optional: define properties that always hold true for this entity)
+        // - describe state invariants here.
     };
 
-    // Another entity or component that EntityName might depend on
-    interface AnotherInterfaceName {
+    // another entity or component that entityname might depend on
+    interface anotherinterfacename {
         // ... methods ...
     };
 
-    // Could also be a module containing utility interfaces/functions that EntityName might depend on
-    module SharedModuleName {
-        // ... interfaces or potentially functions if IDL supports them ...
+    // could also be a module containing utility interfaces/functions that entityname might depend on
+    module sharedmodulename {
+        // ... interfaces or potentially functions if idl supports them ...
     }
 };
-// == !! END IDL TEMPLATE !! ===
+// == !! end idl template !! ===
 ```
 
-**V. Code Creation Rules**
+**v. code creation rules**
 
-*(These apply when implementing code BASED ON an IDL)*
+*(these apply when implementing code based on an idl)*
 
-1.  **Strict Typing:** Always use strict typing. Avoid ambiguous or variant types.
-2.  **Primitive Types Focus (Balanced):** Prefer built-in primitive and standard collection types where they suffice. Use well-defined data classes/structs for related data elements passed together. Avoid "primitive obsession." Match IDL types precisely.
-3.  **Portability Mandate:** Write code intended for potential porting to Java, Go, JavaScript. Use language-agnostic logic and avoid platform-specific dependencies or language features without clear equivalents.
-4.  **Minimize Side Effects:** Strive for pure functions for data processing. Clearly document all necessary side effects (state mutation, I/O, external calls) associated with methods defined in the IDL, typically in the implementation's documentation, aligning with the IDL's Postconditions.
-5.  **Testability & Dependency Injection:** Design for testability. Use dependency injection, avoid tight coupling. Ensure methods corresponding to IDL definitions are unit-testable. Pay attention to the `# @depends_on` declarations in the IDL to identify required dependencies that should likely be injected.
-6.  **Documentation:** Thoroughly document implementation details, especially nuances not obvious from the IDL or code signature. Link back to the IDL contract being fulfilled.
-7.  **Contractual Obligation:** The IDL is a strict contract. Implement *all* specified interfaces, methods, and constraints *precisely* as defined. Do not add public methods or change signatures defined in the IDL.
+1.  **strict typing:** always use strict typing. avoid ambiguous or variant types.
+2.  **primitive types focus (balanced):** prefer built-in primitive and standard collection types where they suffice. use well-defined data classes/structs for related data elements passed together. avoid "primitive obsession." match idl types precisely.
+3.  **portability mandate:** write code intended for potential porting to java, go, javascript. use language-agnostic logic and avoid platform-specific dependencies or language features without clear equivalents.
+4.  **minimize side effects:** strive for pure functions for data processing. clearly document all necessary side effects (state mutation, i/o, external calls) associated with methods defined in the idl, typically in the implementation's documentation, aligning with the idl's postconditions.
+5.  **testability & dependency injection:** design for testability. use dependency injection, avoid tight coupling. ensure methods corresponding to idl definitions are unit-testable. pay attention to the `# @depends_on` declarations in the idl to identify required dependencies that should likely be injected.
+6.  **documentation:** thoroughly document implementation details, especially nuances not obvious from the idl or code signature. link back to the idl contract being fulfilled.
+7.  **contractual obligation:** the idl is a strict contract. implement *all* specified interfaces, methods, and constraints *precisely* as defined. do not add public methods or change signatures defined in the idl.
 
-**VI. Example**
+**vi. example**
 
-*(The `Tweets` example, modified to show dependency declaration)*
+*(the `tweets` example, modified to show dependency declaration)*
 
 ```idl
-module SocialMediaPlatform {
+module socialmediaplatform {
 
-    // Assume these interfaces are defined elsewhere in the IDL system
-    // interface UserManagement { ... }
-    // interface StorageService { ... }
+    // assume these interfaces are defined elsewhere in the idl system
+    // interface usermanagement { ... }
+    // interface storageservice { ... }
 
-    # @depends_on(UserManagement, StorageService)
-    interface Tweets {
-        // Preconditions:
-        // - User referenced by userID in tweetJSON exists (verified via UserManagement).
-        // - tweetContent is non-null and within allowable size limits.
-        // Postconditions:
-        // - A new tweet is created and stored (via StorageService).
-        // Expected JSON format: { "userID": "string", "content": "string" }
-        void postTweet(string tweetJSON);
+    # @depends_on(usermanagement, storageservice)
+    interface tweets {
+        // preconditions:
+        // - user referenced by userid in tweetjson exists (verified via usermanagement).
+        // - tweetcontent is non-null and within allowable size limits.
+        // postconditions:
+        // - a new tweet is created and stored (via storageservice).
+        // expected json format: { "userid": "string", "content": "string" }
+        void posttweet(string tweetjson);
 
-        // Preconditions:
-        // - User referenced by userID exists (verified via UserManagement).
-        // - Tweet referenced by tweetID exists (verified via StorageService).
-        // Postconditions:
-        // - The tweet with tweetID is marked as liked by userID (via StorageService).
-        void likeTweet(string userID, string tweetID);
+        // preconditions:
+        // - user referenced by userid exists (verified via usermanagement).
+        // - tweet referenced by tweetid exists (verified via storageservice).
+        // postconditions:
+        // - the tweet with tweetid is marked as liked by userid (via storageservice).
+        void liketweet(string userid, string tweetid);
 
-        // Preconditions:
-        // - User referenced by userID in retweetJSON exists (verified via UserManagement).
-        // - Original tweet referenced by originalTweetID in retweetJSON exists (verified via StorageService).
-        // Postconditions:
-        // - A new retweet linked to the original is created and stored (via StorageService).
-        // Expected JSON format: { "userID": "string", "originalTweetID": "string" }
-        void retweet(string retweetJSON);
+        // preconditions:
+        // - user referenced by userid in retweetjson exists (verified via usermanagement).
+        // - original tweet referenced by originaltweetid in retweetjson exists (verified via storageservice).
+        // postconditions:
+        // - a new retweet linked to the original is created and stored (via storageservice).
+        // expected json format: { "userid": "string", "originaltweetid": "string" }
+        void retweet(string retweetjson);
 
-        // Preconditions:
-        // - Tweet referenced by tweetID exists (verified via StorageService).
-        // Postconditions:
-        // - Returns the details of the tweet as a JSON string (retrieved via StorageService).
-        string getTweetDetails(string tweetID);
+        // preconditions:
+        // - tweet referenced by tweetid exists (verified via storageservice).
+        // postconditions:
+        // - returns the details of the tweet as a json string (retrieved via storageservice).
+        string gettweetdetails(string tweetid);
 
-        // Invariants:
-        // - StorageService maintains a consistent list of tweets, likes, and retweets.
-        // - All userIDs referenced in tweets/likes/retweets exist according to UserManagement.
+        // invariants:
+        // - storageservice maintains a consistent list of tweets, likes, and retweets.
+        // - all userids referenced in tweets/likes/retweets exist according to usermanagement.
     };
 
-} // End module SocialMediaPlatform
+} // end module socialmediaplatform
 ```
 <idl>
 <code to idl>
@@ -191,71 +191,74 @@ module SocialMediaPlatform {
 1.  **Process in Chunks:** Process the modules from the reordered `to_process_idl` list in chunks (e.g., 2-3 modules per chunk, adjustable based on complexity).
 
 2.  **For each module within the current chunk:**
-    *   **a. State File Path:** Clearly indicate the file path being processed.
+    *   **a. State File Path:** Clearly indicate the file path being processed (e.g., `Processing: src/module/path.py`).
     *   **b. Generate Initial IDL:**
-        *   Apply the **Code-to-IDL Reduction Guidelines (Section III)** from the established `<idl>` guidelines.
-        *   Focus on mapping public classes/functions to interfaces/methods.
+        *   **Mapping Convention:**
+            *   Each processed Python file (e.g., `src/module/path.py`) **MUST** map to an IDL `module` within its corresponding `_IDL.md` file. Derive the IDL `module` name from the Python module path (e.g., `src.module.path`).
+            *   Public classes within the Python file **MUST** map to IDL `interface` definitions nested within that IDL `module`. Use the Python class name as the IDL `interface` name.
+            *   Public, top-level functions within the Python file should be grouped into a dedicated `interface` named something like `ModuleFunctions` or `{ModuleName}Functions` within the IDL `module`.
+        *   Apply the **Code-to-IDL Reduction Guidelines (Section III)** from the established `<idl>` guidelines based on the mapping above.
+        *   Focus on mapping public classes/functions to interfaces/methods per the convention.
         *   Extract preliminary Pre/Postconditions and Invariants from docstrings and code structure.
-        *   Identify direct dependencies on *other modules within the project* based on imports and usage. Add these to a *preliminary* `# @depends_on(...)` list in the generated IDL. Mark dependencies targeting modules not yet processed in this pass as potentially `[unresolved]`.
+        *   Identify direct dependencies on *other modules/classes within the project* based on imports and usage. Add these to a preliminary `# @depends_on(...)` list in the generated IDL.
+            *   **Dependency Naming:** The names used in `@depends_on` **MUST** correspond to the IDL `module` or `interface` names generated according to the mapping convention (e.g., `src.module.dependency` for a module dependency, or `ClassName` for an interface dependency). Ensure a consistent naming convention for cross-module interface references if needed.
         *   Strictly apply the **EXCLUSION CRITERIA** (Section III.5).
         *   **File Naming:** The generated IDL for a source file like `src/module/path.py` **MUST** be placed in a parallel file named `src/module/path_IDL.md`.
         *   Format the output within `// == !! BEGIN IDL TEMPLATE !! ===` and `// == !! END IDL TEMPLATE !! ===` markers within the designated `_IDL.md` file.
-        *   *Self-Correction:* If a module seems purely internal or contains no significant public interface according to the exclusion criteria, note this and potentially skip generating a formal IDL file, explaining why.
+        *   *Self-Correction/Skipping:* If a module seems purely internal or contains no significant public interface according to the exclusion criteria, note this and skip generating a formal IDL file, explaining why.
+        *   **Error Handling:** If a file cannot be parsed or processed due to errors, note the error, generate a minimal or empty IDL file with a comment indicating the failure, and add it to the `refinement_required` list (Phase 3) for manual review. Do not halt the entire process unless critical.
     *   **c. Track Dependencies:** Maintain a separate, cumulative list/structure (`dependency_tracker`) storing:
-        *   `source_module`: The module being processed.
-        *   `target_module`: The module depended upon.
-        *   `target_element` (optional): Specific class/function used, if easily identifiable.
-        *   `status`: `resolved` (if target module's IDL was generated in a previous chunk) or `unresolved` (if target module is later in the processing order or its IDL hasn't been generated yet).
+        *   `source_module`: The module being processed (e.g., `src.module.path`).
+        *   `target_idl_element`: The IDL `module` or `interface` name depended upon (e.g., `src.other.dependency` or `ClassName`).
+        *   `status`: `resolved` (if target element's IDL was generated in a previous chunk) or `unresolved` (if target element's IDL is later in the processing order or not yet generated). The `unresolved` status is for the *tracker only* and **MUST NOT** appear in the generated IDL file itself. The `@depends_on` list in the IDL should contain the best-guess target name.
 
 3.  **Chunk Summary & Update:**
     *   After processing all modules in a chunk, present:
         *   The file paths processed in this chunk.
-        *   The generated initial IDLs for each module.
-        *   A summary of new entries added to the `dependency_tracker` from this chunk, highlighting `unresolved` dependencies.
+        *   The generated initial IDLs for each module (or notes about skipped/errored files).
+        *   A summary of new entries added to the `dependency_tracker` from this chunk, highlighting `unresolved` dependencies *in the summary*.
     *   Move the processed file paths from `to_process_idl` to `processed_idl`.
     *   Display the updated `to_process_idl` and `processed_idl` lists.
-    *   Stop and ask the user if they want to proceed to the next chunk.
+    *   Stop and ask the user if they want to proceed to the next chunk, reminding them this is an opportunity for feedback on the generated chunk.
 
 **Phase 3: Global Analysis & Refinement Planning (After First Pass)**
 
 1.  **First Pass Completion:** Once `to_process_idl` is empty, the first pass is complete.
 2.  **Consolidated Review:** Present:
     *   All generated initial IDLs (from all chunks).
-    *   The complete `dependency_tracker` list, clearly separating resolved and unresolved dependencies.
+    *   The complete `dependency_tracker` list, clearly separating resolved and unresolved dependencies *based on the tracker status*.
 3.  **Inconsistency Analysis:**
     *   `<thinking> Review the collected IDLs and the dependency_tracker globally. Look for: </thinking>`
-    *   **Unresolved Dependencies:** Any dependencies marked `unresolved` in the tracker.
-    *   **Missing Definitions:** Cases where module A depends on `B.methodX`, but `methodX` is missing from the generated IDL for module B.
-    *   **Signature Mismatches:** Cases where module A calls `B.methodX(int)` but B's IDL defines `methodX(string)`. (This might require deeper analysis or be inferred from usage patterns if not explicit in docstrings).
-    *   **Interface Completeness:** Assess if the generated interfaces seem functionally complete based on their apparent roles and how they are used by other modules. Are crucial operations missing?
-    *   **Circular Dependencies:** Review any circular dependencies noted earlier and how they manifest in the IDLs and tracker.
+    *   **Unresolved Dependencies:** Any dependencies still marked `unresolved` in the tracker. This indicates the target IDL might be missing or was skipped.
+    *   **Missing Definitions:** Cases where module A depends on `B.methodX` (or `InterfaceB.methodX`), but `methodX` is missing from the generated IDL for module B / Interface B.
+    *   **Signature Mismatches:** Cases where module A calls `B.methodX(int)` but B's IDL defines `methodX(string)`.
+    *   **Interface Completeness:** Assess if the generated interfaces seem functionally complete.
+    *   **Circular Dependencies:** Review any circular dependencies noted earlier. Mutual `@depends_on` declarations between IDL modules or interfaces (e.g., A depends on B, B depends on A) are generally acceptable in the IDL if they reflect the code's design, but flag them for user awareness during review.
 4.  **Refinement Plan:**
-    *   Based on the analysis, create a list (`refinement_required`) of modules whose IDLs need revision.
-    *   For each module in `refinement_required`, briefly state the reason(s) for revision (e.g., "Add missing method `methodX` required by ModuleA", "Correct signature for `methodY`", "Resolve dependency on ModuleC").
+    *   Based on the analysis, create a list (`refinement_required`) of modules/files whose IDLs need revision or creation (including those that errored).
+    *   For each item in `refinement_required`, briefly state the reason(s) (e.g., "Add missing method `methodX` required by ModuleA", "Correct signature for `methodY`", "Resolve dependency on ModuleC", "File errored during generation, requires manual check").
     *   Present the analysis findings and the proposed `refinement_required` list with reasons.
     *   Ask the user to confirm or modify the refinement plan.
 
 **Phase 4: Iterative Refinement**
 
 1.  **Refinement Cycle:** While the `refinement_required` list is not empty:
-    *   Select a module (or a small group of related modules) from the `refinement_required` list.
-    *   **Re-generate/Update IDL:** Re-apply the **Code-to-IDL Reduction Guidelines (Section III)** to the selected module(s), specifically addressing the issues identified in the refinement plan. This may involve:
+    *   Select a module/file (or a small group) from `refinement_required`.
+    *   **Re-generate/Update IDL:** Re-apply the **Code-to-IDL Reduction Guidelines (Section III)** and the **Mapping Convention (Phase 2.b)** to the selected module(s)/file(s), specifically addressing the issues identified. This may involve:
         *   Adding missing methods/interfaces.
-        *   Correcting method signatures (`returnType`, `parameterType`).
-        *   Updating Pre/Postconditions to be more accurate based on cross-module context.
-        *   Updating the `# @depends_on(...)` list, potentially resolving previously unresolved dependencies.
-    *   **Update Dependency Tracker:** Update the `status` of relevant entries in the `dependency_tracker` if dependencies are now resolved by the updated IDL.
+        *   Correcting method signatures.
+        *   Updating Pre/Postconditions.
+        *   Correcting/adding `# @depends_on(...)` lists using the proper naming convention.
+    *   **Update Dependency Tracker:** Update the `status` of relevant entries in the `dependency_tracker` if dependencies are now resolved.
     *   **Present Changes:** Show the updated IDL(s) for the revised module(s).
-    *   Remove the processed module(s) from `refinement_required`.
-    *   *Self-Correction/Re-Analysis:* After each refinement, briefly re-assess if this change introduces new inconsistencies or resolves dependencies for *other* modules still needing refinement. Update the `refinement_required` list if necessary.
-    *   Ask the user to confirm the changes before proceeding with the next item in `refinement_required`.
-2.  **Cycle Completion:** If the `refinement_required` list becomes empty, and a brief final check reveals no outstanding unresolved dependencies or major inconsistencies, the refinement phase is complete. If inconsistencies remain, perform another round of **Global Analysis & Refinement Planning (Phase 3)**.
+    *   Remove the processed item(s) from `refinement_required`.
+    *   *Self-Correction/Re-Analysis:* Briefly re-assess if this change introduces new inconsistencies or resolves dependencies impacting *other* modules still needing refinement. Update `refinement_required` if necessary.
+    *   Ask the user to confirm the changes before proceeding.
+2.  **Cycle Completion:** If `refinement_required` is empty, and a final check reveals no outstanding unresolved dependencies (in the tracker) or major inconsistencies, the phase is complete. If issues remain, perform another round of **Global Analysis & Refinement Planning (Phase 3)**.
 
 **Phase 5: Final Output**
 
 1.  **Present Final IDLs:** Display the complete, consistent set of generated IDLs for all relevant modules in the project.
-2.  **Final Dependency Overview:** Optionally, present a final summary of the resolved dependencies, perhaps formatted like the `# @depends_on` lists for clarity.
-
-This iterative process allows for building up the IDL specifications incrementally, using the global context gathered after the first pass to refine and ensure consistency across the entire project, much like your Mermaid example built up the overall dependency graph.
+2.  **Final Dependency Overview:** Optionally, present a final summary derived from the `@depends_on` lists in the final IDLs.
 </code to idl>
 
