@@ -198,8 +198,9 @@ module SocialMediaPlatform {
         *   Extract preliminary Pre/Postconditions and Invariants from docstrings and code structure.
         *   Identify direct dependencies on *other modules within the project* based on imports and usage. Add these to a *preliminary* `# @depends_on(...)` list in the generated IDL. Mark dependencies targeting modules not yet processed in this pass as potentially `[unresolved]`.
         *   Strictly apply the **EXCLUSION CRITERIA** (Section III.5).
-        *   Format the output within `// == !! BEGIN IDL TEMPLATE !! ===` and `// == !! END IDL TEMPLATE !! ===` markers.
-        *   *Self-Correction:* If a module seems purely internal or contains no significant public interface according to the exclusion criteria, note this and potentially skip generating a formal IDL, explaining why.
+        *   **File Naming:** The generated IDL for a source file like `src/module/path.py` **MUST** be placed in a parallel file named `src/module/path_IDL.md`.
+        *   Format the output within `// == !! BEGIN IDL TEMPLATE !! ===` and `// == !! END IDL TEMPLATE !! ===` markers within the designated `_IDL.md` file.
+        *   *Self-Correction:* If a module seems purely internal or contains no significant public interface according to the exclusion criteria, note this and potentially skip generating a formal IDL file, explaining why.
     *   **c. Track Dependencies:** Maintain a separate, cumulative list/structure (`dependency_tracker`) storing:
         *   `source_module`: The module being processed.
         *   `target_module`: The module depended upon.
