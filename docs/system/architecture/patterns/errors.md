@@ -86,7 +86,19 @@ To prevent memory issues:
 - When accumulated data becomes too large, older results may be summarized or truncated
 - The system indicates when truncation has occurred
 
-### 2.5 Output Format Validation
+### 2.5 S-expression Evaluation Errors
+
+Failures during the parsing or evaluation of the S-expression DSL itself result in `TASK_FAILURE` errors.
+
+- **Parsing Errors**: Occur if the S-expression syntax is invalid (e.g., mismatched parentheses). The `reason` might be `input_validation_failure` or a dedicated S-expression parse error code. Details would include location information.
+- **Evaluation Errors**: Occur during runtime, such as:
+    - `unbound_symbol`: Referencing a variable that hasn't been defined/bound.
+    - `type_mismatch`: Passing an argument of the wrong type to a primitive.
+    - `primitive_error`: An error within the implementation of a built-in primitive (e.g., `system:run_script` failing).
+    - `invalid_arguments`: Calling a primitive or function with the wrong number or type of arguments.
+    The `reason` would likely be `unexpected_error` or a more specific S-expression evaluation error code. Details would include the failing expression and potentially the environment state.
+
+### 2.6 Output Format Validation
 
 When a task specifies an output format using `<output_format type="json" schema="...">`, validation failures result in:
 
