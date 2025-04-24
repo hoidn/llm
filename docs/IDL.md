@@ -5,10 +5,10 @@
 
 these guidelines define a system for creating and understanding interface definition language (idl) specifications and their corresponding code implementations. the process is designed to be **bidirectional**:
 
-1.  **idl-to-code:** use a defined idl as a strict contract to generate compliant, high-quality code. 
-2.  **code-to-idl:** reduce existing code to its essential idl specification, abstracting away implementation details to reveal the core functional contract. see <code to idl>.
+1.  **idl-to-code:** use a defined idl as a comprehensive specification to generate compliant, high-quality code.
+2.  **code-to-idl:** reduce existing code to its essential idl specification, abstracting away implementation details and presentation logic to reveal the core behavioral specification and functional contract. see <code to idl>.
 
-the goal is a clear separation between the *what* (the functional contract defined in the idl) and the *how* (the implementation details within the code).
+the goal is a clear, language- and UI-agnostic **specification (SPEC)** that defines both the *what* (the functional contract and essential behavior) and separates it from the *how* (the specific implementation details within the code).
 
 **ii. idl creation & structure guidelines**
 
@@ -16,18 +16,36 @@ the goal is a clear separation between the *what* (the functional contract defin
 
 1.  **object oriented:** structure the idl using modules and interfaces to represent logical components and entities.
 2.  **dependency declaration:**
-    *   **purpose:** to explicitly declare which other idl-defined modules or interfaces a given interface relies upon to fulfill its contract. this clarifies coupling at the design level.
-    *   **syntax:** use a comment line placed immediately before the `interface` definition. the format is:
-        `# @depends_on(dependency1, dependency2, ...)`
-    *   **target:** `dependency1`, `dependency2`, etc., must refer to the names of other `module` or `interface` definitions within the scope of the overall idl system.
-    *   **implication:** this declaration signals that an implementation of the interface will likely require access (e.g., via instantiation or dependency injection) to implementations conforming to the dependent interfaces/modules. it defines a dependency on the *contract*, not a specific implementation detail.
-3.  **design patterns:** utilize (when creating idl) or identify (when reducing code) interfaces supporting established design patterns like factory, builder, and strategy where they clarify the design or improve flexibility. the idl defines the *contract* for these patterns, not their internal implementation.
+    *   **purpose:** to explicitly declare dependencies required to fulfill the interface's contract. This clarifies coupling at the design level.
+    *   **syntax:** use comment lines placed immediately before the `interface` definition.
+        *   For dependencies on other IDL-defined interfaces/modules:
+            `# @depends_on(idl_module_or_interface_name, ...)`
+        *   For dependencies on abstract types of external resources or systems:
+            `# @depends_on_resource(type="Database", purpose="Storing user profiles")`
+            `# @depends_on_resource(type="MessageQueue", purpose="Processing background jobs")`
+    *   **target:**
+        *   `@depends_on`: Names must refer to other `module` or `interface` definitions within the IDL system.
+        *   `@depends_on_resource`: `type` is an abstract category (e.g., "Database", "FileSystem", "ExternalAPI"), `purpose` is a brief description.
+    *   **implication:** These declarations signal requirements for the implementation. `@depends_on` implies needing access to implementations of other IDL contracts. `@depends_on_resource` implies needing access to a specific *kind* of external system or resource, configured appropriately.
+3.  **design patterns:** utilize (when creating idl) or identify (when reducing code) interfaces supporting established design patterns like factory, builder, and strategy where they clarify the design or improve flexibility. the idl defines the *contract* and potentially the *behavioral role* of these patterns.
 4.  **complex parameters (json):**
     *   **preference for structure:** if the idl syntax supports defining custom structures/records/data classes, prefer them for complex data transfer to maximize type safety at the interface level.
     *   **json fallback:** where structured types are not feasible in idl or cross-language string simplicity is paramount, use a single json string parameter.
     *   **mandatory documentation:** *always* document the exact expected json format within the idl comment block (e.g., `// expected json format: { "key1": "type1", "key2": "type2" }`).
-5.  **clarity and intent:** the idl should clearly express the *purpose* and *expected behavior* of each interface and method through well-chosen names and comprehensive documentation (pre/postconditions, invariants).
-6.  **completeness (functional contract):** the idl must represent the *complete functional contract* of the component's public interface.
+5.  **clarity and behavioral specification:** the idl must clearly express the *purpose* and *complete expected behavior* of each interface and method. this is achieved through:
+    *   Well-chosen names for interfaces, methods, and parameters.
+    *   **Comprehensive documentation comments:** These are critical for the SPEC. They must detail:
+        *   **Preconditions:** Necessary conditions before calling.
+        *   **Postconditions:** Expected outcomes, return value guarantees, and significant state changes after successful execution.
+        *   **Essential Algorithms/Logic:** A conceptual description of any core algorithms or business logic the method implements, sufficient to understand its behavior without seeing the code.
+        *   **Conceptual State:** Description of key internal state variables managed by the interface (if any) and how methods affect them.
+        *   **Error Conditions:** Use the `@raises_error` annotation (see below) for specific, named error conditions that are part of the contract.
+        *   JSON format documentation if applicable.
+6.  **completeness (behavioral specification):** the idl must represent the *complete behavioral specification* of the component's public interface and its essential, observable behavior.
+7.  **error condition annotation:** Use a dedicated annotation to formally define specific, named error conditions that are part of the interface's contract.
+    *   **syntax:** Use comment lines within the method's documentation block.
+        `// @raises_error(condition="UniqueErrorCode", description="Explanation of when this error occurs.")`
+    *   **purpose:** To standardize the reporting of specific failure modes beyond simple success/failure, making the contract more precise. `condition` should be a stable identifier.
 
 **iii. code-to-idl reduction guidelines**
 
@@ -41,17 +59,19 @@ the goal is a clear separation between the *what* (the functional contract defin
 3.  **dependency identification:** identify dependencies on other components *that are also being defined via idl*. represent these using the **dependency declaration** syntax (`# @depends_on(...)`) described in section ii.2. exclude dependencies on third-party libraries or internal implementation details not represented by an interface in the idl.
 4.  **documentation extraction:**
     *   infer **preconditions** from input validation, assertions, and documentation comments in the code.
-    *   infer **postconditions** from return value guarantees, state changes described in documentation, or observable outcomes.
-    *   identify and document **invariants** – properties of the object's state that hold true between public method calls.
-    *   if complex objects/dictionaries are passed as parameters, represent them using the **complex parameters (json)** guideline (ii.4) and document the format.
-5.  **exclusion criteria:** the following elements **must be excluded** from the generated idl as they are considered implementation details or non-functional aspects:
+    *   infer **postconditions** from return value guarantees, state changes described in documentation, or observable outcomes. Document these clearly.
+    *   identify and document **invariants** – properties of the object's conceptual state that hold true between public method calls.
+    *   extract descriptions of **essential algorithms or core logic** from code/comments and summarize them conceptually in the method documentation.
+    *   identify **specific error conditions** raised or returned that represent contractual failure modes. Document these using the `@raises_error` annotation.
+    *   if complex objects/dictionaries are passed, represent them using the **complex parameters (json)** guideline (ii.4) and document the format.
+5.  **exclusion criteria:** the following elements **must be excluded** from the generated idl *structure* (interfaces, methods) as they are implementation details, presentation logic, or non-functional aspects. However, *essential behavioral aspects* derived from these (like core logic or error conditions) should be *described* in the IDL documentation comments or captured via annotations.
     *   **presentation logic:** any code related to graphical user interfaces (gui), text user interfaces (tui), web page rendering, console output formatting, or specific presentation frameworks.
-    *   **internal implementation details:** private methods, helper functions not part of the public api, internal data structures (unless their *structure* is inherently part of the public contract, e.g., via json), specific algorithms used (unless the choice of algorithm is selectable via the interface, like a strategy pattern).
-    *   **type enforcement/validation code:** the *internal logic* for validating inputs or enforcing type constraints (e.g., `if` checks, `try-except` blocks for type errors, calls to validation libraries). the *requirement* for valid input should be captured as a precondition.
+    *   **internal implementation code:** the *code* for private methods, helper functions, specific algorithms, internal data structures. (Note: The *behavior* or *purpose* of essential algorithms or the *conceptual* nature of key internal state *should* be documented).
+    *   **type enforcement/validation code:** the *internal logic* for validation. The *requirement* for valid input is a precondition. Specific validation failure *error conditions* might be documented with `@raises_error` if contractual.
     *   **non-functional code:** logging statements, metrics collection, performance monitoring, debugging utilities, internal comments explaining *how* the code works (vs. *what* it guarantees).
-    *   **language/platform specifics:** boilerplate code generated by frameworks (unless it directly defines a public contract method), language-specific idioms with no direct equivalent, environment configuration loading, build system artifacts, specific library dependencies (unless they form part of the public method signatures).
-    *   **error handling mechanisms:** specific exception types thrown/caught internally, error reporting mechanisms. the idl should focus on the successful execution path (postconditions) and potentially define expected error *conditions* or *states* abstractly if they are part of the contract, rather than specific language exceptions.
-    *   dependencies on concrete libraries or modules *not* represented by an idl interface within the system.
+    *   **language/platform specifics:** boilerplate code, language-specific idioms, environment configuration loading, build system artifacts, specific library dependencies (unless they form part of public signatures or are abstracted via `@depends_on_resource`).
+    *   **internal error handling mechanisms:** specific exception types thrown/caught internally, internal error reporting. Contractual, observable error conditions should be documented using `@raises_error`. Generic internal failures are not part of the IDL spec.
+    *   dependencies on concrete libraries or modules *not* represented by an IDL interface or abstracted via `@depends_on_resource`.
 
 **iv. idl template**
 
@@ -60,24 +80,34 @@ the goal is a clear separation between the *what* (the functional contract defin
 module genericsystemname {
 
     // optional: define shared data structures if idl syntax allows
+    // optional: define shared data structures if idl syntax allows
     // struct shareddata { ... }
 
-    // example interface demonstrating dependency declaration
-    # @depends_on(anotherinterfacename, sharedmodulename)
+    // example interface demonstrating dependency declarations and annotations
+    # @depends_on(anotherinterfacename, sharedmodulename) // Dependency on other IDL contracts
+    # @depends_on_resource(type="KeyValueStore", purpose="Caching intermediate results") // Abstract resource dependency
     interface entityname {
 
         // action/method definition
         // preconditions:
         // - define necessary conditions before calling.
+        // - parametername must be positive.
         // - (if using json param) expected json format: { "key1": "type1", ... }
         // postconditions:
         // - define expected outcomes and state changes after successful execution.
+        // - returns the calculated result based on input.
+        // - internal cache (conceptual state) may be updated.
+        // behavior:
+        // - describe essential algorithm/logic here, e.g., "Calculates result using the frobnitz algorithm."
+        // - "If the result is found in the KeyValueStore cache, it's returned directly."
+        // @raises_error(condition="InvalidInput", description="Raised if parametername is non-positive.")
+        // @raises_error(condition="ResourceUnavailable", description="Raised if the KeyValueStore cannot be accessed.")
         returntype methodname(parametertype parametername);
 
         // additional methods...
 
-        // invariants: (optional: define properties that always hold true for this entity)
-        // - describe state invariants here.
+        // invariants: (optional: define properties that always hold true for this entity's conceptual state)
+        // - describe state invariants here, e.g., "Internal cache size never exceeds max limit."
     };
 
     // another entity or component that entityname might depend on
@@ -113,42 +143,77 @@ module genericsystemname {
 module socialmediaplatform {
 
     // assume these interfaces are defined elsewhere in the idl system
-    // interface usermanagement { ... }
-    // interface storageservice { ... }
+    // interface usermanagement { ... } // Manages user existence and validation
+    // interface notificationqueue { ... } // Handles sending notifications
 
-    # @depends_on(usermanagement, storageservice)
+    # @depends_on(usermanagement) // Depends on the user management contract
+    # @depends_on_resource(type="TweetStore", purpose="Persisting tweet, like, and retweet data") // Needs a data store
+    # @depends_on_resource(type="NotificationService", purpose="Sending notifications on mentions/likes") // Needs a notification mechanism
     interface tweets {
         // preconditions:
         // - user referenced by userid in tweetjson exists (verified via usermanagement).
-        // - tweetcontent is non-null and within allowable size limits.
-        // postconditions:
-        // - a new tweet is created and stored (via storageservice).
+        // - tweet content is non-null and within allowable size limits (e.g., 280 chars).
         // expected json format: { "userid": "string", "content": "string" }
+        // postconditions:
+        // - a new tweet is created and persisted in the TweetStore.
+        // - if content contains mentions (@username), a notification task may be queued via NotificationService.
+        // behavior:
+        // - validates input json structure.
+        // - checks user existence via usermanagement.
+        // - checks content length.
+        // - persists tweet data to TweetStore.
+        // - parses content for @mentions and potentially triggers notifications.
+        // @raises_error(condition="InvalidTweetFormat", description="JSON format is incorrect.")
+        // @raises_error(condition="UserNotFound", description="User specified in userid does not exist.")
+        // @raises_error(condition="ContentTooLong", description="Tweet content exceeds the size limit.")
+        // @raises_error(condition="StorageFailure", description="Failed to persist tweet to TweetStore.")
         void posttweet(string tweetjson);
 
         // preconditions:
         // - user referenced by userid exists (verified via usermanagement).
-        // - tweet referenced by tweetid exists (verified via storageservice).
+        // - tweet referenced by tweetid exists (verified via TweetStore lookup).
         // postconditions:
-        // - the tweet with tweetid is marked as liked by userid (via storageservice).
+        // - the tweet with tweetid is marked as liked by userid in the TweetStore.
+        // - a notification may be sent to the original tweet author via NotificationService.
+        // behavior:
+        // - validates user and tweet existence.
+        // - updates like status in TweetStore.
+        // - potentially triggers notification.
+        // @raises_error(condition="UserNotFound", description="Liking user specified by userid does not exist.")
+        // @raises_error(condition="TweetNotFound", description="Tweet specified by tweetid does not exist.")
+        // @raises_error(condition="AlreadyLiked", description="User has already liked this tweet.")
+        // @raises_error(condition="StorageFailure", description="Failed to update like status in TweetStore.")
         void liketweet(string userid, string tweetid);
 
         // preconditions:
         // - user referenced by userid in retweetjson exists (verified via usermanagement).
-        // - original tweet referenced by originaltweetid in retweetjson exists (verified via storageservice).
-        // postconditions:
-        // - a new retweet linked to the original is created and stored (via storageservice).
+        // - original tweet referenced by originaltweetid in retweetjson exists (verified via TweetStore lookup).
         // expected json format: { "userid": "string", "originaltweetid": "string" }
+        // postconditions:
+        // - a new retweet linked to the original is created and persisted in the TweetStore.
+        // behavior:
+        // - validates input, user existence, and original tweet existence.
+        // - creates and persists retweet data.
+        // @raises_error(condition="InvalidRetweetFormat", description="JSON format is incorrect.")
+        // @raises_error(condition="UserNotFound", description="Retweeting user does not exist.")
+        // @raises_error(condition="TweetNotFound", description="Original tweet does not exist.")
+        // @raises_error(condition="CannotRetweetOwn", description="User attempted to retweet their own tweet.")
+        // @raises_error(condition="StorageFailure", description="Failed to persist retweet to TweetStore.")
         void retweet(string retweetjson);
 
         // preconditions:
-        // - tweet referenced by tweetid exists (verified via storageservice).
+        // - tweet referenced by tweetid exists (verified via TweetStore lookup).
         // postconditions:
-        // - returns the details of the tweet as a json string (retrieved via storageservice).
+        // - returns the details of the tweet (content, author, stats) as a json string.
+        // behavior:
+        // - retrieves tweet data from TweetStore.
+        // - formats data into the specified JSON structure.
+        // @raises_error(condition="TweetNotFound", description="Tweet specified by tweetid does not exist.")
+        // @raises_error(condition="StorageFailure", description="Failed to retrieve tweet details from TweetStore.")
         string gettweetdetails(string tweetid);
 
         // invariants:
-        // - storageservice maintains a consistent list of tweets, likes, and retweets.
+        // - TweetStore maintains referential integrity between tweets, retweets, and likes.
         // - all userids referenced in tweets/likes/retweets exist according to usermanagement.
     };
 
