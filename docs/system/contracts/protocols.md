@@ -11,230 +11,235 @@ This document defines the core protocols used throughout the system for task exe
 
 ## Task Template Schema [Contract:Tasks:TemplateSchema:1.0]
 
-**Note:** This document is the authoritative specification for the XML schema used in task template definitions. All field definitions, allowed enumerations (such as for `<inherit_context>` and `<accumulation_format>`), and validation rules are defined here. For complete validation guidelines, please see Appendix A in [Contract:Resources:1.0].
+**Note:** This document is the authoritative specification for the XML schema used to define **atomic task templates**. All workflow composition (sequences, loops, conditionals, etc.) is handled by the S-expression DSL, not by XML structure.
 
-The task template schema defines the structure for XML task template files and maps to the TaskTemplate interface.
+The atomic task template schema defines the structure for XML files that represent single, executable LLM or system tasks.
 
-### XML Schema Definition
+### S-expression DSL for Composition
+Task composition, control flow, and multi-step workflows are defined using an S-expression based Domain Specific Language (DSL). This DSL provides primitives for binding variables (`bind`, `let`), conditional execution (`if`), mapping (`map`), calling atomic tasks (`call-atomic-task`), invoking system tools (`system:run_script`), and potentially looping or recursion. Please refer to the S-expression DSL documentation [Link TBD] for its syntax and semantics.
+
+### Atomic Task XML Schema Definition
+
+The following schema defines the structure for `<task type="atomic">` elements.
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
 <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
-  <xs:complexType name="EvaluationResult">
+
+  <!-- Define complex types for reusable elements first -->
+  <xs:complexType name="OutputType">
+    <xs:attribute name="type" use="required">
+      <xs:simpleType>
+        <xs:restriction base="xs:string">
+          <xs:enumeration value="json"/>
+          <xs:enumeration value="text"/>
+        </xs:restriction>
+      </xs:simpleType>
+    </xs:attribute>
+    <xs:attribute name="schema" type="xs:string" use="optional"/>
+  </xs:complexType>
+
+  <xs:complexType name="ContextManagementType">
     <xs:sequence>
-      <xs:element name="success" type="xs:boolean"/>
-      <xs:element name="feedback" type="xs:string" minOccurs="0"/>
+      <xs:element name="inherit_context">
+        <xs:simpleType>
+          <xs:restriction base="xs:string">
+            <xs:enumeration value="full"/>
+            <xs:enumeration value="none"/>
+            <xs:enumeration value="subset"/>
+          </xs:restriction>
+        </xs:simpleType>
+      </xs:element>
+      <xs:element name="accumulate_data" type="xs:boolean"/>
+      <xs:element name="accumulation_format">
+        <xs:simpleType>
+          <xs:restriction base="xs:string">
+            <!-- When 'full_output' is specified, complete content+notes are preserved -->
+            <xs:enumeration value="full_output"/>
+            <!-- When 'notes_only' is specified, only essential metadata is preserved -->
+            <xs:enumeration value="notes_only"/>
+          </xs:restriction>
+        </xs:simpleType>
+      </xs:element>
+      <xs:element name="fresh_context">
+        <xs:simpleType>
+          <xs:restriction base="xs:string">
+            <xs:enumeration value="enabled"/>
+            <xs:enumeration value="disabled"/>
+          </xs:restriction>
+        </xs:simpleType>
+      </xs:element>
     </xs:sequence>
   </xs:complexType>
 
+  <xs:complexType name="FilePathsSourceType">
+     <xs:choice>
+       <xs:sequence>
+         <xs:element name="path" type="xs:string" maxOccurs="unbounded"/>
+       </xs:sequence>
+       <xs:element name="command" type="xs:string"/>
+       <xs:element name="description" type="xs:string"/>
+       <!-- When source="context_description", this element holds the query string -->
+       <xs:element name="context_query" type="xs:string"/>
+     </xs:choice>
+     <xs:attribute name="source" use="optional" default="literal">
+       <xs:simpleType>
+         <xs:restriction base="xs:string">
+           <xs:enumeration value="literal"/>
+           <xs:enumeration value="command"/>
+           <xs:enumeration value="description"/>
+           <xs:enumeration value="context_description"/>
+         </xs:restriction>
+       </xs:simpleType>
+     </xs:attribute>
+  </xs:complexType>
+
+  <xs:complexType name="InputsType">
+    <xs:sequence>
+      <xs:element name="input" maxOccurs="unbounded">
+        <xs:complexType>
+          <xs:simpleContent>
+            <xs:extension base="xs:string">
+              <xs:attribute name="name" type="xs:string" use="required"/>
+              <xs:attribute name="from" type="xs:string" use="optional"/>
+            </xs:extension>
+          </xs:simpleContent>
+        </xs:complexType>
+      </xs:element>
+    </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="ContextRelevanceType">
+     <xs:sequence>
+       <xs:element name="input" maxOccurs="unbounded">
+         <xs:complexType>
+           <xs:attribute name="name" type="xs:string" use="required"/>
+           <xs:attribute name="include" type="xs:boolean" use="required"/>
+         </xs:complexType>
+       </xs:element>
+     </xs:sequence>
+  </xs:complexType>
+
+  <xs:complexType name="ContextAssemblyType">
+     <xs:sequence>
+       <xs:element name="primary_elements" type="xs:string" minOccurs="0"/>
+       <xs:element name="secondary_elements" type="xs:string" minOccurs="0"/>
+       <xs:element name="excluded_elements" type="xs:string" minOccurs="0"/>
+     </xs:sequence>
+  </xs:complexType>
+
+  <!-- Main Atomic Task Definition -->
   <xs:element name="task">
     <xs:complexType>
       <xs:sequence>
         <xs:element name="description" type="xs:string"/>
         <xs:element name="provider" type="xs:string" minOccurs="0"/>
+        <xs:element name="model" type="xs:string" minOccurs="0"/> <!-- Added model -->
+        <xs:element name="instructions" type="xs:string" minOccurs="0"/> <!-- Added instructions (taskPrompt) -->
+        <xs:element name="system" type="xs:string" minOccurs="0"/> <!-- Added system (systemPrompt) -->
         <xs:element name="output_slot" type="xs:string" minOccurs="0"/>
         <xs:element name="input_source" type="xs:string" minOccurs="0"/>
-        <xs:element name="output_format" minOccurs="0">
-          <xs:complexType>
-            <xs:attribute name="type" use="required">
-              <xs:simpleType>
-                <xs:restriction base="xs:string">
-                  <xs:enumeration value="json"/>
-                  <xs:enumeration value="text"/>
-                </xs:restriction>
-              </xs:simpleType>
-            </xs:attribute>
-            <xs:attribute name="schema" type="xs:string" use="optional"/>
-          </xs:complexType>
-        </xs:element>
-        <xs:element name="context_management">
-          <xs:complexType>
-            <xs:sequence>
-              <xs:element name="inherit_context">
-                <xs:simpleType>
-                  <xs:restriction base="xs:string">
-                    <xs:enumeration value="full"/>
-                    <xs:enumeration value="none"/>
-                    <xs:enumeration value="subset"/>
-                  </xs:restriction>
-                </xs:simpleType>
-              </xs:element>
-              <xs:element name="accumulate_data" type="xs:boolean"/>
-              <xs:element name="accumulation_format">
-                <xs:simpleType>
-                  <xs:restriction base="xs:string">
-                    <!-- When 'full' is specified, complete notes are preserved -->
-                    <xs:enumeration value="full"/>
-                    <!-- When 'minimal' is specified, only essential metadata is preserved -->
-                    <xs:enumeration value="minimal"/>
-                  </xs:restriction>
-                </xs:simpleType>
-              </xs:element>
-              <xs:element name="fresh_context">
-                <xs:simpleType>
-                  <xs:restriction base="xs:string">
-                    <xs:enumeration value="enabled"/>
-                    <xs:enumeration value="disabled"/>
-                  </xs:restriction>
-                </xs:simpleType>
-              </xs:element>
-            </xs:sequence>
-          </xs:complexType>
-        </xs:element>
-        <xs:element name="file_paths" minOccurs="0">
-          <xs:complexType>
-            <xs:choice>
-              <xs:sequence>
-                <xs:element name="path" type="xs:string" maxOccurs="unbounded"/>
-              </xs:sequence>
-              <xs:element name="command" type="xs:string"/>
-              <xs:element name="description" type="xs:string"/>
-              <!-- When source="context_description", this element holds the query string -->
-              <xs:element name="context_query" type="xs:string"/>
-            </xs:choice>
-            <xs:attribute name="source" use="optional" default="literal">
-              <xs:simpleType>
-                <xs:restriction base="xs:string">
-                  <xs:enumeration value="literal"/>
-                  <xs:enumeration value="command"/>
-                  <xs:enumeration value="description"/>
-                  <xs:enumeration value="context_description"/>
-                </xs:restriction>
-              </xs:simpleType>
-            </xs:attribute>
-          </xs:complexType>
-        </xs:element>
-        <xs:element name="steps">
-          <xs:complexType>
-            <xs:sequence>
-              <xs:element name="task" maxOccurs="unbounded">
-                <xs:complexType>
-                  <xs:sequence>
-                    <xs:element name="description" type="xs:string"/>
-                    <xs:element name="inputs" minOccurs="0">
-                      <xs:complexType>
-                        <xs:sequence>
-                          <xs:element name="input" maxOccurs="unbounded">
-                            <xs:complexType>
-                              <xs:sequence>
-                                <xs:element name="task">
-                                  <xs:complexType>
-                                    <xs:sequence>
-                                      <xs:element name="description" type="xs:string"/>
-                                    </xs:sequence>
-                                  </xs:complexType>
-                                </xs:element>
-                              </xs:sequence>
-                              <xs:attribute name="name" type="xs:string" use="required"/>
-                            </xs:complexType>
-                          </xs:element>
-                        </xs:sequence>
-                      </xs:complexType>
-                    </xs:element>
-                  </xs:sequence>
-                </xs:complexType>
-              </xs:element>
-            </xs:sequence>
-          </xs:complexType>
-        </xs:element>
-        <xs:element name="inputs" minOccurs="0">             <!-- Maps to inputs -->
-          <xs:complexType>
-            <xs:sequence>
-              <xs:element name="input" maxOccurs="unbounded">
-                <xs:complexType>
-                  <xs:simpleContent>
-                    <xs:extension base="xs:string">
-                      <xs:attribute name="name" type="xs:string" use="required"/>
-                      <xs:attribute name="from" type="xs:string" use="optional"/>
-                    </xs:extension>
-                  </xs:simpleContent>
-                </xs:complexType>
-              </xs:element>
-            </xs:sequence>
-          </xs:complexType>
-        </xs:element>
-        
-        <!-- Context relevance indicators for inputs -->
-        <xs:element name="context_relevance" minOccurs="0">
-          <xs:complexType>
-            <xs:sequence>
-              <xs:element name="input" maxOccurs="unbounded">
-                <xs:complexType>
-                  <xs:attribute name="name" type="xs:string" use="required"/>
-                  <xs:attribute name="include" type="xs:boolean" use="required"/>
-                </xs:complexType>
-              </xs:element>
-            </xs:sequence>
-          </xs:complexType>
-        </xs:element>
-
-        <!-- Context assembly guidance -->
-        <xs:element name="context_assembly" minOccurs="0">
-          <xs:complexType>
-            <xs:sequence>
-              <xs:element name="primary_elements" type="xs:string" minOccurs="0"/>
-              <xs:element name="secondary_elements" type="xs:string" minOccurs="0"/>
-              <xs:element name="excluded_elements" type="xs:string" minOccurs="0"/>
-            </xs:sequence>
-          </xs:complexType>
-        </xs:element>
-        <xs:element name="manual_xml" type="xs:boolean" minOccurs="0" default="false"/>      <!-- Maps to isManualXML -->
-        <xs:element name="disable_reparsing" type="xs:boolean" minOccurs="0" default="false"/> <!-- Maps to disableReparsing -->
+        <xs:element name="output_format" type="OutputType" minOccurs="0"/>
+        <xs:element name="context_management" type="ContextManagementType" minOccurs="0"/> <!-- Made optional, defaults apply -->
+        <xs:element name="file_paths" type="FilePathsSourceType" minOccurs="0"/>
+        <xs:element name="inputs" type="InputsType" minOccurs="0"/>
+        <xs:element name="context_relevance" type="ContextRelevanceType" minOccurs="0"/>
+        <xs:element name="context_assembly" type="ContextAssemblyType" minOccurs="0"/>
+        <xs:element name="manual_xml" type="xs:boolean" minOccurs="0" default="false"/>
+        <xs:element name="disable_reparsing" type="xs:boolean" minOccurs="0" default="false"/>
+        <xs:element name="criteria" type="xs:string" minOccurs="0"/> <!-- Added criteria -->
       </xs:sequence>
       <xs:attribute name="ref" type="xs:string" use="optional"/>
-      <xs:attribute name="subtype" type="xs:string" use="optional"/>
+      <xs:attribute name="subtype" type="xs:string" use="optional"/> <!-- e.g., standard, subtask, director, evaluator -->
       <xs:attribute name="type" use="required">
         <xs:simpleType>
           <xs:restriction base="xs:string">
             <xs:enumeration value="atomic"/>
-            <xs:enumeration value="sequential"/>
-            <xs:enumeration value="reduce"/>
-            <xs:enumeration value="script"/>
-            <xs:enumeration value="director_evaluator_loop"/>
+            <!-- Removed sequential, reduce, director_evaluator_loop -->
+            <!-- Keep script if it's fundamentally atomic? Let's assume script is handled by S-exp call for now -->
+            <!-- <xs:enumeration value="script"/> -->
           </xs:restriction>
         </xs:simpleType>
       </xs:attribute>
     </xs:complexType>
   </xs:element>
-  
+
+  <!-- Function Template Definition (if kept alongside S-expressions) -->
+  <!-- These define reusable atomic task structures callable via S-expression -->
   <xs:element name="template">
     <xs:complexType>
       <xs:sequence>
         <xs:element name="name" type="xs:string"/>
-        <xs:element name="params" type="xs:string"/>
+        <xs:element name="params" type="xs:string"/> <!-- Comma-separated list -->
         <xs:element name="returns" type="xs:string" minOccurs="0"/>
-        <xs:element name="task" type="TaskType"/>
+        <!-- The body MUST be an atomic task -->
+        <xs:element ref="task"/>
       </xs:sequence>
     </xs:complexType>
   </xs:element>
 
+  <!-- Function Call (Invoked via S-expression, XML structure might be deprecated) -->
+  <!-- Kept for now, assuming S-exp might parse/use this structure internally -->
   <xs:element name="call">
-    <xs:complexType>
-      <xs:sequence>
-        <xs:element name="template" type="xs:string"/>
-        <xs:element name="arg" type="xs:string" maxOccurs="unbounded"/>
-      </xs:sequence>
-    </xs:complexType>
-  </xs:element>
-  
-  <xs:element name="cond">
-    <xs:complexType>
-      <xs:sequence>
-        <xs:element name="case" maxOccurs="unbounded">
-          <xs:complexType>
-            <xs:attribute name="test" type="xs:string" use="required"/>
-            <xs:sequence>
-              <xs:element name="task" minOccurs="1" maxOccurs="1">
-                <!-- Task definition inside case -->
-              </xs:element>
-            </xs:sequence>
-          </xs:complexType>
-        </xs:element>
-      </xs:sequence>
-    </xs:complexType>
+     <xs:complexType>
+       <xs:sequence>
+         <xs:element name="template" type="xs:string"/> <!-- Name of the <template> to call -->
+         <xs:element name="arg" type="xs:string" maxOccurs="unbounded"/> <!-- Positional arguments -->
+       </xs:sequence>
+     </xs:complexType>
   </xs:element>
 
-### Aider Integration Templates
+  <!-- Error Response Schema (Remains relevant) -->
+  <xs:complexType name="TaskError">
+     <xs:choice>
+       <xs:element name="resource_exhaustion">
+         <xs:complexType>
+           <xs:sequence>
+             <xs:element name="resource" type="xs:string"/>
+             <xs:element name="message" type="xs:string"/>
+             <xs:element name="metrics" type="xs:anyType" minOccurs="0"/> <!-- Define MetricsType if needed -->
+           </xs:sequence>
+         </xs:complexType>
+       </xs:element>
+       <xs:element name="task_failure">
+         <xs:complexType>
+           <xs:sequence>
+             <xs:element name="reason" type="TaskFailureReason"/>
+             <xs:element name="message" type="xs:string"/>
+             <xs:element name="details" type="xs:anyType" minOccurs="0"/> <!-- Define DetailsType if needed -->
+           </xs:sequence>
+         </xs:complexType>
+       </xs:element>
+     </xs:choice>
+  </xs:complexType>
+
+  <xs:simpleType name="TaskFailureReason">
+     <xs:restriction base="xs:string">
+       <xs:enumeration value="context_retrieval_failure"/>
+       <xs:enumeration value="context_matching_failure"/>
+       <xs:enumeration value="context_parsing_failure"/>
+       <xs:enumeration value="xml_validation_failure"/>
+       <xs:enumeration value="output_format_failure"/>
+       <xs:enumeration value="execution_timeout"/>
+       <xs:enumeration value="execution_halted"/>
+       <xs:enumeration value="subtask_failure"/>
+       <xs:enumeration value="input_validation_failure"/>
+       <xs:enumeration value="unexpected_error"/>
+       <!-- Add S-expression specific reasons if needed -->
+     </xs:restriction>
+  </xs:simpleType>
+
+</xs:schema>
+            <!-- When 'full_output' is specified, complete content+notes are preserved -->
+            <xs:enumeration value="full_output"/>
+            <!-- When 'notes_only' is specified, only essential metadata is preserved -->
+            <xs:enumeration value="notes_only"/>
+<!-- Removed complexType definitions for steps, inner_task, reduction_task, director_evaluator_loop, cond, case -->
+<!-- Removed script execution example within sequential task -->
+
+### Aider Integration Templates (Atomic)
+
+These remain valid as they are atomic tasks.
 
 #### Interactive Mode Template
 ```xml
@@ -242,17 +247,15 @@ The task template schema defines the structure for XML task template files and m
   <description>Start interactive Aider session for {{task_description}}</description>
   <context_management>
     <inherit_context>subset</inherit_context>
-    <accumulate_data>true</accumulate_data>
+    <accumulate_data>true</accumulate_data> <!-- Note: accumulate_data primarily affects sequential/reduce history, less relevant for single atomic task unless part of larger S-exp flow -->
     <accumulation_format>notes_only</accumulation_format>
     <fresh_context>enabled</fresh_context>
   </context_management>
   <inputs>
     <input name="initial_query" from="user_query"/>
   </inputs>
-  <file_paths>
-    <!-- Populated by associative matching or explicit specification -->
-    <path>/path/to/file1.py</path>
-    <path>/path/to/file2.py</path>
+  <file_paths source="context_description">
+     <context_query>Files relevant to: {{task_description}}</context_query>
   </file_paths>
 </task>
 ```
@@ -270,93 +273,24 @@ The task template schema defines the structure for XML task template files and m
   <inputs>
     <input name="prompt" from="user_query"/>
   </inputs>
-  <file_paths>
-    <!-- Populated by associative matching or explicit specification -->
-    <path>/path/to/file1.py</path>
-    <path>/path/to/file2.py</path>
+   <file_paths source="context_description">
+     <context_query>Files relevant to: {{task_description}}</context_query>
   </file_paths>
 </task>
 ```
 
 In both templates:
-- The `file_paths` element is populated either by associative matching or explicit specification
-- The `subtype` attribute determines whether Aider runs in interactive or automatic mode
-- Context management settings control how context flows between tasks
+- The `file_paths` element is populated either by associative matching (using `context_description` source) or explicit specification.
+- The `subtype` attribute determines whether Aider runs in interactive or automatic mode.
+- Context management settings control how context is prepared for this specific atomic task execution.
 
-<!-- Director-Evaluator Loop Task Definition -->
-<xs:element name="director_evaluator_loop">
-  <xs:complexType>
-    <xs:sequence>
-      <xs:element name="description" type="xs:string"/>
-      <xs:element name="max_iterations" type="xs:integer" minOccurs="0"/>
-      <xs:element ref="context_management"/>
-      <!-- Note: The <director>, <evaluator>, and optional <script_execution> elements each contain a standard task definition (e.g., an atomic <task> or a <call> node) that is recursively evaluated by the Evaluator component during the corresponding step of the loop. -->
-      <xs:element name="director" type="TaskType"/>
-      <xs:element name="evaluator" type="TaskType"/>
-      <xs:element name="script_execution" minOccurs="0">
-        <!-- Optional script execution step. Contains a task definition (e.g., <call task="system:run_script">) that is evaluated during the loop. The nested <inputs> define parameters passed *to that inner task definition*. -->
-        <xs:complexType>
-          <xs:sequence>
-            <xs:element name="command" type="xs:string"/>
-            <xs:element name="timeout" type="xs:integer" minOccurs="0"/>
-            <xs:element name="inputs" type="InputsType"/>
-          </xs:sequence>
-        </xs:complexType>
-      </xs:element>
-      <xs:element name="termination_condition" minOccurs="0">
-        <xs:complexType>
-          <xs:sequence>
-            <xs:element name="condition" type="xs:string"/>
-          </xs:sequence>
-        </xs:complexType>
-      </xs:element>
-    </xs:sequence>
-  </xs:complexType>
-</xs:element>
-</xs:schema>
-```
+### Script Execution Support (via S-expression)
 
-### Script Execution Support
+Executing external scripts is now handled by invoking a specific primitive within the S-expression DSL, for example: `(system:run_script "bash_command" (input director_output.content))`.
 
-The XML task template schema now supports defining tasks for script execution within sequential tasks. These tasks enable:
- - Command Specification: Defining external commands (e.g. bash scripts) to be executed.
- - Input/Output Contracts: Passing the director's output as input to the script task, and capturing the script's output for subsequent evaluation.
-Script execution errors (e.g. non-zero exit codes) are treated as generic TASK_FAILURE conditions. The evaluator captures the script's stdout and stderr in a designated notes field for downstream decision-making.
+The S-expression workflow manages passing inputs (like director output) to the script primitive and capturing its results (stdout, stderr, exit code) for subsequent steps (like evaluation). Script execution errors result in a `TASK_FAILURE` from the primitive, allowing the S-expression to handle it.
 
-Example:
-```xml
-<task type="sequential">
-  <description>Static Director-Evaluator Pipeline</description>
-  <context_management>
-    <inherit_context>none</inherit_context>
-    <accumulate_data>true</accumulate_data>
-    <accumulation_format>notes_only</accumulation_format>
-  </context_management>
-  <steps>
-    <task>
-      <description>Generate Initial Output</description>
-    </task>
-    <task type="script">
-      <description>Run Target Script</description>
-      <inputs>
-        <input name="director_output" from="last_director_output"/>
-      </inputs>
-    </task>
-    <task>
-      <description>Evaluate Script Output</description>
-      <inputs>
-        <input name="script_output">
-          <task>
-            <description>Process output from target script</description>
-          </task>
-        </input>
-      </inputs>
-    </task>
-  </steps>
-</task>
-```
-
-### Output Format Specification
+### Output Format Specification (for Atomic Tasks)
 
 Tasks can specify structured output format:
 
@@ -664,20 +598,21 @@ The `schema` attribute provides basic type information:
 
 Output validation ensures the result matches the specified type.
 
-### Context Management Configuration
+### Context Management Configuration (for Atomic Tasks)
 
-The `<context_management>` element controls how context is managed during task execution:
+The optional `<context_management>` element within an atomic task's XML definition controls how context is prepared *for that specific task's execution*.
 
 ```xml
 <context_management>
     <inherit_context>full|none|subset</inherit_context>
-    <accumulate_data>true|false</accumulate_data>
-    <accumulation_format>notes_only|full_output</accumulation_format>
+    <accumulate_data>true|false</accumulate_data> <!-- Primarily relevant for how Handler manages context during execution, less about multi-step accumulation -->
+    <accumulation_format>notes_only|full_output</accumulation_format> <!-- Affects potential partial result format on failure -->
     <fresh_context>enabled|disabled</fresh_context>
 </context_management>
 ```
+If omitted, the defaults for the specific atomic task subtype apply (see table below).
 
-## XML Validation Rules
+## XML Validation Rules (for Atomic Tasks)
 
 ### Required Field Validation
 - All required fields must be present
@@ -706,44 +641,41 @@ For implementation details, see:
 - [Function Template Examples](../../components/task-system/impl/examples/function-templates.md)
 - [Subtask Spawning Examples](../../components/task-system/impl/examples/subtask-spawning.md)
 
-Each operator type has specific default settings that apply when the `<context_management>` element is omitted:
+Default context management settings apply when the `<context_management>` element is omitted from an atomic task definition. These depend on the task's `subtype`:
 
-| Operator Type | inherit_context | accumulate_data | accumulation_format | fresh_context |
-|---------------|-----------------|-----------------|---------------------|---------------|
-| atomic        | full            | false           | minimal             | enabled       |
-| sequential    | full            | true            | minimal             | enabled       |
-| reduce        | none            | true            | minimal             | enabled       |
-| script        | full            | false           | minimal             | disabled      |
-| director_evaluator_loop | none  | true            | minimal             | enabled       |
+| Atomic Task Subtype | inherit_context | accumulate_data | accumulation_format | fresh_context |
+|---------------------|-----------------|-----------------|---------------------|---------------|
+| standard            | full            | false           | notes_only          | disabled      |
+| subtask             | subset          | false           | notes_only          | enabled       |
+| director            | full            | false           | notes_only          | disabled      |
+| evaluator           | full            | false           | notes_only          | disabled      |
+| aider_interactive   | subset          | true            | notes_only          | enabled       |
+| aider_automatic     | subset          | false           | notes_only          | enabled       |
+| *(default)*         | full            | false           | notes_only          | disabled      |
 
-When the `<context_management>` element is present, its settings override the operator defaults. Settings are merged during template loading, with explicit settings taking precedence over defaults.
+*(Defaults are based on ADR 14 and typical usage patterns)*
 
-### Field Definitions
+When the `<context_management>` element is present in the XML, its settings override these defaults for that specific task execution.
 
-- The optional `ref` attribute is used to reference a pre-registered task in the TaskLibrary.
-- The optional `subtype` attribute refines the task type (for example, indicating "director", "evaluator", etc.)
-- The `output_format` element specifies structured output format and validation requirements.
-- The `template` element defines a function-like template with explicit parameters.
-- The `call` element invokes a function template with positional arguments.
+### Field Definitions (Atomic Tasks)
 
-Example:
-```xml
-<cond>
-  <case test="output.valid == true">
-    <task type="atomic" subtype="success_handler">
-      <description>Handle success</description>
-    </task>
-  </case>
-  <case test="output.errors > 0">
-    <task type="atomic" subtype="error_handler">
-      <description>Handle errors</description>
-    </task>
-  </case>
-</cond>
-```
-All required and optional fields (including `instructions`, `system`, `model`, and `inputs`) are defined by this schema. For full details and allowed values, please see Appendix A in [Contract:Resources:1.0].
+- `description`: Human-readable description of the task.
+- `provider`, `model`: Optional LLM provider and model hints.
+- `instructions`: The main prompt or instructions for the LLM (maps to `taskPrompt`).
+- `system`: An optional system prompt specific to this task (extends base system prompt).
+- `output_slot`, `input_source`: (Potentially deprecated/unused).
+- `output_format`: Specifies expected output format (JSON/text) and optional schema validation.
+- `context_management`: Overrides default context settings for this task execution.
+- `file_paths`: Specifies explicit files or sources for context.
+- `inputs`: Defines named inputs expected by the task template (used for `{{variable}}` substitution).
+- `context_relevance`, `context_assembly`: Hints for context generation.
+- `manual_xml`, `disable_reparsing`: Flags for LLM interaction control.
+- `criteria`: Optional free-form string for dynamic evaluation template selection.
+- `ref`: Optional reference to another registered template (usage TBD with S-expressions).
+- `subtype`: Refines the atomic task type (e.g., `standard`, `subtask`, `director`, `evaluator`, `aider_interactive`).
+- `type`: Must be `"atomic"`.
 
-### Example Template
+### Example Atomic Task Template
 
 ```xml
 <task>
@@ -761,14 +693,14 @@ All required and optional fields (including `instructions`, `system`, `model`, a
 </task>
 ```
 
-### Validation Rules
+### Validation Rules (Atomic Tasks)
 
-1. All required fields must be present
-2. Input names must be unique
-3. Boolean fields must be "true" or "false"
-4. Model must be a valid LLM identifier
-5. Output schema must match basic type validation rules
-6. Template parameters must match call arguments
+1. Required fields (`description`, `type="atomic"`) must be present.
+2. Input names within `<inputs>` must be unique.
+3. Boolean fields (`manual_xml`, `disable_reparsing`, `accumulate_data`) must be "true" or "false".
+4. Enumerated values (e.g., in `context_management`, `output_format type`) must be valid.
+5. Context management constraints (mutual exclusivity of fresh_context and inherit_context) must be respected.
+6. Output schema must match basic type validation rules if specified.
 
 ### Error Response Schema
 
@@ -816,10 +748,7 @@ All required and optional fields (including `instructions`, `system`, `model`, a
 
 This schema is used by the TaskSystem component. For implementation details and interface definitions, see:
 - TaskTemplate interface in spec/types.md [Type:TaskSystem:TaskTemplate:1.0]
-- Template validation in TaskSystem.validateTemplate() 
-- Template parsing in TaskSystem constructor
+- Template validation in `TaskSystem.validateTemplate()`
+- Template parsing in `TaskSystem` constructor or loading mechanism
 
-Note: The new XML attributes (`ref` and `subtype`) and the `<cond>` element map to the corresponding types (i.e., TaskDefinition and FunctionCall) used in the Task System.
-
-### Map Pattern Implementation
-Refer to the XML schema for correct usage. For a complete example, please see the Task System documentation.
+Note: The `ref` and `subtype` attributes apply to atomic tasks. Composition patterns like Map/Reduce are implemented using the S-expression DSL.

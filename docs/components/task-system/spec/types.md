@@ -23,13 +23,13 @@ interface TaskResult {
      * CONTINUATION: Task needs additional steps, content may be partial
      * FAILED: Task encountered an error, content may be partial
      */
-    status: ReturnStatus;
-    
+    status: ReturnStatus; // COMPLETE, CONTINUATION, FAILED
+
     /**
      * Optional free-form description used for dynamic evaluation template selection.
      */
     criteria?: string;
-    
+
     /**
      * Parsed content if output was successfully parsed as JSON.
      */
@@ -114,18 +114,11 @@ interface TaskTemplate {
 }
 
 /**
- * Represents a sequential task which has its own context management block
- * and multiple steps of subtasks.
- * [Type:TaskSystem:SequentialTask:1.0]
- */
-interface SequentialTask extends BaseTaskDefinition {
-    type: 'sequential';
-    contextManagement: ContextManagement;
-    steps: BaseTaskDefinition[];
-}
+<!-- Removed SequentialTask interface -->
 
 /**
- * Represents a function call expression
+ * Represents a function call expression within the S-expression DSL or potentially
+ * for invoking XML <template> definitions.
  * [Type:TaskSystem:FunctionCallNode:1.0]
  */
 interface FunctionCallNode {
@@ -144,14 +137,15 @@ interface ArgumentNode {
 }
 
 /**
- * Represents a template node in the AST
+ * Represents a template definition node (e.g., from XML <template> element).
+ * May also be relevant for S-expression function definitions (`define`) in the future.
  * [Type:TaskSystem:TemplateNode:1.0]
  */
 interface TemplateNode {
     name: string;
-    parameters: string[];
-    returns?: string;
-    body: BaseTaskDefinition;
+    parameters: string[]; // List of parameter names
+    returns?: string; // Optional return type hint
+    body: BaseTaskDefinition; // The atomic task definition forming the template body
 }
 
 /**
@@ -195,7 +189,8 @@ interface SubtaskRequest {
 }
 
 /**
- * Specialized result structure for evaluator feedback
+ * Specialized result structure often used for evaluator feedback,
+ * potentially returned by an atomic task with subtype 'evaluator'.
  * [Type:TaskSystem:EvaluationResult:1.0]
  */
 interface EvaluationResult extends TaskResult {
@@ -208,41 +203,24 @@ interface EvaluationResult extends TaskResult {
             suggestions?: string[];           // Suggested improvements
             [key: string]: any;               // Extension point
         };
-        scriptOutput?: {         // Present when script execution is involved
-            stdout: string;      // Standard output from script
-            stderr: string;      // Standard error output from script
-            exitCode: number;    // Exit code from script
-        };
+        // Script output is now typically included in the 'details' of a TASK_FAILURE
+        // or passed explicitly in the S-expression workflow, not a dedicated field here.
+        // scriptOutput?: { ... };
+        [key: string]: any; // Allow other notes
     };
 }
 
-/**
- * Script execution configuration
- * [Type:TaskSystem:ScriptExecution:1.0]
- */
-interface ScriptExecution {
-    command: string;
-    timeout?: number;
-    inputs: Record<string, string>;
-}
-
-/**
- * Represents the result of executing a script task
- * [Type:TaskSystem:ScriptTaskResult:1.0]
- */
-interface ScriptTaskResult extends TaskResult {
-    stdout: string;
-    stderr: string;
-    exitCode: number;
-}
+<!-- Removed ScriptExecution and ScriptTaskResult interfaces -->
+<!-- Script execution is now handled via S-expression primitive like (system:run_script ...) -->
+<!-- The result of that primitive would be a standard TaskResult or TaskError -->
 ```
 
 ## Type References
 
 For system-wide types, see [Type:System:1.0] in `/system/contracts/types.md`, which includes:
-- TaskType and AtomicTaskSubtype enums
-- ReturnStatus enum
-- ContextManagement interface
+- TaskType (`atomic`) and AtomicTaskSubtype enums
+- ReturnStatus enum (`COMPLETE`, `CONTINUATION`, `FAILED`)
+- ContextManagement interface (applies to atomic tasks)
 - TaskError types
 - ResourceMetrics interface
 

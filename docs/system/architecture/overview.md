@@ -79,15 +79,15 @@ For full technical details on any topic, please refer to the canonical file list
 
 ### Director-Evaluator Pattern [Pattern:DirectorEvaluator:1.1]
 
-The system implements a standardized mechanism for iterative refinement that supports both static (predefined) and dynamic (continuation-based) variants. This pattern enables:
+The system implements a standardized mechanism for iterative refinement, primarily achieved using S-expression DSL primitives (like `bind`, `if`, potentially loops or recursion) to structure the flow between generation (Director) and evaluation (Evaluator) steps. This pattern enables:
 
 - Iterative improvement through feedback loops
-- Optional integration with script execution
-- Explicit termination conditions based on evaluation results
+- Optional integration with script execution (called via S-expression primitives)
+- Explicit termination conditions managed within the S-expression logic
 
-For the complete specification, including implementation details, integration points, and context management integration, see [Pattern:DirectorEvaluator:1.1] in `system/architecture/patterns/director-evaluator.md`.
+For the complete specification, including implementation details using S-expressions, integration points, and context management integration, see [Pattern:DirectorEvaluator:1.1] in `system/architecture/patterns/director-evaluator.md`.
 
-The system follows a unified context management model. Task input values are dynamically substituted using the `{{...}}` syntax, allowing direct parameter passing between tasks. This explicit binding mechanism (using the `from` attribute) improves clarity and flexibility in task execution by making data dependencies clear and reducing reliance on environment variables.
+Task input values within atomic task templates are dynamically substituted using the `{{...}}` syntax. Data flow between steps in an S-expression workflow is managed via explicit binding primitives (e.g., `bind`, `let`), improving clarity and reducing reliance on implicit environment variables.
 
 Context is managed via a single `<context_management>` block that distinguishes between:
  - **Inheritance:** (using the new `inherit_context` enumeration)
@@ -204,22 +204,25 @@ See [Contract:Integration:CompilerTask:1.0] for integration specification.
 
 ### Evaluator [Component:Evaluator:1.0]
 Execution control component.
-- Controls AST processing and execution, including managing variable scoping, template substitution, function calls, and the control flow for composite task loops like Director-Evaluator
-- Manages all lexical environments and variable scoping
-- Performs all template variable substitution before Handler invocation
-- Handles different substitution rules for function vs. standard templates
-- Manages failure recovery
-- Tracks resource usage
-- Handles reparse requests
+- **S-expression Evaluator**: Executes workflows defined in the S-expression DSL, managing control flow (conditionals, binding, function calls), variable scoping within the DSL, and invoking atomic tasks or other primitives.
+- **Atomic Task Executor (within Task System/Handler)**: Executes the body of resolved atomic task templates (handling LLM interaction, tool calls).
+- Manages lexical environments for the S-expression DSL.
+- Performs template variable substitution (`{{...}}`) within atomic task template bodies before Handler invocation.
+- Handles different substitution rules for function vs. standard atomic templates.
+- Manages failure recovery within S-expression execution.
+- Tracks resource usage related to S-expression evaluation steps.
+- Handles reparse requests (if applicable to S-expression errors).
 
 See [Contract:Integration:EvaluatorTask:1.0] for integration specification.
 
 ### Task System [Component:TaskSystem:1.0]
 Task execution and management component.
-- Coordinates task execution via Handlers
-- Manages task templates and matching
-- Interfaces with Memory System
-- Processes XML input/output
+- Manages atomic task template definitions (loading, validation, lookup).
+- Provides the `execute_subtask_directly` interface for invoking atomic tasks programmatically (e.g., from the S-expression evaluator).
+- Coordinates atomic task execution via Handlers (instantiation, configuration).
+- Interfaces with Memory System for context retrieval needed by atomic tasks.
+- Processes XML definitions for *atomic* tasks.
+- Routes incoming `/task` commands containing S-expressions to the S-expression Evaluator.
 
 See components/task-system/README.md for complete specification.
 
@@ -305,12 +308,12 @@ This pattern enables:
 
 ### Sequential Task Management [Pattern:SequentialTask:2.0]
 
-The system maintains **explicit task history** for sequential operations. This design clarifies how multiple steps in a single task can share context in a controlled, trackable way, and how partial or final outputs are captured.
+Sequential workflows are now defined using the S-expression DSL. State and data flow between steps are managed explicitly using binding primitives like `bind` or `let` within the S-expression evaluator's environment.
 
-1. **Output Tracking**
-   - The Evaluator maintains a list of all previous task outputs, keyed by step index or ID.
-   - The lifecycle for this history is well-defined; it is preserved until the sequence finishes.
-   - Storage must remain resource-aware to avoid memory limit issues. If output is large, the evaluator can store a summarized version or notes-only.
+1. **Output Tracking & State Management**
+   - The S-expression evaluator manages the lexical environment. Results from one step are explicitly bound to variables using `bind` or `let`, making them available to subsequent steps within the same scope.
+   - There is no automatic history tracking as previously defined for XML sequences. State persistence relies on the S-expression environment's scope rules.
+   - Resource awareness for large intermediate results needs to be handled within the S-expression logic or by the primitives themselves (e.g., ensuring results passed between steps don't exceed limits).
 
 ### Subtask Spawning Mechanism [Pattern:SubtaskSpawning:1.0]
 

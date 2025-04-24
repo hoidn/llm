@@ -69,133 +69,16 @@ Progress failures occur when a task cannot advance despite resources being avail
 
 ### 2.4 Partial Results Handling
 
-The system maintains a standardized approach for preserving partial results when multi-step operations fail:
-
-### Error Output Structure
+The system handles partial results differently depending on the source of the failure:
 
 #### Atomic Tasks
-```typescript
-// Successful atomic task
-{
-  content: "Complete task output",
-  status: "COMPLETE", 
-  notes: {
-    dataUsage: "Resource usage statistics",
-    successScore: 0.95
-  }
-}
+- If an atomic task fails mid-execution (e.g., due to resource exhaustion or an internal error after starting generation), any output generated before the failure *may* be placed in the `content` field of the resulting `TaskError` object (or the `TaskResult` if status is `FAILED`).
+- The `status: "FAILED"` clearly indicates the content is partial or incomplete.
 
-// Failed atomic task
-{
-  content: "Partial output generated before failure",  // Partial content in content field
-  status: "FAILED",
-  notes: {
-    dataUsage: "Resource usage statistics",
-    executionStage: "validation",
-    completionPercentage: 60
-  }
-}
-```
-Task status (`COMPLETE` vs `FAILED`) indicates whether content is complete or partial.
-
-#### Sequential Tasks
-```typescript
-{
-  type: 'TASK_FAILURE',
-  reason: 'subtask_failure',
-  message: 'Sequential task "Process Dataset" failed at step 3',
-  details: {
-    failedStep: 2,
-    totalSteps: 5,
-    partialResults: [
-      { 
-        stepIndex: 0, 
-        content: "Data loaded successfully: 1000 records",
-        notes: { 
-          recordCount: 1000, 
-          status: "completed"
-        }
-      },
-      { 
-        stepIndex: 1, 
-        content: "Data transformed to required format",
-        notes: { 
-          transformType: "normalization", 
-          status: "completed"
-        }
-      }
-    ]
-  }
-}
-```
-
-#### Reduce Tasks
-```typescript
-{
-  type: 'TASK_FAILURE',
-  reason: 'subtask_failure',
-  message: 'Reduce task "Aggregate metrics" failed processing input 2',
-  details: {
-    failedInputIndex: 2,
-    totalInputs: 5,
-    processedInputs: [0, 1],
-    currentAccumulator: { totalCount: 1500, averageValue: 42.3 },
-    partialResults: [
-      { 
-        inputIndex: 0, 
-        content: "Processed metrics for server 1",
-        notes: { 
-          status: "completed",
-          serverName: "server-01",
-          metricsCount: 250
-        }
-      },
-      { 
-        inputIndex: 1, 
-        content: "Processed metrics for server 2",
-        notes: { 
-          status: "completed",
-          serverName: "server-02",
-          metricsCount: 180
-        }
-      }
-    ]
-  }
-}
-```
-
-#### Storage Format Control
-The format of preserved partial results depends on the task's `accumulation_format` setting:
-- `notes_only`: Only the notes field is preserved (default for memory efficiency)
-- `full_output`: Both content and notes fields are preserved (with size limits)
-
-```typescript
-// With accumulation_format="notes_only"
-partialResults: [
-  { 
-    stepIndex: 0, 
-    notes: { 
-      recordCount: 1000,
-      status: "completed"
-      // Other essential metadata
-    }
-  }
-]
-
-// With accumulation_format="full_output"
-partialResults: [
-  { 
-    stepIndex: 0,
-    content: "Complete step output text",
-    notes: { 
-      recordCount: 1000,
-      status: "completed"
-    }
-  }
-]
-```
-
-Each operator type has specific default settings for context management. For sequential tasks, the default `accumulation_format` is `minimal`. These defaults apply when the `context_management` block is omitted. When present, explicit settings override the defaults, following the hybrid configuration approach.
+#### S-expression Workflows
+- For workflows defined using the S-expression DSL, partial results correspond to the values bound to variables using primitives like `bind` or `let` up to the point of failure.
+- The execution environment state (the set of bound variables and their values) at the time of failure might be captured in the error details if feasible, but there's no automatic preservation of step-by-step outputs as previously defined for XML composites. Recovery logic within the S-expression or at a higher level would need to utilize this environment state if provided.
+- The `accumulation_format` setting from `<context_management>` applies only to how *atomic tasks* handle their internal context during execution, not to how S-expression results are stored or passed.
 
 #### Size Management
 To prevent memory issues:
@@ -378,24 +261,31 @@ const error = {
 const recovery = await evaluator.recoverFromContextFailure(error);
 ```
 
-### Sequential Task Failure Example
+### S-expression Workflow Failure Example
 ```typescript
+// Conceptual example - actual error structure may vary
 try {
-  const result = await taskSystem.executeTask(
-    "process data in multiple steps",
-    memorySystem
+  // Invoking an S-expression workflow via TaskSystem/SExprEvaluator
+  const result = await taskSystem.executeSExpression(
+    '(bind x (call-atomic-task \'task-a\') (bind y (call-atomic-task \'task-b\' (input x)) (process y)))'
   );
 } catch (error) {
-  if (error.type === 'TASK_FAILURE' && error.reason === 'subtask_failure') {
-    console.log(`Failed at step ${error.details.failedStep} of ${error.details.totalSteps}`);
-    
-    // Access partial results from completed steps
-    error.details.partialResults.forEach(result => {
-      console.log(`Step ${result.stepIndex} output: ${result.output}`);
-    });
-    
-    // Potentially use partial results for recovery
-    const recoveryResult = await evaluator.recoverWithPartialResults(error);
+  if (error.type === 'TASK_FAILURE') {
+    console.log(`S-expression workflow failed: ${error.message}`);
+    // Reason might be 'subtask_failure' if an atomic task failed,
+    // or an S-expression specific reason like 'unbound_symbol'.
+    console.log(`Reason: ${error.reason}`);
+
+    // Details might contain the state of the S-expression environment
+    // or the error from the failed atomic task.
+    if (error.details?.s_expression_environment) {
+      console.log('Environment at failure:', error.details.s_expression_environment);
+      // Recovery might involve analyzing the environment and retrying
+      // a part of the S-expression or an alternative path.
+    } else if (error.details?.subtaskError) {
+       console.log('Failed subtask error:', error.details.subtaskError);
+       // Recovery might involve retrying the failed atomic task.
+    }
   }
 }
 ```

@@ -56,29 +56,30 @@ type TaskError =
         content?: string;  // Contains partial output if available
         notes?: Record<string, any>;  // Contains task metadata
         details?: {
-            // Common fields
-            partial_context?: any;
-            context_metrics?: any;
-            violations?: string[];
-            
-            // Sequential task fields
-            failedStep?: number;
-            totalSteps?: number;
-            partialResults?: Array<{
-                stepIndex: number;
-                content: string;  // Step output
-                notes: any;       // Step metadata
-            }>;
-            
-            // Reduce task fields
-            failedInputIndex?: number;
-            totalInputs?: number;
-            processedInputs?: number[];
-            currentAccumulator?: any;
+            // Common fields for any failure
+            partial_context?: any; // Context data retrieved before failure
+            context_metrics?: any; // Metrics related to context operations
+            violations?: string[]; // e.g., Schema validation violations
+
+            // Fields for subtask failures (within atomic or S-expression)
+            subtaskRequest?: SubtaskRequest; // The request that failed
+            subtaskError?: TaskError;       // The actual error from the subtask
+            nestingDepth?: number;          // Depth at which subtask failed
+
+            // Fields for S-expression evaluation failures
+            s_expression_environment?: Record<string, any>; // Environment state at failure
+            failing_expression?: string; // The S-expression form that failed
+
+            // Fields for script execution failures
+            script_stdout?: string;
+            script_stderr?: string;
+            script_exit_code?: number;
+
+            // Other error-specific details can be added here
         };
     }
-    | { 
-        type: 'INVALID_OUTPUT';
+    | {
+        type: 'INVALID_OUTPUT'; // Kept for cases where output is structurally invalid (e.g., malformed XML/JSON) before format validation
         message: string;
         content?: string;  // The invalid output
         violations?: string[];
@@ -151,11 +152,12 @@ interface ContextManagement {
 }
 
 /**
- * Default context management settings for subtasks
+ * Default context management settings for atomic tasks invoked as subtasks
+ * (e.g., via CONTINUATION or `call-atomic-task` with subtype='subtask')
  * [Type:System:SubtaskContextDefaults:1.0]
  */
 const SUBTASK_CONTEXT_DEFAULTS: ContextManagement = {
-    inheritContext: 'none',
+    inheritContext: 'subset', // Changed default based on typical subtask usage
     accumulateData: false,
     accumulationFormat: 'notes_only',
     freshContext: 'enabled'
@@ -172,10 +174,11 @@ const SUBTASK_CONTEXT_DEFAULTS: ContextManagement = {
 type ReturnStatus = "COMPLETE" | "CONTINUATION" | "FAILED";
 
 /**
- * Core task types
+ * Core task type (now only atomic defined in XML)
  * [Type:System:TaskType:1.0]
  */
-type TaskType = "atomic" | "sequential" | "reduce" | "script" | "director_evaluator_loop";
+type TaskType = "atomic"; // Composition handled by S-expression DSL
+// Script execution is likely invoked via an S-expression primitive e.g., (system:run_script ...)
 
 /**
  * Atomic task subtypes

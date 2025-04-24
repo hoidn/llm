@@ -1,10 +1,10 @@
-# Evaluator Implementation Design
+# S-expression Evaluator Implementation Design
 
-This document describes the implementation design of the Evaluator component.
+This document describes the implementation design of the S-expression Evaluator component.
 
-## Lexical Environment Model
+## S-expression Lexical Environment Model
 
-The Environment class implements lexical scoping for DSL variables through nested environments. This is strictly for variable binding and lookup - completely separate from template matching or context management:
+The Environment class implements lexical scoping for S-expression variables and function definitions through nested environments:
 
 - Maintains variable bindings at each scope level via `bindings` map
 - Supports variable lookup through parent scopes via `outer` reference
@@ -26,325 +26,149 @@ class Env implements Environment {
 }
 ```
 
-## Nested Environment Model for Function Templates
+## Function Call Evaluation (S-expression)
 
-Function calls create new environments with parameter bindings:
-
-```typescript
-// Function call evaluation
-function evaluateFunctionCall(call: FunctionCallNode, env: Environment): Promise<any> {
-  // 1. Lookup the template in the TaskLibrary
-  const template = env.find("taskLibrary").get(call.templateName);
-  
-  // 2. Evaluate all arguments in the caller's environment
-  // This supports basic array indexing (array[0]) and dot notation (object.property)
-  const argValues = await Promise.all(
-    call.arguments.map(arg => evaluateArgument(arg, env))
-  );
-  
-  // 3. Create a new environment with parameter bindings
-  const funcEnv = env.extend({});
-  for (let i = 0; i < template.parameters.length; i++) {
-    funcEnv.bindings[template.parameters[i]] = argValues[i];
-  }
-  
-  // 4. Evaluate the template body in the new environment
-  // Note: Results are returned but not automatically stored in the environment
-  // Explicit binding is required if results need to be referenced later
-  return evaluateTask(template.body, funcEnv);
-}
-
-// Extended Environment.find() method with array indexing support
-Environment.prototype.find = function(name) {
-  // Support for array indexing syntax (e.g., array[0])
-  if (name.includes('[') && name.endsWith(']')) {
-    const openBracket = name.indexOf('[');
-    const baseName = name.substring(0, openBracket);
-    const indexStr = name.substring(openBracket + 1, name.length - 1);
-    
-    // Find the base object
-    const baseObj = this.find(baseName);
-    
-    // Access array element
-    const index = parseInt(indexStr, 10);
-    if (Array.isArray(baseObj) && index >= 0 && index < baseObj.length) {
-      return baseObj[index];
-    }
-    throw new Error(`Invalid array access: ${name}`);
-  }
-  
-  // Original dot notation and variable resolution logic...
-};
-
-// Task execution with hierarchical system prompt support
-async function executeTask(task: Task, environment: Environment): Promise<TaskResult> {
-  try {
-    // Process and resolve all template variables
-    const resolvedTask = resolveTemplateVariables(task, environment);
-    
-    // Execute task using Handler with fully resolved content
-    // The Handler will combine base and template system prompts internally
-    const result = await handler.executeTask(resolvedTask);
-    
-    // Process and return results
-    return processResult(result, task);
-  } catch (error) {
-    if (error.message.includes('Variable resolution error')) {
-      return createTaskFailure(
-        'template_resolution_failure',
-        error.message,
-        { task: task.description }
-      );
-    }
-    throw error;
-  }
-}
-```
-
-This ensures proper variable scoping where templates can only access their explicitly declared parameters, not the caller's entire environment.
-
-## Template Substitution Process
-
-The Evaluator is solely responsible for resolving all template variables before passing tasks to the Handler. This template substitution phase occurs after task selection but before execution:
+S-expression function calls (to user-defined functions or XML templates) create new environments with parameter bindings:
 
 ```typescript
-// Template substitution in Evaluator
-function resolveTemplateVariables(task: Task, env: Environment): Task {
-  // Create a copy to avoid modifying the original
-  const resolvedTask = {...task};
-  
-  // Apply appropriate substitution rules based on task type
-  if (task.isFunctionTemplate && task.parameters) {
-    // For function templates, create isolated environment with only parameters
-    const funcEnv = new Environment({});
-    for (const param of task.parameters) {
-      funcEnv.bindings[param] = env.find(param);
-    }
-    resolvedTask.taskPrompt = substituteVariables(task.taskPrompt, funcEnv);
-    if (resolvedTask.systemPrompt) {
-      resolvedTask.systemPrompt = substituteVariables(task.systemPrompt, funcEnv);
-    }
-  } else {
-    // For standard templates, use the full environment
-    resolvedTask.taskPrompt = substituteVariables(task.taskPrompt, env);
-    if (resolvedTask.systemPrompt) {
-      resolvedTask.systemPrompt = substituteVariables(task.systemPrompt, env);
+```typescript
+// Conceptual S-expression evaluation loop
+async function evaluateSExpr(expr: SExpr, env: Environment): Promise<any> {
+  if (isAtom(expr)) {
+    return env.lookup(expr); // Or handle literals
+  } else if (isList(expr)) {
+    const operator = expr[0];
+    const args = expr.slice(1);
+
+    if (isSpecialForm(operator)) {
+      return evaluateSpecialForm(operator, args, env); // e.g., if, bind, let, define
+    } else {
+      // Function call
+      const func = await evaluateSExpr(operator, env); // Evaluate the operator itself
+      const evaluatedArgs = await Promise.all(args.map(arg => evaluateSExpr(arg, env)));
+
+      if (isPrimitive(func)) {
+        return func.execute(evaluatedArgs, env); // Primitives might need env
+      } else if (isUserFunction(func)) {
+        // 1. Create new environment extending func's closure env
+        const funcEnv = func.closureEnv.extend({});
+        // 2. Bind parameters to evaluatedArgs
+        bindParameters(func.params, evaluatedArgs, funcEnv);
+        // 3. Evaluate function body in the new environment
+        return await evaluateSExpr(func.body, funcEnv);
+      } else if (isAtomicTaskTemplate(func)) {
+         // Handle calling an XML atomic task template
+         const subtaskRequest = createSubtaskRequest(func.name, evaluatedArgs);
+         // Call Task System to execute the atomic task
+         return await taskSystem.execute_subtask_directly(subtaskRequest, env); // Pass caller env for {{}} substitution
+      } else {
+        throw new Error(`Not a function: ${operator}`);
+      }
     }
   }
-  
-  return resolvedTask;
 }
 ```
 
-The Evaluator ensures that all placeholder substitutions (e.g., `{{variable_name}}`) are completed before dispatching to the Handler, ensuring all execution happens with fully resolved inputs. This includes resolving variables in both direct templates and function templates, with different resolution rules for each type. Associative matching tasks operate on the final, substituted task description.
+This ensures proper lexical scoping for S-expression functions and isolates execution environments for calls to both S-expression functions and XML atomic task templates.
 
-## Function Call Processing
+## Template Substitution Process (Handled by Task System)
 
-Function calls use direct parameter passing with lexical isolation:
+The S-expression Evaluator itself does *not* handle the `{{variable_name}}` substitution within atomic task XML templates.
 
-1. **Template Lookup**: Retrieve template by name from TaskLibrary
-2. **Argument Resolution**: For each argument in the caller's environment:
-   - For string values: Try variable lookup first, fallback to literal value
-   - For AST nodes: Recursively evaluate in caller's environment
-3. **Fresh Environment Creation**: Create new environment with parameter bindings
-   - Parameters explicitly bound to evaluated argument values
-   - No implicit access to caller's variables
-4. **Isolated Execution**: Execute template in this clean environment
+When the S-expression evaluator invokes an atomic task via `TaskSystem.execute_subtask_directly(request, env)`, it passes the *current S-expression environment* (`env`). The Task System component is then responsible for:
+1. Retrieving the atomic task's XML template definition.
+2. Using the provided S-expression environment (`env`) to resolve all `{{...}}` placeholders within the template's fields (like `<instructions>`, `<system>`, etc.).
+3. Passing the fully resolved atomic task content to the Handler for execution.
 
-This process maintains clean scope boundaries, preventing unintended variable access.
+This keeps the concerns separate: the S-expression Evaluator manages the DSL environment and workflow, while the Task System manages the specifics of preparing and executing individual atomic tasks based on their XML definitions and the calling environment.
 
-### Template-Level Function Calls
+## S-expression Function Call Processing
 
-In addition to AST-based function calls, the system supports a template-level function call syntax using the familiar `{{...}}` notation:
+Function calls within the S-expression DSL follow the evaluation logic described earlier:
+1.  **Function Lookup**: Find the function definition (S-expression `define` or XML `<template>`) in the current environment or Task System library.
+2.  **Argument Evaluation**: Evaluate each argument expression in the *caller's* S-expression environment.
+3.  **New Environment**: Create a fresh lexical environment for the function execution.
+4.  **Parameter Binding**: Bind the evaluated argument values to the function's parameter names in the new environment.
+5.  **Body Execution**: Evaluate the function's body (S-expression code or invoking the atomic task from an XML template) within this new environment.
 
-```typescript
-// Example template with embedded function call
-const template = {
-  "system_prompt": "Analyze the following data: {{analyze_data(dataset, 'detailed')}}"
-};
-```
+This ensures lexical isolation.
 
-These template-level function calls are processed during variable substitution but are translated to standard FunctionCallNode AST nodes for execution:
+### Template-Level Function Calls (`{{...}}`) - Deprecated?
 
-```typescript
-function resolveTemplateFunctionCalls(text: string, env: Environment): string {
-  // 1. Detect function calls in text with pattern {{function_name(args)}}
-  // 2. For each function call:
-  //    a. Parse function name and arguments
-  //    b. Create a temporary FunctionCallNode
-  //    c. Execute using the standard evaluateFunctionCall function
-  //    d. Replace the function call in text with result
-  // 3. Return updated text
-}
-```
+The `{{function_name(...)}}` syntax within atomic task template fields is likely **deprecated** or has limited use. Complex logic and function composition should now be handled by the S-expression DSL itself. Simple data formatting might still use placeholders, but calls requiring execution logic belong in the S-expression layer.
 
-This approach:
-- Provides a user-friendly syntax for simple function calls in template fields
-- Maintains architectural consistency by using the same execution logic
-- Preserves the lexical scoping model for variable resolution
-- Allows function calls to be embedded naturally within text content
+### Argument Resolution Strategy (S-expression)
 
-The underlying execution flow remains identical to AST-based function calls, ensuring consistent behavior regardless of syntax.
+Arguments in S-expression function calls are *always* evaluated first in the caller's environment before being passed.
+- `(my-func variable)`: `variable` is looked up in the environment, and its *value* is passed.
+- `(my-func "literal string")`: The literal string `"literal string"` is passed.
+- `(my-func (+ 1 2))`: The expression `(+ 1 2)` is evaluated (to `3`), and the value `3` is passed.
 
-### Argument Resolution Strategy
+## Metacircular Approach (S-expression Context)
 
-For string arguments, a two-step resolution occurs:
-```typescript
-function resolveArgument(arg: string, env: Environment): any {
-  // First try to find it as a variable in the environment
-  try {
-    return env.find(arg);
-  } catch (e) {
-    // If not found as a variable, treat as a literal
-    return arg;
-  }
-}
-```
-This allows for passing both variable references and literal values as function arguments.
+The system retains a metacircular aspect:
+> The S-expression Evaluator orchestrates workflows and calls atomic tasks. Some atomic tasks involve LLM calls (via the Handler). An LLM called by an atomic task might generate S-expression code as output, which could then be evaluated by the S-expression Evaluator in a subsequent step.
 
-## Metacircular Approach
+In practice, this means:
+- The S-expression Evaluator executes DSL code.
+- DSL code calls atomic tasks (e.g., `(call-atomic-task 'generate-code' ...)`).
+- The `generate-code` atomic task invokes an LLM (via Handler) which might return S-expression code as a string.
+- Subsequent S-expression code could parse and evaluate this generated code `(eval (parse generated_code_string))`.
+- This cycle allows LLMs to generate executable workflow fragments.
 
-The system's evaluator is a "metacircular evaluator," meaning:
-> The interpreter (Evaluator) uses LLM-based operations as its basic building blocks, while the LLM also uses the DSL or AST from the evaluator for self-decomposition tasks.
+The S-expression Evaluator leverages atomic tasks (which may use LLMs) as building blocks, and the output of those blocks can be fed back into the Evaluator.
 
-In practice, this means:  
-- The Evaluator calls an LLM to run "atomic" tasks or to do "decomposition."  
-- The LLM might generate or refine structured XML tasks that, in turn, the Evaluator must interpret again.  
-- This cycle repeats until the tasks can be successfully executed without exceeding resource or output constraints.
+## Context Management Implementation (via Task System & Primitives)
 
-Because of this, the Evaluator is partially "self-hosting": it leverages the same LLM to break down tasks that can't be executed directly.
+The S-expression Evaluator itself does not directly manage the three-dimensional context model (`inherit_context`, `accumulate_data`, `fresh_context`). Instead:
 
-## Context Management Implementation
+-   **Context for Atomic Tasks**: When the S-expression Evaluator calls `TaskSystem.execute_subtask_directly`, the Task System component is responsible for preparing the context for that *specific atomic task execution* based on its effective `<context_management>` settings (defaults merged with overrides from XML and the `SubtaskRequest`). The Task System calls `MemorySystem.getRelevantContextFor` if `fresh_context` is enabled.
+-   **Context within S-expression**: The S-expression workflow can explicitly manage context using dedicated primitives:
+    *   `(get-context query-details)`: A primitive that likely calls `MemorySystem.getRelevantContextFor` directly, allowing the S-expression to fetch fresh context based on dynamic inputs or descriptions. The result (context string, matches) would be bound to a variable.
+    *   `(bind current-context (get-context ...))`: Fetch context and store it.
+    *   `(call-atomic-task 'my-task' (context current-context) ...)`: Pass fetched context explicitly to an atomic task (potentially overriding its default context handling, depending on primitive design).
+-   **Explicit File Inclusion**: Can be handled either by:
+    *   Specifying `file_paths` in the `SubtaskRequest` when calling `TaskSystem.execute_subtask_directly`.
+    *   Having an S-expression primitive like `(read-file path)` that uses the Handler's file access tools.
 
-The Evaluator manages all dimensions of the context management model:
-
-### Standard Three-Dimensional Model
-1. **Inherited Context**: The parent task's context, controlled by `inherit_context` setting ("full", "none", or "subset").
-2. **Accumulated Data**: The step-by-step outputs collected during sequential execution, controlled by `accumulate_data` setting.
-3. **Fresh Context**: New context generated via associative matching, controlled by `fresh_context` setting.
-
-### Template-Aware Context Assembly
-
-```typescript
-function assembleContextForTask(task, parentContext, previousOutputs, taskInputs) {
-  // 1. Construct template-aware context input
-  const contextInput: ContextGenerationInput = {
-    // Template information
-    templateDescription: task.description,
-    templateType: task.type,
-    templateSubtype: task.subtype,
-    
-    // All task inputs
-    inputs: taskInputs || {},
-  };
-  
-  // 2. Add parent context based on inheritance setting
-  if (task.contextManagement.inheritContext !== 'none') {
-    contextInput.inheritedContext = parentContext;
-  }
-  
-  // 3. Add accumulated outputs if applicable
-  if (task.contextManagement.accumulateData === true) {
-    contextInput.previousOutputs = formatAccumulatedOutputs(
-      previousOutputs,
-      task.contextManagement.accumulationFormat
-    );
-  }
-  
-  // 4. Ensure mutual exclusivity constraint is respected
-  if (task.contextManagement.inheritContext !== 'none' && 
-      task.contextManagement.freshContext === 'enabled') {
-    console.warn('Context constraint violation: fresh_context="enabled" cannot be combined with inherit_context="full" or inherit_context="subset"');
-    // Default to disabling fresh context when in conflict
-    task.contextManagement.freshContext = 'disabled';
-  }
-  
-  // 5. Perform associative matching if fresh context is enabled
-  if (task.contextManagement.freshContext === 'enabled') {
-    return memorySystem.getRelevantContextFor(contextInput);
-  } else {
-    // 6. Otherwise, just use the assembled context without matching
-    return {
-      context: contextInput.inheritedContext || '',
-      matches: []
-    };
-  }
-}
-```
-
-### Explicit File Inclusion
-In addition to the standard model, the Evaluator supports explicit file inclusion through the `file_paths` feature:
-- Files specified via `file_paths` are always included in context
-- This operates orthogonally to the three-dimensional model
-- File retrieval is delegated to Handler tools
-- File content is formatted with XML tags indicating source paths
-
-These dimensions are configured through the standardized context management XML structure:
-```xml
-<context_management>
-    <inherit_context>full|none|subset</inherit_context>
-    <accumulate_data>true|false</accumulate_data>
-    <accumulation_format>notes_only|full_output</accumulation_format>
-    <fresh_context>enabled|disabled</fresh_context>
-</context_management>
-```
-
-When contexts are needed, the Evaluator decides which dimensions to include based on these settings.
+The responsibility is split: Task System handles context prep for individual atomic tasks based on static/semi-static configuration; the S-expression DSL provides primitives for dynamic context fetching and manipulation within the workflow.
 
 ## Associative Matching Invocation
 
-When executing a sequential task step with `<inherit_context>none</inherit_context>` but `<accumulate_data>true</accumulate_data>` and `<fresh_context>enabled</fresh_context>`, the Evaluator:
-1. Calls `MemorySystem.getRelevantContextFor()` with prior steps' partial results
-2. Merges the returned `AssociativeMatchResult` into the next step's environment
-3. Maintains complete separation from the Handler's resource management
+Associative matching (`MemorySystem.getRelevantContextFor`) is invoked either:
+1.  By the **Task System** when preparing context for an atomic task if its effective `fresh_context` setting is `enabled`.
+2.  Directly by the **S-expression Evaluator** when executing a primitive like `(get-context ...)`.
 
-### Evaluator Responsibilities for Associative Matching
+## Sequential Task History / State Management
 
-* **Initiation**: The Evaluator is the *sole* caller of `MemorySystem.getRelevantContextFor()`.
-* **Sequential History**: It retrieves partial outputs from `SequentialHistory` (the step-by-step data structure it maintains).
-* **Context Merging**: If the step is configured for accumulation, the Evaluator incorporates the match results into the upcoming step's environment.
-* **Error Handling**: Any failure to retrieve context (e.g., a memory system error) is handled through the existing `TASK_FAILURE` or resource-related error flow. No new error category is introduced.
-* **No Handler Involvement**: The Handler does not participate in the retrieval or assembly of this context data, beyond tracking resource usage at a high level.
+Explicit sequential task history (as previously defined for XML sequences) is **removed**. State management within an S-expression workflow relies on:
+-   **Lexical Scoping**: Variables bound with `let` are local.
+-   **Explicit Binding**: Using `bind` (or similar) to capture the result of one step and pass it to the next.
+    ```scheme
+    (bind result1 (call-atomic-task 'step1' ...)
+      (bind result2 (call-atomic-task 'step2' (input result1))
+        (process result2)))
+    ```
+-   **Accumulators (if needed)**: For reduce-like patterns, state can be passed through recursive calls or dedicated loop primitives.
 
-## Sequential Task History
+The S-expression environment holds the state, not a separate history object managed by the Evaluator. Resource management for large intermediate results needs to be considered in the DSL design or handled manually within the workflow.
 
-When evaluating sequential tasks, the Evaluator implements the Sequential Task Management pattern [Pattern:SequentialTask:2.0] as defined in the system architecture. This includes:
+## Subtask Spawning Implementation (Handling CONTINUATION)
 
-- Maintaining explicit task history for each sequential operation
-- Preserving step outputs until task completion or failure
-- Implementing resource-aware storage with potential summarization
-- Including partial results in error responses for failed sequences
+The S-expression Evaluator handles the `CONTINUATION` status when returned by an atomic task it invoked via `TaskSystem.execute_subtask_directly`.
 
-The Evaluator is responsible for tracking this history independent of the Handler's resource management and implementing the appropriate accumulation behavior based on the task's context_management configuration.
+1.  **Detection**: If `execute_subtask_directly` returns a `TaskResult` with `status: "CONTINUATION"` and a valid `subtask_request` in its `notes`.
+2.  **Validation**: The Evaluator validates the `subtask_request` (structure, depth limits, cycle detection).
+3.  **Invocation**: The Evaluator recursively calls itself or `TaskSystem.execute_subtask_directly` with the new `subtask_request`. It passes the appropriate S-expression environment.
+4.  **Result Handling**: The result of the spawned subtask is returned to the point in the S-expression evaluation where the `CONTINUATION` was received. This result can then be bound or used by subsequent S-expression forms.
 
-## Subtask Spawning Implementation
+This allows atomic tasks (potentially involving LLMs) to dynamically request further sub-processing, which is then orchestrated by the S-expression Evaluator. Context for the dynamically spawned subtask is determined by its own request/template settings, following the standard rules. Explicit `file_paths` in the `subtask_request` take precedence.
 
-The Evaluator implements the subtask tool mechanism as defined in [Pattern:ToolInterface:1.0], using the CONTINUATION status internally. From the LLM's perspective, these appear as tools but are implemented using the subtask spawning protocol.
+## Tool Interface Integration (Primitives)
 
-Key responsibilities of the Evaluator in this pattern:
-- Handling CONTINUATION requests from subtask tool calls
-- Managing context according to the specified configuration
-- Coordinating script execution when required
-- Passing evaluation results back to the Director
+Direct tools (like file access, shell commands) are exposed to the S-expression workflow via dedicated primitives (e.g., `(system:run_script ...)`, `(read-file ...)`).
+- The S-expression Evaluator executes these primitives.
+- The primitive implementation typically calls the corresponding **Handler** tool execution method.
+- Results are returned directly to the S-expression evaluator.
 
-When creating subtasks with explicit file paths:
-```typescript
-// The file_paths field takes precedence over associative matching
-subtask_request = {
-  type: "atomic",
-  description: "Analyze specific modules",
-  inputs: { /* parameters */ },
-  context_management: { inherit_context: "subset" },
-  file_paths: ["/src/main.py", "/src/utils.py"]
-}
-```
-The Evaluator ensures these files are fetched and included in the subtask's context before execution.
-
-## Tool Interface Integration
-
-When the LLM invokes a subtask-based tool:
-1. The Handler transforms this into a CONTINUATION with SubtaskRequest
-2. The Evaluator receives and processes this request
-3. Template selection occurs via associative matching
-4. Execution follows the subtask spawning protocol
-5. Results are returned to the parent task
+Subtask-based tools (LLM-to-LLM delegation) are implemented using the `CONTINUATION` mechanism described above. An atomic task acts as the "tool" interface for the LLM, returning `CONTINUATION` to trigger the actual subtask execution orchestrated by the S-expression Evaluator.

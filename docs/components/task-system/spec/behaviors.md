@@ -12,11 +12,11 @@ The Task System is responsible for managing LLM task execution, including:
 
 ## Core Behaviors
 
-### Template Management
-- Task templates are stored and validated against the XML schema defined in [Contract:Tasks:TemplateSchema:1.0].
-- The system matches both natural language inputs and AST nodes to candidate templates (up to 5 candidates), using numeric scoring.
-- Templates can define any task type, but only atomic task templates participate in the template matching process.
-- Each template is validated against the XML schema with warnings for non-critical issues.
+### Template Management (Atomic Tasks)
+- Atomic task templates are defined in XML, stored, and validated against the schema in [Contract:Tasks:TemplateSchema:1.0].
+- The system matches natural language descriptions (e.g., from `SubtaskRequest` or S-expression `call-atomic-task`) to candidate *atomic* task templates using associative matching and scoring.
+- Only atomic task templates participate in this template matching process. Composite workflows are defined explicitly in S-expressions.
+- Templates are validated against the XML schema during loading.
 
 ### Template Variable Substitution
 - The Evaluator is solely responsible for all template variable substitution.
@@ -24,28 +24,33 @@ The Task System is responsible for managing LLM task execution, including:
 - Different resolution rules apply for function templates vs. standard templates.
 - Variable resolution errors are detected early and handled at the Evaluator level.
 
-### Handler Lifecycle
-- A new Handler is created for each task execution with an immutable configuration.
-- The Handler enforces resource limits (turn counts, context window limits) as described in [Pattern:ResourceManagement:1.0].
-- Handlers receive fully resolved content with no remaining template variables.
-- Each Handler maintains its own session with isolated resource tracking.
+### Handler Lifecycle (for Atomic Tasks)
+- A new Handler is created for each *atomic task execution* (invoked via `execute_subtask_directly`) with an immutable configuration.
+- The Handler enforces resource limits (turn counts, context window limits) for that specific atomic task execution, as described in [Pattern:ResourceManagement:1.0].
+- Handlers receive fully resolved content (template variables substituted) for the atomic task body.
+- Each Handler maintains its own session with isolated resource tracking for the duration of the atomic task.
 
-### XML Processing
-- Basic structural validation is performed, with warnings generated for non‑critical issues.
-- In cases of partial XML parsing failure, the original content is preserved and error details are included in the task notes.
-- The system supports manual XML tasks with the `isManualXML` flag.
-- Output format validation is performed when the `output_format` element is present.
+### XML Processing (Atomic Tasks)
+- XML definitions for atomic tasks are parsed and validated against the schema.
+- Warnings may be generated for non-critical issues.
+- Parsing failures result in errors during template loading.
+- Flags like `manual_xml` and `disable_reparsing` control Handler behavior for the atomic task.
+- Output format validation (`output_format` element) is performed on the result of the atomic task execution.
 
 ## Task Execution
 
-### Standard Task Execution
-- Process tasks using appropriate templates
-- Return both output and notes sections in TaskResult structure
-- Surface errors for task failure or resource exhaustion
-- Support specialized execution paths for reparsing and memory tasks
-- Implement lenient XML output parsing with fallback to single string
-- Generate warnings for malformed XML without blocking execution
-- Include 'data usage' section in task notes as specified by system prompt
+### Atomic Task Execution
+- The Task System executes atomic tasks via the `execute_subtask_directly` method, typically called by the S-expression evaluator.
+- It finds the appropriate atomic template, resolves inputs using the provided environment, prepares context based on `<context_management>` settings, and invokes a Handler.
+- Returns a `TaskResult` (containing `content`, `status`, `notes`) or throws a `TaskError`.
+- Handles resource exhaustion errors signaled by the Handler.
+
+### S-expression Workflow Execution
+- Workflows involving multiple steps, conditionals, loops, or mapping are defined using the S-expression DSL.
+- These are invoked via a dedicated entry point (e.g., triggered by a `/task` command containing S-expressions).
+- An S-expression Evaluator component parses and executes the DSL.
+- The S-expression Evaluator calls `TaskSystem.execute_subtask_directly` to run the atomic task steps within the workflow.
+- It manages the execution flow, variable bindings, and error handling for the workflow logic.
 
 ### Output Format Handling
 - Format declaration via `<output_format>` element with required `type` attribute
@@ -93,17 +98,17 @@ The Task System is responsible for managing LLM task execution, including:
 
 ## Context Management
 
-### Context Management Behaviors
-- Hybrid configuration approach with operator-specific defaults
-- Three-dimensional model with inherit_context, accumulate_data, and fresh_context
-- Explicit file selection via file_paths element
-- Operator-specific default settings:
-  * atomic: inherit_context="full", fresh_context="disabled"
-  * sequential: inherit_context="full", accumulate_data="true", fresh_context="disabled"
-  * reduce: inherit_context="none", accumulate_data="true", fresh_context="enabled"
-  * script: inherit_context="full", accumulate_data="false", fresh_context="disabled"
-  * director_evaluator_loop: inherit_context="none", accumulate_data="true", fresh_context="enabled"
-- Subtask defaults: inherit_context="subset", fresh_context="enabled"
+### Context Management Behaviors (for Atomic Tasks)
+- Context for atomic task execution is determined by the `<context_management>` settings in its XML template or overridden by the `SubtaskRequest`.
+- Follows the hybrid configuration approach: explicit settings override defaults based on the atomic task's `subtype`.
+- Uses the three-dimensional model (inherit_context, accumulate_data, fresh_context).
+- Supports explicit file inclusion via `<file_paths>` or `file_paths` in `SubtaskRequest`.
+- Default settings per atomic task subtype (refer to table in `protocols.md`):
+    * `standard`: inherit=full, fresh=disabled
+    * `subtask`: inherit=subset, fresh=enabled
+    * `director`/`evaluator`: inherit=full, fresh=disabled
+    * `aider_*`: inherit=subset, fresh=enabled
+- The mutual exclusivity constraint between `fresh_context` and `inherit_context` is enforced.
 
 ### File Operations
 - Memory System: Manages ONLY metadata (file paths and descriptive strings)
@@ -111,27 +116,25 @@ The Task System is responsible for managing LLM task execution, including:
 - For Anthropic models: Handler configures computer use tools
 - All file content access is always handled by the Handler, never the Memory System
 
-## Programmatic Task Invocation
+## Programmatic Task Invocation (Atomic Tasks)
 
-The Task System supports direct invocation of registered template workflows, typically triggered by external mechanisms like the REPL `/task` command via a central dispatcher.
+The Task System supports direct invocation of registered *atomic* task templates, primarily used by the S-expression evaluator.
 
 *   **Invocation:** Uses the `execute_subtask_directly(request, env)` method.
-*   **Input:** Takes a `SubtaskRequest` object defining the target task (type, subtype, inputs, context settings).
-*   **Execution:** Finds the corresponding template and executes its workflow via the Evaluator, similar to how subtasks spawned via `CONTINUATION` are handled, but without requiring a parent Handler task.
-*   **Context Determination:** Context for execution is determined based on the `SubtaskRequest` and template definition with the following precedence:
+*   **Input:** Takes a `SubtaskRequest` object defining the target *atomic* task (type must be 'atomic', subtype, description, inputs, optional context overrides, file_paths).
+*   **Execution:** Finds the corresponding *atomic* template based on the request's description/subtype. It then prepares context, resolves inputs using the provided S-expression environment (`env`), and executes the atomic task using a Handler. It does *not* execute a complex workflow itself.
+*   **Context Determination:** Context for the atomic task execution is determined based on the effective context settings (request overrides merged with template definition) with the following precedence:
     1.  Files specified in `request.file_paths` (if provided).
-    2.  Files specified via the template's `file_paths` / `file_paths_source` definition.
-    3.  Automatic context lookup via `MemorySystem.get_relevant_context_for` if the effective `context_management.fresh_context` setting is `enabled`. The query basis for this lookup uses primary input parameters (e.g., `prompt`) or the template description.
-*   **History Integration:** If invoked with a flag indicating history usage (e.g., `--use-history` parsed by the dispatcher) *and* automatic context lookup is triggered, the dispatcher should provide relevant chat history (e.g., via `inheritedContext` in `ContextGenerationInput`) to the `MemorySystem` lookup.
+    2.  Files specified via the matched template's `file_paths` / `file_paths_source` definition.
+    3.  Automatic context lookup via `MemorySystem.get_relevant_context_for` if the effective `context_management.fresh_context` setting is `enabled`. The query basis for this lookup uses the `request.description` or relevant inputs.
+*   **History Integration:** If the S-expression workflow needs to include history in the context lookup for an atomic task, it should construct the `ContextGenerationInput` appropriately when calling a context-fetching primitive (e.g., `(get-context ...)`), potentially passing history from its own environment. The `execute_subtask_directly` method itself doesn't automatically inject history unless it's part of the context determined by the steps above.
 
 ## Integration Behaviors
 
-### Memory System Integration
-- Context accessed via async getRelevantContextFor
-- File metadata accessed via GlobalIndex
-- Existing context preserved during task execution
-- Structure/parsing handled by associative memory tasks
-- Context clearing and regeneration handled through context_management settings
+### Memory System Integration (for Atomic Tasks)
+- Context for atomic tasks is accessed via `MemorySystem.getRelevantContextFor` when `fresh_context` is enabled.
+- File metadata might be accessed via `MemorySystem.getGlobalIndex` if needed by specific tasks or context generation logic.
+- Context preparation (clearing, inheriting, generating fresh) for an atomic task is handled based on its effective `context_management` settings before execution.
 
 ### Tool Interface
 - Unified tool system with consistent patterns

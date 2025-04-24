@@ -60,74 +60,48 @@ The system implements a standardized template substitution process in the Evalua
 - Variables are resolved through the Environment.find() method
 - Example: `<description>Process {{data_file}} with {{options}}</description>`
 
-## Context Management Implementation
+## Context Management Implementation (for Atomic Tasks)
 
-The Task System implements a hybrid configuration approach with operator-specific defaults and explicit overrides:
+The Task System applies context management settings when preparing to execute an *atomic task* via `execute_subtask_directly`. It uses a hybrid configuration approach:
+
+1.  **Determine Subtype:** Identify the `subtype` of the atomic task (e.g., `standard`, `subtask`, `director`, `aider_interactive`) from the XML template or the `SubtaskRequest`.
+2.  **Get Defaults:** Retrieve the default `ContextManagement` settings for that subtype (see table in `protocols.md`).
+3.  **Apply Overrides:** Merge the defaults with any explicit `<context_management>` settings defined in the task's XML template.
+4.  **Apply Request Overrides:** Further merge the result with any `context_management` overrides provided in the `SubtaskRequest` object passed to `execute_subtask_directly`.
+5.  **Enforce Constraints:** Validate the final effective settings (e.g., mutual exclusivity of `fresh_context` and `inherit_context`).
+6.  **Prepare Context:** Use the final settings to assemble the context (fetch fresh, inherit, include files) before invoking the Handler.
 
 ```typescript
-// Default context management settings by operator type and subtype
-const DEFAULT_CONTEXT_SETTINGS = {
-  atomic: {
-    standard: {
-      inheritContext: 'full',
-      accumulateData: false,
-      accumulationFormat: 'notes_only',
-      freshContext: 'disabled'
-    },
-    subtask: {
-      inheritContext: 'none',
-      accumulateData: false,
-      accumulationFormat: 'notes_only',
-      freshContext: 'enabled'
-    },
-    // Default to standard if no subtype specified
-    default: {
-      inheritContext: 'full',
-      accumulateData: false,
-      accumulationFormat: 'notes_only',
-      freshContext: 'disabled'
-    }
-  },
-  sequential: {
-    inheritContext: 'full',
-    accumulateData: true,
-    accumulationFormat: 'notes_only',
-    freshContext: 'disabled'
-  },
-  reduce: {
-    inheritContext: 'none',
-    accumulateData: true,
-    accumulationFormat: 'notes_only',
-    freshContext: 'enabled'
-  },
-  script: {
-    inheritContext: 'full',
-    accumulateData: false,
-    accumulationFormat: 'notes_only',
-    freshContext: 'disabled'
-  },
-  director_evaluator_loop: {
-    inheritContext: 'none',
-    accumulateData: true,
-    accumulationFormat: 'notes_only',
-    freshContext: 'enabled'
-  }
-};
+// Conceptual merging logic
+function getEffectiveContextSettings(request: SubtaskRequest, template: TaskTemplate): ContextManagement {
+  const subtype = request.subtype || template.subtype || 'standard';
+  const defaults = DEFAULT_ATOMIC_CONTEXT_SETTINGS[subtype] || DEFAULT_ATOMIC_CONTEXT_SETTINGS.standard;
+  const templateOverrides = template.context_management || {};
+  const requestOverrides = request.context_management || {};
 
-## Function Call Processing
+  const merged = { ...defaults, ...templateOverrides, ...requestOverrides };
 
-Function calls use direct parameter passing with lexical isolation:
+  // TODO: Add validation for constraints like mutual exclusivity
+  validateContextSettings(merged);
 
-1. **Template Lookup**: Retrieve template by name from TaskLibrary
-2. **Argument Resolution**: For each argument in the caller's environment:
-   - For string values: Try variable lookup first, fallback to literal value
-   - For AST nodes: Recursively evaluate in caller's environment
-3. **Fresh Environment Creation**: Create new environment with parameter bindings
-   - Parameters explicitly bound to evaluated argument values
-   - No implicit access to caller's variables
-4. **Isolated Execution**: Execute template in this clean environment
+  return merged;
+}
+```
 
-This process maintains clean scope boundaries, preventing unintended variable access.
+This ensures consistent application of defaults and overrides for every atomic task execution.
+
+## Function Call Processing (within S-expression)
+
+Function calls (invoking XML `<template>` definitions or potentially S-expression functions) are handled by the S-expression evaluator.
+
+1.  **Template/Function Lookup**: The S-expression evaluator finds the definition (either an XML `<template>` registered in the Task System or an S-expression function definition) by name.
+2.  **Argument Evaluation**: Arguments provided in the S-expression call (e.g., `(my-func arg1 arg2)`) are evaluated within the *caller's* S-expression environment.
+3.  **Environment Creation**: A *new* lexical environment is created for the function's execution.
+4.  **Parameter Binding**: The evaluated argument values are bound to the corresponding parameter names (defined in the `<template params="...">` or S-expression function definition) in the new environment.
+5.  **Body Execution**: The function body (the atomic task defined in the XML `<template>` or the S-expression body) is executed within this new, isolated environment. It only has access to its bound parameters and any globally defined primitives/functions.
+6.  **Return Value**: The result of the body execution is returned to the caller.
+
+This ensures lexical scoping and prevents unintended access to the caller's variables.
 
 ## Subtask Spawning Implementation
 
@@ -161,11 +135,11 @@ The system ensures these files are fetched and included in the subtask's context
 - Context retrieval through standard ContextGenerationInput interface
 - When determining file context, the system checks the `file_paths_source.type`. If the type is `context_description`, the system retrieves the string value from the nested `<context_query>` element. Any `{{variable}}` placeholders within this string are resolved using the current task's `Environment`. This resolved string is then used as the primary query (`template_description`) when constructing the `ContextGenerationInput` object passed to `MemorySystem.get_relevant_context_for`. This allows the context search to be driven by a query different from the main task description used for LLM execution. This step takes precedence over the default behavior of using the main task description for context lookup when `fresh_context` is enabled but no specific `file_paths_source` is provided.
 
-### Evaluator Integration
-- Evaluator handles template substitution and function calls
-- Task System provides templates and execution coordination
-- Evaluator manages execution context and variable resolution
-- Clear separation of concerns between components
+### Evaluator Integration (S-expression & Atomic)
+- **S-expression Evaluator**: Handles the execution of the S-expression DSL. It manages the DSL's environment, control flow, and calls primitives. When it needs to execute an atomic task defined in XML, it calls `TaskSystem.execute_subtask_directly`.
+- **Task System**: Manages atomic task templates (XML). Provides the `execute_subtask_directly` interface to run a single atomic task. It interacts with the Handler for the actual LLM execution of that atomic task.
+- **(Atomic Task) Evaluator Logic**: The logic for substituting `{{variables}}` within an *atomic task's* body (instructions, system prompt, etc.) using the environment provided by the caller (usually the S-expression evaluator) resides within the Task System or is closely coordinated with it before the Handler is invoked.
+- This creates a separation: S-expression evaluator handles the workflow logic and DSL environment, while the Task System handles the execution details of individual atomic steps.
 
 ### Handler Integration
 - Handler provides LLM interaction and resource tracking
@@ -203,9 +177,9 @@ flowchart TD
     I --> J[Return template for execution]
 ```
 
-### Context Constraint Validation
+### Context Constraint Validation (Atomic Tasks)
 
-The system enforces a mutual exclusivity constraint between fresh context generation and context inheritance:
+The Task System enforces the mutual exclusivity constraint between `fresh_context` and `inherit_context` when determining the effective context settings for an atomic task execution:
 
 ```typescript
 function validateContextSettings(settings) {
@@ -230,44 +204,30 @@ function validateContextSettings(settings) {
 }
 ```
 
-## Resource Management
+## Resource Management (via Handler)
 
-The Task System enforces resource limits via a per‑Handler turn counter and context window monitoring. For the complete low‑level implementation (including code examples and configuration details), please refer to [resource-management.md](./resource-management.md).
-  
-### Context Window Management
-- Token counting approach
-- Size limit enforcement
-- No optimization strategy
-- Window usage monitoring
-- Clear limit boundaries
-  
-### Limit Enforcement Strategy
-- Immediate termination on violation
-- Resource exhaustion error generation
-- Clean session cleanup
-- Resource usage reporting
-- Clear violation metrics
-  
-### Error Detection Mechanisms
-- Resource limit monitoring, progress tracking, output and XML structure validation, and input validation.
+Resource limits (turns, context window tokens, output size) are enforced by the **Handler** during the execution of each *atomic task*. The Task System configures the Handler with the appropriate limits when it's instantiated for an atomic task execution via `execute_subtask_directly`. The S-expression evaluator itself does not directly manage LLM resource limits, but failures (like `RESOURCE_EXHAUSTION`) from atomic tasks it calls will propagate back into the S-expression workflow. Overall workflow timeouts might be managed at a higher level. See [resource-management.md](./resource-management.md) for Handler implementation details.
 
 ## Variable and Parameter Management
 
 The system maintains clear separation between two distinct mechanisms:
 
-### 1. Lexical Environment
-- **Purpose**: Maintains DSL variable bindings and scoping
-- **Structure**: Chain of environments with parent references
-- **Operations**: Variable lookups, environment extension
-- **Scope**: Isolated between function calls
+### 1. S-expression Lexical Environment
+- **Purpose**: Manages variable bindings (`bind`, `let`), function definitions (`define`), and scoping rules for the S-expression DSL.
+- **Managed By**: S-expression Evaluator.
+- **Scope**: Follows standard lexical scoping rules (e.g., bindings within a `let` are local).
 
-### 2. Direct Parameter Passing
-- **Purpose**: Transfers data between caller and template
-- **Mechanism**: Arguments evaluated in caller's scope, bound to parameters in template's scope
-- **Execution**: Templates operate only on their parameters
-- **Isolation**: No implicit access between scopes
+### 2. Atomic Task Template Substitution (`{{...}}`)
+- **Purpose**: Resolves placeholders within the XML definition (e.g., `<instructions>`, `<system>`) of an *atomic task* before it's sent to the LLM.
+- **Mechanism**: Uses values from the *caller's* environment (typically the S-expression environment at the point of the call) to replace `{{variable_name}}`.
+- **Managed By**: Task System (or logic closely coordinated with it) during the `execute_subtask_directly` process.
 
-This clean separation prevents unexpected variable leakage and ensures predictable execution.
+### 3. Function Call Parameter Passing (S-expression -> Function/Template)
+- **Purpose**: Passes data from an S-expression call site to the execution context of a function (defined in S-expression or via XML `<template>`).
+- **Mechanism**: Arguments in the S-expression call are evaluated in the caller's S-expression environment. The resulting values are then bound to the function's/template's declared parameter names in a *new, isolated* environment for the function body's execution.
+- **Managed By**: S-expression Evaluator.
+
+This multi-layered approach keeps DSL execution separate from atomic task template resolution while enabling data flow between them.
 
 ## Template Substitution Process
 
@@ -285,104 +245,47 @@ The system implements a standardized template substitution process in the Evalua
 - Variables are resolved through the Environment.find() method
 - Example: `<description>Process {{data_file}} with {{options}}</description>`
 
-### Implementation in Evaluator
+### Implementation in Task System (Atomic Task Substitution)
 
-The Evaluator has a formal substitution phase in its execution pipeline:
+The Task System (during `execute_subtask_directly`) performs template variable substitution (`{{...}}`) before invoking the Handler:
 
 ```typescript
-// In Evaluator component
-async function executeTask(task: Task, environment: Environment): Promise<TaskResult> {
-  try {
-    // Process and resolve all template variables
-    const resolvedTask = resolveTemplateVariables(task, environment);
-    
-    // Execute task using Handler with fully resolved content
-    const result = await handler.executePrompt(
-      resolvedTask.systemPrompt,
-      resolvedTask.taskPrompt
-    );
-    
-    // Process and return results
-    return processResult(result, task);
-  } catch (error) {
-    if (error.message.includes('Variable resolution error')) {
-      return createTaskFailure(
-        'template_resolution_failure',
-        error.message,
-        { task: task.description }
-      );
-    }
-    throw error;
-  }
-}
+```typescript
+// In TaskSystem, preparing to call Handler for an atomic task
+function substituteAtomicTaskVariables(atomicTask: AtomicTaskTemplate, callingEnv: SExpressionEnvironment): ResolvedAtomicTask {
+  const resolvedTask = { ...atomicTask }; // Copy template
 
-// Template variable resolution
-function resolveTemplateVariables(task: Task, env: Environment): Task {
-  const resolvedTask = {...task};
-  
-  if (task.isFunctionTemplate && task.parameters) {
-    // For function templates, create isolated environment with only parameters
-    const funcEnv = new Environment({});
-    for (const param of task.parameters) {
-      funcEnv.bindings[param] = env.find(param);
-    }
-    resolvedTask.taskPrompt = substituteVariables(task.taskPrompt, funcEnv);
-  } else {
-    // For standard templates, use the full environment
-    resolvedTask.taskPrompt = substituteVariables(task.taskPrompt, env);
-  }
-  
+  // Use the calling S-expression environment to resolve {{...}} placeholders
+  // in instructions, system prompt, potentially input defaults etc.
+  resolvedTask.instructions = substitutePlaceholders(atomicTask.instructions, callingEnv);
+  resolvedTask.system = substitutePlaceholders(atomicTask.system, callingEnv);
+  // ... resolve other fields as needed ...
+
+  // Error handling for missing variables during substitution
+  // ...
+
   return resolvedTask;
 }
-```
 
-The Evaluator handles variable resolution before passing fully resolved content to the Handler. This ensures all placeholders are substituted prior to LLM execution, with appropriate error handling for missing variables.
-
-For Director-Evaluator loops, parameters are passed explicitly:
-```typescript
-// Director-Evaluator Loop with Evaluator handling template substitution
-async function executeDirectorEvaluatorLoop(task, inputs) {
-  // In the Evaluator component:
-  
-  // 1. Prepare director inputs
-  const directorInputs = {
-    ...inputs,
-    feedback: previousEvaluation?.feedback,
-    current_iteration: currentIteration
-  };
-  
-  // 2. Resolve all template variables in the director task
-  const resolvedDirectorTask = resolveTemplateVariables(task.director, directorInputs);
-  
-  // 3. Execute director with fully resolved content
-  const directorOutput = await handler.executePrompt(
-    resolvedDirectorTask.systemPrompt,
-    resolvedDirectorTask.taskPrompt
-  );
-  
-  // 4. Prepare evaluator inputs
-  const evaluatorInputs = {
-    solution: directorOutput.content,
-    original_prompt: inputs.original_prompt
-  };
-  
-  // 5. Resolve all template variables in the evaluator task
-  const resolvedEvaluatorTask = resolveTemplateVariables(task.evaluator, evaluatorInputs);
-  
-  // 6. Execute evaluator with fully resolved content
-  const evaluationResult = await handler.executePrompt(
-    resolvedEvaluatorTask.systemPrompt,
-    resolvedEvaluatorTask.taskPrompt
-  );
-  
-  // Resume loop with new parameters
-  return continueExecution(task, {
-    ...inputs,
-    director_result: directorOutput,
-    evaluation_result: evaluationResult
+// Placeholder substitution logic (simplified)
+function substitutePlaceholders(text: string | undefined, env: SExpressionEnvironment): string | undefined {
+  if (!text) return undefined;
+  return text.replace(/\{\{([^}]+)\}\}/g, (match, varName) => {
+    try {
+      // Use the S-expression environment's lookup
+      const value = env.lookup(varName.trim());
+      // Convert value to string appropriately
+      return String(value);
+    } catch (e) {
+      // Handle unbound variable error
+      console.error(`Variable substitution error: ${varName} not found in environment.`);
+      throw new Error(`Variable resolution error: ${varName}`);
+    }
   });
 }
+
 ```
+This ensures atomic task bodies are fully resolved using the S-expression context before the Handler sees them. Director-Evaluator loops implemented in S-expression handle data passing between steps using `bind`/`let`, calling `execute_subtask_directly` with the appropriate environment for each atomic step.
 
 ## Subtask Spawning Implementation
 
@@ -497,17 +400,17 @@ async function executeTaskWithDepthControl(
 }
 ```
 
-### Context Management Integration
+### Context Management Integration (Atomic Tasks)
 
-Subtasks use a hybrid configuration approach with default settings that can be overridden:
+Atomic tasks invoked as subtasks (e.g., via `CONTINUATION` or `call-atomic-task`) use the hybrid configuration approach for their context settings:
 
 ```typescript
-// Default context management settings for subtasks
+// Default context management settings for atomic tasks invoked as subtasks
 const DEFAULT_SUBTASK_CONTEXT_SETTINGS = {
-  inherit_context: 'subset',
-  accumulate_data: false,
-  accumulation_format: 'notes_only',
-  fresh_context: 'enabled'
+  inheritContext: 'subset', // Default for subtype='subtask'
+  accumulateData: false,
+  accumulationFormat: 'notes_only',
+  freshContext: 'enabled' // Default for subtype='subtask'
 };
 
 /**
@@ -542,34 +445,32 @@ function getContextSettings(request: SubtaskRequest): ContextSettings {
     };
   }
   
-  // Otherwise use defaults
-  return DEFAULT_SUBTASK_CONTEXT_SETTINGS;
+  // Otherwise use defaults for the determined subtype
+  const subtype = request.subtype || template?.subtype || 'standard';
+  return DEFAULT_ATOMIC_CONTEXT_SETTINGS[subtype] || DEFAULT_ATOMIC_CONTEXT_SETTINGS.standard;
 }
 ```
 
-### Parent-Child Communication
+### Parent-Child Communication (S-expression & Subtasks)
 
-When a parent task spawns a subtask, the communication follows this pattern:
+Communication between S-expression forms and the atomic tasks they call occurs via:
+1.  **Invocation**: The S-expression calls `TaskSystem.execute_subtask_directly` with a `SubtaskRequest` and the current S-expression environment.
+2.  **Parameter Passing**: Inputs for the atomic task are resolved from the S-expression environment during template substitution (`{{...}}`).
+3.  **Return Value**: The `TaskResult` or `TaskError` from the atomic task is returned to the S-expression evaluator.
+4.  **Binding**: The S-expression can bind this result to a variable using `bind` or `let` for use in subsequent steps.
 
-1. Parent task returns a CONTINUATION status with subtask_request in notes
-2. Task System validates the request and spawns the subtask
-3. Subtask executes with its own resource tracking
-4. Subtask result is passed back to the parent task when it resumes
-5. Parent task continues execution with the subtask result available as a parameter
+If an atomic task itself returns `CONTINUATION` with a `subtask_request` (dynamic subtask spawning):
+1.  `execute_subtask_directly` returns this `CONTINUATION` result.
+2.  The S-expression evaluator receives it and handles the subtask spawning logic (validating, calling `execute_subtask_directly` again for the new request).
+3.  The result of the *dynamically spawned* subtask is then returned to the S-expression context where the `CONTINUATION` was received.
 
-This approach ensures clear data flow and explicit dependencies between parent and child tasks.
-
-For historical context and decision rationale behind this implementation approach, see [ADR 11: Subtask Spawning Mechanism].
-
-### Script Execution Implementation
-The system now supports executing external scripts as part of a static director-evaluator workflow. When a script_execution element is specified:
-
-1. The script receives the Director's output as direct input
-2. Script execution captures stdout, stderr, and exit code
-3. These outputs are passed as direct parameters to the Evaluator
-4. No environment variables are used in this data flow
-
-This design ensures that the director's output flows seamlessly through the script execution step before final evaluation, using explicit parameter passing throughout.
+### Script Execution Implementation (via S-expression Primitive)
+Script execution is invoked via an S-expression primitive like `(system:run_script ...)`.
+1.  The S-expression evaluator calls the primitive's implementation.
+2.  The primitive likely uses the Handler's shell execution capability.
+3.  Inputs are passed as arguments to the primitive from the S-expression environment.
+4.  The primitive returns the script's results (stdout, stderr, exit code) packaged in a `TaskResult` or `TaskError`.
+5.  The S-expression binds this result for further use.
 
 ## Integration Points
 ### Memory System Interaction
