@@ -33,6 +33,7 @@ When you open an `_IDL.md` file (e.g., `src/handler/base_handler_IDL.md`), you'l
         *   **`Expected JSON format: { ... }`**: If a parameter or return type is a complex dictionary passed as JSON, its structure is defined here.
         *   **`@raises_error(condition="ErrorCode", ...)`**: Defines specific, contractual error conditions the method might signal.
     *   **`Invariants:`** (Optional): Properties of the component's state that should always hold true between method calls.
+*   **`struct StructName { ... }` (Optional):** Defines reusable, complex data structures. These might be defined within the IDL file itself or in a central `docs/types.md` file for globally shared types (like `TaskResult`). These struct names can then be used as types in method signatures.
 
 **3. The Development Workflow: Implementing from IDL**
 
@@ -97,6 +98,7 @@ When assigned to implement or modify a component specified by an IDL:
 *   **`tests/`**: Pytest tests, mirroring the `src` structure.
 *   **`docs/`**: All project documentation, including architecture, decisions (ADRs), component specs, and these rules.
     *   **`docs/IDL.md`**: Defines the IDL guidelines themselves.
+    *   **`docs/types.md`**: (You may need to create this file) Defines shared data structures (`struct` definitions) used across multiple IDL interfaces (e.g., `TaskResult`).
     *   **`docs/implementation_rules.md`**: Detailed coding and testing rules.
     *   **`docs/project_rules.md`**: General project conventions (directory structure, Git workflow).
     *   **`src/**/\*_IDL.md`**: The specific interface definitions you will implement.
