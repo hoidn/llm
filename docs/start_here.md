@@ -44,16 +44,18 @@ When assigned to implement or modify a component specified by an IDL (or tacklin
 
 1.  **Define Task:** Clearly understand the goal (e.g., from an issue tracker, user story).
 2.  **Locate/Review IDL:** Find the relevant `*_IDL.md` file(s). If modifying existing code without a complete IDL, consider generating/updating the IDL first (Code-to-IDL).
-3.  **Understand Contract:** Thoroughly read the IDL: `module`/`interface` purpose, `@depends_on*`, method signatures, and especially the documentation blocks (`Preconditions`, `Postconditions`, `Behavior`, `Expected JSON format`, `@raises_error`).
+3.  **Understand Contract:** Thoroughly read the IDL: `module`/`interface` purpose, `@depends_on*`, function/method signatures, and especially the documentation blocks (`Preconditions`, `Postconditions`, `Behavior`, `Expected JSON format`, `@raises_error`).
 4.  **Review Rules:** Briefly refresh understanding of key guidelines in `docs/implementation_rules.md` and `docs/project_rules.md`.
 5.  **Setup Working Memory:** Update `docs/memory.md` with your "Current Task/Focus" and initial "Next Steps".
 
 **Phase 1: Core Implementation & Unit/Integration Testing ("Main Step")**
 
-6.  **Create/Modify Files:** Ensure Python file/directory structure matches IDL module path (e.g., `src/component/module.py` for `src.component.module`).
-7.  **Implement Structure:** Create the Python class matching the IDL `interface`. Implement the constructor (`__init__`), injecting dependencies specified in `@depends_on`.
-8.  **Implement Methods:**
-    *   Define method signatures **exactly** matching the IDL (name, parameters, type hints corresponding to IDL types).
+6.  **Create/Modify Files:** Ensure Python file/directory structure matches the IDL `module` path (e.g., `src/component/module.py` for `src.component.module`).
+7.  **Implement Structure & Dependencies:**
+    *   If the IDL defines an `interface`, create the corresponding Python class. Implement its constructor (`__init__`), injecting dependencies specified in `@depends_on`.
+    *   If the IDL defines module-level functions, ensure the module exists. Handle any module-level setup or configuration needed. Dependencies specified in `@depends_on` might be injected into functions directly as parameters or managed via module initialization.
+8.  **Implement Functions/Methods:**
+    *   Define function/method signatures **exactly** matching the IDL (name, parameters, type hints corresponding to IDL types).
     *   Implement the logic described in the `Behavior` section.
     *   Use Pydantic models for complex `Expected JSON format` parameters/returns (Parse, Don't Validate).
     *   Ensure your implementation fulfills the `Postconditions`.
