@@ -191,6 +191,15 @@ project_root/
        pass
    ```
 
+### Module Length Guideline
+
+*   **Guideline:** Strive to keep Python modules (`.py` files) concise. **Aim for modules to be no longer than 300 lines of code (LoC)**, excluding blank lines and comments where reasonable to estimate.
+*   **Rationale:** Shorter modules are generally easier to read, understand, test, and maintain. This guideline encourages adherence to the Single Responsibility Principle (SRP), prompting developers to break down complex functionality into smaller, more focused units (e.g., separate classes or functions in different modules).
+*   **Action:** If a module is approaching or exceeding this limit, consider if:
+    *   Classes or utility functions can be extracted into separate files within the same package.
+    *   The module is trying to do too many distinct things and can be split logically.
+*   **Exceptions:** This is a guideline, not a strict rule enforced by tooling (unless configured separately). If keeping related logic together necessitates exceeding the limit for clarity, that may be acceptable, but be prepared to justify it during code review. Use your judgment – a well-structured 350-line file can be better than two poorly split 175-line files.
+
 ## Testing Strategy
 
 ### Test Organization
