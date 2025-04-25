@@ -32,7 +32,69 @@ the goal is a clear, language- and UI-agnostic **specification (SPEC)** that def
     *   **preference for structure:** if the idl syntax supports defining custom structures/records/data classes, prefer them for complex data transfer to maximize type safety at the interface level.
     *   **json fallback:** where structured types are not feasible in idl or cross-language string simplicity is paramount, use a single json string parameter.
     *   **mandatory documentation:** *always* document the exact expected json format within the idl comment block (e.g., `// expected json format: { "key1": "type1", "key2": "type2" }`).
-5.  **clarity and behavioral specification:** the idl must clearly express the *purpose* and *complete expected behavior* of each interface and method. this is achieved through:
+5.  **Defining Custom Data Structures (`struct`):**
+
+*   **Purpose:** To explicitly define the structure of complex data types passed between components, improving clarity and mapping directly to implementation structures (like Pydantic models). Replaces reliance on generic `dict` types with comments for complex data.
+*   **Syntax:** Use a `struct` block, typically within a `module` definition.
+
+    ```idl
+    struct StructName {
+        field_name1: type; // e.g., string, int, boolean, list<AnotherStruct>, dict<string, int>
+        field_name2: optional type; // Use 'optional' for fields that may be absent/null
+        field_name3: union<type1, type2>; // Use 'union' if a field can be one of multiple types
+        // ... other fields
+        // Use snake_case for field names.
+    }
+    ```
+
+*   **Placement Strategy:**
+    *   **`docs/types.md`:** Define globally shared structures used across many modules (e.g., `TaskResult`, `ContextGenerationInput`) in this central file.
+    *   **Module-Specific `*_IDL.md`:** Define structures primarily used by interfaces within a single module directly within that module's `*_IDL.md` file (usually near the top of the `module` block).
+
+*   **Referencing:** Use the defined `StructName` as a type name in method parameters, return types, or within other `struct` definitions.
+
+*   **Example:**
+
+    ```idl
+    // In docs/types.md (Conceptual Example)
+    struct TaskResult {
+        status: string; // e.g., "COMPLETE", "FAILED", "CONTINUATION"
+        content: optional Any; // Or specific union type if known
+        notes: optional dict<string, Any>;
+        parsedContent: optional Any; // For auto-parsed results (e.g., JSON)
+    }
+
+    // In src/memory/memory_system_IDL.md
+    module src.memory.memory_system {
+
+        // Locally defined struct
+        struct MatchTuple {
+             path: string;
+             relevance: string;
+             score: float;
+        }
+
+        // Struct referencing another local struct
+        struct AssociativeMatchResult {
+             context_summary: string;
+             matches: list<MatchTuple>;
+             error: optional string;
+        }
+
+        // Interface using the defined structs
+        interface MemorySystem {
+             // Method returning a locally defined struct
+             AssociativeMatchResult get_relevant_context_for(union<dict<string, Any>, ContextGenerationInput> input_data);
+
+             // Method using a globally defined struct (TaskResult assumed defined in docs/types.md)
+             // Note: Actual MemorySystem might not return TaskResult directly, this is just syntax example.
+             // TaskResult some_memory_operation(string param);
+        }
+    }
+    ```
+*   **Dependency Note (Optional Convention):** If an interface relies heavily on a type defined in `docs/types.md`, you *may* add a comment like `# @depends_on_type(docs.types.TaskResult)` near the interface definition for extra clarity, but this is not strictly required.
+
+6.  **clarity and behavioral specification:** the idl must clearly express the *purpose* and *complete expected behavior* of each interface and method. this is achieved through:
     *   Well-chosen names for interfaces, methods, and parameters.
     *   **Comprehensive documentation comments:** These are critical for the SPEC. They must detail:
         *   **Preconditions:** Necessary conditions before calling.
@@ -41,7 +103,7 @@ the goal is a clear, language- and UI-agnostic **specification (SPEC)** that def
         *   **Conceptual State:** Description of key internal state variables managed by the interface (if any) and how methods affect them.
         *   **Error Conditions:** Use the `@raises_error` annotation (see below) for specific, named error conditions that are part of the contract.
         *   JSON format documentation if applicable.
-6.  **completeness (behavioral specification):** the idl must represent the *complete behavioral specification* of the component's public interface and its essential, observable behavior.
+7.  **completeness (behavioral specification):** the idl must represent the *complete behavioral specification* of the component's public interface and its essential, observable behavior.
 7.  **error condition annotation:** Use a dedicated annotation to formally define specific, named error conditions that are part of the interface's contract.
     *   **syntax:** Use comment lines within the method's documentation block.
         `// @raises_error(condition="UniqueErrorCode", description="Explanation of when this error occurs.")`
