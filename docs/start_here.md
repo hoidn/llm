@@ -104,6 +104,17 @@ When assigned to implement or modify a component specified by an IDL:
     *   **`src/**/\*_IDL.md`**: The specific interface definitions you will implement.
 *   **`README.md`**: Top-level project overview.
 
+**9. Development Workflow & Recommended Practices**
+
+*   **Follow the IDL:** Adhere strictly to the IDL specification (`*_IDL.md`) for the component you are implementing (See Section 3).
+*   **Use Working Memory:** Maintain a running log of your development progress, current focus, and next steps in `docs/memory.md`. Update it frequently during your work session and commit it along with your code changes. This aids context retention for yourself and helps reviewers understand the development path. (See `docs/memory.md` for the template and detailed guidelines).
+*   **Test Driven:** Write tests (especially integration tests) to verify your implementation against the IDL contract (See Section 6 and `docs/implementation_rules.md`).
+*   **Commit Often:** Make small, logical commits with clear messages. Follow Git guidelines in `docs/project_rules.md`.
+*   **Format and Lint:** Run `make format` and `make lint` (or equivalent project commands) before committing to ensure code style compliance.
+*   **Ask Questions:** Don't hesitate to ask for clarification on requirements or design if you are unsure.
+
+---
+
 **8. Getting Started Checklist**
 
 1.  [ ] Read this document (`developer_orientation.md`).
