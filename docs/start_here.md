@@ -35,6 +35,7 @@ When you open an `_IDL.md` file (e.g., `src/handler/base_handler_IDL.md`), you'l
     *   **`Invariants:`** (Optional): Properties of the component's state that should always hold true between method calls.
 *   **`struct StructName { ... }` (Optional):** Defines reusable, complex data structures. These might be defined within the IDL file itself or in a central `docs/types.md` file for globally shared types (like `TaskResult`). These struct names can then be used as types in method signatures.
 
+<idl to code>
 **3. The Development Workflow: Implementing from IDL (Expanded)**
 
 When assigned to implement or modify a component specified by an IDL (or tackling a new feature):
@@ -59,28 +60,26 @@ When assigned to implement or modify a component specified by an IDL (or tacklin
     *   Respect `Preconditions` (often handled by type hints or initial checks).
     *   Implement `raise` statements for specific exceptions documented with `@raises_error`.
 9.  **Write Tests:**
-    *   Write `pytest` tests (prioritizing integration/functional tests) that verify your implementation against the *entire* IDL contract:
+    *   If appropriate for the component, write `pytest` tests (prioritizing integration/functional tests) that verify your implementation against the *entire* IDL contract:
         *   Does it perform the described `Behavior`?
         *   Does it meet the `Postconditions`?
         *   Does it correctly handle specified `Error Conditions` (`@raises_error`)?
         *   Does it handle edge cases implied by `Preconditions`?
-10. **Iterate:** Code -> Test -> Refactor. Ensure tests pass as you develop. Use `make format`/`make lint` periodically.
-11. **Log Progress:** Update `docs/memory.md` (Recent Activity, Notes, Blockers) as you make progress or encounter issues.
+10. **Log Progress:** Update `docs/memory.md` (Recent Activity, Notes, Blockers) as you make progress or encounter issues.
 
 **Phase 2: Finalization & Sanity Checks ("Cleanup Step")**
 
-12. **Format Code:** Run the project's code formatter (e.g., `make format` or `black .`).
-13. **Lint Code:** Run the project's linter (e.g., `make lint` or `ruff check . --fix`) and address all reported issues.
-14. **Run All Tests:** Execute the full test suite (e.g., `pytest tests/` or `make test`) and ensure all tests pass.
-15. **Perform Sanity Checks:**
+11. **Format Code:** If possible, run the project's code formatter (e.g., `make format` or `black .`).
+12. **Lint Code:** If possible, run the project's linter (e.g., `make lint` or `ruff check . --fix`) and address all reported issues.
+13. **Run All Tests:** If possible, execute the full test suite (e.g., `pytest tests/` or `make test`) and ensure all tests pass.
+14. **Perform Sanity Checks:**
     *   **Self-Review:** Read through your code. Is it clear? Simple? Are comments/docstrings accurate?
     *   **Implementation Rules Check:** Does the code adhere to `docs/implementation_rules.md` (imports, naming, patterns, etc.)?
     *   **Project Rules Check:** Does the code adhere to `docs/project_rules.md`?
         *   **(Guideline Check): Is any module significantly longer than the recommended limit (e.g., 300 lines)?** If yes, evaluate if refactoring/splitting the module makes sense for clarity and maintainability. *If you refactor, go back to Step 9 (Testing) and Step 12 (Formatting/Linting/Testing) before proceeding.*
     *   **IDL Check:** Does the final code *still* precisely match the public contract defined in the IDL (signatures, error conditions)?
-16. **Finalize Working Memory:** Update `docs/memory.md` with the final status and any relevant closing thoughts or context.
-17. **Commit Changes:** Commit your code, tests, relevant documentation changes (including `docs/memory.md`), using clear, conventional commit messages.
-18. **Code Review:** Submit your changes for code review (e.g., create a Pull Request).
+15. **Finalize Working Memory:** Update `docs/memory.md` with the final status and any relevant closing thoughts or context.
+</idl to code>
 
 ---
 
