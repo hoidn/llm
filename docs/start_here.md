@@ -78,9 +78,9 @@ When assigned to implement or modify a component specified by an IDL (or tacklin
     *   **Self-Review:** Read through your code. Is it clear? Simple? Are comments/docstrings accurate?
     *   **Implementation Rules Check:** Does the code adhere to `docs/implementation_rules.md` (imports, naming, patterns, etc.)?
     *   **Project Rules Check:** Does the code adhere to `docs/project_rules.md`?
-        *   **(Guideline Check): Is any module significantly longer than the recommended limit (e.g., 300 lines)?** If yes, evaluate if refactoring/splitting the module makes sense for clarity and maintainability. *If you refactor, go back to Step 9 (Testing) and Step 12 (Formatting/Linting/Testing) before proceeding.*
+        *   **(Guideline Check): Is any module significantly longer than the recommended limit (e.g., 300 lines)?** If yes, evaluate if refactoring/splitting the module makes sense for clarity and maintainability. *If you refactor, go back to the formatting, linting and testing steps before proceeding.*
     *   **IDL Check:** Does the final code *still* precisely match the public contract defined in the IDL (signatures, error conditions)?
-15. **Finalize Working Memory:** Update `docs/memory.md` with the final status and any relevant closing thoughts or context.
+15. **Finalize Working Memory:** Update `docs/memory.md` with the final status and any relevant closing thoughts or context, including lessons learned (if any debugging was done) and guidance for the next steps. 
 </idl to code>
 
 ---
