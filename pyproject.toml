@@ -1,1 +1,33 @@
-# Placeholder for project configuration and dependencies
+[project]
+name = "your-project-name"  # Replace with your actual project name
+version = "0.1.0"
+description = "Your project description"
+requires-python = ">=3.9" # Assuming Python 3.9+ based on type hints used
+dependencies = [
+    "pydantic>=2.0", # Already implicitly needed by models.py
+    "sexpdata>=1.0.0",
+    "pydantic-ai[anthropic]>=1.0.0b1", # Using a beta version as stable might not be out
+    # Add other core dependencies here if known
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-mock>=3.0",
+    "ruff",
+    "black",
+    # Add other development dependencies
+]
+
+[tool.black]
+line-length = 88
+
+[tool.ruff]
+line-length = 88
+select = ["E", "W", "F", "I", "UP", "PL", "T20"] # Example selection, adjust as needed
+ignore = []
+
+[tool.ruff.lint.isort]
+known-first-party = ["src", "tests"] # Tell ruff about the project structure
+
+# Add other tool configurations (pytest, etc.) if needed
