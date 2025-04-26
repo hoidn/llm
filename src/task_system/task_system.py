@@ -1,8 +1,4 @@
-"""
-Task System manages and executes task templates.
-Implements the contract defined in src/task_system/task_system_IDL.md.
-"""
-
+import logging
 from typing import Any, Dict, List, Optional, Tuple
 
 # Forward declarations for type hinting cycles
@@ -23,7 +19,12 @@ class TaskSystem:
         Args:
             memory_system: An optional instance of MemorySystem.
         """
-        pass
+        self.memory_system = memory_system
+        self.templates: Dict[str, Dict[str, Any]] = {} # Keyed by template 'name'
+        self.template_index: Dict[str, str] = {} # Keyed by 'type:subtype', value is 'name'
+        self._test_mode: bool = False
+        self._handler_cache: Dict[str, Any] = {} # Cache for handler instances (if needed later)
+        logging.info("TaskSystem initialized.")
 
     def set_test_mode(self, enabled: bool) -> None:
         """
@@ -32,7 +33,10 @@ class TaskSystem:
         Args:
             enabled: Boolean value to enable/disable test mode.
         """
-        pass
+        self._test_mode = enabled
+        logging.info(f"TaskSystem test mode set to: {enabled}")
+        # Potentially clear handler cache if mode changes behavior
+        self._handler_cache = {}
 
     def execute_atomic_template(self, request: Any) -> Dict[str, Any]:  # SubtaskRequest
         """
@@ -44,7 +48,9 @@ class TaskSystem:
         Returns:
             The final TaskResult dictionary from the executed atomic template.
         """
-        pass
+        # Implementation deferred to Phase 2
+        logging.warning("execute_atomic_template called, but implementation is deferred.")
+        raise NotImplementedError("execute_atomic_template implementation deferred to Phase 2")
 
     def find_matching_tasks(
         self, input_text: str, memory_system: Any  # MemorySystem
@@ -59,7 +65,11 @@ class TaskSystem:
         Returns:
             A list of dictionaries, each representing a matching template, sorted by score.
         """
-        pass
+        # Implementation deferred to Phase 2
+        logging.warning("find_matching_tasks called, but implementation is deferred.")
+        # Placeholder structure for return type hint satisfaction
+        return []
+        # raise NotImplementedError("find_matching_tasks implementation deferred to Phase 2")
 
     def register_template(self, template: Dict[str, Any]) -> None:
         """
@@ -68,7 +78,31 @@ class TaskSystem:
         Args:
             template: A dictionary representing the template.
         """
-        pass
+        # Basic validation based on IDL preconditions
+        name = template.get("name")
+        template_type = template.get("type")
+        subtype = template.get("subtype")
+        params = template.get("params") # Check if params definition exists
+
+        if not all([name, template_type, subtype]):
+            logging.error(f"Template registration failed: Missing 'name', 'type', or 'subtype' in {template}")
+            # IDL doesn't specify error raising, just logging for now
+            return
+
+        if template_type != "atomic":
+             logging.warning(f"Registering non-atomic template type '{template_type}' via register_template. This method is intended for atomic tasks.")
+             # Allow registration but warn, as composite tasks are handled differently.
+
+        if params is None:
+             logging.warning(f"Template '{name}' registered without a 'params' attribute. Validation might fail later.")
+             # Allow registration but warn.
+
+        # TODO: Implement ensure_template_compatibility if needed
+
+        self.templates[name] = template
+        type_subtype_key = f"{template_type}:{subtype}"
+        self.template_index[type_subtype_key] = name
+        logging.info(f"Registered template: '{name}' ({type_subtype_key})")
 
     def find_template(self, identifier: str) -> Optional[Dict[str, Any]]:
         """
@@ -80,7 +114,29 @@ class TaskSystem:
         Returns:
             The template definition dictionary if found, otherwise None.
         """
-        pass
+        # Try direct name lookup first
+        if identifier in self.templates:
+            template = self.templates[identifier]
+            # Ensure it's atomic type as per IDL behavior description
+            if template.get("type") == "atomic":
+                logging.debug(f"Found template by name: '{identifier}'")
+                return template
+            else:
+                logging.debug(f"Template found by name '{identifier}' but is not atomic type.")
+                # Fall through to check type:subtype index in case of name collision
+
+        # Try type:subtype lookup
+        if identifier in self.template_index:
+            name = self.template_index[identifier]
+            if name in self.templates:
+                 template = self.templates[name]
+                 # Double check type matches (should always if index is correct)
+                 if template.get("type") == "atomic":
+                     logging.debug(f"Found template by type:subtype '{identifier}' (name: '{name}')")
+                     return template
+
+        logging.debug(f"Template not found for identifier: '{identifier}'")
+        return None
 
     def generate_context_for_memory_system(
         self, context_input: Any, global_index: Dict[str, str]  # ContextGenerationInput
@@ -95,7 +151,9 @@ class TaskSystem:
         Returns:
             An AssociativeMatchResult object.
         """
-        pass
+        # Implementation deferred to Phase 2
+        logging.warning("generate_context_for_memory_system called, but implementation is deferred.")
+        raise NotImplementedError("generate_context_for_memory_system implementation deferred to Phase 2")
 
     def resolve_file_paths(
         self,
@@ -114,4 +172,8 @@ class TaskSystem:
         Returns:
             A tuple: (list_of_file_paths, optional_error_message).
         """
-        pass
+        # Implementation deferred to Phase 2
+        logging.warning("resolve_file_paths called, but implementation is deferred.")
+        # Placeholder structure for return type hint satisfaction
+        return ([], "Implementation deferred")
+        # raise NotImplementedError("resolve_file_paths implementation deferred to Phase 2")
