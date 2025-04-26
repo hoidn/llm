@@ -26,10 +26,13 @@ module src.task_system.task_system {
 
         // Executes a single *atomic* Task System template workflow directly from a SubtaskRequest.
         // This is the primary entry point for programmatic execution of registered *atomic* tasks,
-        // typically invoked by the Dispatcher or SexpEvaluator.
+        // typically invoked by the SexpEvaluator.
         // Preconditions:
-        // - request is a valid SubtaskRequest object containing type ('atomic'), name/subtype, inputs, optional file_paths, optional context_management overrides.
-        // - env is a valid SexpEnvironment object (used for resolving potential variables *within* the request, e.g., in file paths or context queries, though direct inputs are primary).
+        // - request is a valid SubtaskRequest object containing type ('atomic'), name/subtype, and fully resolved inputs.
+        // - request.inputs MUST be a dictionary of evaluated parameter values.
+        // - request.file_paths (if present) MUST be a list of resolved file path strings.
+        // - request.context_management (if present) MUST contain resolved settings.
+        // - The caller (e.g., SexpEvaluator) is responsible for resolving any expressions within the original request before calling this method.
         // Postconditions:
         // - Returns the final TaskResult dictionary from the executed atomic template.
         // - The result's 'notes' dictionary includes 'template_used', 'context_source', and 'context_files_count'.
@@ -40,25 +43,26 @@ module src.task_system.task_system {
         // - Validates that the `request.type` is 'atomic'. Returns error if not.
         // - Identifies the target atomic template using `request.name` (preferred) or `request.type`/`request.subtype`. Returns error if not found.
         // - **Determines Context:** Resolves the final context settings and file paths using the following precedence:
-        //   1. Files from `request.file_paths` (if provided via S-expression `(files ...)` arg) OVERRIDE any `<file_paths>` in the XML template.
-        //   2. Context settings from `request.context_management` (if provided via S-expression `(context ...)` arg) OVERRIDE any `<context_management>` in the XML template.
+        //   1. Files from `request.file_paths` (if provided) OVERRIDE any `<file_paths>` in the XML template.
+        //   2. Context settings from `request.context_management` (if provided) OVERRIDE any `<context_management>` in the XML template.
         //   3. If not overridden by the request, settings from `<file_paths>` in the XML template are used.
         //   4. If not overridden by the request, settings from `<context_management>` in the XML template are used.
         //   5. If no settings are provided by request or template, system defaults for atomic tasks apply.
         // - Retrieves necessary file content (if file paths determined) via the Handler.
-        // - Retrieves fresh context via `MemorySystem.get_relevant_context_for` if the final effective context settings require it. When calling, it constructs `ContextGenerationInput` populating `templateDescription` (from template), `templateType` ('atomic'), `templateSubtype` (if any), and relevant `inputs` (from the request). It does *not* typically populate the `query` field in this case unless specifically designed to.
-        // - Creates a parameter dictionary containing the `request.inputs`.
-        // - Obtains an appropriate Handler instance (e.g., via internal factory `_get_handler`).
+        // - Retrieves fresh context via `MemorySystem.get_relevant_context_for` if the final effective context settings require it. Constructs `ContextGenerationInput` using template info and `request.inputs`.
+        // - Uses the `request.inputs` dictionary directly as the parameters for the atomic task.
+        // - Obtains an appropriate Handler instance.
         // - Instantiates the `AtomicTaskExecutor`.
-        // - Calls `atomic_task_executor.execute_body`, passing the parsed template definition, the parameter dictionary, and the handler instance.
+        // - Calls `atomic_task_executor.execute_body`, passing the parsed template definition, the `request.inputs` dictionary, and the handler instance.
+        // - The `request.inputs` dictionary is expected to contain parameter names as keys and their corresponding evaluated values as provided by the caller (typically the `SexpEvaluator` processing evaluated named arguments from an S-expression `call`).
         // - Handles TaskErrors and unexpected exceptions from the executor, returning formatted error results.
         // - Includes execution metadata (template used, final context source/count) in the result notes.
         // @raises_error(condition="INPUT_VALIDATION_FAILURE", description="Handled internally, returns FAILED TaskResult if template not found or type is not 'atomic'.")
         // @raises_error(condition="TASK_FAILURE", description="Handled internally, returns FAILED TaskResult.")
         // @raises_error(condition="UNEXPECTED_ERROR", description="Handled internally, returns FAILED TaskResult.")
-        // Expected JSON format for request.inputs: { "param1": "value1", ... }
+        // Expected JSON format for request.inputs: { "param1": "value1", ... } (Must be pre-resolved)
         // Expected JSON format for return value: TaskResult structure { "status": "string", "content": "Any", "notes": { ... } }
-        dict<string, Any> execute_atomic_template(object request, object env); // Args represent SubtaskRequest, SexpEnvironment
+        dict<string, Any> execute_atomic_template(object request); // Arg represents SubtaskRequest
 
         // Finds matching atomic task templates based on similarity to input text.
         // Preconditions:

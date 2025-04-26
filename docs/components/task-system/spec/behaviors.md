@@ -4,50 +4,40 @@ This document describes the runtime behaviors of the Task System.
 
 ## Overview
 
-The Task System is responsible for managing LLM task execution, including:
- - Template matching and management,
- - Lifecycle handling for Handlers,
- - XML processing with graceful degradation, and
- - Error detection and recovery.
+The Task System manages atomic task definitions (XML) and orchestrates the setup for their execution when requested by components like the SexpEvaluator.
 
 ## Core Behaviors
 
-### Template Management (Atomic Tasks)
-- Atomic task templates are defined in XML, stored, and validated against the schema in [Contract:Tasks:TemplateSchema:1.0].
-- The system matches natural language descriptions (e.g., from `SubtaskRequest` or S-expression `call-atomic-task`) to candidate *atomic* task templates using associative matching and scoring.
-- Only atomic task templates participate in this template matching process. Composite workflows are defined explicitly in S-expressions.
-- Templates are validated against the XML schema during loading.
+### Atomic Template Management
+- **Registration (`register_template`):** Validates atomic task XML against the schema ([Contract:Tasks:TemplateSchema:1.0]) and stores valid definitions, indexed by name and type/subtype. Ensures parameter declarations are present.
+- **Lookup (`find_template`):** Retrieves atomic task definitions by name or type/subtype.
+- **Matching (`find_matching_tasks`):** Finds relevant atomic task templates based on natural language input using similarity scoring (e.g., for user query routing).
 
-### Template Variable Substitution (Atomic Tasks)
-Template variable substitution (`{{parameter_name}}`) within an atomic task's body is handled by the AtomicTaskExecutor (invoked by the Task System). Resolution occurs exclusively against parameters explicitly declared in the template's `<inputs>` definition. The AtomicTaskExecutor receives an isolated dictionary containing only these parameters, populated from the `SubtaskRequest` inputs. Accessing variables from the calling S-expression environment implicitly is not supported and results in an error.
+### Atomic Task Execution Orchestration (`execute_atomic_template`)
+- **Invocation:** Called by `SexpEvaluator` (or potentially Dispatcher) with a `SubtaskRequest` containing resolved inputs, file paths, and context overrides. **Does not receive or use an `SexpEnvironment`.**
+- **Setup:**
+    - Finds the specified atomic template.
+    - Determines final context settings (merging request/template overrides with defaults).
+    - Fetches fresh context via `MemorySystem` if required by settings.
+    - Prepares the parameter dictionary (`params`) directly from `request.inputs`.
+    - Instantiates/configures a `Handler` with appropriate resource limits.
+    - Instantiates the `AtomicTaskExecutor`.
+- **Delegation:** Calls `AtomicTaskExecutor.execute_body(template_def, params, handler)`.
+- **Result Handling:** Receives `TaskResult`/`TaskError` from the executor, adds metadata (template used, context source), and returns it to the caller (`SexpEvaluator`).
 
-### Handler Lifecycle (for Atomic Tasks)
-- A new Handler is created for each *atomic task execution* (invoked via `execute_subtask_directly`) with an immutable configuration.
-- The Handler enforces resource limits (turn counts, context window limits) for that specific atomic task execution, as described in [Pattern:ResourceManagement:1.0].
-- Handlers receive fully resolved content (template variables substituted) for the atomic task body.
-- Each Handler maintains its own session with isolated resource tracking for the duration of the atomic task.
+### Handler Lifecycle Coordination (for Atomic Tasks)
+- The Task System ensures a properly configured `Handler` instance (potentially cached or newly created) is provided to the `AtomicTaskExecutor` for each `execute_atomic_template` call.
+- It sets the resource limits on the Handler based on the specific atomic task being executed.
 
 ### XML Processing (Atomic Tasks)
-- XML definitions for atomic tasks are parsed and validated against the schema.
-- Warnings may be generated for non-critical issues.
-- Parsing failures result in errors during template loading.
-- Flags like `manual_xml` and `disable_reparsing` control Handler behavior for the atomic task.
-- Output format validation (`output_format` element) is performed on the result of the atomic task execution.
+- **During Registration:** Parses and validates atomic task XML definitions against the schema. Errors prevent registration.
+- **During Execution Setup:** Uses the *parsed* template definition when calling `AtomicTaskExecutor`. Flags like `manual_xml` or `disable_reparsing` are part of the definition passed to the executor/handler.
+- **Output Format Validation:** The responsibility for validating the final output against `<output_format>` might lie with the TaskSystem *after* `execute_body` returns, or potentially within the `AtomicTaskExecutor` itself (TBD).
 
-## Task Execution
-
-### Atomic Task Execution
-- The Task System executes atomic tasks via the `execute_subtask_directly` method, typically called by the S-expression evaluator.
-- It finds the appropriate atomic template, resolves inputs using the provided environment, prepares context based on `<context_management>` settings, and invokes a Handler.
-- Returns a `TaskResult` (containing `content`, `status`, `notes`) or throws a `TaskError`.
-- Handles resource exhaustion errors signaled by the Handler.
-
-### S-expression Workflow Execution
-- Workflows involving multiple steps, conditionals, loops, or mapping are defined using the S-expression DSL.
-- These are invoked via a dedicated entry point (e.g., triggered by a `/task` command containing S-expressions).
-- An S-expression Evaluator component parses and executes the DSL.
-- The S-expression Evaluator calls `TaskSystem.execute_subtask_directly` to run the atomic task steps within the workflow.
-- It manages the execution flow, variable bindings, and error handling for the workflow logic.
+### S-expression Workflow Execution (Not TaskSystem)
+- Workflows are executed by the **SexpEvaluator**.
+- The SexpEvaluator calls `TaskSystem.execute_atomic_template` to run individual atomic steps.
+- TaskSystem is *not* responsible for managing S-expression control flow, environments, or error recovery *within* the workflow.
 
 ### Output Format Handling
 - Format declaration via `<output_format>` element with required `type` attribute
@@ -73,39 +63,23 @@ Template variable substitution (`{{parameter_name}}`) within an atomic task's bo
 
 ## Error Handling
 
-### Error Detection
-- Resource exhaustion detection (turns, context, output)
-- XML parsing and validation errors
-- Output format validation errors
-- Task execution failures
-- Progress monitoring
-
-### Error Response
-- Standard error type system with TaskError interface
-- Detailed error information with reason codes
-- Partial results preservation according to task type
-- Clear error messages and locations
-- Resource usage metrics in error responses
+### Error Detection & Propagation
+- **Setup Errors:** Detects errors during `execute_atomic_template` setup (e.g., template not found, context retrieval failure from MemorySystem) and returns a `TaskError`.
+- **Execution Errors:** Receives `TaskError` (e.g., `RESOURCE_EXHAUSTION`, `TASK_FAILURE` from Handler/Tool) propagated from `AtomicTaskExecutor`.
+- **Propagation:** Forwards received/generated `TaskError` objects to the caller (`SexpEvaluator`).
 
 ### Recovery Delegation
-- No automatic retry attempts within the Task System or AtomicTaskExecutor.
-- Delegates recovery logic to the calling S-expression workflow (managed by the S-expression Evaluator).
-- Provides complete error context (`TaskError`) from failed atomic tasks.
-- Includes notes for recovery guidance in the error details.
+- The Task System itself does **not** implement retry or complex recovery logic for failed atomic tasks.
+- It provides the complete `TaskError` context to the calling `SexpEvaluator`, which is responsible for handling recovery within the S-expression workflow if desired.
 
 ## Context Management
 
-### Context Management Behaviors (for Atomic Tasks)
-- Context for atomic task execution is determined by merging settings from the `SubtaskRequest` and the atomic task's XML template, with request settings taking precedence.
-- Follows the hybrid configuration approach: explicit settings override defaults based on the atomic task's `subtype`.
-- Uses the three-dimensional model (inherit_context, accumulate_data, fresh_context).
-- Supports explicit file inclusion via `<file_paths>` (template) or `file_paths` (request).
-- Default settings per atomic task subtype (refer to table in `protocols.md`):
-    * `standard`: inherit=full, fresh=disabled
-    * `subtask`: inherit=subset, fresh=enabled
-    * `director`/`evaluator`: inherit=full, fresh=disabled (Note: Director/Evaluator subtypes less relevant now)
-    * `aider_*`: inherit=subset, fresh=enabled
-- The mutual exclusivity constraint between `fresh_context` and `inherit_context` is enforced.
+### Context Management Orchestration (for Atomic Tasks)
+- **Determines Settings:** Calculates the final effective context management settings for an atomic task by merging `SubtaskRequest` overrides, template definitions, and subtype defaults (request > template > defaults).
+- **Enforces Constraints:** Validates the final settings (e.g., mutual exclusivity of `fresh_context` and `inherit_context`).
+- **Fetches Context:** Calls `MemorySystem.getRelevantContextFor` if `fresh_context` is enabled.
+- **Prepares Context:** Assembles the context information (summary, file paths) to be passed via the `AtomicTaskExecutor` to the `Handler`. (Actual file reading is done by Handler).
+- **File Path Precedence:** Uses `request.file_paths` if provided, otherwise uses template `<file_paths>`.
 
 ### File Operations
 - Memory System: Manages ONLY metadata (file paths and descriptive strings)

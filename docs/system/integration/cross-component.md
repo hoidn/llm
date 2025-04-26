@@ -113,7 +113,7 @@ sequenceDiagram
     participant ToolExecutorFunc (Python)
 
     User->>Repl: /task math:add x=1 y=2
-    Repl->>CentralDispatch: execute_programmatic_task("math:add", params)
+    Repl->>CentralDispatch: execute_programmatic_task("math:add", params, flags)
     CentralDispatch->>Handler: Lookup Direct Tool "math:add"
     Handler-->>CentralDispatch: tool_executor_func
     CentralDispatch->>ToolExecutorFunc: tool_executor_func(params)
@@ -130,199 +130,221 @@ sequenceDiagram
     participant User
     participant Repl
     participant CentralDispatch (main.py)
+    participant SexpEvaluator
     participant TaskSystem
-    participant Evaluator
-    participant Handler/LLM (if needed by subtask)
-    participant AiderBridge (if needed by subtask)
+    participant AtomicTaskExecutor
+    participant Handler/LLM
+    participant AiderBridge (if called by AtomicTaskExecutor/Handler)
 
-    User->>Repl: /task aider:automatic prompt="..."
-    Repl->>CentralDispatch: execute_programmatic_task("aider:automatic", params)
-    CentralDispatch->>TaskSystem: Lookup Subtask Template "aider:automatic"
-    CentralDispatch->>TaskSystem: execute_subtask_directly(SubtaskRequest)
-    TaskSystem->>TaskSystem: Find template "aider:automatic"
-    TaskSystem->>Evaluator: Evaluate template body
-    Evaluator->>TaskSystem: (May call sub-calls or atomic steps)
-    TaskSystem->>AiderBridge: (If template logic calls Aider)
-    AiderBridge-->>TaskSystem: Aider Result
-    TaskSystem-->>Evaluator: Step Result
-    Evaluator-->>TaskSystem: Final Subtask Result
-    TaskSystem-->>CentralDispatch: TaskResult
+    User->>Repl: /task "(call-atomic-task 'aider:automatic' (prompt \"...\"))"
+    Repl->>CentralDispatch: execute_programmatic_task("(call-atomic-task 'aider:automatic' (prompt \"...\"))", {}, flags)
+    CentralDispatch->>SexpEvaluator: evaluate_string("(call-atomic-task 'aider:automatic' (prompt \"...\"))", initial_env)
+    SexpEvaluator->>SexpEvaluator: Parse S-expression
+    SexpEvaluator->>TaskSystem: execute_atomic_template(SubtaskRequest{type='atomic', name='aider:automatic', inputs={'prompt': '...'}})
+    TaskSystem->>TaskSystem: Find template 'aider:automatic'
+    TaskSystem->>TaskSystem: Prepare context, get Handler
+    TaskSystem->>AtomicTaskExecutor: execute_body(parsed_template, inputs, handler)
+    AtomicTaskExecutor->>AtomicTaskExecutor: Substitute params {{prompt}}
+    AtomicTaskExecutor->>Handler: executePrompt(...)
+    Handler->>AiderBridge: (If tool call)
+    AiderBridge-->>Handler: Aider Result
+    Handler-->>AtomicTaskExecutor: LLM/Tool Result (TaskResult)
+    AtomicTaskExecutor-->>TaskSystem: TaskResult
+    TaskSystem-->>SexpEvaluator: TaskResult
+    SexpEvaluator->>SexpEvaluator: Format result (if needed)
+    SexpEvaluator-->>CentralDispatch: Final TaskResult
     CentralDispatch-->>Repl: TaskResult
     Repl-->>User: Display Result
 ```
-    
-## Task System ↔ Evaluator
-    
+
+## SexpEvaluator ↔ TaskSystem
+
 ### Responsibilities
-    
-**Task System:**
-- Selects and provides templates
-- Creates Handler instances
-- Manages resource limits
-- Coordinates overall execution
-    
-**Evaluator:**
-- Resolves template variables
-- Manages execution context
-- Handles function calls
-- Manages variable bindings
-    
+
+**SexpEvaluator:**
+- Parses and executes S-expression workflows.
+- Manages DSL environment (`SexpEnvironment`) and control flow.
+- Resolves arguments for atomic task calls within the S-expression.
+- Calls `TaskSystem.execute_atomic_template` for atomic steps.
+- Handles `CONTINUATION` results from atomic tasks for subtask spawning.
+
+**TaskSystem:**
+- Manages atomic task template definitions (XML).
+- Provides `find_template` to check if an identifier is an atomic task.
+- Provides `execute_atomic_template` to run a single atomic task.
+- Orchestrates setup for atomic task execution (context determination, Handler instantiation, parameter preparation).
+- Instantiates `AtomicTaskExecutor`.
+
 ### Integration Points
-    
-- Task System delegates template variable resolution to Evaluator
-- Evaluator executes the task using Handler provided by Task System
-- Task System handles template matching and selection
-- Evaluator manages execution context and variable bindings
-- For composite tasks like `director_evaluator_loop`, the Evaluator manages the internal control flow, iteratively evaluating the defined Director, Script (optional), and Evaluator sub-steps by recursively calling its own `eval` method. Script execution within the loop is delegated via evaluating a call to a Handler Direct Tool.
-    
+
+- SexpEvaluator calls `TaskSystem.find_template(identifier)` during S-expression evaluation to determine if an identifier refers to a registered atomic task.
+- SexpEvaluator calls `TaskSystem.execute_atomic_template(request)` with a fully resolved `SubtaskRequest` (inputs, paths, context settings evaluated).
+- TaskSystem returns the `TaskResult` or `TaskError` from the atomic task execution back to the SexpEvaluator.
+
 ### Data Flow
-    
+
 ```
-Task System → Provides template → Evaluator
-Evaluator → Resolves variables → Task System
-Task System → Creates Handler → Evaluator
-Evaluator → Executes through Handler → Task System
+SexpEvaluator → find_template(id) → TaskSystem
+TaskSystem → Template Found/Not Found → SexpEvaluator
+
+SexpEvaluator → execute_atomic_template(SubtaskRequest) → TaskSystem
+TaskSystem → TaskResult/TaskError → SexpEvaluator
 ```
-    
+
+## TaskSystem ↔ AtomicTaskExecutor
+
+### Responsibilities
+
+**TaskSystem:**
+- Parses and validates atomic task XML definitions.
+- Determines final context and file paths for an atomic task execution.
+- Prepares the `params` dictionary (resolved inputs) for the atomic task.
+- Instantiates the correct Handler.
+- Instantiates the AtomicTaskExecutor.
+- Calls `AtomicTaskExecutor.execute_body`.
+- Receives the final `TaskResult` from the executor.
+
+**AtomicTaskExecutor:**
+- Receives parsed atomic task definition, resolved `params`, and Handler instance.
+- Performs `{{parameter}}` substitution using **only** the provided `params`.
+- Constructs the `HandlerPayload`.
+- Calls the Handler.
+- Returns the Handler's result.
+
+### Integration Points
+
+- TaskSystem calls `AtomicTaskExecutor.execute_body(atomic_task_def, params, handler)`.
+- AtomicTaskExecutor returns `TaskResult` or throws `TaskError`.
+
+### Data Flow
+
+```
+TaskSystem → execute_body(def, params, handler) → AtomicTaskExecutor
+AtomicTaskExecutor → TaskResult/TaskError → TaskSystem
+```
+
+## AtomicTaskExecutor ↔ Handler
+
+### Responsibilities
+
+**AtomicTaskExecutor:**
+- Prepares the fully resolved prompts, system messages, context, and tool definitions.
+- Constructs the `HandlerPayload`.
+- Calls the appropriate Handler method (e.g., `executePrompt`).
+
+**Handler:**
+- Interacts with the LLM provider.
+- Executes tools (including file I/O, shell commands).
+- Enforces resource limits (turns, tokens) for this specific execution.
+- Returns the `LLMResponse` or `TaskResult` from tool execution.
+
+### Integration Points
+
+- AtomicTaskExecutor calls `Handler.executePrompt(payload)` or similar.
+- Handler returns `LLMResponse` or `TaskResult`.
+
+### Data Flow
+
+```
+AtomicTaskExecutor → executePrompt(payload) → Handler
+Handler → LLMResponse/TaskResult → AtomicTaskExecutor
+```
+
 ## Task System ↔ Memory
-    
+
 ### Responsibilities
-    
 **Task System:**
-- Uses context for task execution
-- Receives file references via associative matching
-- Delegates file access to Handler tools
-    
+- Determines when fresh context is needed for an atomic task based on effective context settings.
+- Constructs `ContextGenerationInput`.
+- Calls `MemorySystem.getRelevantContextFor`.
+- Uses the returned context (summary, file paths) when invoking the `AtomicTaskExecutor`.
+
 **Memory System:**
-- Maintains global file metadata index
-- Provides context for associative matching
-- Supplies metadata for file-based lookup
-- Does NOT store file content or perform file operations
-    
+- Maintains global file metadata index.
+- Provides context via `getRelevantContextFor` based on `ContextGenerationInput`.
+- Does NOT store file content or perform file operations.
+
 ### Integration Points
-    
-- Task System requests context via `getRelevantContextFor`
-- Memory System provides metadata and file paths
-- Task System uses Handler tools for file access
-- Memory System provides repository indexing for initial context
-- Task System uses indexed files for associative matching
-- No direct interaction with file content in Memory System
-    
+
+- Task System calls `MemorySystem.getRelevantContextFor(context_input)` when `fresh_context` is enabled for an atomic task.
+- Memory System returns `AssociativeMatchResult`.
+- Task System uses the result to prepare context for the `AtomicTaskExecutor`.
+
 ### Data Flow
-    
+
 ```
-Task System → Context request → Memory System
-Memory System → Metadata and file paths → Task System
-Task System → File paths → Handler tools
-Handler tools → File content → Task System
+Task System → getRelevantContextFor(input) → Memory System
+Memory System → AssociativeMatchResult → Task System
 ```
-    
-## Evaluator ↔ Memory
-    
-### Responsibilities
-    
-**Evaluator:**
-- Manages context for task execution
-- Uses Memory System for associative matching
-- Controls context inheritance between tasks
-    
-**Memory System:**
-- Provides context based on task description
-- Returns relevant file paths
-- Does not track resources or rank matches
-    
-### Integration Points
-    
-- Evaluator requests context based on task description
-- Memory System returns relevant context and file paths
-- Evaluator manages context flow between tasks
-- No direct file access in Memory System
-    
-### Data Flow
-    
-```
-Evaluator → Context request → Memory System
-Memory System → Context and file paths → Evaluator
-Evaluator → Context to task → Handler
-```
-    
-## Compiler ↔ Task System
-    
-### Responsibilities
-    
-**Compiler:**
-- Translates natural language to structured tasks
-- Validates task structure
-- Generates XML or AST representation
-    
-**Task System:**
-- Executes compiled tasks
-- Manages template registration
-- Coordinates resources for execution
-    
-### Integration Points
-    
-- Compiler provides structured tasks to Task System
-- Task System executes tasks using appropriate components
-- Compiler validates task structure before execution
-- Handler processes passthrough queries via subtask creation
-- Task System manages context for passthrough mode
-    
-### Data Flow
-    
-```
-Natural Language → Compiler → Structured Task
-Compiler → Structured Task → Task System
-Task System → Template Registration → TaskLibrary
-Task System → Execution → Handler and Evaluator
-```
-    
+
+## Compiler ↔ Task System / SexpEvaluator (Reduced Role)
+
+With S-expressions defining workflows, the Compiler's role might be reduced to:
+- Initial parsing of user input into a basic structure if needed.
+- Parsing and validating XML definitions for *atomic* task templates during registration (`TaskSystem.register_template`).
+
+The Compiler is less involved in the core execution flow compared to the previous AST-centric model.
+
 ## Responsibility Boundaries
-    
+
 ### File Operations
-    
-- **Memory System**: Manages ONLY file metadata (paths and descriptions)
-- **Handler**: Performs ALL file I/O operations
-- **Task System**: Coordinates file operations via Handler tools
-- **Evaluator**: Uses file content for task execution
-    
+
+- **Memory System**: Manages ONLY file metadata (paths and descriptions). Read-only.
+- **Handler**: Performs ALL file I/O operations (read, write, list, delete).
+- **Task System**: Coordinates context preparation, may pass file paths to Handler via AtomicTaskExecutor.
+- **SexpEvaluator**: May trigger file operations via Handler direct tool calls (e.g., `(system:run_script "ls")`).
+- **AtomicTaskExecutor**: Does not perform file I/O directly; relies on Handler.
+
 ### Resource Management
-    
-- **Handler**: Tracks and enforces resource limits
-- **Task System**: Configures resource limits
-- **Evaluator**: Makes decisions based on resource constraints
-- **Memory System**: No resource tracking responsibility
-    
+
+- **Handler**: Tracks and enforces resource limits (turns, tokens) **per atomic task execution**.
+- **Task System**: Configures Handler instances with appropriate limits for each atomic task.
+- **SexpEvaluator**: May have high-level limits (e.g., max execution time, max steps) for workflows. Does not track LLM tokens/turns directly.
+- **Memory System**: No resource tracking responsibility.
+- **AtomicTaskExecutor**: Operates within the limits enforced by the Handler it uses.
+
 ### Template Management
-    
-- **Task System**: Manages template registration and selection
-- **Compiler**: Validates and transforms templates
-- **Evaluator**: Resolves template variables
-- **Handler**: No template responsibilities
-    
+
+- **Task System**: Manages *atomic* task template registration (`register_template`) and lookup (`find_template`). Validates XML templates.
+- **SexpEvaluator**: Defines and executes S-expression workflows. Looks up atomic tasks via TaskSystem. May define S-expression functions.
+- **Compiler**: Validates atomic task XML schema during registration.
+- **AtomicTaskExecutor**: Executes the body of a resolved atomic task template.
+- **Handler**: No template responsibilities.
+
 ## Error Handling Across Components
-    
-### Resource Exhaustion
-    
-1. **Handler** detects resource exhaustion
-2. **Handler** returns error to **Evaluator**
-3. **Evaluator** decides on recovery strategy
-4. **Task System** receives error if recovery fails
-    
-### Context Failures
-    
-1. **Memory System** returns error for context retrieval failure
-2. **Evaluator** receives error and attempts recovery
-3. **Task System** receives error if recovery fails
-    
-### Execution Failures
-    
-1. **Handler** detects execution failure
-2. **Evaluator** receives error and decides on recovery
-3. **Task System** receives error if recovery fails
-    
+
+### Resource Exhaustion (Handler)
+
+1. **Handler** detects resource exhaustion during an atomic task execution.
+2. **Handler** returns `TaskError` (type `RESOURCE_EXHAUSTION`) to **AtomicTaskExecutor**.
+3. **AtomicTaskExecutor** propagates the error to **TaskSystem**.
+4. **TaskSystem** propagates the error to **SexpEvaluator** (or original caller).
+5. **SexpEvaluator** handles the error according to its workflow logic (e.g., terminate, retry with different params, return error).
+
+### Context Failures (Memory System)
+
+1. **Memory System** fails during `getRelevantContextFor`.
+2. **Memory System** returns error/empty result to **TaskSystem**.
+3. **TaskSystem** may attempt recovery (e.g., proceed without fresh context) or fail the atomic task setup.
+4. If setup fails, **TaskSystem** returns `TaskError` (e.g., reason `context_retrieval_failure`) to **SexpEvaluator**.
+5. **SexpEvaluator** handles the error.
+
+### Execution Failures (Atomic Task / Handler)
+
+1. **Handler** detects execution failure (e.g., LLM API error, tool execution error).
+2. **Handler** returns `TaskError` to **AtomicTaskExecutor**.
+3. **AtomicTaskExecutor** propagates error to **TaskSystem**.
+4. **TaskSystem** propagates error to **SexpEvaluator**.
+5. **SexpEvaluator** handles the error.
+
+### S-expression Evaluation Errors (SexpEvaluator)
+
+1. **SexpEvaluator** detects parsing or runtime error (e.g., unbound symbol, invalid primitive use).
+2. **SexpEvaluator** generates `TaskError` (e.g., reason `sexp_evaluation_error`).
+3. **SexpEvaluator** returns the error to its caller (e.g., Dispatcher).
+
 ## Related Documentation
-    
+
 - [Component Interfaces](../contracts/interfaces.md)
 - [Resource Management Pattern](../architecture/patterns/resource-management.md)
 - [Error Handling Pattern](../architecture/patterns/errors.md)

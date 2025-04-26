@@ -81,11 +81,11 @@ interface TaskSystem {
      * Bypasses the need for a CONTINUATION status from a Handler.
      * Primarily used for programmatic invocation (e.g., via /task command).
      *
-     * @param request - The SubtaskRequest containing type, subtype, inputs, etc.
-     * @param env - The environment for execution.
-     * @returns Promise resolving to the final TaskResult of the workflow.
+     * @param request - The SubtaskRequest containing type ('atomic'), subtype, and **resolved** inputs, file_paths, context_management.
+     * @returns Promise resolving to the final TaskResult of the atomic task execution.
+     * @throws {Error} If request type is not 'atomic' or template not found.
      */
-    execute_subtask_directly(request: SubtaskRequest, env: Environment): Promise<TaskResult>;
+    execute_atomic_template(request: SubtaskRequest): Promise<TaskResult>;
 }
 ```
 

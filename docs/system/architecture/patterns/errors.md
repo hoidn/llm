@@ -14,9 +14,10 @@ Error handling pattern for the task execution system, focusing on three key conc
 
 ### 1.2 Context
 This pattern is used by:
-- [Component:TaskSystem:1.0] for error detection
-- [Component:Evaluator:1.0] for error recovery
-- [Component:Handler:1.0] for resource monitoring
+- **SexpEvaluator**: Handles errors arising during S-expression workflow execution and errors propagated from atomic tasks it calls. May implement recovery logic within the S-expression.
+- **TaskSystem**: Detects errors during atomic task setup (template lookup, context prep). Propagates errors from AtomicTaskExecutor.
+- **AtomicTaskExecutor**: Detects parameter substitution errors. Propagates errors from Handler.
+- **Handler**: Detects resource exhaustion, LLM API errors, tool execution errors during atomic task execution.
 
 ### 1.3 Core Elements
 - Error Type System: See [Type:TaskSystem:TaskError:1.0]
@@ -158,7 +159,7 @@ function handleTaskError(error: TaskError) {
 ```
 
 ### 3.2 Planning Phase
-Error handling logic resides primarily within the S-expression Evaluator (for workflow errors) and the Task System (for atomic task errors). See [Component:SexpEvaluator:1.0] and [Component:TaskSystem:1.0].
+Error handling logic resides primarily within the **SexpEvaluator** (for workflow errors and recovery logic within S-expressions) and the components detecting the initial error (**Handler**, **AtomicTaskExecutor**, **TaskSystem**, **MemorySystem**).
 
 Based on error type and reason, the system will surface appropriate error information:
 - **Resource Exhaustion**: Complete resource metrics and context

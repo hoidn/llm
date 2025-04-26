@@ -61,22 +61,34 @@ module src.sexp_evaluator.sexp_evaluator {
         //       - `(get_context option...)`: Evaluate option values, call MemorySystem.get_relevant_context_for, return file paths.
         //     - Otherwise (general invocation `(<identifier> <arg>*)`):
         //       1. Evaluate identifier symbol to get `target_id`.
-        //       2. Initialize empty `named_args` dictionary, `context_override` dict, `files_override` list.
-        //       3. Iterate through remaining list elements (`<arg>*`):
-        //          a. If element is a list `(key value_expression)` and `key` is a symbol *not* named 'context' or 'files': Evaluate `value_expression` and store result in `named_args[key_symbol]`.
-        //          b. If element is a list `(context ...)`: Parse the inner pairs (e.g., `(inherit_context none)`) and store in `context_override`.
-        //          c. If element is a list `(files ...)`: Evaluate the inner expression (should yield a list of strings) and store in `files_override`.
-        //          d. Else (assume positional arg - **Note: Discouraged for task/tool calls**): Evaluate the element and add to a `positional_args` list (use with caution).
-        //       4. Look up `target_id` in `Handler.tool_executors` then `TaskSystem.find_template` (atomic only).
-        //       5. If Direct Tool: Call executor function, passing `named_args` (potentially merging with positional args based on tool signature - requires convention).
-        //       6. If Atomic Template: Construct `SubtaskRequest`, populating `inputs` from `named_args`, `context_management` from `context_override`, `file_paths` from `files_override`. Call `TaskSystem.execute_atomic_template(request, env)`.
-        //       7. Return result.
+        //       2. Initialize empty dictionary `resolved_named_args = {}`.
+        //       3. Initialize `resolved_files = None`, `resolved_context_settings = None`.
+        //       4. Iterate through remaining list elements (`<arg>*`) after the identifier:
+        //          a. If element is a list `(key value_expression)` and `key` is a symbol:
+        //             i.   Evaluate `value_expression` recursively using `eval(value_expression, env)`. Let the result be `evaluated_value`.
+        //             ii.  Get the string name of the `key` symbol (e.g., "arg1"). Let this be `arg_name`.
+        //             iii. If `arg_name` is "files": Set `resolved_files = evaluated_value` (ensure it's a list of strings).
+        //             iv.  Else if `arg_name` is "context": Set `resolved_context_settings = evaluated_value` (ensure it's a dictionary matching context settings).
+        //             v.   Else (regular named argument): Store `resolved_named_args[arg_name] = evaluated_value`.
+        //          b. Else (treat as positional argument - **Note: Discouraged for task/tool calls**): Evaluate the element and add to a temporary list (handle with care or disallow for task/tool calls).
+        //       5. Look up `target_id` in `Handler.tool_executors` then `TaskSystem.find_template` (atomic only).
+        //       6. If Direct Tool: Call executor function, passing `resolved_named_args` (potentially merging with positional args based on tool signature - requires convention).
+        //       7. If Atomic Template:
+        //          a. Construct the `SubtaskRequest` object.
+        //          b. Set `request.inputs = resolved_named_args`.
+        //          c. Set `request.file_paths = resolved_files` if it's not None.
+        //          d. Set `request.context_management = resolved_context_settings` if it's not None.
+        //          e. Call `TaskSystem.execute_atomic_template(request)`.
+        //       8. Return result.
         // @raises_error(...) // Various evaluation errors
         // Any _eval(Any node, object env); // Arg represents SexpEnvironment
     };
 
     // Interface for the S-expression evaluation environment.
-    // Manages variable bindings *exclusively* for the duration of an S-expression evaluation. It is distinct from the core Environment potentially used by the AtomicTaskExecutor.
+    // **Note:** This environment is used *exclusively* for managing lexical scope
+    // (variable bindings like `let`/`bind`) during the evaluation of S-expressions
+    // by the SexpEvaluator. It is distinct from the simple parameter dictionary
+    // used for substitution within atomic task bodies by the AtomicTaskExecutor.
     // Manages variable bindings during S-expression evaluation.
     interface SexpEnvironment {
         // Constructor: Creates a new environment.

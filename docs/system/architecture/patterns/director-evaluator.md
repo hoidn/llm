@@ -4,45 +4,42 @@
 
 ## Overview
 
-The Director-Evaluator pattern is a specialized task execution model for iterative refinement, primarily implemented as a composite task type `director_evaluator_loop` that is directly executed by the Evaluator component. This pattern enables structured iteration with feedback between steps.
+The Director-Evaluator pattern is a specialized task execution model for iterative refinement, implemented using the S-expression DSL. It structures the flow between a 'director' step (generating content) and an 'evaluator' step (assessing content), both typically executed as atomic tasks called from the S-expression. This pattern enables structured iteration with feedback between steps.
 
-The pattern is primarily implemented using the S-expression DSL, leveraging its control flow and binding primitives.
+1.  **S-expression Implementation (Primary)**: A workflow defined using S-expressions structures the iterative loop. It uses primitives like `bind` or `let` to pass data between the director atomic task call and the evaluator atomic task call (or other S-expression logic). Conditionals (`if`) and potentially recursion or a dedicated `loop` primitive manage the iteration and termination. Script execution for validation can be integrated by calling a `system:run_script` primitive within the loop.
 
-1.  **S-expression Implementation (Primary)**: A workflow defined using S-expressions that structures the iterative loop. It uses primitives like `bind` or `let` to pass data between a 'director' step (often an atomic task call) and an 'evaluator' step (another atomic task call or S-expression logic). Conditionals (`if`) and potentially recursion or a dedicated `loop` primitive manage the iteration and termination. Script execution is integrated by calling a `system:run_script` primitive within the loop.
+2.  **Dynamic Variant (via Subtask Spawning)**: A Director atomic task can still potentially trigger an evaluation step dynamically by returning a `CONTINUATION` status with a `subtask_request` in its `notes`. This uses the standard subtask spawning mechanism, where the `SexpEvaluator` handles the invocation of the evaluation subtask (another atomic task).
 
-2.  **Dynamic Variant (via Subtask Spawning)**: A Director task (typically an atomic task) can still potentially trigger an evaluation step dynamically by returning a `CONTINUATION` status with a `subtask_request` (previously `evaluation_request`) in its `notes`. This uses the standard subtask spawning mechanism, where the Task System/S-expression Evaluator handles the invocation of the evaluation subtask.
-
-**Note:** For the dynamic variant, the `evaluation_request` object must include:
- - `type`: a string indicating the evaluation type,
- - `criteria`: a free-form string providing descriptive criteria used for dynamic evaluation template selection via associative matching,
- - `target`: a string representing the target (for example, the bash script command to run or the evaluation focus).
+**Note:** For the dynamic variant, the `subtask_request` object should contain the necessary information (type, description, inputs) for the `SexpEvaluator` to select and execute the appropriate evaluation atomic task template via the `TaskSystem`.
 
 ## Pattern Description
 
-### Dynamic Variant
+### Dynamic Variant (via Subtask Spawning)
 
-This pattern follows a three-phase flow:
+This pattern follows a flow managed by the `SexpEvaluator`:
 
-1. **Parent Task (Director):**
-   - Generates an initial output based on the user's instructions.
-   - May return a result with `status: 'CONTINUATION'` and a populated `evaluation_request` in its `notes`.
-   - Uses a `<context_management>` block with `inherit_context` set to `none` to start a new execution chain.
+1. **Director Atomic Task Execution:**
+   - The S-expression calls the Director atomic task via `TaskSystem.execute_atomic_template`.
+   - The Director task generates output.
+   - It returns a `TaskResult` with `status: 'CONTINUATION'` and a populated `subtask_request` in its `notes`, specifying the evaluation task to run next.
 
 2. **Evaluation Trigger via Continuation:**
-   - The evaluation step is triggered dynamically when the Director task returns a `CONTINUATION` status.
-   - The embedded `evaluation_request` specifies both:
-       - The **bash script** (or external callback mechanism) to execute, and
-       - The **target** string that describes the aspects of the output requiring evaluation.
-   - The Evaluator uses this information—with associative matching—to select an appropriate evaluation task template.
+   - The `SexpEvaluator` receives the `CONTINUATION` result.
+   - It extracts the `subtask_request` for the evaluation task.
+   - It calls `TaskSystem.execute_atomic_template` again, passing the evaluation `subtask_request`.
 
-3. **Child Task (Evaluator):**
-   - Is dynamically spawned by the Evaluator when it detects a `CONTINUATION` status along with an `evaluation_request` in the Director's output.
-   - Uses a `<context_management>` block with `inherit_context` set to `subset` and `accumulate_data` enabled to incorporate only the relevant context.
-   - Executes the evaluation subtask—which may include invoking the specified bash script via the Handler or Evaluator—and feeds its results back to the parent task.
+3. **Evaluator Atomic Task Execution:**
+   - The TaskSystem/AtomicTaskExecutor runs the evaluation task.
+   - This task might involve calling external scripts via Handler tools (invoked by the AtomicTaskExecutor based on the evaluator template's instructions).
+   - The evaluation task returns its `TaskResult` (e.g., with success status and feedback in `notes`).
+
+4. **Result Propagation:**
+   - The `SexpEvaluator` receives the evaluation result.
+   - The S-expression logic determines whether to loop (calling the Director again with feedback) or terminate based on the evaluation result.
 
 ### S-expression Implementation Example (Conceptual)
 
-The Director-Evaluator loop is now implemented within the S-expression DSL. Below is a *conceptual* example illustrating the structure. The exact primitives (`loop`, `bind`, `get-property`, `call-atomic-task`, `system:run_script`) depend on the final DSL specification.
+The Director-Evaluator loop is implemented within the S-expression DSL. Below is a *conceptual* example illustrating the structure. The exact primitives (`loop`, `bind`, `get-property`, `call-atomic-task`, `system:run_script`) depend on the final DSL specification.
 
 ```scheme
 ;; Conceptual S-expression Director-Evaluator Loop
@@ -74,16 +71,33 @@ The Director-Evaluator loop is now implemented within the S-expression DSL. Belo
 
 This S-expression defines the iterative flow, calls atomic tasks (defined in XML) for the director and evaluator steps, optionally runs a script, manages state (iteration count, feedback), and handles termination logic.
 
-### Parameter Passing
+### Parameter Passing (S-expression)
 
-The Director-Evaluator loop uses direct parameter passing rather than environment variables:
+Data (like the director's output or evaluator's feedback) is passed between steps within the S-expression using binding primitives (`bind`, `let`) managed by the `SexpEvaluator` and its `SexpEnvironment`. Atomic tasks receive their inputs via the `SubtaskRequest.inputs` dictionary when called by the `SexpEvaluator`.
 
 ```mermaid
-flowchart LR
-    A[Parent Task] -->|"TaskResult{status:CONTINUATION,\n notes:{subtask_request}}"| B[Task System]
-    B -->|"Template Selection\n& Direct Input Passing"| C[Subtask]
-    C -->|"TaskResult"| D[Task System]
-    D -->|"Resume with\n{subtask_result:TaskResult}"| A
+sequenceDiagram
+    participant SexpEval as SexpEvaluator
+    participant TaskSys as TaskSystem
+    participant DirectorExecutor as AtomicTaskExecutor (Director)
+    participant EvaluatorExecutor as AtomicTaskExecutor (Evaluator)
+    participant Handler
+
+    SexpEval->>TaskSys: execute_atomic_template(Director Request)
+    TaskSys->>DirectorExecutor: execute_body(Director Def, Inputs, Handler)
+    DirectorExecutor->>Handler: executePrompt(...)
+    Handler-->>DirectorExecutor: Director Output (TaskResult)
+    DirectorExecutor-->>TaskSys: Director TaskResult
+    TaskSys-->>SexpEval: Director TaskResult
+    SexpEval->>SexpEval: Bind director_output = TaskResult.content
+    SexpEval->>TaskSys: execute_atomic_template(Evaluator Request w/ director_output)
+    TaskSys->>EvaluatorExecutor: execute_body(Evaluator Def, Inputs, Handler)
+    EvaluatorExecutor->>Handler: executePrompt(...)
+    Handler-->>EvaluatorExecutor: Evaluator Output (TaskResult)
+    EvaluatorExecutor-->>TaskSys: Evaluator TaskResult
+    TaskSys-->>SexpEval: Evaluator TaskResult
+    SexpEval->>SexpEval: Bind feedback = TaskResult.notes.feedback
+    SexpEval->>SexpEval: Check loop condition...
 ```
 
 ### Result Structure
@@ -149,82 +163,54 @@ Upon receiving this result, the Evaluator:
 
 ### Context Management in S-expression Implementation
 
-Context management for the atomic tasks called within the S-expression loop follows the standard rules:
-- Each `call-atomic-task` invocation can specify context overrides via a `SubtaskRequest`-like structure or rely on the defaults defined in the atomic task's XML template.
-- The S-expression workflow itself manages the flow of data (like `feedback` or `director_result`) between steps using binding primitives, not the `<context_management>` settings which apply to individual atomic task executions.
-- The overall S-expression execution might have its own initial context, potentially inherited from the user's session or the initial `/task` invocation. Primitives like `get-context` might be available within the DSL to explicitly fetch fresh context if needed during the workflow.
+Context management applies to the individual *atomic tasks* (Director, Evaluator) called within the S-expression loop:
+- When the `SexpEvaluator` calls `TaskSystem.execute_atomic_template`, the TaskSystem determines the context for that specific atomic task execution based on the `SubtaskRequest` overrides and the template's `<context_management>` definition, following the standard hybrid configuration approach.
+- The S-expression workflow itself manages the flow of *data* (like `feedback` or `director_result`) between steps using binding primitives within the `SexpEnvironment`. It does not directly use `<context_management>` settings.
+- The overall S-expression execution might have an initial context. Primitives like `(get-context ...)` might be available within the DSL for the S-expression logic to explicitly fetch fresh context if needed during the workflow, which could then be passed as input or file paths to subsequent atomic task calls.
 
-The hybrid configuration approach (operator defaults + explicit overrides) applies to the *atomic tasks* invoked by the S-expression, not the loop structure itself. The defaults relevant are those for `atomic (standard)` or `atomic (subtask)` depending on how the calls are made.
+### Script Execution Integration (via Primitives or Atomic Tasks)
 
-- **Inherited Context**: The parent task's context, controlled by `inherit_context` setting.
-- **Accumulated Data**: The step-by-step outputs collected during sequential execution, controlled by `accumulate_data` setting.
-- **Fresh Context**: New context generated via associative matching, controlled by `fresh_context` setting.
+Script execution can be integrated in two main ways:
 
-When the context_management block is omitted, the operator-specific defaults apply. When present, explicit settings override the defaults, providing both consistency and flexibility.
+1.  **Via S-expression Primitive:**
+    *   The S-expression calls a primitive like `(system:run_script path [options...])`.
+    *   The primitive's implementation likely calls the Handler's direct tool for shell execution.
+    *   The Handler runs the script and returns results (stdout, stderr, exit code) to the primitive.
+    *   The primitive returns the results to the S-expression evaluator, where they can be bound to variables.
 
-### Script Execution Integration
+2.  **Via Atomic Task:**
+    *   The S-expression calls an atomic task specifically designed for script execution (e.g., `atomic:script_runner`).
+    *   The `AtomicTaskExecutor` executes this template.
+    *   The template's instructions likely involve a tool call for the Handler to execute the script.
+    *   The script results are returned within the `TaskResult` of the atomic task.
 
-Script execution is integrated into the S-expression workflow by calling a dedicated primitive, for example `(system:run_script path [options...])`.
-
-The execution flow works as follows:
-
-1.  The S-expression evaluator encounters the `system:run_script` form during execution.
-2.  It invokes the corresponding primitive implementation.
-3.  This primitive likely calls the Handler's direct tool execution mechanism for running shell commands.
-4.  The Handler executes the script, capturing stdout, stderr, and the exit code.
-5.  The Handler returns the script results (as a structured object or TaskResult) back to the S-expression primitive.
-6.  The primitive returns this result to the S-expression evaluator.
-7.  The result can then be bound to a variable (e.g., `script_result` in the example) using `bind` or `let` and used in subsequent steps within the S-expression workflow (like passing it to the evaluator task).
-
-This maintains separation: the S-expression evaluator controls the workflow, while the Handler executes the external process. Script execution is typically synchronous within the S-expression evaluation step.
+This maintains separation: the S-expression evaluator controls the workflow, while the Handler (invoked either directly via a primitive or indirectly via an atomic task's tool call) executes the external process.
 
 ### Data Flow Between Steps (S-expression)
 
-Data flow between steps (Director, Script, Evaluator) within an S-expression loop iteration, and the passing of feedback to the next iteration, is managed explicitly via the S-expression evaluator's environment and binding primitives (`bind`, `let`, function arguments/return values, `recur` arguments).
+Data flow between steps (Director atomic task, Script execution, Evaluator atomic task) within an S-expression loop iteration, and the passing of feedback to the next iteration, is managed explicitly via the `SexpEvaluator`'s `SexpEnvironment` and binding primitives (`bind`, `let`, function arguments/return values, `recur` arguments).
 
-The S-expression evaluator manages the environment scope:
+The `SexpEvaluator` manages the environment scope:
 
-1. **Initial Environment**: Contains the original inputs to the loop task
-2. **Director Step**: Extends the environment with iteration number and any feedback from previous iterations
-3. **After Director**: Extends the environment with `director_result` containing the Director's output
-4. **After Script Execution**: Extends the environment with `script_stdout`, `script_stderr`, and `script_exit_code`
-5. **Evaluator Step**: Receives the complete environment with all previous outputs
-6. **Next Iteration**: The Director receives feedback from the Evaluator via `evaluation_feedback` and `evaluation_success` bindings
+1.  **Initial Environment**: Contains the original inputs to the loop task.
+2.  **Director Call**: Arguments (like iteration number, feedback) are passed via the `SubtaskRequest.inputs` when calling the Director atomic task.
+3.  **After Director**: The `TaskResult` from the Director task is returned to the S-expression. Its content/notes can be bound to variables (e.g., `director_output`).
+4.  **Script Call**: Inputs for the script are passed as arguments to the `system:run_script` primitive or the script-running atomic task.
+5.  **After Script Execution**: Script results (stdout, stderr, exit code) are returned and can be bound to variables.
+6.  **Evaluator Call**: Arguments (like `director_output`, script results) are passed via `SubtaskRequest.inputs` when calling the Evaluator atomic task.
+7.  **After Evaluator**: The `TaskResult` from the Evaluator task is returned. Feedback/success status from its `notes` can be bound to variables.
+8.  **Next Iteration**: Bound variables (like feedback) are used when constructing the arguments for the next call to the Director atomic task.
 
-This explicit environment extension ensures clean data flow between steps and iterations without relying on global state or side effects.
+This explicit binding ensures clean data flow between steps and iterations.
 
 ## Relationship to Subtask Spawning
 
-The S-expression based Director-Evaluator pattern and the Subtask Spawning mechanism are complementary:
+The S-expression based Director-Evaluator pattern and the Subtask Spawning mechanism (handling `CONTINUATION` from atomic tasks) are integrated:
 
-### Integration Points
-
-1. **Dynamic Evaluation Trigger**
-   - The dynamic variant (where a Director task returns `CONTINUATION` with a `subtask_request` for evaluation) *is* an instance of the subtask spawning mechanism.
-   - The S-expression evaluator (or Task System if called directly) handles the subtask creation and execution based on the `subtask_request`.
-   - Results flow back to the calling context using the standard subtask result passing.
-
-2. **Context Management Alignment**
-   - Both patterns ultimately involve executing *atomic tasks*. The context management for these atomic tasks follows the hybrid configuration approach (defaults based on atomic task subtype + explicit overrides in the XML template or `SubtaskRequest`).
-   - The S-expression loop itself doesn't have `<context_management>` settings; context for steps within the loop is managed via the S-expression environment and explicit calls (e.g., `(get-context ...)` or context settings passed to `call-atomic-task`).
-   - Subtasks spawned dynamically follow the standard subtask context defaults (`inherit_context: subset`, `fresh_context: enabled`) unless overridden in the `SubtaskRequest`.
-
-### Pattern Selection Guide
-
-**S-expression based Director-Evaluator** is optimal for:
-- Implementing iterative refinement processes requiring multiple feedback cycles within the DSL.
-- Workflows needing external validation via scripts called using `system:run_script`.
-- Scenarios where evaluation criteria and termination conditions can be expressed using S-expression logic.
-- Cases where iteration history needs to be managed explicitly within the S-expression environment (e.g., accumulating results in a list).
-
-**Subtask Spawning** is better for:
-- Ad-hoc dynamic task creation based on runtime discoveries
-- Complex task trees with varying subtypes and unpredictable branching
-- Workflows requiring specialized template selection per subtask
-- Situations where flexibility in execution path is more important than iteration structure
-
-The patterns can be used together, with S-expression workflows (including Director-Evaluator implementations) spawning subtasks dynamically when needed for specialized processing.
+1.  **Dynamic Evaluation Trigger:** The "dynamic variant" described earlier *is* the subtask spawning mechanism applied within a Director-Evaluator context. The Director atomic task returns `CONTINUATION`, and the `SexpEvaluator` handles spawning the Evaluator subtask.
+2.  **Context Management Alignment:** Both the explicitly called atomic tasks (Director, Evaluator) within the S-expression loop and any dynamically spawned subtasks follow the standard context management rules for atomic tasks (hybrid configuration: subtype defaults + overrides from template/`SubtaskRequest`).
+3.  **Flexibility:** An S-expression workflow (including a Director-Evaluator loop) can use *both* explicit calls (`call-atomic-task`) and handle `CONTINUATION` results to dynamically spawn subtasks as needed.
 
 ## Conclusion
 
-The Director-Evaluator pattern, implemented via S-expressions, provides a structured approach to iterative refinement. It uses explicit binding for clean data flow and integrates with the standard mechanisms for atomic task execution and context management. This approach ensures flexibility and seamless integration within the overall task execution architecture.
+The Director-Evaluator pattern, implemented via S-expressions calling atomic tasks, provides a structured approach to iterative refinement. It uses explicit binding within the `SexpEnvironment` for clean data flow and integrates seamlessly with the standard mechanisms for atomic task execution (via `TaskSystem` and `AtomicTaskExecutor`), context management, and dynamic subtask spawning (managed by the `SexpEvaluator`).

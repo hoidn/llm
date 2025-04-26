@@ -2,101 +2,95 @@
 
 ## Overview
 
-The Task System orchestrates LLM task execution through structured XML templates and handlers. Task definitions are based on function-style templates, which explicitly declare their required input parameters. It provides resource tracking and an XML-based interface with the LLM.
+The Task System manages *atomic* task definitions (XML templates) and orchestrates their execution setup. It acts as an intermediary between the `SexpEvaluator` (which handles workflows) and the `AtomicTaskExecutor` (which executes the core task body).
 
 ## Core Responsibilities
 
-1. **Task Execution**
-   - Process task requests
-   - Manage task execution flow
-   - Handle task delegation and composition
+1.  **Atomic Template Management:**
+    *   Register (`register_template`) and validate XML definitions for *atomic* tasks.
+    *   Provide lookup (`find_template`) for atomic task templates by name or type/subtype.
+    *   Support function-style templates with explicit parameter declarations.
 
-2. **Template Management**
-   - Register and validate templates
-   - Support function-based templates
-   - Enable template matching and selection
+2.  **Atomic Task Execution Orchestration:**
+    *   Provide the `execute_atomic_template` interface for programmatic invocation (primarily by `SexpEvaluator`).
+    *   Determine context settings (merging request/template definitions).
+    *   Prepare input parameters dictionary for the `AtomicTaskExecutor`.
+    *   Interface with the `MemorySystem` to fetch context if needed.
+    *   Instantiate and configure `Handler` instances for atomic task execution.
+    *   Instantiate and invoke the `AtomicTaskExecutor`.
 
-3. **Resource Coordination**
-   - Coordinate resource tracking with Handler
-   - Manage subtask spawning and nesting
-   - Handle context management across tasks
-   - Executes specific, registered template workflows programmatically when invoked directly (e.g., via `execute_subtask_directly`).
+3.  **Resource Coordination:**
+    *   Configure Handlers with appropriate resource limits for atomic task execution.
+
+*(Note: The Task System no longer directly executes composite tasks or manages complex execution flows like loops; this is handled by the SexpEvaluator.)*
 
 ## Process Visualization
 
-### Task Execution Workflow
-The following diagram illustrates the typical task execution flow:
-
-```mermaid
-flowchart LR
-    A[Task Request] --> B[Template Selection]
-    B --> C[Resource Allocation]
-    C --> D[Context Resolution]
-    D --> E[Handler Creation]
-    E --> F[Task Execution]
-    F --> G[Result Processing]
-    
-    style A fill:#f9f,stroke:#333
-    style F fill:#bbf,stroke:#333
-    style G fill:#bfb,stroke:#333
-```
-
-The Task System manages the complete lifecycle from initial request through template selection, resource allocation, and execution via the Handler. It also supports direct execution of registered workflows.
-
-### Component Integration
-The Task System interacts with other components during execution:
+### Atomic Task Execution Flow (TaskSystem Role)
+The following diagram illustrates the Task System's role when executing an atomic task requested by the SexpEvaluator:
 
 ```mermaid
 sequenceDiagram
-    participant User
+    participant SexpEval as SexpEvaluator
     participant TS as Task System
     participant MS as Memory System
-    participant EV as Evaluator
+    participant ATE as AtomicTaskExecutor
     participant HD as Handler
-    
-    User->>TS: Execute Task
-    TS->>MS: Get Relevant Context
-    MS-->>TS: Return Context
-    TS->>EV: Process Template
-    EV->>HD: Execute with LLM
-    HD-->>EV: Return Result
-    EV-->>TS: Return Processed Result
-    TS-->>User: Return Task Result
+
+    SexpEval->>TS: execute_atomic_template(Request)
+    TS->>TS: Find Template(Request.name)
+    TS->>TS: Determine Context Settings (Request + Template)
+    alt Fresh Context Needed
+        TS->>MS: getRelevantContextFor(...)
+        MS-->>TS: Context Result
+    end
+    TS->>TS: Prepare Params Dict (Request.inputs)
+    TS->>TS: Get/Create Handler Instance (with limits)
+    TS->>ATE: execute_body(TemplateDef, Params, Handler)
+    ATE->>HD: executePrompt(...)
+    HD-->>ATE: TaskResult/Error
+    ATE-->>TS: TaskResult/Error
+    TS-->>SexpEval: TaskResult/Error
 ```
 
-This sequence shows how the Task System coordinates between components to fulfill execution requests while maintaining clear responsibility boundaries.
+The Task System finds the template, prepares context and parameters, gets a Handler, and invokes the AtomicTaskExecutor to run the core task logic.
 
-## Programmatic Task Execution
+## Programmatic Atomic Task Execution
 
-The TaskSystem provides the `execute_subtask_directly` method for programmatic task execution:
+The TaskSystem provides the `execute_atomic_template` method for programmatic execution of *atomic* tasks:
 
 ```python
-def execute_subtask_directly(self, request: SubtaskRequest) -> TaskResult:
+# Simplified signature - see IDL for full details
+def execute_atomic_template(self, request: SubtaskRequest) -> TaskResult:
     """
-    Executes a Task System template workflow directly from a SubtaskRequest.
+    Executes a single atomic Task System template directly from a SubtaskRequest.
+    The caller (e.g., SexpEvaluator) must provide resolved inputs in the request.
 
     Args:
-        request: The SubtaskRequest defining the task to run.
+        request: The SubtaskRequest defining the atomic task to run. Must have type='atomic'.
 
     Returns:
-        The final TaskResult of the workflow.
+        The final TaskResult of the atomic task execution.
     """
+    # 1. Find atomic template based on request.name/subtype
+    # 2. Determine final context settings (merge request/template)
+    # 3. Fetch context from MemorySystem if fresh_context enabled
+    # 4. Prepare parameter dictionary from request.inputs
+    # 5. Get Handler instance
+    # 6. Instantiate AtomicTaskExecutor
+    # 7. Call atomicTaskExecutor.execute_body(template_def, params, handler)
+    # 8. Return result/error
+    ...
 ```
 
-This method is used by the Dispatcher to execute tasks programmatically via the `/task` command. It handles:
-
-1. Template lookup based on the task identifier
-2. Context determination (explicit, template-defined, or automatic)
-3. Environment setup for task execution
-4. Task execution via the appropriate handler
-5. Result formatting and error handling
+This method is the primary way the `SexpEvaluator` invokes atomic steps within a larger workflow. It handles the setup and delegation to the `AtomicTaskExecutor`.
 
 The context determination follows a precedence order:
-1. Explicit file paths in the request
-2. Template-defined file paths
-3. Automatic context lookup via MemorySystem (if enabled)
-
-For more details on programmatic task execution, see the [Programmatic Task Examples](../task_system/impl/examples/programmatic_task.md).
+1. Explicit `request.file_paths` override template `<file_paths>`.
+2. Explicit `request.context_management` overrides template `<context_management>`.
+3. Template settings are used if not overridden.
+4. System defaults apply if no settings are specified.
+5. Automatic context lookup via MemorySystem occurs if the final `fresh_context` setting is enabled.
 
 ## Key Interfaces
 
@@ -106,14 +100,14 @@ For detailed interface specifications, see:
 
 ## Integration Points
 
-- **Memory System**: Used for context retrieval via [Interface:Memory:3.0]
-- **Handler**: Used for LLM interactions and resource enforcement
-- **Evaluator**: Used for task execution and error recovery
-- **Compiler**: Used for task parsing and transformation
-- **Dispatcher**: Used for programmatic task routing
+- **SexpEvaluator**: Calls `execute_atomic_template` to run atomic steps.
+- **AtomicTaskExecutor**: Invoked by TaskSystem (`execute_body`) to run the core atomic task logic.
+- **Memory System**: Used for context retrieval (`getRelevantContextFor`) via [Interface:Memory:3.0].
+- **Handler**: Instantiated and configured by TaskSystem for atomic task execution.
+- **Compiler**: Used implicitly during template registration (`register_template`) for XML validation.
 
 ## Architecture
 
-The system manages task execution through isolated Handler instances, with one Handler per task to enforce resource limits and manage LLM interactions. Task definitions use an XML-based template system that supports both manual and LLM-generated structures.
+The Task System acts as the manager and orchestrator for *atomic* tasks. It holds the definitions and handles the setup (context, parameters, Handler) before delegating the core execution of the task body to the `AtomicTaskExecutor`. Workflow logic is handled externally by the `SexpEvaluator`.
 
-For system-wide contracts, see [Contract:Integration:TaskSystem:1.0] in `/system/contracts/interfaces.md`.
+For system-wide contracts potentially involving TaskSystem, see [Contract:Integration:TaskSystem:1.0] in `/system/contracts/interfaces.md` (Review needed).

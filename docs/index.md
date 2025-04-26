@@ -10,19 +10,21 @@ This document provides the main entry point to all system documentation.
 ## Component Documentation
     
 - [Component Index](./components/index.md) - Index of all system components
-- [Task System](./components/task-system/README.md) - Task execution and management
-- [Memory System](./components/memory/README.md) - Context management and retrieval
-- [Evaluator](./components/evaluator/README.md) - Task execution and variable resolution
-- [Compiler](./components/compiler/README.md) - Natural language to structured task translation
-    
+- [Task System](./components/task-system/README.md) - Atomic task management & orchestration.
+- [SexpEvaluator](/src/sexp_evaluator/sexp_evaluator_IDL.md) - S-expression workflow execution.
+- [AtomicTaskExecutor](./components/atomic_executor/README.md) - Atomic task body execution.
+- [Memory System](./components/memory/README.md) - Context management and retrieval.
+- [Handler](./components/handler/README.md) - LLM interaction, tools, file I/O.
+- [Compiler](./components/compiler/README.md) - Initial parsing (if applicable).
+
 ## Architecture Patterns
-    
+
 - [Pattern Index](./system/architecture/patterns/index.md) - Index of all architectural patterns
-- [Director-Evaluator Pattern](./system/architecture/patterns/director-evaluator.md) - Iterative refinement pattern
-- [Error Handling Pattern](./system/architecture/patterns/errors.md) - Error detection and recovery
-- [Context Frame Pattern](./system/architecture/patterns/context-frames.md) - Context management model
-- [Resource Management Pattern](./system/architecture/patterns/resource-management.md) - Resource tracking and limits
-- [Tool Interface Pattern](./system/architecture/patterns/tool-interface.md) - Unified tool interface with different implementations
+- [Director-Evaluator Pattern](./system/architecture/patterns/director-evaluator.md) - Iterative refinement (via S-expressions).
+- [Error Handling Pattern](./system/architecture/patterns/errors.md) - Error detection and recovery.
+- [Context Frame Pattern](./system/architecture/patterns/context-frames.md) - Context management model.
+- [Resource Management Pattern](./system/architecture/patterns/resource-management.md) - Resource tracking (Handler-centric).
+- [Tool Interface Pattern](./system/architecture/patterns/tool-interface.md) - Unified tool interface (Direct vs Sexp/Subtask).
     
 ## Architecture Decisions
     

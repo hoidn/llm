@@ -27,7 +27,7 @@ flowchart TD
 
 This document provides a high‑level overview of the system architecture. Detailed technical discussions have been moved into canonical files in the sub‑folders:
 
-- **Patterns:** Core patterns such as Director‑Evaluator, Error Handling, and Resource Management (see files under `system/architecture/patterns/`).
+- **Patterns:** Core patterns such as Director‑Evaluator (implemented via S-expressions), Error Handling, and Resource Management (see files under `system/architecture/patterns/`).
 – **Decisions (ADRs):** Architecture Decision Records on topics such as context management and memory system design (see `system/architecture/decisions/`).
 – **Q&A and Open Questions:** Clarifications and unresolved issues (see `system/architecture/qa/` and `system/architecture/questions.md`).
 
@@ -79,7 +79,7 @@ For full technical details on any topic, please refer to the canonical file list
 
 ### Director-Evaluator Pattern [Pattern:DirectorEvaluator:1.1]
 
-The system implements a standardized mechanism for iterative refinement, primarily achieved using S-expression DSL primitives (like `bind`, `if`, potentially loops or recursion) to structure the flow between generation (Director) and evaluation (Evaluator) steps. This pattern enables:
+The system implements a standardized mechanism for iterative refinement, primarily achieved using S-expression DSL primitives (like `bind`, `if`, potentially loops or recursion) to structure the flow between generation (Director) and evaluation (Evaluator) steps executed as atomic tasks called from the S-expression. This pattern enables:
 
 - Iterative improvement through feedback loops
 - Optional integration with script execution (called via S-expression primitives)
@@ -168,65 +168,61 @@ What the LLM sees and interacts with:
 ### Implementation Mechanisms
 
 1. **Direct Tool Implementation**
-   - Used for external interactions (files, APIs, scripts)
-   - No continuation mechanism or complex context management
-   - Executed directly by the Handler component
+   - Used for external interactions (files, APIs, scripts).
+   - No continuation mechanism or complex context management.
+   - Executed directly by the Handler component when invoked via Dispatcher.
 
-2. **Subtask Tool Implementation**
-   - Involve Memory System for context management
-   - Use SubtaskRequest structure and CONTINUATION status
-   - Follow the context management model defined in ADR 14
+2. **Subtask Tool Implementation (via S-expression)**
+   - Atomic tasks called from S-expressions can return `CONTINUATION`.
+   - The `SexpEvaluator` handles the `CONTINUATION` status, validating the `SubtaskRequest` and calling `TaskSystem.execute_atomic_template` for the subtask.
+   - Context management follows standard rules for the spawned atomic task.
 
 See [Pattern:ToolInterface:1.0] for a detailed explanation of this unified approach.
 
 ## Component Architecture
 
-The system consists of four core components working together to process, execute, and manage tasks:
+The system consists of several core components working together:
 
-### Handler [Component:Handler:1.0]
-LLM interface and resource tracking component.
-- Performs ALL file I/O operations (reading, writing, deletion)
-- Supports multiple LLM providers with appropriate tool configurations
-- Abstracts provider-specific implementation details while maintaining consistent capabilities
-- Manages resource usage tracking (turns, tokens)
-- Handles LLM interactions and session management
-- Works with fully resolved content (no template variable substitution)
-- Works with fully resolved content (no template variable substitution)
+### Dispatcher (Conceptual / Part of `main.py` or similar)
+- Routes incoming requests (e.g., from REPL `/task` command).
+- If input starts with `(`, routes to `SexpEvaluator`.
+- Otherwise, looks up identifier in Handler direct tools.
 
-### Compiler [Component:Compiler:1.0]
-Task parsing and transformation component.
-- Translates natural language to XML/AST
-- Validates against XML schema
-- Handles task transformation
-- Manages template validation
-
-See [Contract:Integration:CompilerTask:1.0] for integration specification.
-
-### Evaluator [Component:Evaluator:1.0]
-Execution control component.
-- **S-expression Evaluator**: Executes workflows defined in the S-expression DSL, managing control flow (conditionals, binding, function calls), variable scoping within the DSL, and invoking atomic tasks or other primitives.
-- **Atomic Task Executor (within Task System/Handler)**: Executes the body of resolved atomic task templates (handling LLM interaction, tool calls).
-- Manages lexical environments for the S-expression DSL.
-- Performs template variable substitution (`{{parameter_name}}`) strictly against declared parameters within the template's isolated scope before Handler invocation.
-- Manages failure recovery within S-expression execution.
-- Tracks resource usage related to S-expression evaluation steps.
-- Handles reparse requests (if applicable to S-expression errors).
-
-See [Contract:Integration:EvaluatorTask:1.0] for integration specification.
+### SexpEvaluator [Component:SexpEvaluator:1.0]
+S-expression workflow execution component.
+- Parses and executes S-expression strings.
+- Manages control flow (conditionals, binding, function calls) within the DSL.
+- Manages lexical environments (`SexpEnvironment`) for the S-expression DSL.
+- Calls `TaskSystem.execute_atomic_template` to run atomic task steps.
+- Calls Handler direct tools via primitives like `(system:run_script ...)`.
+- Handles `CONTINUATION` results from atomic tasks to implement subtask spawning.
 
 ### Task System [Component:TaskSystem:1.0]
-Task execution and management component.
-- Manages atomic task template definitions (loading, validation, lookup).
-- Provides the `execute_subtask_directly` interface for invoking atomic tasks programmatically (e.g., from the S-expression evaluator).
-- Coordinates atomic task execution via Handlers (instantiation, configuration).
-- Interfaces with Memory System for context retrieval needed by atomic tasks.
-- Processes XML definitions for *atomic* tasks.
-- Routes incoming `/task` commands containing S-expressions to the S-expression Evaluator.
+Atomic task management and orchestration component.
+- Manages atomic task template definitions (loading, validation, lookup via `find_template`).
+- Provides the `execute_atomic_template` interface for invoking atomic tasks programmatically (called by `SexpEvaluator`).
+- Determines context and prepares parameters for atomic tasks based on `SubtaskRequest` and template definitions.
+- Instantiates/configures Handlers for atomic task execution.
+- Instantiates and calls the `AtomicTaskExecutor`.
+- Interfaces with Memory System for context retrieval.
 
-See components/task-system/README.md for complete specification.
+### AtomicTaskExecutor [Component:AtomicExecutor:1.0]
+Atomic task body execution component.
+- Receives parsed atomic task definition and resolved parameters from Task System.
+- Performs final `{{parameter}}` substitution using **only** the provided parameters.
+- Constructs `HandlerPayload` and calls the Handler.
+- Returns the Handler's `TaskResult` to the Task System.
+
+### Handler [Component:Handler:1.0]
+LLM interface, resource tracking, and external interaction component.
+- Performs ALL file I/O operations.
+- Executes external commands (shell scripts).
+- Interacts with LLM providers.
+- Manages resource usage tracking (turns, tokens) **per atomic task execution**.
+- Executes "Direct Tools" when called by Dispatcher or SexpEvaluator primitives.
 
 ### Memory System [Component:Memory:3.0]
-Metadata management component.
+Metadata management and context retrieval component.
 - Maintains global file metadata index (paths and descriptive strings)
 - Provides metadata for associative matching without ranking or prioritization
 - Supplies metadata for file-based lookup and partial matching
@@ -239,37 +235,33 @@ See [Contract:Integration:TaskMemory:3.0] for integration specification.
 ## Component Integration
 
 ### Core Integration Patterns
-Components interact through defined contracts:
 
-#### Compiler ↔ Task System
-- Task parsing coordination
-- Schema validation
-- Template utilization
+#### SexpEvaluator ↔ TaskSystem
+- SexpEvaluator calls `TaskSystem.find_template` to check if an identifier is an atomic task.
+- SexpEvaluator calls `TaskSystem.execute_atomic_template` to run atomic steps.
 
-#### Evaluator ↔ Compiler
-- AST execution feedback
-- Reparse requests
-- Resource usage updates
+#### TaskSystem ↔ AtomicTaskExecutor
+- TaskSystem instantiates AtomicTaskExecutor.
+- TaskSystem calls `AtomicTaskExecutor.execute_body`, providing the parsed template, resolved parameters, and a Handler instance.
 
-#### Task System ↔ Evaluator
-- Execution coordination
-- Resource allocation
-- State management
+#### AtomicTaskExecutor ↔ Handler
+- AtomicTaskExecutor calls `Handler.executePrompt` (or similar) with the fully resolved payload.
 
-#### Task System ↔ Memory System
-- Context management
-- Metadata index access
-- Associative matching support
+#### TaskSystem ↔ MemorySystem
+- TaskSystem calls `MemorySystem.getRelevantContextFor` when preparing context for atomic tasks requiring fresh context.
 
-See system/contracts/interfaces.md for complete contract specifications.
+#### SexpEvaluator ↔ Handler
+- SexpEvaluator primitives (e.g., `system:run_script`) may directly invoke Handler's direct tool executors.
+
+See system/contracts/interfaces.md for detailed contract specifications.
 
 ### Resource Ownership
-- Handlers own task resources
-- Memory system owns context storage
-- Task system coordinates allocation
-- Clean resource release required
+- **Handler**: Owns resource tracking (turns, tokens) for the duration of a single atomic task execution it handles.
+- **SexpEvaluator**: Manages the `SexpEnvironment` (DSL variable scope). May track overall workflow execution time or steps.
+- **Memory system**: Owns context metadata storage.
+- **Task system**: Coordinates Handler instantiation and configuration with limits for atomic tasks.
 
-See system/contracts/resources.md for complete ownership model.
+See system/contracts/resources.md for the resource model.
 
 ### System-Wide Protocols
 - XML-based task definitions and protocols
