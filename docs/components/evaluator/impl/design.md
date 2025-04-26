@@ -71,16 +71,12 @@ async function evaluateSExpr(expr: SExpr, env: Environment): Promise<any> {
 
 This ensures proper lexical scoping for S-expression functions and isolates execution environments for calls to both S-expression functions and XML atomic task templates.
 
-## Template Substitution Process (Handled by Task System)
+## Template Variable Substitution
 
-The S-expression Evaluator itself does *not* handle the `{{variable_name}}` substitution within atomic task XML templates.
-
-When the S-expression evaluator invokes an atomic task via `TaskSystem.execute_subtask_directly(request, env)`, it passes the *current S-expression environment* (`env`). The Task System component is then responsible for:
-1. Retrieving the atomic task's XML template definition.
-2. Using the provided S-expression environment (`env`) to resolve all `{{...}}` placeholders within the template's fields (like `<instructions>`, `<system>`, etc.).
-3. Passing the fully resolved atomic task content to the Handler for execution.
-
-This keeps the concerns separate: the S-expression Evaluator manages the DSL environment and workflow, while the Task System manages the specifics of preparing and executing individual atomic tasks based on their XML definitions and the calling environment.
+The Evaluator performs template variable substitution before passing tasks to the Handler. This process strictly adheres to the function-style template model:
+1.  An isolated execution environment is created for the template call, containing bindings only for the parameters declared in the template's `params` attribute, mapped from the arguments provided in the call.
+2.  Placeholders like `{{parameter_name}}` within the template's body (e.g., in `<description>` or prompts) are resolved by looking up `parameter_name` *only* within this isolated environment.
+3.  References to variables not declared as parameters for the template will result in an evaluation error. There is no fallback to searching the caller's environment.
 
 ## S-expression Function Call Processing
 

@@ -30,6 +30,7 @@ module src.evaluator.evaluator {
         // Behavior:
         // - Checks the type of the node (expected to be the root of an atomic task's body).
         // - Executes the logic defined within the atomic task template's body.
+        // - When evaluating nodes within an atomic template body, variable resolution for `{{...}}` placeholders is confined to the parameters provided in the execution environment created specifically for that template call.
         // - Returns literals or unresolved variable references as is (though typically called on executable nodes).
         // - Does not handle composite task types (sequential, reduce, etc.) or S-expressions.
         // @raises_error(condition="TASK_FAILURE", description="Raised if evaluation of a sub-node fails.")

@@ -1,7 +1,7 @@
 # ADR 12: Function-Based Template Model
 
 ## Status
-Accepted
+**Status:** Implemented & Standardized by ADR 18
 
 ## Context
 The system needed a cleaner approach to variable scoping and parameter passing between tasks. The previous model allowed implicit access to parent environment variables through `{{variable_name}}` syntax, which created unclear dependencies and made reasoning about scope difficult.
@@ -58,6 +58,8 @@ The system supports two equivalent syntaxes for function calls:
 Both syntaxes are translated to the same internal representation (FunctionCallNode) and follow identical execution semantics, parameter binding, and environment handling. The template-level syntax provides a more natural way to embed function calls within text content, while the XML syntax offers more explicit structure for standalone function calls.
 
 This dual-syntax approach balances architectural purity with practical usability. By translating template-level function calls to the standard AST structure, we maintain a single execution path while offering a more user-friendly syntax for common use cases.
+
+**Note:** ADR 18 subsequently mandated this function-style as the *only* supported template mechanism, deprecating the older implicit environment access style.
 
 ## Consequences
 - **Positive**

@@ -131,6 +131,26 @@ const mixedResult = await taskSystem.executeCall({
   ]
 }, callerEnv);
 ```
+
+## Before/After Example (Implicit vs. Function-Style)
+
+```markdown
+<!-- Before (Implicit - NO LONGER SUPPORTED): -->
+<template name="old_style_greeting">
+  <task><description>Hello, {{user_name}}!</description></task>
+</template>
+<!-- Called like: (Environment has user_name="Alice") -->
+<call template="old_style_greeting"/>
+
+<!-- After (Function-Style - REQUIRED): -->
+<template name="new_style_greeting" params="user_name">
+  <task><description>Hello, {{user_name}}!</description></task>
+</template>
+<!-- Called like: -->
+<call template="new_style_greeting"><arg>current_user_name_var</arg></call>
+<!-- or -->
+<call template="new_style_greeting"><arg>"Alice"</arg></call>
+```
     
 ## Related Documentation
     

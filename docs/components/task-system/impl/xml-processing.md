@@ -36,6 +36,7 @@ The XML Processing implementation handles:
 - Required field validation
 - Type checking for known fields
 - Warning generation for non-critical issues
+- **Parameter Declaration Required:** All `<template>` definitions MUST include a valid `params` attribute (e.g., `params=\"input1,input2\"` or `params=\"\"` if it takes no parameters).
 
 ### Manual XML Tasks
 - Direct structure usage without reparsing

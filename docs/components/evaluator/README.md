@@ -13,10 +13,11 @@ The Evaluator is responsible for parsing and executing workflows defined in the 
     *   Evaluate S-expression forms according to DSL semantics.
     *   Implement core DSL primitives (e.g., `bind`, `let`, `if`, `map`, function calls).
     *   Manage lexical environments and variable scoping for the S-expression DSL.
+    *   Handles template variable substitution (`{{parameter_name}}`) strictly against declared parameters within an isolated template execution scope.
 
 2.  **Atomic Task Invocation**
     *   Call `TaskSystem.execute_subtask_directly` to execute atomic tasks referenced within the S-expression workflow (e.g., via `call-atomic-task`).
-    *   Pass the current S-expression environment for template variable substitution (`{{...}}`) within the atomic task.
+    *   Pass the current S-expression environment to the Task System, which uses it to populate the isolated scope for template variable substitution (`{{parameter_name}}`).
     *   Handle results (`TaskResult`, `TaskError`) returned from atomic tasks.
 
 3.  **Control Flow Management**

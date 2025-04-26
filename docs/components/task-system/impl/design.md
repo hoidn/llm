@@ -44,21 +44,14 @@ Template matching is a selection process that occurs before and separate from ex
 
 Template matching exclusively answers "which atomic task template should handle this task?" and has no role in variable resolution or execution. While the TaskLibrary can store templates for any task type (atomic, sequential, reduce, etc.), only atomic task templates participate in the template matching process.
 
-### Template Substitution Process
+**Template Substitution Process**
 
-The system implements a standardized template substitution process in the Evaluator component, which resolves `{{variable_name}}` placeholders before dispatching tasks to the Handler:
+The Evaluator handles all template variable substitution before execution by the Handler. This process now exclusively follows the function-style model mandated by ADR 18:
 
-#### Function-Based Templates
-- For templates with declared parameters (`<template name="example" params="param1,param2">`):
-- Substitution is limited to only the declared parameters
-- The template has no access to other variables in the parent scope
-- Example: `<description>Process {{param1}} with {{param2}}</description>`
-
-#### Standard Templates
-- For templates without explicit parameter declarations:
-- Substitution uses variables from the current lexical environment
-- Variables are resolved through the Environment.find() method
-- Example: `<description>Process {{data_file}} with {{options}}</description>`
+1.  **Parameter Declaration:** Every template must declare its parameters (e.g., via `params` attribute in XML).
+2.  **Isolated Environment:** When a template is called (e.g., via `<call>` or S-expression), the Task System (or SexpEvaluator) provides the core Template Evaluator with an environment containing *only* the declared parameters bound to the evaluated arguments from the call.
+3.  **Strict Resolution:** Within the template's body, `{{parameter_name}}` placeholders are resolved *only* against the parameters present in this isolated environment.
+4.  **Error on Missing:** If a placeholder `{{variable}}` references a name that is not a declared parameter for that template, an evaluation error is raised. Implicit lookup in the caller's environment is disabled.
 
 ## Context Management Implementation (for Atomic Tasks)
 

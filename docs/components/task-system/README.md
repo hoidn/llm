@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Task System orchestrates LLM task execution through structured XML templates and handlers. It provides template-based task definition, resource tracking, and an XML-based interface with the LLM.
+The Task System orchestrates LLM task execution through structured XML templates and handlers. Task definitions are based on function-style templates, which explicitly declare their required input parameters. It provides resource tracking and an XML-based interface with the LLM.
 
 ## Core Responsibilities
 

@@ -19,10 +19,7 @@ The Task System is responsible for managing LLM task execution, including:
 - Templates are validated against the XML schema during loading.
 
 ### Template Variable Substitution
-- The Evaluator is solely responsible for all template variable substitution.
-- This includes resolving all {{variable_name}} placeholders before passing tasks to Handlers.
-- Different resolution rules apply for function templates vs. standard templates.
-- Variable resolution errors are detected early and handled at the Evaluator level.
+Template variable substitution (`{{parameter_name}}`) is handled by the Evaluator. Resolution occurs exclusively against parameters explicitly declared in the template definition (e.g., via the `params` attribute). Templates execute in an isolated scope containing only these parameters, populated from the arguments passed during invocation. Accessing variables from the calling environment implicitly is not supported and results in an error.
 
 ### Handler Lifecycle (for Atomic Tasks)
 - A new Handler is created for each *atomic task execution* (invoked via `execute_subtask_directly`) with an immutable configuration.

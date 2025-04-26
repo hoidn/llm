@@ -59,7 +59,7 @@ module src.task_system.task_system {
         // - This method is invoked by the `SexpEvaluator` when an S-expression calls a registered atomic task template identifier.
         // - Identifies the target *atomic* template using request.type and request.subtype. Returns error if not atomic or not found.
         // - Determines the file context based on template definition, request.file_paths, or automatic lookup (via MemorySystem) as configured in the template's context_management and the request.
-        // - Creates a new execution environment based on the provided base 'env' and request.inputs.
+        // - Creates a new execution environment for the core Template Evaluator containing bindings *only* for the template's declared parameters, populated from the `request.inputs`.
         // - Obtains an appropriate Handler instance via `_get_handler`.
         // - Calls the core **Template Evaluator** to execute the atomic template's body within the created environment and context.
         // - Handles TaskErrors and unexpected exceptions, returning formatted error results.
@@ -89,9 +89,10 @@ module src.task_system.task_system {
         // Registers a task template definition.
         // Preconditions:
         // - template is a dictionary representing the template, expected to have 'name', 'type', 'subtype'.
-        // Expected JSON format for template: { "name": "string", "type": "string", "subtype": "string", "description": "string", "parameters": {...}, ... }
+        // Expected JSON format for template: { "name": "string", "type": "string", "subtype": "string", "description": "string", "params": "string", ... }
         // Postconditions:
         // - The template is validated and enhanced for compatibility (using `ensure_template_compatibility`).
+        // - Performs validation to ensure the template definition includes the required parameter declaration (e.g., a non-missing `params` attribute in the source).
         // - The template is stored in the internal `templates` dictionary, keyed by its 'name'.
         // - An index mapping 'type:subtype' to the template 'name' is updated in `template_index`.
         void register_template(dict<string, Any> template);

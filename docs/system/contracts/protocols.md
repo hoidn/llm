@@ -165,13 +165,14 @@ The following schema defines the structure for `<task type="atomic">` elements.
     </xs:complexType>
   </xs:element>
 
+  <!-- Template Definition: MUST declare parameters via 'params' attribute -->
   <!-- Function Template Definition (if kept alongside S-expressions) -->
   <!-- These define reusable atomic task structures callable via S-expression -->
   <xs:element name="template">
     <xs:complexType>
       <xs:sequence>
         <xs:element name="name" type="xs:string"/>
-        <xs:element name="params" type="xs:string"/> <!-- Comma-separated list -->
+        <xs:attribute name="params" type="xs:string" use="required"/> <!-- Comma-separated list -->
         <xs:element name="returns" type="xs:string" minOccurs="0"/>
         <!-- The body MUST be an atomic task -->
         <xs:element ref="task"/>

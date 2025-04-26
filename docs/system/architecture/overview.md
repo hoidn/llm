@@ -87,7 +87,7 @@ The system implements a standardized mechanism for iterative refinement, primari
 
 For the complete specification, including implementation details using S-expressions, integration points, and context management integration, see [Pattern:DirectorEvaluator:1.1] in `system/architecture/patterns/director-evaluator.md`.
 
-Task input values within atomic task templates are dynamically substituted using the `{{...}}` syntax. Data flow between steps in an S-expression workflow is managed via explicit binding primitives (e.g., `bind`, `let`), improving clarity and reducing reliance on implicit environment variables.
+Task execution relies on function-style templates. All templates must explicitly declare the parameters they accept. During execution, template variable placeholders (`{{parameter_name}}`) are resolved strictly against these declared parameters within an isolated scope created for the template call. Templates cannot implicitly access variables from their calling environment. Data flow between steps in an S-expression workflow is managed via explicit binding primitives (e.g., `bind`, `let`).
 
 Context is managed via a single `<context_management>` block that distinguishes between:
  - **Inheritance:** (using the new `inherit_context` enumeration)
@@ -207,8 +207,7 @@ Execution control component.
 - **S-expression Evaluator**: Executes workflows defined in the S-expression DSL, managing control flow (conditionals, binding, function calls), variable scoping within the DSL, and invoking atomic tasks or other primitives.
 - **Atomic Task Executor (within Task System/Handler)**: Executes the body of resolved atomic task templates (handling LLM interaction, tool calls).
 - Manages lexical environments for the S-expression DSL.
-- Performs template variable substitution (`{{...}}`) within atomic task template bodies before Handler invocation.
-- Handles different substitution rules for function vs. standard atomic templates.
+- Performs template variable substitution (`{{parameter_name}}`) strictly against declared parameters within the template's isolated scope before Handler invocation.
 - Manages failure recovery within S-expression execution.
 - Tracks resource usage related to S-expression evaluation steps.
 - Handles reparse requests (if applicable to S-expression errors).
@@ -305,6 +304,8 @@ This pattern enables:
  - Improved reasoning about variable scope
  - Better encapsulation of implementation details
  - Foundations for more advanced functional patterns
+
+When a function-style template is executed, a new, isolated environment scope is created. This scope's bindings contain *only* the template's declared parameters mapped to the evaluated arguments provided in the call. There is no link back to the caller's environment bindings, ensuring strict encapsulation.
 
 ### Sequential Task Management [Pattern:SequentialTask:2.0]
 
