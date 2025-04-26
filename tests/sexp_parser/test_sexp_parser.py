@@ -35,16 +35,16 @@ def test_parse_nested_list(parser):
 def test_parse_different_atom_types(parser):
     """Test parsing various atomic types."""
     sexp_string = "(data 123 4.5 \"hello\" true false nil symbol-name)"
-    # Note: sexpdata typically parses 'nil' as Symbol('nil') and booleans as True/False
+    # Expect Python types now due to conversion
     expected_ast = [
         Symbol('data'),
         123,
         4.5,
         "hello",
-        True,
-        False,
-        Symbol('nil'),
-        Symbol('symbol-name')
+        True,            # Expect Python bool
+        False,           # Expect Python bool
+        None,            # Expect Python None
+        Symbol('symbol-name') # Keep other symbols
     ]
     assert parser.parse_string(sexp_string) == expected_ast
 
@@ -72,6 +72,26 @@ def test_parse_symbol(parser):
     expected_ast = Symbol('my-symbol')
     assert parser.parse_string(sexp_string) == expected_ast
 
+def test_parse_true_symbol(parser):
+    """Test parsing the 'true' symbol."""
+    sexp_string = "true"
+    expected_ast = True
+    assert parser.parse_string(sexp_string) == expected_ast
+    assert isinstance(parser.parse_string(sexp_string), bool)
+
+def test_parse_false_symbol(parser):
+    """Test parsing the 'false' symbol."""
+    sexp_string = "false"
+    expected_ast = False
+    assert parser.parse_string(sexp_string) == expected_ast
+    assert isinstance(parser.parse_string(sexp_string), bool)
+
+def test_parse_nil_symbol(parser):
+    """Test parsing the 'nil' symbol."""
+    sexp_string = "nil"
+    expected_ast = None
+    assert parser.parse_string(sexp_string) == expected_ast
+
 def test_parse_empty_list(parser):
     """Test parsing an empty list '()'."""
     sexp_string = "()"
@@ -81,7 +101,14 @@ def test_parse_empty_list(parser):
 def test_parse_list_with_only_nil(parser):
     """Test parsing '(nil)'."""
     sexp_string = "(nil)"
-    expected_ast = [Symbol('nil')]
+    # Expect list containing None now
+    expected_ast = [None]
+    assert parser.parse_string(sexp_string) == expected_ast
+
+def test_parse_list_with_booleans(parser):
+    """Test parsing list containing true/false."""
+    sexp_string = "(list true false)"
+    expected_ast = [Symbol('list'), True, False]
     assert parser.parse_string(sexp_string) == expected_ast
 
 def test_parse_string_with_escapes(parser):
@@ -109,17 +136,15 @@ def test_parse_unbalanced_parentheses_extra_close(parser):
     assert "Unexpected content after the main expression" in str(excinfo.value)
     assert sexp_string in str(excinfo.value)
 
-def test_parse_invalid_token(parser):
-    """Test parsing with an invalid token (e.g., containing single quote)."""
-    # Note: sexpdata might handle some tokens differently, this depends on its rules
-    sexp_string = "(list 'invalid)" # Single quote often starts quoted expression
+def test_parse_invalid_token_unmatched_paren(parser):
+    """Test parsing with unmatched parenthesis as invalid syntax."""
+    # Change input to something guaranteed to be invalid syntax
+    sexp_string = "(a b c" # Unmatched parenthesis
     with pytest.raises(SexpSyntaxError) as excinfo:
-         # This specific case might raise ExpectClosingBracket if 'invalid)' is seen as one token
-         # or potentially another error depending on exact parsing rules.
-         # We check for the general SexpSyntaxError.
         parser.parse_string(sexp_string)
     # Check that it's the correct error type and contains the input
     assert isinstance(excinfo.value, SexpSyntaxError)
+    assert "Unbalanced parentheses" in str(excinfo.value) # Check specific message
     assert sexp_string in str(excinfo.value)
 
 

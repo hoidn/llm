@@ -30,7 +30,8 @@ def file_manager(temp_dir):
 def test_init_with_base_path(temp_dir):
     """Test initialization with an explicit base path."""
     manager = FileAccessManager(base_path=str(temp_dir))
-    assert manager.base_path == str(temp_dir.resolve())
+    # Use realpath for comparison
+    assert os.path.realpath(manager.base_path) == os.path.realpath(str(temp_dir.resolve()))
 
 def test_init_without_base_path():
     """Test initialization without a base path (defaults to cwd)."""
@@ -127,7 +128,8 @@ def test_get_file_info_success(file_manager, temp_dir):
     info = file_manager.get_file_info("info_test.txt")
 
     assert "error" not in info
-    assert info["path"] == str(file_path.resolve())
+    # Use realpath for comparison
+    assert os.path.realpath(info["path"]) == os.path.realpath(str(file_path.resolve()))
     assert info["size"] == f"{expected_size} bytes"
     # Compare timestamps loosely due to potential float precision differences
     assert abs(datetime.fromisoformat(info["modified"]) - expected_mtime).total_seconds() < 1
@@ -161,6 +163,7 @@ def test_get_file_info_relative_path(file_manager, temp_dir):
     info = file_manager.get_file_info("info_subdir/relative_info.txt")
 
     assert "error" not in info
-    assert info["path"] == str(file_path.resolve())
+    # Use realpath for comparison
+    assert os.path.realpath(info["path"]) == os.path.realpath(str(file_path.resolve()))
     assert info["size"] == f"{expected_size} bytes"
     assert abs(datetime.fromisoformat(info["modified"]) - expected_mtime).total_seconds() < 1
