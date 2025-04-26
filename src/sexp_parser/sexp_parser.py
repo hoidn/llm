@@ -3,16 +3,26 @@ Implementation of the SexpParser interface using the 'sexpdata' library.
 Parses S-expression strings into Python Abstract Syntax Trees (ASTs).
 """
 
-import sexpdata
+import logging
 from typing import Any
-from sexpdata import Symbol # Import Symbol
+from io import StringIO
+from sexpdata import load, Symbol, ExpectNothing, SexpSyntaxError as SexpdataSyntaxError
 
 # Import the custom error type
 from src.system.errors import SexpSyntaxError
 
 # Helper function to recursively convert common symbols
 def _convert_common_symbols(item: Any) -> Any:
-    """Recursively converts Symbol('true'), Symbol('false'), Symbol('nil') to Python types."""
+    """
+    Recursively traverses the parsed AST and converts specific symbols
+    ('true', 'false', 'nil') to their Python equivalents (True, False, None).
+
+    Args:
+        item: The current item in the AST (could be a list, tuple, Symbol, or other atom).
+
+    Returns:
+        The item with common symbols converted, preserving the structure.
+    """
     if isinstance(item, Symbol):
         val = item.value()
         if val == 'true':
@@ -20,16 +30,21 @@ def _convert_common_symbols(item: Any) -> Any:
         elif val == 'false':
             return False
         elif val == 'nil':
+            # Convert the symbol 'nil' to Python's None
             return None
         else:
             # Keep other symbols as Symbol objects
             return item
     elif isinstance(item, list):
-        # Recursively process lists
+        # Recursively convert elements within a list
         return [_convert_common_symbols(sub_item) for sub_item in item]
+    # Add handling for tuples if sexpdata might produce them, though lists are typical
+    # elif isinstance(item, tuple):
+    #     return tuple(_convert_common_symbols(sub_item) for sub_item in item)
     else:
-        # Return other types (int, float, str, etc.) as is
+        # Return atoms (numbers, strings, etc.) and other types unchanged
         return item
+
 
 class SexpParser:
     """
@@ -42,57 +57,80 @@ class SexpParser:
 
     def parse_string(self, sexp_string: str) -> Any:
         """
-        Parses an S-expression string into a Python representation (AST).
+        Parses a single S-expression from a string.
 
         Args:
-            sexp_string: A string potentially containing an S-expression.
+            sexp_string: The string containing the S-expression.
 
         Returns:
-            The parsed AST, composed of nested lists, strings, numbers,
-            booleans (True/False), None, and potentially other sexpdata.Symbol objects.
+            The parsed S-expression as a Python AST (nested lists/atoms),
+            with common symbols converted.
 
         Raises:
-            SexpSyntaxError: If the input string contains syntax errors
-                             (e.g., unbalanced parentheses, invalid tokens).
+            SexpSyntaxError: If the input string has syntax errors, is empty,
+                             or contains unexpected content after the main expression.
+            TypeError: If the input is not a string.
         """
         if not isinstance(sexp_string, str):
-            # Add basic type check for clarity, although sexpdata might handle it
+            # Add basic type check for clarity
             raise TypeError("Input must be a string.")
 
+        logging.debug(f"Attempting to parse S-expression string: '{sexp_string}'")
+        sio = StringIO(sexp_string.strip()) # Use strip to handle leading/trailing whitespace
+
         try:
-            # sexpdata.loads parses the string into a nested structure
-            # It typically uses lists for sequences and sexpdata.Symbol for identifiers.
-            raw_ast = sexpdata.loads(sexp_string)
-            # Convert common symbols like true, false, nil
-            converted_ast = _convert_common_symbols(raw_ast)
+            # Use sexpdata.load, which expects a single S-expression from the stream
+            parsed_expression = load(sio)
+
+            # Check if there's any non-whitespace content left in the stream
+            remainder = sio.read().strip()
+            if remainder:
+                logging.error(f"Unexpected content after main expression: '{remainder}'")
+                # Raise specific error if trailing content exists
+                # Use a message consistent with the test expectation
+                raise ExpectNothing(f"Unexpected content found after the first expression: {remainder}")
+
+            # Apply symbol conversion after successful parsing of a single expression
+            converted_ast = _convert_common_symbols(parsed_expression)
+            logging.debug(f"Successfully parsed and converted AST: {converted_ast}")
             return converted_ast
-        except sexpdata.ExpectClosingBracket as e:
-            # Catch specific sexpdata exceptions and wrap them in SexpSyntaxError
-            raise SexpSyntaxError(
-                message="S-expression syntax error: Unbalanced parentheses or brackets.",
-                sexp_string=sexp_string,
-                error_details=str(e)
-            ) from e
-        except sexpdata.ExpectNothing as e:
+
+        except StopIteration: # Raised by sexpdata.load if the stream is empty after stripping
+             logging.error("S-expression parsing failed: Input string is empty or contains only whitespace.")
              raise SexpSyntaxError(
-                message="S-expression syntax error: Unexpected content after the main expression.",
-                sexp_string=sexp_string,
-                error_details=str(e)
-            ) from e
-        except ValueError as e:
-            # Catch potential ValueErrors from underlying parsing (e.g., invalid literals)
+                 "Input string is empty or contains only whitespace.",
+                 sexp_string
+             ) from None
+        except ExpectNothing as e:
+             # This exception is raised by our check above if there's trailing content
+             logging.error(f"S-expression parsing failed: Unexpected content after main expression. Details: {e}")
              raise SexpSyntaxError(
-                message="S-expression syntax error: Invalid token or literal.",
-                sexp_string=sexp_string,
-                error_details=str(e)
-            ) from e
-        except Exception as e:
-            # Catch any other unexpected errors during parsing
-            raise SexpSyntaxError(
-                message="An unexpected error occurred during S-expression parsing.",
-                sexp_string=sexp_string,
-                error_details=str(e)
-            ) from e
+                 "Unexpected content after the main expression.", # Match test assertion
+                 sexp_string,
+                 error_details=str(e)
+             ) from e
+        except SexpdataSyntaxError as e:
+             # Catch specific syntax errors from sexpdata (e.g., unbalanced parens)
+             logging.error(f"S-expression syntax error: {e}")
+             # Make the message more specific based on common sexpdata errors if possible
+             msg = f"S-expression syntax error: {e}"
+             if "Unbalanced parentheses" in str(e):
+                 msg = "S-expression syntax error: Unbalanced parentheses or brackets."
+             elif "Invalid literal" in str(e):
+                 msg = "S-expression syntax error: Invalid token or literal."
+
+             raise SexpSyntaxError(
+                 msg,
+                 sexp_string,
+                 error_details=str(e)
+             ) from e
+        except Exception as e: # Catch other unexpected errors during parsing or conversion
+             logging.exception(f"Unexpected error during S-expression parsing or conversion: {e}")
+             raise SexpSyntaxError(
+                 f"An unexpected error occurred during S-expression parsing: {e}",
+                 sexp_string,
+                 error_details=str(e)
+             ) from e
 
 # Example Usage (can be removed or kept for demonstration)
 if __name__ == '__main__':
@@ -106,10 +144,12 @@ if __name__ == '__main__':
         "()", # Empty list
         "true", # Boolean symbol
         "nil", # Nil symbol
+        "(nil)", # List containing nil
         "(missing paren", # Error case
         "(extra paren))", # Error case
         "(invalid'token)", # Error case - might depend on sexpdata behavior
         "(expr1) (expr2)", # Error case
+        "  ", # Empty string case
     ]
 
     for s in test_strings:
@@ -127,4 +167,6 @@ if __name__ == '__main__':
 
         except SexpSyntaxError as e:
             print(f"  Error: {e}")
+        except TypeError as e:
+            print(f"  TypeError: {e}")
         print("-" * 10)
