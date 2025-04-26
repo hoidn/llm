@@ -12,7 +12,7 @@ DEFAULT_SHARDING_CONFIG = {
     "sharding_enabled": False,
     "token_size_per_shard": 10000,
     "max_shards": 10,
-    "token_estimation_ratio": 0.75, # Placeholder ratio
+    "token_estimation_ratio": 0.75,  # Placeholder ratio
     "max_parallel_shards": 3,
 }
 
@@ -48,7 +48,9 @@ class MemorySystem:
         self._config: Dict[str, Any] = DEFAULT_SHARDING_CONFIG.copy()
         if config:
             self._config.update(config)
-        logging.info(f"MemorySystem initialized. Sharding enabled: {self._config.get('sharding_enabled', False)}")
+        logging.info(
+            f"MemorySystem initialized. Sharding enabled: {self._config.get('sharding_enabled', False)}"
+        )
 
     def get_global_index(self) -> Dict[str, str]:
         """
@@ -57,7 +59,9 @@ class MemorySystem:
         Returns:
             The dictionary mapping absolute file paths to metadata strings.
         """
-        return self.global_index.copy() # Return a copy to prevent external modification
+        return (
+            self.global_index.copy()
+        )  # Return a copy to prevent external modification
 
     def update_global_index(self, index: Dict[str, str]) -> None:
         """
@@ -78,7 +82,9 @@ class MemorySystem:
             raise ValueError(f"Non-absolute paths provided in index: {invalid_paths}")
 
         self.global_index.update(index)
-        logging.debug(f"Global index updated with {len(index)} entries. Total size: {len(self.global_index)}")
+        logging.debug(
+            f"Global index updated with {len(index)} entries. Total size: {len(self.global_index)}"
+        )
 
         if self._config.get("sharding_enabled", False):
             self._recalculate_shards()
@@ -95,7 +101,7 @@ class MemorySystem:
         if enabled:
             self._recalculate_shards()
         else:
-            self._sharded_index = [] # Clear shards if disabled
+            self._sharded_index = []  # Clear shards if disabled
 
     def configure_sharding(
         self,
@@ -141,10 +147,14 @@ class MemorySystem:
             An AssociativeMatchResult object.
         """
         # Implementation deferred to Phase 2
-        logging.warning("get_relevant_context_with_description called, but implementation is deferred.")
+        logging.warning(
+            "get_relevant_context_with_description called, but implementation is deferred."
+        )
         # Placeholder structure for return type hint satisfaction
         # return AssociativeMatchResult(context_summary="Deferred", matches=[], error="Implementation deferred")
-        raise NotImplementedError("get_relevant_context_with_description implementation deferred to Phase 2")
+        raise NotImplementedError(
+            "get_relevant_context_with_description implementation deferred to Phase 2"
+        )
 
     def get_relevant_context_for(
         self, input_data: Any  # Union[Dict[str, Any], ContextGenerationInput]
@@ -159,10 +169,14 @@ class MemorySystem:
             An AssociativeMatchResult object.
         """
         # Implementation deferred to Phase 2
-        logging.warning("get_relevant_context_for called, but implementation is deferred.")
+        logging.warning(
+            "get_relevant_context_for called, but implementation is deferred."
+        )
         # Placeholder structure for return type hint satisfaction
         # return AssociativeMatchResult(context_summary="Deferred", matches=[], error="Implementation deferred")
-        raise NotImplementedError("get_relevant_context_for implementation deferred to Phase 2")
+        raise NotImplementedError(
+            "get_relevant_context_for implementation deferred to Phase 2"
+        )
 
     def _recalculate_shards(self) -> None:
         """
@@ -177,11 +191,11 @@ class MemorySystem:
         # Placeholder: In Phase 2, this will split self.global_index into
         # self._sharded_index based on token estimates and config limits.
         # For now, just log and potentially clear/reset.
-        self._sharded_index = [] # Resetting for now
+        self._sharded_index = []  # Resetting for now
         # Example placeholder logic:
         # self._sharded_index = [self.global_index] # Put everything in one shard for now if enabled
         logging.debug(f"Shards recalculated. Count: {len(self._sharded_index)}")
-        pass # Actual sharding logic deferred
+        pass  # Actual sharding logic deferred
 
     def index_git_repository(
         self, repo_path: str, options: Optional[Dict[str, Any]] = None
