@@ -87,25 +87,20 @@ The Task System manages atomic task definitions (XML) and orchestrates the setup
 - For Anthropic models: Handler configures computer use tools
 - All file content access is always handled by the Handler, never the Memory System
 
-## Programmatic Task Invocation (Atomic Tasks)
+## Programmatic Atomic Task Invocation (`execute_atomic_template`)
 
-The Task System supports direct invocation of registered *atomic* task templates, primarily used by the S-expression evaluator.
+This method defines the Task System's runtime interface for executing atomic tasks.
 
-*   **Invocation:** Uses the `execute_atomic_template(request, env)` method.
-*   **Input:** Takes a `SubtaskRequest` object defining the target *atomic* task (type must be 'atomic', name/subtype, inputs, optional context overrides, file_paths).
-*   **Execution:** Finds the corresponding *atomic* template based on the request's name/subtype. It then prepares context, resolves inputs, obtains a Handler, and invokes the AtomicTaskExecutor. It does *not* execute a complex workflow itself.
-*   **Context Determination:** Context for the atomic task execution is determined based on the effective context settings (request overrides merged with template definition) with the following precedence:
-    1.  Files from `request.file_paths` (if provided via S-expression `(files ...)` arg) OVERRIDE any `<file_paths>` in the XML template.
-    2.  Context settings from `request.context_management` (if provided via S-expression `(context ...)` arg) OVERRIDE any `<context_management>` in the XML template.
-    3.  If not overridden by the request, settings from `<file_paths>` in the XML template are used.
-    4.  If not overridden by the request, settings from `<context_management>` in the XML template are used.
-    5.  If no settings are provided by request or template, system defaults for atomic tasks apply.
-    6.  Automatic context lookup via `MemorySystem.get_relevant_context_for` occurs if the final effective `context_management.fresh_context` setting is `enabled`. The query basis uses the template description/inputs.
-*   **History Integration:** If the S-expression workflow needs to include history in the context lookup for an atomic task, it should construct the `ContextGenerationInput` appropriately when calling a context-fetching primitive (e.g., `(get-context ...)`), potentially passing history from its own environment. The `execute_atomic_template` method itself doesn't automatically inject history unless it's part of the context determined by the steps above.
+*   **Invocation:** Called by `SexpEvaluator` using `execute_atomic_template(request)`. **No `env` parameter.**
+*   **Input:** `SubtaskRequest` with `type='atomic'` and **resolved** inputs, file_paths, and context_management settings.
+*   **Execution:** Orchestrates the setup (template lookup, context prep, Handler config) and delegates body execution to `AtomicTaskExecutor`.
+*   **Parameter Handling:** Uses `request.inputs` directly as the parameter dictionary for `AtomicTaskExecutor`. No substitution occurs here.
+*   **Context Determination:** Follows the precedence rules: request overrides > template settings > defaults. Calls MemorySystem if `fresh_context` is enabled.
+*   **History Integration:** History is not automatically included by `execute_atomic_template`. If history is needed for context lookup (`MemorySystem.getRelevantContextFor`), the caller (`SexpEvaluator`) must include it when constructing the `ContextGenerationInput` (likely via an S-expression primitive like `get-context`).
 
 ## Integration Behaviors
 
-### Memory System Integration (for Atomic Tasks)
+### Memory System Integration
 - Context for atomic tasks is accessed via `MemorySystem.getRelevantContextFor` when `fresh_context` is enabled.
 - File metadata might be accessed via `MemorySystem.getGlobalIndex` if needed by specific tasks or context generation logic.
 - Context preparation (clearing, inheriting, generating fresh) for an atomic task is handled based on its effective `context_management` settings before execution.
