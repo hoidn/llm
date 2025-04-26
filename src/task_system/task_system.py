@@ -10,6 +10,8 @@ from typing import Any, Dict, List, Optional, Tuple
 class TaskSystem:
     """
     Manages and executes task templates.
+
+    Complies with the contract defined in src/task_system/task_system_IDL.md.
     """
 
     def __init__(self, memory_system: Optional[Any] = None):  # MemorySystem
@@ -83,84 +85,105 @@ class TaskSystem:
         """
         Registers an *atomic* task template definition.
 
+        Non-atomic templates will be ignored as per IDL guidance (they are
+        handled via S-expressions).
+
         Args:
             template: A dictionary representing the template.
         """
-        # Basic validation based on IDL preconditions
         name = template.get("name")
         template_type = template.get("type")
         subtype = template.get("subtype")
         params = template.get("params")  # Check if params definition exists
 
-        if not all([name, template_type, subtype]):
-            logging.error(
-                f"Template registration failed: Missing 'name', 'type', or 'subtype' in {template}"
-            )
-            # IDL doesn't specify error raising, just logging for now
-            return
-
+        # --- Start Change ---
+        # Enforce that only atomic templates are registered via this method
         if template_type != "atomic":
             logging.warning(
-                f"Registering non-atomic template type '{template_type}' via register_template. This method is intended for atomic tasks."
+                f"Ignoring registration attempt for non-atomic template '{name}' "
+                f"(type: '{template_type}'). Non-atomic tasks are defined and executed via S-expressions."
             )
-            # Allow registration but warn, as composite tasks are handled differently.
+            return  # Do not register non-atomic templates here
+
+        if not all([name, subtype]): # Type is already checked
+             logging.error(
+                 f"Atomic template registration failed: Missing 'name' or 'subtype' in {template}"
+             )
+             # IDL doesn't specify error raising, just logging for now
+             return
+        # --- End Change ---
+
 
         if params is None:
             logging.warning(
-                f"Template '{name}' registered without a 'params' attribute. Validation might fail later."
+                f"Atomic template '{name}' registered without a 'params' attribute. Validation might fail later."
             )
             # Allow registration but warn.
 
         # TODO: Implement ensure_template_compatibility if needed
 
+        # Check for potential overwrite, log if necessary
+        if name in self.templates:
+            logging.warning(f"Overwriting existing template registration for name: '{name}'")
+        if f"{template_type}:{subtype}" in self.template_index:
+             existing_name = self.template_index[f"{template_type}:{subtype}"]
+             if existing_name != name:
+                 logging.warning(
+                     f"Overwriting template index for '{template_type}:{subtype}'. "
+                     f"Old name: '{existing_name}', New name: '{name}'"
+                 )
+             elif self.templates.get(name) != template:
+                 logging.info(f"Updating template content for name '{name}' and type:subtype '{template_type}:{subtype}'")
+
+
         self.templates[name] = template
-        type_subtype_key = f"{template_type}:{subtype}"
+        type_subtype_key = f"{template_type}:{subtype}" # type is guaranteed to be 'atomic' here
         self.template_index[type_subtype_key] = name
-        logging.info(f"Registered template: '{name}' ({type_subtype_key})")
+        logging.info(f"Registered atomic template: '{name}' ({type_subtype_key})")
 
     def find_template(self, identifier: str) -> Optional[Dict[str, Any]]:
         """
-        Finds a template definition by its identifier (name or type:subtype).
+        Finds an *atomic* template definition by its identifier (name or type:subtype).
+
+        As per the IDL, this method only returns templates of type 'atomic'.
 
         Args:
-            identifier: The template's unique 'name' or 'type:subtype'.
+            identifier: The template's unique 'name' or 'atomic:subtype'.
 
         Returns:
-            The template definition dictionary if found, otherwise None.
+            The atomic template definition dictionary if found, otherwise None.
         """
-        # Try direct name lookup first
-        if identifier in self.templates:
-            template = self.templates[identifier]
-            # Ensure it's atomic type as per IDL behavior description
-            if template.get("type") == "atomic":
-                logging.debug(f"Found template by name: '{identifier}'")
-                return template
-            else:
-                logging.debug(
-                    f"Template found by name '{identifier}' but is not atomic type."
-                )
-                # If we have a non-atomic template with this name, we need to check
-                # if there's an atomic template with the same name in the index
-                for key, name in self.template_index.items():
-                    if name == identifier and key.startswith("atomic:"):
-                        template = self.templates[name]
-                        if template.get("type") == "atomic":
-                            logging.debug(f"Found atomic template '{name}' via index after name collision")
-                            return template
+        # --- Start Change: Simplified Logic ---
 
-        # Try type:subtype lookup
+        # 1. Try direct name lookup (only atomic templates are stored)
+        template = self.templates.get(identifier)
+        if template:
+            # Since only atomic templates are stored by register_template,
+            # we can assume template.get("type") == "atomic" here.
+            logging.debug(f"Found atomic template by name: '{identifier}'")
+            return template
+
+        # 2. Try type:subtype lookup (index only stores atomic type:subtype keys)
         if identifier in self.template_index:
             name = self.template_index[identifier]
-            if name in self.templates:
-                template = self.templates[name]
-                # Double check type matches (should always if index is correct)
-                if template.get("type") == "atomic":
-                    logging.debug(
-                        f"Found template by type:subtype '{identifier}' (name: '{name}')"
-                    )
-                    return template
+            template = self.templates.get(name)
+            if template:
+                # Again, assume template is atomic if found via index/name
+                logging.debug(
+                    f"Found atomic template by type:subtype '{identifier}' (name: '{name}')"
+                )
+                return template
+            else:
+                # This case indicates an inconsistent state (index points to a non-existent name)
+                logging.error(
+                    f"Template index inconsistency: Identifier '{identifier}' points to name '{name}', "
+                    f"but template not found in main storage."
+                )
+                return None # Treat as not found
 
-        logging.debug(f"Template not found for identifier: '{identifier}'")
+        # --- End Change ---
+
+        logging.debug(f"Atomic template not found for identifier: '{identifier}'")
         return None
 
     def generate_context_for_memory_system(
@@ -206,3 +229,4 @@ class TaskSystem:
         # Placeholder structure for return type hint satisfaction
         return ([], "Implementation deferred")
         # raise NotImplementedError("resolve_file_paths implementation deferred to Phase 2")
+
