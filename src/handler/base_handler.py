@@ -84,7 +84,9 @@ class BaseHandler:
 
     # Placeholder for potential private methods identified in Phase 1 clarification
     # These would likely be implemented in subclasses or later refactoring.
-    def _build_system_prompt(self, template: Optional[str] = None, file_context: Optional[str] = None) -> str:
+    def _build_system_prompt(
+        self, template: Optional[str] = None, file_context: Optional[str] = None
+    ) -> str:
         """Builds the system prompt (TBD)."""
         pass
 
@@ -96,6 +98,8 @@ class BaseHandler:
         """Creates context string from file paths (TBD)."""
         pass
 
-    def _execute_tool(self, tool_name: str, tool_input: Dict[str, Any]) -> Dict[str, Any]:
+    def _execute_tool(
+        self, tool_name: str, tool_input: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Executes a registered tool directly (TBD)."""
         pass

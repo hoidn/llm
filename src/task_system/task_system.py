@@ -47,7 +47,7 @@ class TaskSystem:
         pass
 
     def find_matching_tasks(
-        self, input_text: str, memory_system: Any # MemorySystem
+        self, input_text: str, memory_system: Any  # MemorySystem
     ) -> List[Dict[str, Any]]:
         """
         Finds matching atomic task templates based on similarity to input text.
@@ -83,7 +83,7 @@ class TaskSystem:
         pass
 
     def generate_context_for_memory_system(
-        self, context_input: Any, global_index: Dict[str, str] # ContextGenerationInput
+        self, context_input: Any, global_index: Dict[str, str]  # ContextGenerationInput
     ) -> Any:  # AssociativeMatchResult
         """
         Generates context for the Memory System, acting as a mediator.
@@ -98,7 +98,10 @@ class TaskSystem:
         pass
 
     def resolve_file_paths(
-        self, template: Dict[str, Any], memory_system: Any, handler: Any # MemorySystem, BaseHandler
+        self,
+        template: Dict[str, Any],
+        memory_system: Any,
+        handler: Any,  # MemorySystem, BaseHandler
     ) -> Tuple[List[str], Optional[str]]:
         """
         Resolves the final list of file paths to be used for context based on template settings.
