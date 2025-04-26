@@ -79,13 +79,21 @@ module src.memory.memory_system {
         // - If sharding is enabled and applicable, processes shards in parallel using `_process_single_shard`, then aggregates results.
         // - If sharding is disabled or not applicable, calls `_get_relevant_context_with_mediator`.
         // - The mediator method (`_get_relevant_context_with_mediator`) delegates the actual context generation (LLM call) to `TaskSystem.generate_context_for_memory_system`.
+        // Behavior:
+        // - Receives a `ContextGenerationInput` object.
+        // - **Determines Match Query:** Prioritizes `input_data.query` if present (typically from Sexp `get_context`). If `query` is absent, uses `input_data.templateDescription` and relevant `input_data.inputs` (typically from TaskSystem calling for a template).
+        // - Checks if fresh context is effectively disabled based on other context factors (e.g., if only `inheritedContext` is provided and no fresh lookup needed based on task settings - logic handled by caller like TaskSystem, MemorySystem just performs match if asked).
+        // - Performs associative matching against the `global_index` using the determined match query and potentially `input_data.inheritedContext` / `input_data.previousOutputs` as additional signals.
+        // - If sharding is enabled and applicable, processes shards in parallel using `_process_single_shard`, then aggregates results.
+        // - If sharding is disabled or not applicable, calls `_get_relevant_context_with_mediator` (delegating actual LLM call for summary to TaskSystem if needed).
         // - Handles exceptions during context generation.
-        // This method is invoked by the `SexpEvaluator` when processing the `(get_context ...)` S-expression primitive.
+        // - Returns an AssociativeMatchResult object.
+        // This method is invoked by the `SexpEvaluator` when processing the `(get_context ...)` S-expression primitive, and by TaskSystem when preparing context for `execute_atomic_template`.
         // @raises_error(condition="TASK_FAILURE", reason="dependency_error", description="Handled internally, returns error result if TaskSystem is unavailable.")
         // @raises_error(condition="CONTEXT_RETRIEVAL_FAILURE", description="Handled internally, returns error result.")
         // Expected JSON format for legacy input_data: { "taskText": "string", ... }
-        // Returns: AssociativeMatchResult object. The second union type 'object' represents ContextGenerationInput.
-        object get_relevant_context_for(union<dict<string, Any>, object> input_data); // Second object represents ContextGenerationInput
+        // Returns: AssociativeMatchResult object.
+        object get_relevant_context_for(object input_data); // Arg represents updated ContextGenerationInput
 
         // Indexes a Git repository and updates the global index.
         // Preconditions:

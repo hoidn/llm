@@ -1,7 +1,7 @@
 # ADR 12: Function-Based Template Model
 
 ## Status
-**Status:** Implemented & Standardized by ADR 18
+**Status:** Superseded
 
 ## Context
 The system needed a cleaner approach to variable scoping and parameter passing between tasks. The previous model allowed implicit access to parent environment variables through `{{variable_name}}` syntax, which created unclear dependencies and made reasoning about scope difficult.
@@ -82,3 +82,5 @@ The implementation includes:
 - Argument resolution strategy for variable references vs. literals
 
 The full ADR with implementation details has been moved outside the docs/ tree to save space.
+
+> `**Superseded Note:** This ADR introduced function-style templates using `<template>`/`<call>` XML. Subsequent architectural changes removed these specific XML elements. The *principle* of explicit inputs is retained in atomic task definitions (`<inputs>`), but all invocation and composition is now handled by the S-expression DSL calling named atomic tasks or direct tools.`

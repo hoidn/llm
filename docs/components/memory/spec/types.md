@@ -47,33 +47,27 @@ interface AssociativeMatchResult {
 }
 
 /**
- * Input structure for Memory System context requests
- * [Type:Memory:ContextGenerationInput:4.0]
+ * Input structure for Memory System context requests.
+ * Can be called with template context or a direct query.
+ * [Type:Memory:ContextGenerationInput:4.0] // Version bumped due to change
  */
 interface ContextGenerationInput {
-    /**
-     * Template information
-     */
-    templateDescription: string;      // The template's description field
-    templateType: string;             // Type of template (atomic, sequential, etc.)
-    templateSubtype?: string;         // Optional subtype information
-    
-    /**
-     * All inputs to the template with their values
-     * Can include arbitrary parameters of any type
-     */
-    inputs: Record<string, any>;
-    
-    /**
-     * Optional context inherited from parent tasks
-     * Included based on inherit_context setting
-     */
+    /** Optional: Template description */
+    templateDescription?: string;
+    /** Optional: Template type */
+    templateType?: string;
+    /** Optional: Template subtype */
+    templateSubtype?: string;
+
+    /** Optional: Explicit query string (used by Sexp get_context) */
+    query?: string;
+
+    /** Optional: Inputs to the task/template */
+    inputs?: Record<string, any>;
+
+    /** Optional: Context inherited from parent */
     inheritedContext?: string;
-    
-    /**
-     * Optional string summarizing outputs accumulated from previous steps
-     * Included if accumulate_data is true
-     */
+    /** Optional: String summarizing accumulated outputs */
     previousOutputs?: string;
 }
 

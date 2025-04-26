@@ -10,13 +10,11 @@ This document outlines the high-level functional and non‑functional requiremen
 - Validate instruction completeness
 
 ### XML Schema Requirements
-- Define valid operation types including function templates and calls
-- Support explicit parameter declarations via params attribute
-- Enable function calling with positional arguments
-- Validate template references during compilation
-- Support nested function calls in argument position
-- Specify input/output formats
-- Support task validation
+- Parse and validate `<task type="atomic" name="...">` elements and their children (e.g., `description`, `inputs`, `context_management`, `output_format`).
+- Ensure required attributes like `name` and `type="atomic"` are present.
+- Validate the structure and content of child elements according to the schema.
+- Specify input/output formats using `<output_format>`.
+- Support task validation criteria if defined.
 
 ### AST Structure  
 - Node type definitions

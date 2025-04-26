@@ -158,7 +158,7 @@ function handleTaskError(error: TaskError) {
 ```
 
 ### 3.2 Planning Phase
-See [Component:Evaluator:1.0] for error handling.
+Error handling logic resides primarily within the S-expression Evaluator (for workflow errors) and the Task System (for atomic task errors). See [Component:SexpEvaluator:1.0] and [Component:TaskSystem:1.0].
 
 Based on error type and reason, the system will surface appropriate error information:
 - **Resource Exhaustion**: Complete resource metrics and context
@@ -311,3 +311,15 @@ try {
 ## 6. Related Patterns
 - [Pattern:ResourceManagement:1.0]
 - [Pattern:TaskExecution:2.0]
+
+### 2.6 S-Expression Evaluation Errors
+
+When executing workflows defined via the S-expression DSL, specific errors can occur during parsing or evaluation:
+*   **Syntax Errors:** Malformed S-expressions (e.g., unbalanced parentheses) detected by the parser. Typically reported as `TASK_FAILURE` with reason `input_validation_failure` or a dedicated `sexp_syntax_error` reason.
+*   **Evaluation Errors:** Runtime errors during S-expression evaluation, such as:
+    *   Unbound symbol/variable lookup failure.
+    *   Incorrect arguments passed to DSL primitives (e.g., non-list to `map`).
+    *   Type mismatches during operations.
+    *   Misuse of special forms (`let`, `if`, etc.).
+    These are typically reported as `TASK_FAILURE` with reason `sexp_evaluation_error` or similar, including details about the error and location within the expression if possible.
+*   **Propagated Errors:** Errors (`RESOURCE_EXHAUSTION`, `TASK_FAILURE`) raised by underlying atomic task executions or direct tool calls invoked from the S-expression are propagated upwards and typically retain their original type/reason.

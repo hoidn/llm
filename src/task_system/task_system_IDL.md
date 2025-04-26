@@ -45,31 +45,40 @@ module src.task_system.task_system {
         // @raises_error(condition="UNEXPECTED_ERROR", description="Handled internally, returns FAILED TaskResult.")
         // Expected JSON format for return value: TaskResult structure { "status": "string", "content": "Any", "notes": { ... } }
 
-        // Executes a Task System template workflow directly from a SubtaskRequest.
-        // This is a primary entry point for programmatic task execution via Dispatcher.
+        // Executes a single *atomic* Task System template workflow directly from a SubtaskRequest.
+        // This is a primary entry point for programmatic task execution via Dispatcher or SexpEvaluator.
         // Preconditions:
-        // - request is a valid SubtaskRequest object containing type, subtype, inputs, optional file_paths, optional history_context.
-        // - env is a valid Environment object (provides base context, often empty initially).
+        // - request is a valid SubtaskRequest object containing type ('atomic'), name/subtype, inputs, optional file_paths, optional context_management overrides.
+        // - env is a valid SexpEnvironment object (used for resolving potential variables *within* the request, e.g., in file paths or context queries, though direct inputs are primary).
         // Postconditions:
-        // - Returns the final TaskResult dictionary from the executed workflow.
+        // - Returns the final TaskResult dictionary from the executed atomic template.
         // - The result's 'notes' dictionary includes 'template_used', 'context_source', and 'context_files_count'.
         // - Returns a FAILED TaskResult if the template is not found or execution fails.
         // Behavior:
-        // - Executes the workflow defined within a single *atomic* task template. Composite task types (sequential, reduce, etc.) are not supported here.
+        // - Executes the workflow defined within a single *atomic* task template. Composite task types are not supported.
         // - This method is invoked by the `SexpEvaluator` when an S-expression calls a registered atomic task template identifier.
-        // - Identifies the target *atomic* template using request.type and request.subtype. Returns error if not atomic or not found.
-        // - Determines the file context based on template definition, request.file_paths, or automatic lookup (via MemorySystem) as configured in the template's context_management and the request.
-        // - Creates a new execution environment for the core Template Evaluator containing bindings *only* for the template's declared parameters, populated from the `request.inputs`.
+        // - Validates that the `request.type` is 'atomic'. Returns error if not.
+        // - Identifies the target atomic template using `request.name` (preferred) or `request.type`/`request.subtype`. Returns error if not found.
+        // - **Determines Context:** Resolves the final context settings and file paths using the following precedence:
+        //   1. Files from `request.file_paths` (if provided via S-expression `(files ...)` arg) OVERRIDE any `<file_paths>` in the XML template.
+        //   2. Context settings from `request.context_management` (if provided via S-expression `(context ...)` arg) OVERRIDE any `<context_management>` in the XML template.
+        //   3. If not overridden by the request, settings from `<file_paths>` in the XML template are used.
+        //   4. If not overridden by the request, settings from `<context_management>` in the XML template are used.
+        //   5. If no settings are provided by request or template, system defaults for atomic tasks apply.
+        // - Retrieves necessary file content (if file paths determined) via the Handler.
+        // - Retrieves fresh context via `MemorySystem.get_relevant_context_for` if the final effective context settings require it. When calling, it constructs `ContextGenerationInput` populating `templateDescription` (from template), `templateType` ('atomic'), `templateSubtype` (if any), and relevant `inputs` (from the request). It does *not* typically populate the `query` field in this case unless specifically designed to.
+        // - Creates a parameter dictionary containing the `request.inputs`.
         // - Obtains an appropriate Handler instance via `_get_handler`.
-        // - Calls the core **Template Evaluator** to execute the atomic template's body within the created environment and context.
-        // - Handles TaskErrors and unexpected exceptions, returning formatted error results.
-        // - Includes execution metadata (template used, context source/count) in the result notes.
-        // @raises_error(condition="INPUT_VALIDATION_FAILURE", description="Handled internally, returns FAILED TaskResult if template not found.")
+        // - Instantiates the `AtomicTaskExecutor`.
+        // - Calls `atomic_task_executor.execute_body`, passing the parsed template definition, the parameter dictionary, and the handler instance.
+        // - Handles TaskErrors and unexpected exceptions from the executor, returning formatted error results.
+        // - Includes execution metadata (template used, final context source/count) in the result notes.
+        // @raises_error(condition="INPUT_VALIDATION_FAILURE", description="Handled internally, returns FAILED TaskResult if template not found or type is not 'atomic'.")
         // @raises_error(condition="TASK_FAILURE", description="Handled internally, returns FAILED TaskResult.")
         // @raises_error(condition="UNEXPECTED_ERROR", description="Handled internally, returns FAILED TaskResult.")
         // Expected JSON format for request.inputs: { "param1": "value1", ... }
         // Expected JSON format for return value: TaskResult structure { "status": "string", "content": "Any", "notes": { ... } }
-        dict<string, Any> execute_subtask_directly(object request, object env); // Args represent SubtaskRequest, Environment
+        dict<string, Any> execute_atomic_template(object request, object env); // Args represent SubtaskRequest, SexpEnvironment
 
         // Finds matching atomic task templates based on similarity to input text.
         // Preconditions:

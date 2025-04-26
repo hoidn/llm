@@ -36,35 +36,12 @@ The XML Processing implementation handles:
 - Required field validation
 - Type checking for known fields
 - Warning generation for non-critical issues
-- **Parameter Declaration Required:** All `<template>` definitions MUST include a valid `params` attribute (e.g., `params=\"input1,input2\"` or `params=\"\"` if it takes no parameters).
 
 ### Manual XML Tasks
 - Direct structure usage without reparsing
 - Schema validation still applies
 - Support for disable_reparsing flag
 - No automatic restructuring
-
-### Function Template Processing
-
-#### Template Parsing
-- When a `<template>` element is encountered, it's parsed into a TemplateNode
-- The `name` attribute becomes the template name
-- The `params` attribute is split into individual parameter names
-- The body task is parsed recursively
-- The template is automatically registered in the TaskLibrary
-
-#### Function Call Parsing
-- When a `<call>` element is encountered, it's parsed into a FunctionCallNode
-- The `template` element value becomes the templateName
-- Each `<arg>` child element is parsed into an ArgumentNode
-- String values in arguments are evaluated to check if they represent variables
-
-#### Template Validation
-- Template names must be unique within the TaskLibrary
-- Parameter lists must use valid identifiers
-- Templates must have a valid body task
-- Function calls must reference existing templates
-- Argument counts must match parameter counts
 
 ## Output Processing
 

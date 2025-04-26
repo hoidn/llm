@@ -36,9 +36,9 @@ module src.sexp_evaluator.sexp_evaluator {
         // - Creates a root `SexpEnvironment` if `initial_env` is None.
         // - Calls the internal recursive `_eval` method on the parsed AST node(s) within the environment.
         // - Handles evaluation errors (e.g., unbound symbols, primitive misuse, errors from underlying calls).
-        // @raises_error(condition="SexpSyntaxError", description="Raised by internal parser if the input string is invalid.")
-        // @raises_error(condition="SexpEvaluationError", description="Raised by internal _eval if runtime errors occur (unbound symbol, wrong types, etc.).")
-        // @raises_error(condition="TaskError", description="Propagated if underlying TaskSystem/Handler calls fail.")
+        // @raises_error(condition="SexpSyntaxError", description="Raised by internal parser if the input string has invalid S-expression syntax.")
+        // @raises_error(condition="SexpEvaluationError", description="Raised by internal _eval if runtime errors occur during S-expression evaluation (e.g., unbound symbol, invalid arguments to primitive, type mismatch).")
+        // @raises_error(condition="TaskError", description="Propagated if an underlying TaskSystem/Handler call invoked by the S-expression fails (e.g., RESOURCE_EXHAUSTION, TASK_FAILURE from atomic task).")
         Any evaluate_string(string sexp_string, optional object initial_env); // Arg represents SexpEnvironment
 
         // Internal recursive evaluation method (conceptual - might not be public interface).
@@ -59,12 +59,24 @@ module src.sexp_evaluator.sexp_evaluator {
         //       - `(map task_expr list_expr)`: Evaluate list_expr, iterate, bind item, evaluate task_expr in nested scope, collect results.
         //       - `(list item...)`: Evaluate items, return list.
         //       - `(get_context option...)`: Evaluate option values, call MemorySystem.get_relevant_context_for, return file paths.
-        //     - Otherwise (general invocation `(<identifier> <arg>*)`): Evaluate identifier symbol, evaluate arguments, parse named args, handle (context)/(files) args, look up identifier in Handler.tool_executors then TaskSystem.find_template (for atomic templates), execute via Handler or TaskSystem.execute_subtask_directly, return result.
+        //     - Otherwise (general invocation `(<identifier> <arg>*)`):
+        //       1. Evaluate identifier symbol to get `target_id`.
+        //       2. Initialize empty `named_args` dictionary, `context_override` dict, `files_override` list.
+        //       3. Iterate through remaining list elements (`<arg>*`):
+        //          a. If element is a list `(key value_expression)` and `key` is a symbol *not* named 'context' or 'files': Evaluate `value_expression` and store result in `named_args[key_symbol]`.
+        //          b. If element is a list `(context ...)`: Parse the inner pairs (e.g., `(inherit_context none)`) and store in `context_override`.
+        //          c. If element is a list `(files ...)`: Evaluate the inner expression (should yield a list of strings) and store in `files_override`.
+        //          d. Else (assume positional arg - **Note: Discouraged for task/tool calls**): Evaluate the element and add to a `positional_args` list (use with caution).
+        //       4. Look up `target_id` in `Handler.tool_executors` then `TaskSystem.find_template` (atomic only).
+        //       5. If Direct Tool: Call executor function, passing `named_args` (potentially merging with positional args based on tool signature - requires convention).
+        //       6. If Atomic Template: Construct `SubtaskRequest`, populating `inputs` from `named_args`, `context_management` from `context_override`, `file_paths` from `files_override`. Call `TaskSystem.execute_atomic_template(request, env)`.
+        //       7. Return result.
         // @raises_error(...) // Various evaluation errors
         // Any _eval(Any node, object env); // Arg represents SexpEnvironment
     };
 
     // Interface for the S-expression evaluation environment.
+    // Manages variable bindings *exclusively* for the duration of an S-expression evaluation. It is distinct from the core Environment potentially used by the AtomicTaskExecutor.
     // Manages variable bindings during S-expression evaluation.
     interface SexpEnvironment {
         // Constructor: Creates a new environment.

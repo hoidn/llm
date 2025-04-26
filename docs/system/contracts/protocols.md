@@ -130,6 +130,7 @@ The following schema defines the structure for `<task type="atomic">` elements.
      </xs:sequence>
   </xs:complexType>
 
+  <!-- Defines an ATOMIC task. Name is required for registration and lookup. -->
   <!-- Main Atomic Task Definition -->
   <xs:element name="task">
     <xs:complexType>
@@ -153,6 +154,7 @@ The following schema defines the structure for `<task type="atomic">` elements.
       </xs:sequence>
       <xs:attribute name="ref" type="xs:string" use="optional"/>
       <xs:attribute name="subtype" type="xs:string" use="optional"/> <!-- e.g., standard, subtask, director, evaluator -->
+      <xs:attribute name="name" type="xs:string" use="required"/> <!-- Name required for registered atomic tasks -->
       <xs:attribute name="type" use="required">
         <xs:simpleType>
           <xs:restriction base="xs:string">
@@ -163,32 +165,6 @@ The following schema defines the structure for `<task type="atomic">` elements.
         </xs:simpleType>
       </xs:attribute>
     </xs:complexType>
-  </xs:element>
-
-  <!-- Template Definition: MUST declare parameters via 'params' attribute -->
-  <!-- Function Template Definition (if kept alongside S-expressions) -->
-  <!-- These define reusable atomic task structures callable via S-expression -->
-  <xs:element name="template">
-    <xs:complexType>
-      <xs:sequence>
-        <xs:element name="name" type="xs:string"/>
-        <xs:attribute name="params" type="xs:string" use="required"/> <!-- Comma-separated list -->
-        <xs:element name="returns" type="xs:string" minOccurs="0"/>
-        <!-- The body MUST be an atomic task -->
-        <xs:element ref="task"/>
-      </xs:sequence>
-    </xs:complexType>
-  </xs:element>
-
-  <!-- Function Call (Invoked via S-expression, XML structure might be deprecated) -->
-  <!-- Kept for now, assuming S-exp might parse/use this structure internally -->
-  <xs:element name="call">
-     <xs:complexType>
-       <xs:sequence>
-         <xs:element name="template" type="xs:string"/> <!-- Name of the <template> to call -->
-         <xs:element name="arg" type="xs:string" maxOccurs="unbounded"/> <!-- Positional arguments -->
-       </xs:sequence>
-     </xs:complexType>
   </xs:element>
 
   <!-- Error Response Schema (Remains relevant) -->

@@ -116,43 +116,7 @@ interface TaskTemplate {
 // Definitions for composite task interfaces (SequentialTask, ReduceTask, etc.) have been removed.
 // Composition is handled by the S-expression DSL.
 
-/**
- * Represents a function call expression within the S-expression DSL or potentially
- * for invoking XML <template> definitions.
- * [Type:TaskSystem:FunctionCallNode:1.0]
- */
-interface FunctionCallNode {
-    type: "call";
-    templateName: string;
-    arguments: ArgumentNode[];  // Evaluated in caller's environment
-}
-
-/**
- * Represents an argument to a function call
- * [Type:TaskSystem:ArgumentNode:1.0]
- */
-interface ArgumentNode {
-    type: "argument";
-    value: string | any;  // String for variables/literals, object for nested
-}
-
-/**
- * Represents a template definition node (e.g., from XML <template> element).
- * May also be relevant for S-expression function definitions (`define`) in the future.
- * [Type:TaskSystem:TemplateNode:1.0]
-/**
- * Represents a template node in the AST.
- * NOTE: With XML composites removed, this might primarily represent S-expression
- * function definitions in the future, or potentially be removed if only atomic
- * XML templates are used. Kept for now.
- * [Type:TaskSystem:TemplateNode:1.0]
- */
-interface TemplateNode {
-    name: string;
-    parameters: string[]; // List of parameter names
-    returns?: string; // Optional return type hint
-    body: BaseTaskDefinition; // The atomic task definition forming the template body
-}
+// TemplateNode, FunctionCallNode, ArgumentNode interfaces removed as XML <template>/<call> are deprecated.
 
 /**
  * Subtask Request - Used for LLM-to-LLM delegation via continuation

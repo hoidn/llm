@@ -18,8 +18,8 @@ The Task System is responsible for managing LLM task execution, including:
 - Only atomic task templates participate in this template matching process. Composite workflows are defined explicitly in S-expressions.
 - Templates are validated against the XML schema during loading.
 
-### Template Variable Substitution
-Template variable substitution (`{{parameter_name}}`) is handled by the Evaluator. Resolution occurs exclusively against parameters explicitly declared in the template definition (e.g., via the `params` attribute). Templates execute in an isolated scope containing only these parameters, populated from the arguments passed during invocation. Accessing variables from the calling environment implicitly is not supported and results in an error.
+### Template Variable Substitution (Atomic Tasks)
+Template variable substitution (`{{parameter_name}}`) within an atomic task's body is handled by the AtomicTaskExecutor (invoked by the Task System). Resolution occurs exclusively against parameters explicitly declared in the template's `<inputs>` definition. The AtomicTaskExecutor receives an isolated dictionary containing only these parameters, populated from the `SubtaskRequest` inputs. Accessing variables from the calling S-expression environment implicitly is not supported and results in an error.
 
 ### Handler Lifecycle (for Atomic Tasks)
 - A new Handler is created for each *atomic task execution* (invoked via `execute_subtask_directly`) with an immutable configuration.
@@ -88,22 +88,22 @@ Template variable substitution (`{{parameter_name}}`) is handled by the Evaluato
 - Resource usage metrics in error responses
 
 ### Recovery Delegation
-- No automatic retry attempts
-- Delegates recovery to Evaluator
-- Provides complete error context
-- Includes notes for recovery guidance
+- No automatic retry attempts within the Task System or AtomicTaskExecutor.
+- Delegates recovery logic to the calling S-expression workflow (managed by the S-expression Evaluator).
+- Provides complete error context (`TaskError`) from failed atomic tasks.
+- Includes notes for recovery guidance in the error details.
 
 ## Context Management
 
 ### Context Management Behaviors (for Atomic Tasks)
-- Context for atomic task execution is determined by the `<context_management>` settings in its XML template or overridden by the `SubtaskRequest`.
+- Context for atomic task execution is determined by merging settings from the `SubtaskRequest` and the atomic task's XML template, with request settings taking precedence.
 - Follows the hybrid configuration approach: explicit settings override defaults based on the atomic task's `subtype`.
 - Uses the three-dimensional model (inherit_context, accumulate_data, fresh_context).
-- Supports explicit file inclusion via `<file_paths>` or `file_paths` in `SubtaskRequest`.
+- Supports explicit file inclusion via `<file_paths>` (template) or `file_paths` (request).
 - Default settings per atomic task subtype (refer to table in `protocols.md`):
     * `standard`: inherit=full, fresh=disabled
     * `subtask`: inherit=subset, fresh=enabled
-    * `director`/`evaluator`: inherit=full, fresh=disabled
+    * `director`/`evaluator`: inherit=full, fresh=disabled (Note: Director/Evaluator subtypes less relevant now)
     * `aider_*`: inherit=subset, fresh=enabled
 - The mutual exclusivity constraint between `fresh_context` and `inherit_context` is enforced.
 
@@ -117,14 +117,17 @@ Template variable substitution (`{{parameter_name}}`) is handled by the Evaluato
 
 The Task System supports direct invocation of registered *atomic* task templates, primarily used by the S-expression evaluator.
 
-*   **Invocation:** Uses the `execute_subtask_directly(request, env)` method.
-*   **Input:** Takes a `SubtaskRequest` object defining the target *atomic* task (type must be 'atomic', subtype, description, inputs, optional context overrides, file_paths).
-*   **Execution:** Finds the corresponding *atomic* template based on the request's description/subtype. It then prepares context, resolves inputs using the provided S-expression environment (`env`), and executes the atomic task using a Handler. It does *not* execute a complex workflow itself.
+*   **Invocation:** Uses the `execute_atomic_template(request, env)` method.
+*   **Input:** Takes a `SubtaskRequest` object defining the target *atomic* task (type must be 'atomic', name/subtype, inputs, optional context overrides, file_paths).
+*   **Execution:** Finds the corresponding *atomic* template based on the request's name/subtype. It then prepares context, resolves inputs, obtains a Handler, and invokes the AtomicTaskExecutor. It does *not* execute a complex workflow itself.
 *   **Context Determination:** Context for the atomic task execution is determined based on the effective context settings (request overrides merged with template definition) with the following precedence:
-    1.  Files specified in `request.file_paths` (if provided).
-    2.  Files specified via the matched template's `file_paths` / `file_paths_source` definition.
-    3.  Automatic context lookup via `MemorySystem.get_relevant_context_for` if the effective `context_management.fresh_context` setting is `enabled`. The query basis for this lookup uses the `request.description` or relevant inputs.
-*   **History Integration:** If the S-expression workflow needs to include history in the context lookup for an atomic task, it should construct the `ContextGenerationInput` appropriately when calling a context-fetching primitive (e.g., `(get-context ...)`), potentially passing history from its own environment. The `execute_subtask_directly` method itself doesn't automatically inject history unless it's part of the context determined by the steps above.
+    1.  Files from `request.file_paths` (if provided via S-expression `(files ...)` arg) OVERRIDE any `<file_paths>` in the XML template.
+    2.  Context settings from `request.context_management` (if provided via S-expression `(context ...)` arg) OVERRIDE any `<context_management>` in the XML template.
+    3.  If not overridden by the request, settings from `<file_paths>` in the XML template are used.
+    4.  If not overridden by the request, settings from `<context_management>` in the XML template are used.
+    5.  If no settings are provided by request or template, system defaults for atomic tasks apply.
+    6.  Automatic context lookup via `MemorySystem.get_relevant_context_for` occurs if the final effective `context_management.fresh_context` setting is `enabled`. The query basis uses the template description/inputs.
+*   **History Integration:** If the S-expression workflow needs to include history in the context lookup for an atomic task, it should construct the `ContextGenerationInput` appropriately when calling a context-fetching primitive (e.g., `(get-context ...)`), potentially passing history from its own environment. The `execute_atomic_template` method itself doesn't automatically inject history unless it's part of the context determined by the steps above.
 
 ## Integration Behaviors
 
