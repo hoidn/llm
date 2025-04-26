@@ -251,6 +251,3 @@ class MemorySystem:
         #    - Log the number of files indexed or any errors encountered.
         # --- End Phase 2, Set A ---
         pass
-```
-
-src/task_system/task_system.py

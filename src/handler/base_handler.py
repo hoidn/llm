@@ -454,4 +454,3 @@ class BaseHandler:
         # 6. Return the TaskResult.
         # --- End Phase 2, Set A ---
         raise NotImplementedError("_execute_tool implementation deferred to Phase 2")
-```
