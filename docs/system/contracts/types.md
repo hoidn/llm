@@ -32,6 +32,26 @@ interface ResourceLimits {
     warningThreshold: number;
     timeout?: number;
 }
+
+/**
+ * Result of associative matching operations
+ * [Type:System:AssociativeMatchResult:1.0] // Assuming version 1.0
+ */
+interface AssociativeMatchResult {
+    context_summary: string;  // Summarized context information
+    matches: MatchTuple[];  // List of matching items with relevance scores
+    error?: string;  // Error message if the matching operation failed
+}
+
+/**
+ * Individual match result with relevance information
+ * [Type:System:MatchTuple:1.0] // Assuming version 1.0
+ */
+interface MatchTuple {
+    path: string;  // Path to the matched item (e.g., file path)
+    relevance: number;  // Relevance score (0.0 to 1.0)
+    excerpt?: string;  // Optional excerpt from the matched content
+}
 ```
 
 ## Error Types
@@ -197,6 +217,48 @@ interface HandlerConfig {
     defaultModel?: string;
     systemPrompt: string;
     tools?: string[];  // Tool types needed ("file_access", "bash", etc.)
+}
+
+/**
+ * Task execution result
+ * [Type:TaskSystem:TaskResult:1.0]
+ */
+interface TaskResult {
+    content: string; // Complete or partial output
+    status: ReturnStatus; // COMPLETE, CONTINUATION, FAILED
+    criteria?: string;
+    parsedContent?: any; // If output was parsed JSON
+    notes: {
+        dataUsage?: string;
+        successScore?: number;
+        parseError?: string;
+        [key: string]: any;
+    };
+}
+
+/**
+ * Input structure for Memory System context requests.
+ * Can be called with template context or a direct query.
+ * [Type:Memory:ContextGenerationInput:4.0] // Version bumped due to change
+ */
+interface ContextGenerationInput {
+    /** Optional: Template description */
+    templateDescription?: string;
+    /** Optional: Template type */
+    templateType?: string;
+    /** Optional: Template subtype */
+    templateSubtype?: string;
+
+    /** Optional: Explicit query string (used by Sexp get_context) */
+    query?: string;
+
+    /** Optional: Inputs to the task/template */
+    inputs?: Record<string, any>;
+
+    /** Optional: Context inherited from parent */
+    inheritedContext?: string;
+    /** Optional: String summarizing accumulated outputs */
+    previousOutputs?: string;
 }
 ```
 
