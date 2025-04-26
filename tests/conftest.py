@@ -2,8 +2,8 @@
 import pytest
 from unittest.mock import MagicMock
 
-from src.memory.context_generation import AssociativeMatchResult, MatchTuple
-from src.system.types import TaskResult
+from src.system.models import AssociativeMatchResult, MatchTuple
+from src.system.models import TaskResult
 
 @pytest.fixture
 def mock_memory_system():
@@ -14,30 +14,30 @@ def mock_memory_system():
     
     # Return a proper AssociativeMatchResult Pydantic model
     memory.get_relevant_context_for.return_value = AssociativeMatchResult(
-        context="mock context",
-        matches=[("file1.py", "mock metadata")]
+        context_summary="mock context",
+        matches=[MatchTuple(path="file1.py", relevance=0.9, excerpt="mock metadata")]
     )
     return memory
 
 @pytest.fixture
 def mock_context_generation_input():
     """Create a mock ContextGenerationInput."""
-    from src.memory.context_generation import ContextGenerationInput
+    from src.system.models import ContextGenerationInput
     return ContextGenerationInput(
-        template_description="test query",
+        templateDescription="test query",
         inputs={"query": "test query"},
-        history_context=None
+        inheritedContext=None
     )
 
 @pytest.fixture
 def mock_associative_match_result():
     """Create a mock AssociativeMatchResult."""
-    from src.memory.context_generation import AssociativeMatchResult, MatchTuple
+    from src.system.models import AssociativeMatchResult, MatchTuple
     return AssociativeMatchResult(
-        context="Test context summary",
+        context_summary="Test context summary",
         matches=[
-            MatchTuple(path="file1.py", relevance="rel1", score=0.9),
-            MatchTuple(path="file2.py", relevance="rel2", score=0.8)
+            MatchTuple(path="file1.py", relevance=0.9, excerpt="rel1"),
+            MatchTuple(path="file2.py", relevance=0.8, excerpt="rel2")
         ]
     )
 
