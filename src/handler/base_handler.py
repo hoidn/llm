@@ -30,6 +30,7 @@ except ImportError:
 # Forward declarations for type hinting cycles
 # from src.task_system.task_system import TaskSystem
 # from src.memory.memory_system import MemorySystem
+# from src.system.models import TaskResult # Assuming TaskResult is defined
 
 
 class BaseHandler:
@@ -313,6 +314,58 @@ class BaseHandler:
                     f"Error configuring pydantic-ai agent instrumentation: {e}"
                 )
 
+    # --- Start Phase 2, Set A: Behavior Structure ---
+    # Placeholder for the core LLM interaction logic using the pydantic-ai agent
+    def _execute_llm_call(
+        self,
+        prompt: str,
+        system_prompt_override: Optional[str] = None,
+        tools_override: Optional[List[Callable]] = None,
+        output_type_override: Optional[type] = None,
+    ) -> Any: # Should return TaskResult or similar structure
+        """
+        Internal method to execute a call to the configured pydantic-ai agent.
+        (Implementation deferred to Phase 2, Set B)
+        """
+        logging.warning("_execute_llm_call called, but implementation is deferred.")
+        # 1. Check if self.agent is available. If not, return error TaskResult.
+        # 2. Prepare message history:
+        #    - Get relevant messages from self.conversation_history.
+        #    - Add the current `prompt` as the latest user message.
+        # 3. Determine System Prompt:
+        #    - Use `system_prompt_override` if provided, else use `self.base_system_prompt`.
+        # 4. Determine Tools:
+        #    - Use `tools_override` if provided.
+        #    - Else, potentially adapt tools from `self.registered_tools` (complex part, see register_tool warning).
+        # 5. Determine Output Type:
+        #    - Use `output_type_override` if provided.
+        #    - Else, default might be plain text or based on agent config.
+        # 6. Build arguments for agent call:
+        #    - `messages = prepared_message_history`
+        #    - `system_prompt = determined_system_prompt`
+        #    - `tools = determined_tools` (if any)
+        #    - `output_type = determined_output_type` (if not default)
+        # 7. Execute Agent Call:
+        #    - Try:
+        #        - `pydantic_ai_result = self.agent.run_sync(messages=messages, system_prompt=system_prompt, tools=tools, output_type=output_type)`
+        #        - (Or use `run` for async if BaseHandler becomes async)
+        #    - Catch exceptions from the agent (API errors, validation errors, etc.). Format into error TaskResult.
+        # 8. Process Result:
+        #    - Extract the main output (`pydantic_ai_result.output`).
+        #    - Extract tool calls and results if handled by the agent.
+        #    - Extract token usage, cost, etc. if provided by the result object.
+        # 9. Update Conversation History:
+        #    - Append the user prompt and the agent's final response (and potentially tool interactions) to `self.conversation_history`.
+        # 10. Format and Return Result:
+        #     - Create a TaskResult object.
+        #     - Set `status` (COMPLETE or FAILED).
+        #     - Set `content` to the agent's main output.
+        #     - Add relevant details (token usage, tool calls) to `notes`.
+        #     - Return the TaskResult.
+        raise NotImplementedError("_execute_llm_call implementation deferred to Phase 2")
+    # --- End Phase 2, Set A ---
+
+
     # Placeholder for potential private methods identified in Phase 1 clarification
     # These would likely be implemented in subclasses or later refactoring.
     def _build_system_prompt(
@@ -321,6 +374,14 @@ class BaseHandler:
         """Builds the system prompt (TBD - Phase 2)."""
         # Implementation deferred to Phase 2
         logging.warning("_build_system_prompt called, but implementation is deferred.")
+        # --- Start Phase 2, Set A: Behavior Structure ---
+        # 1. Start with `final_prompt = self.base_system_prompt`.
+        # 2. If `template` (representing a template-specific system prompt part) is provided:
+        #    - Append or prepend the `template` content to `final_prompt` (e.g., `final_prompt += "\n" + template`).
+        # 3. If `file_context` is provided:
+        #    - Append or prepend the `file_context` to `final_prompt` (e.g., `final_prompt += "\n\nFile Context:\n" + file_context`).
+        # 4. Return `final_prompt`.
+        # --- End Phase 2, Set A ---
         raise NotImplementedError(
             "_build_system_prompt implementation deferred to Phase 2"
         )
@@ -329,6 +390,17 @@ class BaseHandler:
         """Gets relevant files based on query (TBD - Phase 2)."""
         # Implementation deferred to Phase 2
         logging.warning("_get_relevant_files called, but implementation is deferred.")
+        # --- Start Phase 2, Set A: Behavior Structure ---
+        # 1. Check if `self.memory_system` is available. If not, return empty list or raise error.
+        # 2. Construct input for memory system context retrieval (e.g., ContextGenerationInput or legacy dict).
+        #    - `input_data = ContextGenerationInput(query=query, ...)` # Add other relevant fields if known
+        # 3. Call `self.memory_system.get_relevant_context_for(input_data)`.
+        # 4. Process the result:
+        #    - If the call fails or returns an error, log it and return empty list.
+        #    - Extract the list of file paths from `result.matches`.
+        #    - `file_paths = [match.path for match in result.matches]`
+        # 5. Return `file_paths`.
+        # --- End Phase 2, Set A ---
         raise NotImplementedError(
             "_get_relevant_files implementation deferred to Phase 2"
         )
@@ -337,15 +409,49 @@ class BaseHandler:
         """Creates context string from file paths (TBD - Phase 2)."""
         # Implementation deferred to Phase 2
         logging.warning("_create_file_context called, but implementation is deferred.")
+        # --- Start Phase 2, Set A: Behavior Structure ---
+        # 1. Initialize an empty list `context_parts`.
+        # 2. Iterate through the `file_paths`:
+        #    - For each `file_path`:
+        #        - Try:
+        #            - `content = self.file_manager.read_file(file_path)`
+        #            - If content is not None:
+        #                - Format the content (e.g., add filename header).
+        #                - `formatted_part = f"--- File: {file_path} ---\n{content}\n--- End File: {file_path} ---"`
+        #                - Append `formatted_part` to `context_parts`.
+        #            - Else (file not found or too large):
+        #                - Log a warning.
+        #        - Catch exceptions during file reading, log errors.
+        # 3. Join the `context_parts` into a single string, separated by newlines.
+        #    - `final_context_string = "\n\n".join(context_parts)`
+        # 4. Return `final_context_string`.
+        # --- End Phase 2, Set A ---
         raise NotImplementedError(
             "_create_file_context implementation deferred to Phase 2"
         )
 
     def _execute_tool(
         self, tool_name: str, tool_input: Dict[str, Any]
-    ) -> Dict[str, Any]:
+    ) -> Dict[str, Any]: # Should return TaskResult
         """Executes a registered tool directly (TBD - Phase 2)."""
         # Implementation deferred to Phase 2
-        # This would likely look up tool_name in self.tool_executors and call it.
         logging.warning("_execute_tool called, but implementation is deferred.")
+        # --- Start Phase 2, Set A: Behavior Structure ---
+        # 1. Look up the executor function in `self.tool_executors`:
+        #    - `executor_func = self.tool_executors.get(tool_name)`
+        # 2. If `executor_func` is not found:
+        #    - Log an error.
+        #    - Return a FAILED TaskResult indicating the tool is not registered or found.
+        # 3. Try to execute the function:
+        #    - `result = executor_func(tool_input)` # Assuming executor takes input dict
+        #    - (Note: Executor might return a TaskResult directly, or raw data that needs formatting)
+        # 4. Catch exceptions during execution:
+        #    - Log the error.
+        #    - Return a FAILED TaskResult detailing the execution error.
+        # 5. Format the result:
+        #    - If the executor returned a raw value, wrap it in a COMPLETE TaskResult.
+        #    - If it returned a TaskResult, return it directly.
+        # 6. Return the TaskResult.
+        # --- End Phase 2, Set A ---
         raise NotImplementedError("_execute_tool implementation deferred to Phase 2")
+```

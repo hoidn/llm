@@ -150,8 +150,12 @@ class MemorySystem:
         logging.warning(
             "get_relevant_context_with_description called, but implementation is deferred."
         )
-        # Placeholder structure for return type hint satisfaction
-        # return AssociativeMatchResult(context_summary="Deferred", matches=[], error="Implementation deferred")
+        # --- Start Phase 2, Set A: Behavior Structure ---
+        # 1. Construct a simple ContextGenerationInput-like dictionary using context_description.
+        #    - e.g., {'taskText': context_description} or a minimal ContextGenerationInput object.
+        # 2. Call self.get_relevant_context_for with the constructed input.
+        # 3. Return the result from get_relevant_context_for.
+        # --- End Phase 2, Set A ---
         raise NotImplementedError(
             "get_relevant_context_with_description implementation deferred to Phase 2"
         )
@@ -172,8 +176,33 @@ class MemorySystem:
         logging.warning(
             "get_relevant_context_for called, but implementation is deferred."
         )
-        # Placeholder structure for return type hint satisfaction
-        # return AssociativeMatchResult(context_summary="Deferred", matches=[], error="Implementation deferred")
+        # --- Start Phase 2, Set A: Behavior Structure ---
+        # 1. Parse/Validate input_data:
+        #    - If it's a legacy dict, convert it to ContextGenerationInput.
+        #    - If it's already ContextGenerationInput, validate it.
+        # 2. Determine the effective query string for matching:
+        #    - Prioritize input_data.query if present.
+        #    - Else, use input_data.templateDescription and relevant input_data.inputs.
+        # 3. Check if fresh context generation is effectively disabled:
+        #    - This might depend on flags within input_data or other context settings (logic might be complex and partially determined by the caller).
+        #    - If disabled, potentially return early with inherited context or an empty result (TBD based on exact requirements).
+        # 4. Perform associative matching:
+        #    - If sharding is enabled (self._config['sharding_enabled'] and len(self._sharded_index) > 0):
+        #        - Determine which shards to process (potentially all or a subset).
+        #        - Process shards in parallel (up to max_parallel_shards) using a helper like _process_single_shard.
+        #        - Aggregate results from shards (e.g., combine matches, potentially re-rank).
+        #    - If sharding is disabled or not applicable:
+        #        - Call a helper method like _get_relevant_context_with_mediator, passing the full global_index and input_data.
+        #        - This mediator method will likely:
+        #            - Check if TaskSystem is available.
+        #            - Call self.task_system.generate_context_for_memory_system(input_data, self.global_index).
+        # 5. Format the results:
+        #    - Construct an AssociativeMatchResult object from the matches and context summary obtained.
+        # 6. Handle errors:
+        #    - Catch exceptions during the process (e.g., TaskSystem unavailable, matching task failure).
+        #    - Return an AssociativeMatchResult with an appropriate error message.
+        # 7. Return the AssociativeMatchResult.
+        # --- End Phase 2, Set A ---
         raise NotImplementedError(
             "get_relevant_context_for implementation deferred to Phase 2"
         )
@@ -209,4 +238,19 @@ class MemorySystem:
         """
         # Implementation deferred to Phase 2
         logging.warning("index_git_repository called, but implementation is deferred.")
+        # --- Start Phase 2, Set A: Behavior Structure ---
+        # 1. Import GitRepositoryIndexer (likely needs to be done at module level or carefully handled).
+        # 2. Validate/Normalize repo_path (e.g., check if it exists and is a directory).
+        # 3. Instantiate the GitRepositoryIndexer:
+        #    - indexer = GitRepositoryIndexer(repo_path=repo_path)
+        # 4. Configure the indexer based on options:
+        #    - If options are provided, call indexer configuration methods (e.g., set_include_patterns, set_max_file_size).
+        # 5. Call the indexer's main method, passing self:
+        #    - indexed_files_count = indexer.index_repository(memory_system=self)
+        # 6. Log the results:
+        #    - Log the number of files indexed or any errors encountered.
+        # --- End Phase 2, Set A ---
         pass
+```
+
+src/task_system/task_system.py
