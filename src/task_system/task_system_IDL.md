@@ -1,25 +1,20 @@
 // == !! BEGIN IDL TEMPLATE !! ===
 module src.task_system.task_system {
 
-    # @depends_on(src.evaluator.interfaces.EvaluatorInterface) // For executing function calls in templates
     # @depends_on(src.memory.memory_system.MemorySystem) // For context generation mediation
     # @depends_on(src.handler.base_handler.BaseHandler) // For obtaining handlers for execution
-    # @depends_on(src.task_system.template_utils.Environment) // For environment management
 
     // Interface for the Task System, responsible for managing and executing task templates.
-    // Conceptually implements src.evaluator.interfaces.TemplateLookupInterface.
-    interface TaskSystem { // implements TemplateLookupInterface
+    interface TaskSystem {
 
         // Constructor: Initializes the Task System.
         // Preconditions:
-        // - evaluator is an optional instance implementing EvaluatorInterface. If None, it will be lazy-initialized.
         // - memory_system is an optional instance of MemorySystem.
         // Postconditions:
         // - TaskSystem is initialized with empty template storage (`templates`, `template_index`).
-        // - References to evaluator and memory_system are stored.
-        // - TemplateProcessor is instantiated.
+        // - Reference to memory_system is stored.
         // - Handler cache and test mode flag are initialized.
-        void __init__(optional object evaluator, optional object memory_system); // Args represent EvaluatorInterface, MemorySystem
+        void __init__(optional object memory_system); // Arg represents MemorySystem
 
         // Enables or disables test mode.
         // Preconditions:
@@ -29,24 +24,9 @@ module src.task_system.task_system {
         // - If enabled, subsequent requests for handlers via `_get_handler` will return MockHandler instances.
         void set_test_mode(boolean enabled);
 
-        // Executes a function call represented by an AST node using the Evaluator.
-        // Preconditions:
-        // - call is a valid FunctionCallNode object.
-        // - env is an optional Environment instance. A new one is created if None.
-        // Postconditions:
-        // - Ensures the Evaluator is initialized.
-        // - Delegates the evaluation of the FunctionCallNode to the configured Evaluator.
-        // - Returns a TaskResult dictionary representing the outcome of the function execution.
-        // - Wraps exceptions (TaskError, other) into a FAILED TaskResult.
-        // Behavior:
-        // - Handles specific test templates ("greeting", "format_date") directly for compatibility.
-        // - For other calls, invokes `evaluator.evaluateFunctionCall`.
-        // @raises_error(condition="TASK_FAILURE", description="Handled internally, returns FAILED TaskResult.")
-        // @raises_error(condition="UNEXPECTED_ERROR", description="Handled internally, returns FAILED TaskResult.")
-        // Expected JSON format for return value: TaskResult structure { "status": "string", "content": "Any", "notes": { ... } }
-
         // Executes a single *atomic* Task System template workflow directly from a SubtaskRequest.
-        // This is a primary entry point for programmatic task execution via Dispatcher or SexpEvaluator.
+        // This is the primary entry point for programmatic execution of registered *atomic* tasks,
+        // typically invoked by the Dispatcher or SexpEvaluator.
         // Preconditions:
         // - request is a valid SubtaskRequest object containing type ('atomic'), name/subtype, inputs, optional file_paths, optional context_management overrides.
         // - env is a valid SexpEnvironment object (used for resolving potential variables *within* the request, e.g., in file paths or context queries, though direct inputs are primary).
@@ -68,7 +48,7 @@ module src.task_system.task_system {
         // - Retrieves necessary file content (if file paths determined) via the Handler.
         // - Retrieves fresh context via `MemorySystem.get_relevant_context_for` if the final effective context settings require it. When calling, it constructs `ContextGenerationInput` populating `templateDescription` (from template), `templateType` ('atomic'), `templateSubtype` (if any), and relevant `inputs` (from the request). It does *not* typically populate the `query` field in this case unless specifically designed to.
         // - Creates a parameter dictionary containing the `request.inputs`.
-        // - Obtains an appropriate Handler instance via `_get_handler`.
+        // - Obtains an appropriate Handler instance (e.g., via internal factory `_get_handler`).
         // - Instantiates the `AtomicTaskExecutor`.
         // - Calls `atomic_task_executor.execute_body`, passing the parsed template definition, the parameter dictionary, and the handler instance.
         // - Handles TaskErrors and unexpected exceptions from the executor, returning formatted error results.
@@ -95,7 +75,7 @@ module src.task_system.task_system {
         // Expected JSON format for return list items: { "task": { ... }, "score": "float", "taskType": "string", "subtype": "string" }
         list<dict<string, Any>> find_matching_tasks(string input_text, object memory_system); // Arg represents MemorySystem
 
-        // Registers a task template definition.
+        // Registers an *atomic* task template definition.
         // Preconditions:
         // - template is a dictionary representing the template, expected to have 'name', 'type', 'subtype'.
         // Expected JSON format for template: { "name": "string", "type": "string", "subtype": "string", "description": "string", "params": "string", ... }
@@ -104,10 +84,11 @@ module src.task_system.task_system {
         // - Performs validation to ensure the template definition includes the required parameter declaration (e.g., a non-missing `params` attribute in the source).
         // - The template is stored in the internal `templates` dictionary, keyed by its 'name'.
         // - An index mapping 'type:subtype' to the template 'name' is updated in `template_index`.
+        // Note: Composite tasks are no longer registered here; they are defined and executed via S-expressions.
         void register_template(dict<string, Any> template);
 
         // Finds a template definition by its identifier.
-        // Implements TemplateLookupInterface.find_template.
+        // Used by Dispatcher/SexpEvaluator to locate atomic tasks.
         // Preconditions:
         // - identifier is a string, either the template's unique 'name' or its 'type:subtype' combination.
         // Postconditions:
@@ -160,49 +141,6 @@ module src.task_system.task_system {
         //   - Paths obtained by executing a command via the handler if `file_paths_source.type` is 'command'.
         // - Handles potential errors during context retrieval or command execution.
         tuple<list<string>, optional string> resolve_file_paths(dict<string, Any> template, object memory_system, object handler); // Args represent MemorySystem, BaseHandler
-
-        // Executes a task specified by type and subtype. Core execution logic.
-        // Implements TemplateLookupInterface.execute_task.
-        // Preconditions:
-        // - task_type and task_subtype identify a registered template.
-        // - inputs is a dictionary of parameters for the task.
-        // - memory_system is an optional MemorySystem instance.
-        // - available_models is an optional list of model names for handler selection.
-        // - call_depth indicates recursion depth for function calls (defaults to 0).
-        // - handler is an optional specific Handler instance to use; if None, one is obtained via `_get_handler`.
-        // - kwargs may contain 'inherited_context', 'previous_outputs', 'handler_config'.
-        // Postconditions:
-        // - Returns a TaskResult dictionary representing the outcome.
-        // - Returns a FAILED TaskResult if the template is not found, parameter validation fails, or execution fails.
-        // - If the template specifies JSON output and parsing succeeds, the parsed object is available in `TaskResult.parsedContent`.
-        // Behavior:
-        // - Finds the specified template.
-        // - Resolves input parameters against the template schema (`resolve_parameters`).
-        // - Selects the appropriate Handler instance based on model preference or defaults.
-        // - Manages context based on template's `context_management` settings (inheritance, accumulation, fresh lookup).
-        // - Processes the template using TemplateProcessor (substitutes variables, resolves function calls).
-        // - Note on Context: Follows hybrid config (defaults + overrides). `fresh_context='enabled'` is mutually exclusive with `inherit_context='full'/'subset'`.
-        // - Resolves the final file paths for context using `resolve_file_paths`.
-        // - Executes the task logic:
-        //   - For specialized atomic tasks (e.g., 'associative_matching', 'format_json'), calls internal handlers.
-        //   - For general tasks, calls `handler.execute_prompt` with the processed description, system prompt, and file context.
-        // - Includes context management info and selected model (if any) in the result notes.
-        // @raises_error(condition="INPUT_VALIDATION_FAILURE", description="Handled internally, returns FAILED TaskResult if template not found.")
-        // @raises_error(condition="INPUT_VALIDATION_FAILURE", description="Handled internally, returns FAILED TaskResult if parameter validation fails.")
-        // @raises_error(condition="TASK_FAILURE", description="Handled internally, returns FAILED TaskResult if context retrieval fails.")
-        // @raises_error(condition="TASK_FAILURE", description="Handled internally by handler, returns FAILED TaskResult if execution fails.")
-        // Expected JSON format for inputs: { "param1": "value1", ... }
-        // Expected JSON format for return value: TaskResult structure { "status": "string", "content": "Any", "notes": { ... } }
-        dict<string, Any> execute_task(
-            string task_type,
-            string task_subtype,
-            dict<string, Any> inputs,
-            optional object memory_system, // Represents MemorySystem
-            optional list<string> available_models,
-            optional int call_depth,
-            optional object handler, // Represents BaseHandler
-            // Note: Implicit kwargs like inherited_context, previous_outputs, handler_config influence behavior. See description.
-        );
     };
 };
 // == !! END IDL TEMPLATE !! ===
