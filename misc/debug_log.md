@@ -74,3 +74,30 @@ The fix involved aligning the implementation (`src/task_system/task_system.py`) 
 ### Results
 
 By preventing non-atomic templates from being registered via `register_template`, the name collision was avoided. `find_template` now correctly finds the atomic template by name, and the test `test_find_template_ignores_non_atomic_by_name` passes.
+
+---
+
+## Issue: TaskSystem `register_template` Test Assertions Outdated (Commit 37d5a64)
+
+### Problem Description
+
+Following the fix in commit `9c34874` (which ensured `register_template` only processes atomic templates), several tests in `tests/task_system/test_task_system.py` began failing (observed after commit `271ff53`). The assertions in these tests no longer matched the updated behavior and log messages of `register_template`. Specifically:
+1.  `test_register_template_missing_required_fields`: Asserted an incorrect error message format for missing fields in atomic templates.
+2.  `test_register_template_non_atomic_warns`: Asserted an outdated warning message and didn't verify that the non-atomic template was actually ignored (not registered).
+3.  `test_register_template_missing_params_warns`: Asserted a slightly incorrect warning message format for missing `params`.
+
+### Root Cause Analysis
+
+The tests were written based on the previous implementation of `register_template`. The fix in `9c34874` changed the logic for handling non-atomic templates and the exact conditions/messages for logging errors and warnings, making the existing test assertions invalid.
+
+### Fix Applied
+
+The fix involved updating the assertions within `tests/task_system/test_task_system.py` to align with the current behavior:
+
+1.  **`test_register_template_missing_required_fields`:** Updated the asserted error message to match the specific message logged when `name` or `subtype` is missing from an *atomic* template.
+2.  **`test_register_template_non_atomic_warns`:** Updated the asserted warning message to match the "Ignoring registration attempt..." log. Added assertions to explicitly check that the non-atomic template was *not* added to `task_system.templates` or `task_system.template_index`.
+3.  **`test_register_template_missing_params_warns`:** Updated the asserted warning message to exactly match the log output.
+
+### Results
+
+By correcting the assertions in the affected tests to match the actual behavior and log output of the modified `register_template` method, all tests in `tests/task_system/test_task_system.py` now pass.
