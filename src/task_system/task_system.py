@@ -20,10 +20,14 @@ class TaskSystem:
             memory_system: An optional instance of MemorySystem.
         """
         self.memory_system = memory_system
-        self.templates: Dict[str, Dict[str, Any]] = {} # Keyed by template 'name'
-        self.template_index: Dict[str, str] = {} # Keyed by 'type:subtype', value is 'name'
+        self.templates: Dict[str, Dict[str, Any]] = {}  # Keyed by template 'name'
+        self.template_index: Dict[str, str] = (
+            {}
+        )  # Keyed by 'type:subtype', value is 'name'
         self._test_mode: bool = False
-        self._handler_cache: Dict[str, Any] = {} # Cache for handler instances (if needed later)
+        self._handler_cache: Dict[str, Any] = (
+            {}
+        )  # Cache for handler instances (if needed later)
         logging.info("TaskSystem initialized.")
 
     def set_test_mode(self, enabled: bool) -> None:
@@ -49,8 +53,12 @@ class TaskSystem:
             The final TaskResult dictionary from the executed atomic template.
         """
         # Implementation deferred to Phase 2
-        logging.warning("execute_atomic_template called, but implementation is deferred.")
-        raise NotImplementedError("execute_atomic_template implementation deferred to Phase 2")
+        logging.warning(
+            "execute_atomic_template called, but implementation is deferred."
+        )
+        raise NotImplementedError(
+            "execute_atomic_template implementation deferred to Phase 2"
+        )
 
     def find_matching_tasks(
         self, input_text: str, memory_system: Any  # MemorySystem
@@ -82,20 +90,26 @@ class TaskSystem:
         name = template.get("name")
         template_type = template.get("type")
         subtype = template.get("subtype")
-        params = template.get("params") # Check if params definition exists
+        params = template.get("params")  # Check if params definition exists
 
         if not all([name, template_type, subtype]):
-            logging.error(f"Template registration failed: Missing 'name', 'type', or 'subtype' in {template}")
+            logging.error(
+                f"Template registration failed: Missing 'name', 'type', or 'subtype' in {template}"
+            )
             # IDL doesn't specify error raising, just logging for now
             return
 
         if template_type != "atomic":
-             logging.warning(f"Registering non-atomic template type '{template_type}' via register_template. This method is intended for atomic tasks.")
-             # Allow registration but warn, as composite tasks are handled differently.
+            logging.warning(
+                f"Registering non-atomic template type '{template_type}' via register_template. This method is intended for atomic tasks."
+            )
+            # Allow registration but warn, as composite tasks are handled differently.
 
         if params is None:
-             logging.warning(f"Template '{name}' registered without a 'params' attribute. Validation might fail later.")
-             # Allow registration but warn.
+            logging.warning(
+                f"Template '{name}' registered without a 'params' attribute. Validation might fail later."
+            )
+            # Allow registration but warn.
 
         # TODO: Implement ensure_template_compatibility if needed
 
@@ -122,18 +136,22 @@ class TaskSystem:
                 logging.debug(f"Found template by name: '{identifier}'")
                 return template
             else:
-                logging.debug(f"Template found by name '{identifier}' but is not atomic type.")
+                logging.debug(
+                    f"Template found by name '{identifier}' but is not atomic type."
+                )
                 # Fall through to check type:subtype index in case of name collision
 
         # Try type:subtype lookup
         if identifier in self.template_index:
             name = self.template_index[identifier]
             if name in self.templates:
-                 template = self.templates[name]
-                 # Double check type matches (should always if index is correct)
-                 if template.get("type") == "atomic":
-                     logging.debug(f"Found template by type:subtype '{identifier}' (name: '{name}')")
-                     return template
+                template = self.templates[name]
+                # Double check type matches (should always if index is correct)
+                if template.get("type") == "atomic":
+                    logging.debug(
+                        f"Found template by type:subtype '{identifier}' (name: '{name}')"
+                    )
+                    return template
 
         logging.debug(f"Template not found for identifier: '{identifier}'")
         return None
@@ -152,8 +170,12 @@ class TaskSystem:
             An AssociativeMatchResult object.
         """
         # Implementation deferred to Phase 2
-        logging.warning("generate_context_for_memory_system called, but implementation is deferred.")
-        raise NotImplementedError("generate_context_for_memory_system implementation deferred to Phase 2")
+        logging.warning(
+            "generate_context_for_memory_system called, but implementation is deferred."
+        )
+        raise NotImplementedError(
+            "generate_context_for_memory_system implementation deferred to Phase 2"
+        )
 
     def resolve_file_paths(
         self,
