@@ -3,7 +3,7 @@ System-wide Pydantic models based on docs/system/contracts/types.md
 """
 
 from datetime import datetime
-from typing import Any, Dict, List, Literal, Optional, Union, Record # Record is not standard, using Dict instead
+from typing import Any, Dict, List, Literal, Optional, Union # Record is not standard, using Dict instead
 
 from pydantic import BaseModel, Field, PositiveInt, NonNegativeInt, conint, confloat
 
