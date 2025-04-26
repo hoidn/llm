@@ -1,63 +1,56 @@
 <description>Developer's working memory log for tracking current task, progress, next steps, and context.</description>
-# Developer Working Memory (`docs/memory.md`)
+# Developer Working Memory
 
-**Purpose:** To maintain a running log of the development process for the current task or feature set. This helps maintain context for yourself (especially after breaks), assists reviewers in understanding the development journey, and provides a scratchpad for thoughts, questions, and next steps related to the work in progress.
+## Current Task/Focus (As of: 2023-07-15)
 
-**Instructions:**
-*   **Update Frequently:** Update this file at the start and end of work sessions, when switching significant sub-tasks, or when important decisions/observations are made.
-*   **Be Concise:** Use brief bullet points. Link to relevant files, IDLs, issue trackers, or discussions where appropriate.
-*   **Timestamps:** Use dates (YYYY-MM-DD) or timestamps (YYYY-MM-DD HH:MM) for log entries.
-*   **Most Recent First:** Add new entries to the *top* of relevant sections (like Recent Activity, Notes) for easy scanning.
-*   **Commit Regularly:** Commit this file along with your code changes. It's part of the development history.
-*   **Scope:** Focus on the current development cycle. Archive or clear older entries when starting a significantly new, unrelated feature branch if desired.
+**Goal:** Implement the core components (MemorySystem, TaskSystem, BaseHandler) based on their IDL specifications.
 
----
+**Current Sub-task:** Fix the TaskSystem.find_template method to correctly handle name collisions between atomic and non-atomic templates.
 
-## Current Task/Focus (As of: YYYY-MM-DD HH:MM)
+**Relevant Files:**
+- `src/memory/memory_system.py`
+- `src/task_system/task_system.py`
+- `src/handler/base_handler.py`
+- `tests/memory/test_memory_system.py`
+- `tests/task_system/test_task_system.py`
+- `tests/handler/test_base_handler.py`
 
-*   **Goal:** [Describe the high-level goal, e.g., "Implement the SexpEvaluator based on sexp_evaluator_IDL.md"]
-*   **Current Sub-task:** [Describe the specific part being worked on, e.g., "Implementing the `_eval` logic for the `let` primitive."]
-*   **Relevant Files:**
-    *   `src/sexp_evaluator/sexp_evaluator.py`
-    *   `src/sexp_evaluator/sexp_environment.py`
-    *   `docs/sexp_evaluator/sexp_evaluator_IDL.md`
-    *   `tests/sexp_evaluator/test_sexp_evaluator.py`
-*   **Related IDL:** `src/sexp_evaluator/sexp_evaluator_IDL.md`
-
----
+**Related IDLs:**
+- `src/memory/memory_system_IDL.md`
+- `src/task_system/task_system_IDL.md`
+- `src/handler/base_handler_IDL.md`
 
 ## Recent Activity Log
 
-*   **(YYYY-MM-DD HH:MM):** Implemented basic structure for `SexpEvaluator` class and `evaluate_string` method, including parsing call and initial environment setup. Added basic test case for syntax error.
-*   **(YYYY-MM-DD HH:MM):** Completed implementation readiness checklist for `sexp_evaluator_IDL.md`. Marked as Ready for Implementation. Added missing version marker to IDL.
-*   **(YYYY-MM-DD HH:MM):** Reviewed IDL-to-Code instructions in project docs. Confirmed understanding of implementation requirements.
+- **Implementation of core components:** Created the basic Python class structure, method signatures, type hints, and docstring outlines for the `MemorySystem`, `TaskSystem`, and `BaseHandler` classes based on their IDL specifications.
 
----
+- **Implementation of non-deferred methods:** Implemented the internal logic for the non-deferred methods of the core components, including:
+  - `MemorySystem`: `__init__`, `get_global_index`, `update_global_index`, `enable_sharding`, `configure_sharding`
+  - `TaskSystem`: `__init__`, `set_test_mode`, `register_template`, `find_template`
+  - `BaseHandler`: `__init__`, `register_tool`, `execute_file_path_command`, `reset_conversation`, `log_debug`, `set_debug_mode`
+
+- **Test implementation:** Created test files for each component and implemented tests for the non-deferred methods.
+
+- **Bug identification:** Discovered an issue in the `TaskSystem.find_template` method where it doesn't correctly handle name collisions between atomic and non-atomic templates.
+
+- **Bug fix:** Fixed the `TaskSystem.find_template` method to correctly handle name collisions by checking the template_index for atomic templates with the same name when a non-atomic template is found by name.
 
 ## Next Steps
 
-*   Implement `_eval` logic for literal types (string, number, bool, null).
-*   Implement `_eval` logic for symbol lookup using `SexpEnvironment.lookup`.
-*   Write tests for literal evaluation and symbol lookup (including unbound symbol errors).
-*   Implement `_eval` logic for the `let` primitive, including environment extension.
-*   Write tests for `let` binding and scoping.
-
----
-
-## Open Questions / Blockers
-
-*   *(YYYY-MM-DD HH:MM):* Need clarification on how exactly named arguments in S-expressions (e.g., `(task :arg1 val1 :arg2 val2)`) should be mapped to the `params` dictionary expected by `TaskSystem.execute_subtask_directly` or `Handler.tool_executors`. Will assume a simple keyword-to-dict-key mapping for now. [Link to discussion if any]
-*   *(Cleared YYYY-MM-DD HH:MM):* Was unsure if `SexpEvaluator` handles parsing - IDL confirms it does internally or uses a dependency like `SexpParser`.
-
----
+1. Implement the deferred methods in Phase 2:
+   - `MemorySystem`: `get_relevant_context_with_description`, `get_relevant_context_for`, `index_git_repository`
+   - `TaskSystem`: `execute_atomic_template`, `find_matching_tasks`, `generate_context_for_memory_system`, `resolve_file_paths`
+   - `BaseHandler`: `_build_system_prompt`, `_get_relevant_files`, `_create_file_context`, `_execute_tool`
+2. Implement tests for the deferred methods once they are implemented.
+3. Update documentation to reflect the implementation details and any design decisions made during implementation.
 
 ## Notes & Context
 
-*   *(YYYY-MM-DD HH:MM):* The Dispatcher is responsible for formatting the final `Any` return value from `SexpEvaluator.evaluate_string` into a `TaskResult` if the S-expression itself doesn't produce one. This simplifies the evaluator's return logic.
-*   *(YYYY-MM-DD HH:MM):* Remember the lookup order for function calls specified in the IDL: Handler Direct Tools (`tool_executors`) first, then TaskSystem atomic templates (`find_template`).
-*   *(YYYY-MM-DD HH:MM):* The `SexpEnvironment` needs careful implementation to handle lexical scoping correctly, especially for `let` and `map`.
-
----
+- The implementation follows the IDL specifications closely, with placeholder implementations for deferred methods.
+- The core components are designed to work together, with `BaseHandler` depending on `TaskSystem` and `MemorySystem`.
+- The implementation includes proper error handling and logging as specified in the IDL.
+- The tests verify that the implemented methods behave as expected according to the IDL specifications.
+- The `find_template` method in `TaskSystem` now correctly handles name collisions between atomic and non-atomic templates, ensuring that atomic templates are always prioritized as specified in the IDL.
 </file>
 ```
 
