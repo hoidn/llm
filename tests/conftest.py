@@ -1,121 +1,161 @@
-"""Common pytest fixtures for all tests."""
 import pytest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
-from src.system.models import AssociativeMatchResult, MatchTuple
-from src.system.models import TaskResult
+# Import Pydantic models for fixtures
+from src.system.models import (
+    ContextGenerationInput,
+    AssociativeMatchResult,
+    MatchTuple,
+    TaskResult,
+    ReturnStatus,
+    TaskError,
+    TaskFailureReason,
+    SubtaskRequest,
+)
+
+# --- Mock Core Components ---
 
 @pytest.fixture
 def mock_memory_system():
-    """Create a mock memory system."""
-    memory = MagicMock()
-    memory.get_global_index.return_value = {}
-    memory.update_global_index.return_value = None
-    
-    # Return a proper AssociativeMatchResult Pydantic model
-    memory.get_relevant_context_for.return_value = AssociativeMatchResult(
-        context_summary="mock context",
-        matches=[MatchTuple(path="file1.py", relevance=0.9, excerpt="mock metadata")]
+    """Provides a mock MemorySystem instance."""
+    ms = MagicMock(name="MockMemorySystem")
+    ms.get_relevant_context_for.return_value = AssociativeMatchResult(
+        context_summary="Mocked context summary",
+        matches=[
+            MatchTuple(path="/mock/file1.py", relevance="mock relevance 1", score=0.9),
+        ]
     )
-    return memory
+    ms.get_relevant_context_with_description.return_value = AssociativeMatchResult(
+        context_summary="Mocked context summary via desc",
+        matches=[
+            MatchTuple(path="/mock/file_desc.py", relevance="desc relevance", score=0.8),
+        ]
+    )
+    ms.global_index = { "/mock/file1.py": "mock metadata" }
+    # Attach a mock handler if needed by components using this fixture
+    # Note: Creates a dependency between fixtures. Consider alternatives if issues arise.
+    ms.handler = mock_base_handler()
+    return ms
+
+@pytest.fixture
+def mock_task_system():
+    """Provides a mock TaskSystem instance."""
+    ts = MagicMock(name="MockTaskSystem")
+    ts.find_template.return_value = {"name": "mock_template", "type": "atomic", "params": {}}
+    ts.execute_atomic_template.return_value = TaskResult(status=ReturnStatus.COMPLETE, content="Mock task success")
+    ts.generate_context_for_memory_system.return_value = AssociativeMatchResult(
+        context_summary="Mock generated context",
+        matches=[MatchTuple(path="/mock/gen_file.py", relevance="gen relevance", score=0.7)]
+    )
+    ts.resolve_file_paths.return_value = (["/mock/resolved.py"], None)
+    ts.find_matching_tasks.return_value = [{"task": {"name": "matched_task"}, "score": 0.9}]
+    return ts
+
+@pytest.fixture
+def mock_base_handler():
+    """Provides a mock BaseHandler instance."""
+    handler = MagicMock(name="MockBaseHandler")
+    handler.file_manager = MagicMock(name="MockFileManager")
+    handler.file_manager.base_path = "/mock/handler/base"
+    handler.file_manager.read_file.return_value = "Mock file content"
+    handler.execute_file_path_command.return_value = ["/mock/cmd_file.py"]
+    # Mock internal LLM call method result
+    handler._execute_llm_call.return_value = TaskResult(status=ReturnStatus.COMPLETE, content="Mock LLM response")
+    # Mock helper methods
+    handler._create_file_context.return_value = "Mock created context string"
+    handler._get_relevant_files.return_value = ["/mock/relevant_file.py"]
+    handler._build_system_prompt.return_value = "Mock system prompt"
+    handler._execute_tool.return_value = TaskResult(status=ReturnStatus.COMPLETE, content="Mock tool result")
+    # Mock the agent instance if needed directly
+    handler.agent = MagicMock(name="MockPydanticAgent")
+    handler.agent.run_sync.return_value = MagicMock(output="Mock agent output")
+    return handler
+
+@pytest.fixture
+def mock_atomic_task_executor():
+    """Provides a mock AtomicTaskExecutor instance."""
+    executor = MagicMock(name="MockAtomicTaskExecutor")
+    executor.execute_body.return_value = TaskResult(
+        status=ReturnStatus.COMPLETE,
+        content="Mock executor success",
+        notes={"executor_note": "mock_value"}
+    )
+    return executor
+
+
+# --- Mock Data Structures ---
 
 @pytest.fixture
 def mock_context_generation_input():
-    """Create a mock ContextGenerationInput."""
-    from src.system.models import ContextGenerationInput
+    """Provides a mock ContextGenerationInput instance."""
     return ContextGenerationInput(
-        templateDescription="test query",
-        inputs={"query": "test query"},
-        inheritedContext=None
+        query="mock query",
+        templateName="mock_template",
+        templateDescription="mock description",
+        inputs={"param": "value"}
     )
 
 @pytest.fixture
 def mock_associative_match_result():
-    """Create a mock AssociativeMatchResult."""
-    from src.system.models import AssociativeMatchResult, MatchTuple
+    """Provides a mock AssociativeMatchResult instance."""
     return AssociativeMatchResult(
-        context_summary="Test context summary",
+        context_summary="Mock context summary",
         matches=[
-            MatchTuple(path="file1.py", relevance=0.9, excerpt="rel1"),
-            MatchTuple(path="file2.py", relevance=0.8, excerpt="rel2")
+            MatchTuple(path="/mock/file1.py", relevance="mock relevance 1", score=0.9),
+            MatchTuple(path="/mock/file2.txt", relevance="mock relevance 2", score=0.8),
         ]
     )
 
 @pytest.fixture
-def mock_task_system():
-    """Create a mock task system."""
-    task_system = MagicMock()
-    task_system.execute_task.return_value = TaskResult(
-        content="mock response",
-        status="COMPLETE",
-        notes={}
+def mock_subtask_request():
+    """Provides a mock SubtaskRequest instance."""
+    return SubtaskRequest(
+        type="atomic",
+        subtype="mock_subtype",
+        name="mock_subtask_name",
+        description="Mock subtask description",
+        inputs={"sub_param": "sub_value"}
     )
-    task_system.register_template.return_value = None
-    return task_system
 
-@pytest.fixture
-def mock_aider_model():
-    """Create a mock Aider model."""
-    model = MagicMock()
-    model.send_completion.return_value = {"content": "Mock response"}
-    return model
 
-@pytest.fixture
-def mock_aider_io():
-    """Create a mock Aider IO."""
-    io = MagicMock()
-    io.yes = True
-    return io
-
-@pytest.fixture
-def mock_aider_coder():
-    """Create a mock Aider coder."""
-    coder = MagicMock()
-    coder.run.return_value = "Mock coder response"
-    coder.aider_edited_files = ["/path/to/mock_file.py"]
-    return coder
-
-@pytest.fixture
-def mock_aider_session():
-    """Create a mock Aider session."""
-    session = MagicMock()
-    session.active = False
-    session.start_session.return_value = {
-        "status": "COMPLETE",
-        "content": "Interactive session completed",
-        "notes": {
-            "files_modified": ["/path/to/mock_file.py"]
-        }
-    }
-    session.terminate_session.return_value = {
-        "status": "COMPLETE",
-        "content": "Session terminated",
-        "notes": {}
-    }
-    return session
+# --- Mock External Dependencies ---
 
 @pytest.fixture
 def mock_run_subprocess(mocker):
-    """Mock subprocess.Popen for Aider subprocess execution."""
-    mock_popen = mocker.patch('subprocess.Popen')
-    mock_process = MagicMock()
-    mock_process.wait.return_value = 0  # Simulate successful completion
-    mock_process.poll.return_value = None  # Process is running
-    mock_popen.return_value = mock_process
-    return mock_popen
+    """Mocks subprocess.run."""
+    # Use mocker fixture provided by pytest-mock
+    return mocker.patch('subprocess.run')
+
+# --- Mock Aider Components (Example) ---
+# These might be needed if testing components that interact with AiderBridge
+
+@pytest.fixture
+def mock_aider_model():
+    """Provides a mock Aider model instance."""
+    return MagicMock(name="MockAiderModel")
+
+@pytest.fixture
+def mock_aider_io():
+    """Provides a mock Aider IO instance."""
+    return MagicMock(name="MockAiderIO")
+
+@pytest.fixture
+def mock_aider_coder():
+    """Provides a mock Aider Coder instance."""
+    coder = MagicMock(name="MockAiderCoder")
+    coder.run.return_value = "Mock Aider run result" # Example return
+    return coder
+
+@pytest.fixture
+def mock_aider_session(mock_aider_coder):
+    """Provides a mock Aider Session instance."""
+    session = MagicMock(name="MockAiderSession")
+    session.coder = mock_aider_coder
+    return session
 
 @pytest.fixture
 def mock_aider_automatic_handler():
-    """Create a mock Aider automatic handler."""
-    handler = MagicMock()
-    handler.execute_task.return_value = TaskResult(
-        status="COMPLETE",
-        content="Automatic task executed",
-        notes={
-            "files_modified": ["/path/to/mock_file.py"],
-            "changes": [
-                {"file": "/path/to/mock_file.py", "description": "Modified file"}
-            ]
-        }
-    )
+    """Provides a mock Aider Automatic Handler instance."""
+    handler = MagicMock(name="MockAiderAutomaticHandler")
+    handler.execute_task.return_value = TaskResult(status=ReturnStatus.COMPLETE, content="Mock Aider auto result")
     return handler
