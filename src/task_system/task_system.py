@@ -139,7 +139,14 @@ class TaskSystem:
                 logging.debug(
                     f"Template found by name '{identifier}' but is not atomic type."
                 )
-                # Fall through to check type:subtype index in case of name collision
+                # If we have a non-atomic template with this name, we need to check
+                # if there's an atomic template with the same name in the index
+                for key, name in self.template_index.items():
+                    if name == identifier and key.startswith("atomic:"):
+                        template = self.templates[name]
+                        if template.get("type") == "atomic":
+                            logging.debug(f"Found atomic template '{name}' via index after name collision")
+                            return template
 
         # Try type:subtype lookup
         if identifier in self.template_index:

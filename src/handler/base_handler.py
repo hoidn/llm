@@ -260,7 +260,7 @@ class BaseHandler:
         if self.agent:
             # Example: if self.agent has a reset method
             # self.agent.reset()
-            logging.debug(
+            logging.info(
                 "pydantic-ai agent state reset (if applicable) needs verification."
             )
 
