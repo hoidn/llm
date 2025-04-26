@@ -101,3 +101,39 @@ The fix involved updating the assertions within `tests/task_system/test_task_sys
 ### Results
 
 By correcting the assertions in the affected tests to match the actual behavior and log output of the modified `register_template` method, all tests in `tests/task_system/test_task_system.py` now pass.
+
+---
+
+## Issue: SexpParser Incorrect `nil` Conversion and Error Handling (Commit a354d3a)
+
+### Problem Description
+
+Multiple tests in `tests/sexp_parser/test_sexp_parser.py` were failing:
+1.  Tests involving the `nil` symbol (`test_parse_different_atom_types`, `test_parse_nil_symbol`, `test_parse_list_with_only_nil`) failed because `nil` was parsed as `[]` instead of `None`.
+2.  `test_parse_multiple_expressions_without_list` failed because parsing input like `(expr1) (expr2)` raised a generic `SexpSyntaxError` instead of the expected specific message "Unexpected content after the main expression."
+
+### Root Cause Analysis
+
+1.  **`nil` Conversion:** The `_convert_common_symbols` helper function did not correctly identify `sexpdata.Symbol('nil')` and convert it to Python's `None`.
+2.  **Multiple Expression Error:** The `parse_string` method used a broad `try...except Exception` block. When `sexpdata.load` finished parsing the first expression and encountered trailing content, it raised a specific exception (`sexpdata.ExpectNothing`). The broad exception handler caught this but raised a generic `SexpSyntaxError`, losing the specific context needed for the test assertion. The implementation also lacked an explicit check for trailing content after `sexpdata.load`.
+
+### Fix Applied
+
+The fix involved modifications to `src/sexp_parser/sexp_parser.py`:
+
+1.  **`_convert_common_symbols`:** Updated to explicitly check for `Symbol('nil')` and return `None`.
+2.  **`parse_string`:**
+    *   Ensured usage of `sexpdata.load` (for single expressions).
+    *   Added an explicit check for remaining non-whitespace content in the input stream after `load` completes.
+    *   If remaining content exists, an `ExpectNothing` exception is raised internally.
+    *   Refined the `try...except` block to specifically catch `ExpectNothing` and raise `SexpSyntaxError` with the precise message "Unexpected content after the main expression."
+    *   Improved specificity of error messages for other `SexpdataSyntaxError` cases (e.g., unbalanced parentheses).
+
+### How It Could Have Been Avoided
+
+1.  **`nil` Conversion:** More thorough initial testing specifically targeting `nil` conversion (standalone and in lists). Clearer examples (`nil -> None`) in the IDL.
+2.  **Multiple Expression Error:** Applying Test-Driven Development (TDD) by writing the failing test first. Deeper initial understanding of the `sexpdata` library's behavior (`load` vs. `loads`, `ExpectNothing` exception). Avoiding overly broad `except Exception` blocks in favor of specific exception handling from the start.
+
+### Results
+
+After applying the fixes, all tests in `tests/sexp_parser/test_sexp_parser.py` pass, correctly handling `nil` conversion and providing specific errors for unexpected trailing content.
