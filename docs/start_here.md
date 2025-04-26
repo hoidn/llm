@@ -81,6 +81,7 @@ When assigned to implement or modify a component specified by an IDL (or tacklin
         *   **(Guideline Check): Is any module significantly longer than the recommended limit (e.g., 300 lines)?** If yes, evaluate if refactoring/splitting the module makes sense for clarity and maintainability. *If you refactor, go back to the formatting, linting and testing steps before proceeding.*
     *   **Update Directory Structure Doc:** If your changes added, removed, or renamed files/directories, update the structure diagram in `project_rules.md` to reflect the current state.
     *   **IDL Check:** Does the final code *still* precisely match the public contract defined in the IDL (signatures, error conditions)?
+    *   **(New) Configuration Check:** Verify that related configuration files (especially test setups like `tests/conftest.py`) have been updated if your changes affect shared types, interfaces, or component instantiation relied upon by tests or fixtures. Ensure imports point to the correct new locations.
 15. **Finalize Working Memory:** Update `docs/memory.md` with the final status and any relevant closing thoughts or context, including lessons learned (if any debugging was done) and guidance for the next steps. 
 </idl to code>
 
@@ -137,6 +138,7 @@ When assigned to implement or modify a component specified by an IDL (or tacklin
 
 *   **Follow the IDL:** Adhere strictly to the IDL specification (`*_IDL.md`) for the component you are implementing (See Section 3).
 *   **Use Working Memory:** Maintain a running log of your development progress, current focus, and next steps in `docs/memory.md`. Update it frequently during your work session and commit it along with your code changes. This aids context retention for yourself and helps reviewers understand the development path. (See `docs/memory.md` for the template and detailed guidelines).
+*   **Be Aware of Existing Code & Configuration:** When implementing new components or modifying existing ones, always consider how your changes might affect related parts of the codebase, *especially configuration files (like `tests/conftest.py`)*, test setups, and integration points. Verify that related files are updated accordingly.
 *   **Test Driven:** Write tests (especially integration tests) to verify your implementation against the IDL contract (See Section 6 and `docs/implementation_rules.md`).
 *   **Commit Often:** Make small, logical commits with clear messages. Follow Git guidelines in `docs/project_rules.md`.
 *   **Format and Lint:** Run `make format` and `make lint` (or equivalent project commands) before committing to ensure code style compliance.

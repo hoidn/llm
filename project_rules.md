@@ -138,6 +138,10 @@ project_root/
    - Avoid unnecessary abstract base classes or formal interfaces
    - Document expected behavior with docstrings
 
+4. **Shared System Types:**
+   - System-wide shared data structures (e.g., Pydantic models for `TaskResult`, `ContextGenerationInput`, `TaskError`) used across multiple components **MUST** be defined in the designated shared types module: `src/system/models.py`.
+   - Avoid defining these common types within specific component directories.
+
 ### Code Formatting and Style
 
 1. **Follow PEP 8**:
