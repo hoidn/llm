@@ -44,9 +44,9 @@ Template matching is a selection process that occurs before and separate from ex
 
 Template matching exclusively answers "which atomic task template should handle this task?" and has no role in variable resolution or execution. While the TaskLibrary can store templates for any task type (atomic, sequential, reduce, etc.), only atomic task templates participate in the template matching process.
 
-**Template Substitution Process**
+### Template Substitution Process (Atomic Tasks)
 
-The Evaluator handles all template variable substitution before execution by the Handler. This process now exclusively follows the function-style model mandated by ADR 18:
+The AtomicTaskExecutor (invoked by the Task System) handles template variable substitution (`{{parameter_name}}`) within an atomic task's body before execution by the Handler. This process exclusively follows the function-style model mandated by ADR 18:
 
 1.  **Parameter Declaration:** Every template must declare its parameters (e.g., via `params` attribute in XML).
 2.  **Isolated Environment:** When a template is called (e.g., via `<call>` or S-expression), the Task System (or SexpEvaluator) provides the core Template Evaluator with an environment containing *only* the declared parameters bound to the evaluated arguments from the call.
@@ -202,9 +202,9 @@ function validateContextSettings(settings) {
 
 Resource limits (turns, context window tokens, output size) are enforced by the **Handler** during the execution of each *atomic task*. The Task System configures the Handler with the appropriate limits when it's instantiated for an atomic task execution via `execute_subtask_directly`. The S-expression evaluator itself does not directly manage LLM resource limits, but failures (like `RESOURCE_EXHAUSTION`) from atomic tasks it calls will propagate back into the S-expression workflow. Overall workflow timeouts might be managed at a higher level. See [resource-management.md](./resource-management.md) for Handler implementation details.
 
-## Variable and Parameter Management
+### Variable and Parameter Management (Task System Role)
 
-The system maintains clear separation between two distinct mechanisms:
+The Task System plays a role in bridging the S-expression environment and the AtomicTaskExecutor's parameter substitution:
 
 ### 1. S-expression Lexical Environment
 - **Purpose**: Manages variable bindings (`bind`, `let`), function definitions (`define`), and scoping rules for the S-expression DSL.
@@ -239,9 +239,9 @@ The system implements a standardized template substitution process in the Evalua
 - Variables are resolved through the Environment.find() method
 - Example: `<description>Process {{data_file}} with {{options}}</description>`
 
-### Implementation in Task System (Atomic Task Substitution)
+### TypeScript Implementation (Atomic Task Substitution - Conceptual)
 
-The Task System (during `execute_subtask_directly`) performs template variable substitution (`{{...}}`) before invoking the Handler:
+The AtomicTaskExecutor (invoked by Task System during `execute_atomic_template`) performs template variable substitution (`{{...}}`) before invoking the Handler:
 
 ```typescript
 ```typescript
@@ -279,9 +279,9 @@ function substitutePlaceholders(text: string | undefined, params: ParamsDict): s
 ```
 This ensures atomic task bodies are fully resolved using only the explicitly passed parameters before the Handler sees them. Director-Evaluator loops implemented in S-expression handle data passing between steps using `bind`/`let`, calling `execute_atomic_template` with the appropriate inputs for each atomic step.
 
-## Subtask Spawning Implementation
+### Subtask Spawning Implementation (Handled by S-expression Evaluator)
 
-The Task System implements a standardized subtask spawning mechanism that enables dynamic task creation and composition.
+As mentioned earlier, the Task System's `execute_atomic_template` method returns `CONTINUATION` results, but the actual spawning logic (validation, recursive calls) is handled by the S-expression Evaluator.
 
 ### Request Structure
 
