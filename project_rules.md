@@ -315,3 +315,9 @@ project_root/
    - All code changes require review
    - Tests must pass before merging
    - Documentation updates should accompany code changes
+
+### Key Libraries and Standards
+
+*   **S-Expression Parsing:** For parsing programmatic workflow definitions provided as S-expressions (e.g., via the `/task` command), this project uses the **`sexpdata`** library.
+    *   **Rationale:** `sexpdata` is chosen for its simplicity, direct focus on S-expression syntax, and its ability to parse input strings into standard Python data structures (lists, tuples, symbols, literals) that are easily processed by the `SexpEvaluator`.
+    *   **Usage:** Primarily used by the `SexpParser` component.
