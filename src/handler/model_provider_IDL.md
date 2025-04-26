@@ -1,4 +1,13 @@
-// == !! BEGIN IDL TEMPLATE !! ===
+// == !! DEPRECATED IDL FILE !! ===
+// This IDL file is deprecated as of 2024-07-29.
+// The custom ProviderAdapter interface and its implementations (like ClaudeProvider)
+// have been replaced by the use of the `pydantic-ai` library.
+// Components should now be configured with and interact via `pydantic-ai`'s
+// `Agent` and `Model` classes for LLM interactions.
+// Refer to `docs/implementation_rules.md` Section 6 and the `pydantic-ai` documentation.
+// =================================
+
+/*
 module src.handler.model_provider {
 
     // Abstract interface for all model provider adapters.
@@ -97,4 +106,5 @@ module src.handler.model_provider {
         dict<string, Any> extract_tool_calls(union<string, dict<string, Any>> response);
     };
 };
-// == !! END IDL TEMPLATE !! ===
+*/
+// == !! END DEPRECATED IDL FILE !! ===
