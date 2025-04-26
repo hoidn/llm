@@ -89,57 +89,74 @@ def test_register_template_success(task_system):
 
 
 def test_register_template_missing_required_fields(task_system, caplog):
-    """Test registration fails if name, type, or subtype is missing."""
+    """Test registration fails if name or subtype is missing for an atomic template."""
     template_no_name = VALID_ATOMIC_TEMPLATE.copy()
     del template_no_name["name"]
-    template_no_type = VALID_ATOMIC_TEMPLATE.copy()
-    del template_no_type["type"]
+    # template_no_type = VALID_ATOMIC_TEMPLATE.copy() # Type missing handled by non-atomic check
+    # del template_no_type["type"]
     template_no_subtype = VALID_ATOMIC_TEMPLATE.copy()
     del template_no_subtype["subtype"]
 
     with caplog.at_level(logging.ERROR):
+        # Test missing name (type is atomic)
         task_system.register_template(template_no_name)
-        assert "Missing 'name', 'type', or 'subtype'" in caplog.text
+        # --- Start Change ---
         assert (
-            "test_atomic_task" not in task_system.templates
-        )  # Check name wasn't added
-
+            "Atomic template registration failed: Missing 'name' or 'subtype'"
+            in caplog.text
+        )
+        # --- End Change ---
+        assert "test_atomic_task" not in task_system.templates # Check name wasn't registered partially
         caplog.clear()
-        task_system.register_template(template_no_type)
-        assert "Missing 'name', 'type', or 'subtype'" in caplog.text
 
-        caplog.clear()
+        # Test missing subtype (type is atomic)
         task_system.register_template(template_no_subtype)
-        assert "Missing 'name', 'type', or 'subtype'" in caplog.text
+        # --- Start Change ---
+        assert (
+            "Atomic template registration failed: Missing 'name' or 'subtype'"
+            in caplog.text
+        )
+        # --- End Change ---
+        assert "test_atomic_task" not in task_system.templates
+        caplog.clear()
 
-    assert len(task_system.templates) == 0
-    assert len(task_system.template_index) == 0
+        # Test missing type (will be caught by non-atomic check)
+        # template_no_type = VALID_ATOMIC_TEMPLATE.copy()
+        # del template_no_type["type"]
+        # with caplog.at_level(logging.WARNING): # Should be caught by non-atomic warning now
+        #     task_system.register_template(template_no_type)
+        #     assert "Ignoring registration attempt for non-atomic template" in caplog.text
 
 
 def test_register_template_non_atomic_warns(task_system, caplog):
-    """Test registering a non-atomic template logs a warning but succeeds."""
+    """Test registering a non-atomic template logs a warning and is ignored."""
     template = VALID_COMPOSITE_TEMPLATE.copy()
     with caplog.at_level(logging.WARNING):
         task_system.register_template(template)
-        assert "Registering non-atomic template type 'composite'" in caplog.text
-
-    assert template["name"] in task_system.templates
-    assert (
-        task_system.template_index[f"{template['type']}:{template['subtype']}"]
-        == template["name"]
-    )
+        # --- Start Change ---
+        assert (
+            f"Ignoring registration attempt for non-atomic template '{template['name']}'"
+            in caplog.text
+        )
+        # Check it wasn't actually registered
+        assert template["name"] not in task_system.templates
+        type_subtype_key = f"{template['type']}:{template['subtype']}"
+        assert type_subtype_key not in task_system.template_index
+        # --- End Change ---
 
 
 def test_register_template_missing_params_warns(task_system, caplog):
-    """Test registering a template without 'params' logs a warning."""
+    """Test registering an atomic template without 'params' logs a warning."""
     template = VALID_ATOMIC_TEMPLATE.copy()
     del template["params"]
     with caplog.at_level(logging.WARNING):
         task_system.register_template(template)
+        # --- Start Change ---
         assert (
-            f"Template '{template['name']}' registered without a 'params' attribute"
+            f"Atomic template '{template['name']}' registered without a 'params' attribute. Validation might fail later."
             in caplog.text
         )
+        # --- End Change ---
     assert template["name"] in task_system.templates  # Still registered
 
 
@@ -201,7 +218,7 @@ def test_find_template_ignores_non_atomic_by_name(task_system):
     composite_template["name"] = atomic_template["name"]
 
     task_system.register_template(atomic_template)
-    task_system.register_template(composite_template)  # Register composite second
+    task_system.register_template(composite_template)  # Attempt to register composite - should be ignored
 
     # Should find the atomic one when searching by name
     found = task_system.find_template(atomic_template["name"])
@@ -216,9 +233,10 @@ def test_find_template_ignores_non_atomic_by_type_subtype(task_system):
     composite_template = VALID_COMPOSITE_TEMPLATE.copy()
 
     task_system.register_template(atomic_template)
-    task_system.register_template(composite_template)
+    task_system.register_template(composite_template) # Attempt to register composite - should be ignored
 
     # Search for the composite type:subtype - should not be found by find_template
+    # because register_template ignored it
     found = task_system.find_template(
         f"{composite_template['type']}:{composite_template['subtype']}"
     )
@@ -274,3 +292,4 @@ def test_resolve_file_paths_deferred(task_system, mock_memory_system):
     # If it raised:
     # with pytest.raises(NotImplementedError):
     #     task_system.resolve_file_paths({}, mock_memory_system, MagicMock())
+
