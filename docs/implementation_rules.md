@@ -99,18 +99,69 @@ This document outlines the standard conventions, patterns, and rules for impleme
 **7. Testing Conventions**
 
 *   **Framework:** Use `pytest`.
-*   **Emphasis on Integration/Functional Tests:** While unit tests are valuable for isolated logic, prioritize testing the interactions *between* components (integration tests) and testing complete workflows from input to output (functional/end-to-end tests).
-*   **Minimize Mocking:**
-    *   **Avoid excessive mocking.** Mocks can make tests brittle and hide integration problems.
-    *   Prefer testing with real component instances where feasible, especially for core logic.
-    *   **Use Mocks Strategically:** Mock primarily at the boundaries of the system (external APIs like LLM providers, filesystem *if absolutely necessary*, external databases) or for components that are slow, non-deterministic, or have significant side effects not relevant to the test.
-    *   When mocking, mock the *dependency* as seen by the component under test, not deep internal implementation details.
-    *   Use `pytest` fixtures (`conftest.py`) to provide real or fake/stub instances of dependencies where appropriate.
+*   **Emphasis on Integration/Functional Tests:** While unit tests are valuable for isolated logic, prioritize testing the interactions *between* components (integration tests) and testing complete workflows from input to output (functional/end-to-end tests). Verify components work together according to their IDL contracts.
+
+*   **Mocking and Patching Strategy:**
+    *   **Guideline 1: Test Dependency Injection by Passing Mocks:**
+        *   **Context:** Many classes receive their dependencies via their constructor (`__init__`) - this is Dependency Injection (DI).
+        *   **Rule:** The best way to test these classes is usually to create mock *objects* (using `unittest.mock.MagicMock` or similar) for the dependencies and pass these *mock instances* directly into the constructor when creating the object under test in your test setup (e.g., within a `pytest` fixture).
+        *   **Avoid:** Globally patching the dependency *classes* themselves when testing a class that uses DI, as it's often unnecessary and can be complex.
+        *   **Example:**
+            ```python
+            # In your test file or conftest.py
+            from unittest.mock import MagicMock
+            # Assume MyService needs a dependency 'worker'
+            mock_worker_instance = MagicMock(spec=WorkerClass)
+            service_under_test = MyService(worker=mock_worker_instance)
+            # Now you can configure mock_worker_instance and assert calls on it
+            mock_worker_instance.do_work.return_value = 'mocked result'
+            service_under_test.perform_action()
+            mock_worker_instance.do_work.assert_called_once()
+            ```
+
+    *   **Guideline 2: Patch Where It's Looked Up:**
+        *   **Context:** When you *do* need to patch (e.g., to replace a class used internally, a module function, or a built-in), you use `unittest.mock.patch`.
+        *   **Rule:** The `target` string you provide to `patch` must be the path to the object *where it is looked up*, not necessarily where it was originally defined.
+        *   **Examples:**
+            *   If `my_module.py` has `import other_module; result = other_module.some_function()`, you patch `'my_module.other_module.some_function'`.
+            *   If `my_module.py` has `from other_module import some_function; result = some_function()`, you patch `'my_module.some_function'`.
+            *   Patching built-ins requires `patch('builtins.open', ...)` for example.
+
+    *   **Guideline 3: Prefer Specific Patching:**
+        *   **Context:** You can apply patches globally (e.g., in fixtures with `autouse=True`) or specifically to tests/fixtures.
+        *   **Rule:** Prefer applying patches only where needed using `@patch` decorators on test functions/fixtures or `with patch(...)` context managers inside tests. This makes dependencies clearer and avoids unintended side effects. Avoid broad, `autouse=True` patching unless the scope is very well understood.
+        *   **Examples:**
+            ```python
+            from unittest.mock import patch
+
+            # Decorator for a test function
+            @patch('my_module.dependency_function')
+            def test_my_function_behavior(mock_dep_func):
+                mock_dep_func.return_value = 123
+                # ... test code ...
+
+            # Context manager inside a test
+            def test_another_behavior():
+                with patch('another_module.HelperClass') as MockHelper:
+                    mock_instance = MockHelper.return_value
+                    mock_instance.get_value.return_value = 456
+                    # ... test code ...
+            ```
+
+    *   **Guideline 4: Minimize Mocking (Strategic Use):**
+        *   **Avoid excessive mocking.** Mocks can make tests brittle and hide integration problems.
+        *   Prefer testing with real component instances where feasible, especially for core logic within a component.
+        *   **Use Mocks Strategically:** Mock primarily at the boundaries of the system (external APIs like LLM providers, filesystem *if absolutely necessary*, external databases) or for components that are slow, non-deterministic, or have significant side effects not relevant to the test.
+        *   When mocking, mock the *dependency* as seen by the component under test, not deep internal implementation details.
+
+    *   **Guideline 5: Mock Object Subtleties (Advanced):**
+        *   Be aware that `MagicMock` instances are generally "truthy". If testing code like `if not ImportedClass:`, patching `ImportedClass` with a standard `MagicMock` might not behave as expected. Using `patch('module.ImportedClass', new_callable=MagicMock)` can sometimes help ensure the mock *class* itself is handled correctly in such checks.
+
 *   **Test Doubles:** Use `pytest` fixtures, `unittest.mock`, or simple stub classes. Choose the right type (Stub, Mock, Fake) for the job.
 *   **Arrange-Act-Assert:** Structure tests clearly.
-*   **Fixtures:** Use `pytest` fixtures extensively for setting up test environments, component instances, and test data. Define shared fixtures in `conftest.py`.
-*   **Markers:** Use `pytest.mark` to categorize tests (e.g., `@pytest.mark.integration`, `@pytest.mark.llm`, `@pytest.mark.skipif(not aider_available)`).
-*   **End-to-End Tests:** Define key user workflows (e.g., REPL query -> context -> LLM -> response; `/task` -> dispatcher -> tool execution; `/task` -> S-expression -> multiple steps -> result) and implement them as integration tests, mocking only the outermost boundaries (LLM API).
+*   **Fixtures:** Use `pytest` fixtures extensively for setting up test environments, component instances (often with injected mocks as per Guideline 1), and test data. Define shared fixtures in `conftest.py`.
+*   **Markers:** Use `pytest.mark` to categorize tests (e.g., `@pytest.mark.integration`, `@pytest.mark.llm`).
+*   **End-to-End Tests:** Define key user workflows and implement them as integration tests, mocking only the outermost boundaries (LLM API, external services).
 
 **8. Error Handling**
 

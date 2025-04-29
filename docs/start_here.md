@@ -117,6 +117,7 @@ When assigned to implement or modify a component specified by an IDL (or tacklin
 *   **Framework:** `pytest`.
 *   **Focus:** Prioritize **Integration and Functional/End-to-End tests** over isolated unit tests. Verify components work together correctly.
 *   **Mocking:** **Minimize mocking.** Mock only at external boundaries (LLM APIs, external services) or where strictly necessary for isolation/speed. Prefer using real instances or simple fakes/stubs configured for the test case.
+*   **Use Correct Mocking Techniques:** Apply mocking and patching correctly, especially when dealing with Dependency Injection. Refer to the detailed guidelines and examples in `docs/implementation_rules.md` (Section 7).
 *   **Fixtures:** Use `pytest` fixtures (`tests/conftest.py`) for test setup (e.g., creating component instances with test configurations or mocked boundaries).
 *   **Structure:** Follow the `Arrange-Act-Assert` pattern. Mirror the `src` directory structure in `tests`.
 
