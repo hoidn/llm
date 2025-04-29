@@ -192,9 +192,9 @@ def test_eval_primitive_get_context(evaluator, mock_parser, mock_memory_system):
     context_input_arg = call_args[0]
     assert isinstance(context_input_arg, ContextGenerationInput)
     assert context_input_arg.query == "find stuff"
-    # Inputs need to be evaluated - assuming literal "/a.py" for simplicity here
-    # The evaluator should evaluate the inner ("file" "/a.py") list first if inputs were complex
-    assert context_input_arg.inputs == {'file': '/a.py'} # Check evaluated inputs
+    # The evaluated value for 'inputs' will be [['file', '/a.py']]
+    # ContextGenerationInput model validation should handle converting this list of pairs
+    assert context_input_arg.inputs == {'file': '/a.py'} # Pydantic should convert [['file', '/a.py']]
 
     # Assert result is the list of paths from the mock
     assert result == ["/mock/file.py"]

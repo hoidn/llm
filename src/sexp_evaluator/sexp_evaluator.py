@@ -316,10 +316,21 @@ class SexpEvaluator:
                 try:
                     if is_tool:
                         logging.info(f"Invoking direct tool: '{target_id}'")
-                        # _execute_tool returns TaskResult object
-                        tool_result: TaskResult = self.handler._execute_tool(target_id, resolved_named_args)
-                        logging.debug(f"Eval Tool Call END: '{target_id}' -> {tool_result.status}")
-                        return tool_result # Return TaskResult object
+                        # Handler._execute_tool might return dict or TaskResult based on IDL/impl
+                        tool_result_obj = self.handler._execute_tool(target_id, resolved_named_args)
+
+                        # Ensure we have a TaskResult object
+                        if isinstance(tool_result_obj, dict):
+                             logging.warning("Handler._execute_tool returned dict, attempting TaskResult validation.")
+                             try:
+                                 tool_result_obj = TaskResult.model_validate(tool_result_obj)
+                             except Exception as model_val_err:
+                                 raise SexpEvaluationError(f"Failed to validate Handler._execute_tool result as TaskResult: {model_val_err}", str(node), error_details=str(tool_result_obj)) from model_val_err
+                        elif not isinstance(tool_result_obj, TaskResult):
+                             raise SexpEvaluationError("Handler._execute_tool returned unexpected type", str(node), error_details=f"Type: {type(tool_result_obj)}")
+
+                        logging.debug(f"Eval Tool Call END: '{target_id}' -> {tool_result_obj.status}")
+                        return tool_result_obj # Return TaskResult object
                     elif is_atomic_task: # Must be atomic task if not tool
                         logging.info(f"Invoking atomic task: '{target_id}'")
                         context_management_obj: Optional[ContextManagement] = None
