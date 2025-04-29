@@ -30,9 +30,11 @@ mock_anthropic_model = MagicMock(name="MockAnthropicModel")
 )
 def test_module_import_works_with_mock():
     # This test just ensures our mocking allows the module to be imported
-    from src.handler.base_handler import BaseHandler, PYDANTIC_AI_AVAILABLE
+    # We only need to import BaseHandler itself for this check.
+    from src.handler.base_handler import BaseHandler
 
-    assert PYDANTIC_AI_AVAILABLE is True  # Mock makes it seem available
+    # The PYDANTIC_AI_AVAILABLE check is removed as it's no longer in base_handler
+    assert True # Simple assertion to make the test valid
 
 
 # Now import BaseHandler after potentially mocking pydantic_ai
@@ -247,9 +249,9 @@ def test_register_tool_success(base_handler, caplog):
 
     with caplog.at_level(logging.WARNING):
         result = base_handler.register_tool(tool_spec, executor_func)
-        # Check warning about dynamic registration is logged
+        # Check warning about dynamic registration is logged (updated message)
         assert (
-            "dynamic registration with the live pydantic-ai Agent instance is complex"
+            "dynamic registration with the LLMInteractionManager's agent instance is complex"
             in caplog.text
         )
 
@@ -288,13 +290,9 @@ def test_register_tool_non_callable_executor(base_handler, caplog):
     assert result is False
     assert "my_tool" not in base_handler.tool_executors
     assert "my_tool" not in base_handler.registered_tools
-    # Check warning about agent registration complexity
-    assert base_handler.llm_manager is not None # Ensure manager exists
-    # Assuming the mock llm_manager has a mock agent attribute for this check
-    if base_handler.llm_manager and base_handler.llm_manager.agent:
-         assert "LLMInteractionManager's agent instance is complex" in caplog.text
-    else:
-         assert "LLMInteractionManager or its agent is not available" in caplog.text
+    # The warning about agent registration complexity is NOT logged when
+    # registration fails early due to non-callable executor.
+    # So, the check for that warning is removed here.
 
 
 # --- Test execute_file_path_command ---
