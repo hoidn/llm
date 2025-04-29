@@ -5,8 +5,7 @@ Unit tests for the PassthroughHandler.
 import pytest
 from unittest.mock import MagicMock, call, patch, ANY
 from src.handler.passthrough_handler import PassthroughHandler
-from src.system.models import TaskResult, TaskFailureError
-from src.system.errors import TaskError # Import TaskError
+from src.system.models import TaskResult, TaskFailureError, TaskError # Import TaskError from models
 # Import dependencies for mocking
 from src.task_system.task_system import TaskSystem
 from src.memory.memory_system import MemorySystem

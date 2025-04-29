@@ -6,10 +6,10 @@ Parses S-expression strings into Python Abstract Syntax Trees (ASTs).
 import logging
 from typing import Any
 from io import StringIO
-from sexpdata import load, Symbol, ExpectNothing, SexpSyntaxError as SexpdataSyntaxError
+from sexpdata import load, Symbol, ExpectNothing, ParseError # Import ParseError instead
 
 # Import the custom error type
-from src.system.errors import SexpSyntaxError
+from src.system.errors import SexpSyntaxError # This is our custom error
 
 # Helper function to recursively convert common symbols
 def _convert_common_symbols(item: Any) -> Any:
@@ -109,7 +109,7 @@ class SexpParser:
                  sexp_string,
                  error_details=str(e)
              ) from e
-        except SexpdataSyntaxError as e:
+        except ParseError as e: # Catch the actual sexpdata ParseError
              # Catch specific syntax errors from sexpdata (e.g., unbalanced parens)
              logging.error(f"S-expression syntax error: {e}")
              # Make the message more specific based on common sexpdata errors if possible
