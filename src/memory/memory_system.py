@@ -207,9 +207,7 @@ class MemorySystem:
         #    - Return an AssociativeMatchResult with an appropriate error message.
         # 7. Return the AssociativeMatchResult.
         # --- End Phase 2, Set A ---
-        raise NotImplementedError(
-            "get_relevant_context_for implementation deferred to Phase 2"
-        )
+
         # --- Start Phase 2a Implementation ---
         # 1. Parse/Validate input_data (Assuming it's already ContextGenerationInput for now)
         if not isinstance(input_data, ContextGenerationInput):
