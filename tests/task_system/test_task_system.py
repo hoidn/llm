@@ -158,13 +158,13 @@ def test_register_template_missing_required_fields(task_system_instance, caplog)
         caplog.clear()
 
 
-def test_register_template_non_atomic_warns(task_system_instance, caplog):
-    """Test registering a non-atomic template logs a warning and is ignored."""
+def test_register_template_non_atomic_is_rejected(task_system_instance, caplog):
+    """Test registering a non-atomic template logs an error and is rejected."""
     template = VALID_COMPOSITE_TEMPLATE.copy()
-    with caplog.at_level(logging.WARNING):
+    with caplog.at_level(logging.ERROR):
         task_system_instance.register_template(template)
         assert (
-            f"Ignoring registration attempt for non-atomic template '{template['name']}'"
+            f"Registration failed: Template '{template['name']}' is not atomic"
             in caplog.text
         )
         # Check it wasn't actually registered
@@ -185,6 +185,41 @@ def test_register_template_missing_description_warns(task_system_instance, caplo
         # --- End Change ---
     assert template["name"] in task_system_instance.templates  # Still registered
 
+def test_register_template_atomic_missing_params_is_rejected(task_system_instance, caplog):
+    """Test registering an atomic template without 'params' is rejected."""
+    template_missing_params = {
+        "name": "no_params_task", 
+        "type": "atomic", 
+        "subtype": "test", 
+        "description": "Should fail"
+    }
+    
+    with caplog.at_level(logging.ERROR):
+        task_system_instance.register_template(template_missing_params)
+        assert "Registration failed: Atomic template 'no_params_task' must have a 'params' definition." in caplog.text
+        
+    # Verify template was not registered
+    assert "no_params_task" not in task_system_instance.templates
+    assert "atomic:test" not in task_system_instance.template_index
+
+
+def test_register_template_invalid_params_is_rejected(task_system_instance, caplog):
+    """Test registering an atomic template with invalid 'params' type is rejected."""
+    template_invalid_params = {
+        "name": "invalid_params_task", 
+        "type": "atomic", 
+        "subtype": "test", 
+        "description": "Should fail",
+        "params": "not a dictionary"  # Invalid params type
+    }
+    
+    with caplog.at_level(logging.ERROR):
+        task_system_instance.register_template(template_invalid_params)
+        assert "Registration failed: Atomic template 'invalid_params_task' has invalid 'params' definition" in caplog.text
+        
+    # Verify template was not registered
+    assert "invalid_params_task" not in task_system_instance.templates
+    assert "atomic:test" not in task_system_instance.template_index
 
 def test_register_template_overwrites(task_system_instance):
     """Test registering a template with the same name overwrites the previous one."""

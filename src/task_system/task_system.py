@@ -304,13 +304,28 @@ class TaskSystem:
         subtype = template.get("subtype")
         params = template.get("params")  # Check if params definition exists
 
-        # Enforce that only atomic templates are registered via this method
+        # --- BEGIN NEW VALIDATION BLOCK ---
+        # 1. Enforce Atomic Type: Only atomic templates are allowed.
         if template_type != "atomic":
-            logging.warning(
-                f"Ignoring registration attempt for non-atomic template '{name}' "
-                f"(type: '{template_type}'). Non-atomic tasks are defined and executed via S-expressions."
+            logging.error(
+                f"Registration failed: Template '{name}' is not atomic (type: '{template_type}'). Only atomic templates can be registered via TaskSystem."
             )
-            return  # Do not register non-atomic templates here
+            return # Stop processing, do not register
+
+        # 2. Enforce Mandatory Params: Atomic templates must define parameters.
+        if params is None: # Check if 'params' key exists and its value is not None
+             logging.error(
+                 f"Registration failed: Atomic template '{name}' must have a 'params' definition."
+             )
+             return # Stop processing, do not register
+
+        # Optional but recommended: Check if params is actually a dictionary
+        if not isinstance(params, dict):
+            logging.error(
+                f"Registration failed: Atomic template '{name}' has invalid 'params' definition (must be a dictionary)."
+            )
+            return # Stop processing, do not register
+        # --- END NEW VALIDATION BLOCK ---
 
         if not all([name, subtype]): # Type is already checked
              logging.error(
