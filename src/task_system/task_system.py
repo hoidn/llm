@@ -1,11 +1,24 @@
 import logging
-from typing import Any, Dict, List, Optional, Tuple
+import json
+from typing import Any, Dict, List, Optional, Tuple, Union
+from pydantic import ValidationError as PydanticValidationError
 
-# Forward declarations for type hinting cycles
-# from src.memory.memory_system import MemorySystem
-# from src.handler.base_handler import BaseHandler
-# from src.system.models import SubtaskRequest, ContextGenerationInput, AssociativeMatchResult
+# Assuming MemorySystem and BaseHandler are available for type hinting
+from src.memory.memory_system import MemorySystem
+from src.handler.base_handler import BaseHandler
+from src.system.models import (
+    SubtaskRequest, TaskResult, ContextManagement,
+    ContextGenerationInput, AssociativeMatchResult, MatchTuple,
+    SUBTASK_CONTEXT_DEFAULTS, TaskError, TaskFailureError, TaskFailureReason # Added TaskFailureError, TaskFailureReason
+)
+# Import the executor and its specific error
+from src.executors.atomic_executor import AtomicTaskExecutor, ParameterMismatchError
 
+# Import for find_matching_tasks
+from difflib import SequenceMatcher
+
+# Constants for find_matching_tasks
+MATCH_THRESHOLD = 0.6 # Minimum similarity score to consider a match
 
 class TaskSystem:
     """
@@ -14,7 +27,7 @@ class TaskSystem:
     Complies with the contract defined in src/task_system/task_system_IDL.md.
     """
 
-    def __init__(self, memory_system: Optional[Any] = None):  # MemorySystem
+    def __init__(self, memory_system: Optional[MemorySystem] = None):
         """
         Initializes the Task System.
 
@@ -27,9 +40,10 @@ class TaskSystem:
             {}
         )  # Keyed by 'type:subtype', value is 'name'
         self._test_mode: bool = False
-        self._handler_cache: Dict[str, Any] = (
+        self._handler_cache: Dict[str, BaseHandler] = (
             {}
-        )  # Cache for handler instances (if needed later)
+        )  # Cache for handler instances
+        self._atomic_executor = AtomicTaskExecutor() # Instantiate the executor
         logging.info("TaskSystem initialized.")
 
     def set_test_mode(self, enabled: bool) -> None:
@@ -44,7 +58,68 @@ class TaskSystem:
         # Potentially clear handler cache if mode changes behavior
         self._handler_cache = {}
 
-    def execute_atomic_template(self, request: Any) -> Dict[str, Any]:  # SubtaskRequest
+    def _get_handler(self) -> BaseHandler:
+        """Placeholder to get a handler instance. Replace with actual logic."""
+        # In a real scenario, this might involve configuration or context
+        # to select/create the appropriate handler.
+        if "default_handler" not in self._handler_cache:
+            # This is a placeholder. In a real system, you'd instantiate
+            # BaseHandler (or a subclass) with its dependencies (TaskSystem, MemorySystem, config).
+            # For testing purposes, the fixture injects a mock handler here.
+            logging.warning("Creating a placeholder BaseHandler. Replace with actual handler instantiation.")
+            # Cannot instantiate BaseHandler directly without dependencies.
+            # Relying on test fixture injection for now.
+            raise RuntimeError("Handler not available. Ensure it's injected or configured.")
+        return self._handler_cache["default_handler"]
+
+    def _validate_and_merge_context_settings(
+        self,
+        template_settings: Optional[Dict[str, Any]],
+        request_settings: Optional[Dict[str, Any]],
+        subtype: str
+    ) -> Tuple[Optional[ContextManagement], Optional[TaskError]]:
+        """Validates and merges context settings from template and request."""
+        # Start with subtype defaults
+        merged_settings = SUBTASK_CONTEXT_DEFAULTS.model_copy(deep=True) # Use defaults for 'subtask' as base
+
+        # Apply template settings
+        if template_settings:
+            try:
+                # Validate template settings structure first
+                ContextManagement.model_validate(template_settings)
+                merged_settings = merged_settings.model_copy(update=template_settings)
+            except PydanticValidationError as e:
+                msg = f"Invalid context_management in template: {e}"
+                logging.error(msg)
+                return None, TaskError(type="TASK_FAILURE", reason="input_validation_failure", message=msg)
+
+        # Apply request overrides
+        if request_settings:
+            try:
+                # Validate request settings structure
+                ContextManagement.model_validate(request_settings) # Validate partial is tricky, validate full structure
+                # Filter out None values from request_settings before updating
+                valid_request_settings = {k: v for k, v in request_settings.items() if v is not None}
+                merged_settings = merged_settings.model_copy(update=valid_request_settings)
+            except PydanticValidationError as e:
+                msg = f"Invalid context_management override in request: {e}"
+                logging.error(msg)
+                return None, TaskError(type="TASK_FAILURE", reason="input_validation_failure", message=msg)
+
+        # Final validation of merged settings (e.g., mutual exclusivity)
+        try:
+            if merged_settings.freshContext == "enabled" and merged_settings.inheritContext in ["full", "subset"]:
+                raise ValueError("freshContext='enabled' cannot be combined with inheritContext='full' or 'subset'")
+            # Validate the final merged object
+            final_context = ContextManagement.model_validate(merged_settings.model_dump())
+            return final_context, None
+        except (PydanticValidationError, ValueError) as e:
+            msg = f"Context validation failed after merging: {e}"
+            logging.error(msg)
+            return None, TaskError(type="TASK_FAILURE", reason="input_validation_failure", message=msg)
+
+
+    def execute_atomic_template(self, request: SubtaskRequest) -> TaskResult:
         """
         Executes a single *atomic* Task System template workflow directly from a SubtaskRequest.
 
@@ -52,34 +127,155 @@ class TaskSystem:
             request: A valid SubtaskRequest object.
 
         Returns:
-            The final TaskResult dictionary from the executed atomic template.
+            The final TaskResult from the executed atomic template.
         """
-        # Implementation deferred to Phase 2
-        logging.warning(
-            "execute_atomic_template called, but implementation is deferred."
+        logging.info(f"Executing atomic template request: {request.name} (Task ID: {request.task_id})")
+
+        # 1. Find Template
+        template_def = self.find_template(request.name)
+        if not template_def:
+            logging.error(f"Template not found for name: {request.name}")
+            error = TaskError(type="TASK_FAILURE", reason="template_not_found", message=f"Template not found: {request.name}")
+            return TaskResult(content=f"Template not found: {request.name}", status="FAILED", notes={"error": error})
+
+        # Ensure it's actually atomic (should be guaranteed by find_template, but double-check)
+        if template_def.get("type") != "atomic":
+             logging.error(f"Attempted to execute non-atomic template '{request.name}' via execute_atomic_template.")
+             error = TaskError(type="TASK_FAILURE", reason="input_validation_failure", message="Cannot execute non-atomic template directly")
+             return TaskResult(content="Cannot execute non-atomic template directly", status="FAILED", notes={"error": error})
+
+        subtype = template_def.get("subtype", "standard") # Default subtype if missing
+
+        # 2. Get Handler (placeholder for actual handler retrieval)
+        try:
+            handler = self._get_handler()
+        except RuntimeError as e:
+             logging.exception("Failed to get handler instance.")
+             error = TaskError(type="TASK_FAILURE", reason="dependency_error", message=f"Failed to get handler: {e}")
+             return TaskResult(content=f"Failed to get handler: {e}", status="FAILED", notes={"error": error})
+
+
+        # 3. Resolve Context Management Settings
+        template_context_settings = template_def.get("context_management")
+        request_context_settings = request.context_management.model_dump(exclude_none=True) if request.context_management else None
+
+        final_context_settings, context_error = self._validate_and_merge_context_settings(
+            template_context_settings, request_context_settings, subtype
         )
-        raise NotImplementedError(
-            "execute_atomic_template implementation deferred to Phase 2"
-        )
+        if context_error:
+            return TaskResult(content=context_error.message, status="FAILED", notes={"error": context_error})
+
+        # 4. Resolve File Paths
+        file_paths = []
+        context_source_note = "none"
+        if request.file_paths:
+            # Explicit paths provided in the request take precedence
+            file_paths = request.file_paths
+            context_source_note = "explicit_request"
+            logging.debug(f"Using explicit file paths from request: {file_paths}")
+        elif final_context_settings and final_context_settings.freshContext == "enabled":
+            # Resolve paths based on template definition if fresh context is enabled
+            resolved_paths, resolve_error = self.resolve_file_paths(template_def, self.memory_system, handler)
+            if resolve_error:
+                logging.warning(f"File path resolution failed for template '{request.name}': {resolve_error}")
+                # Decide if this is fatal. For now, continue without files.
+                # Could return error: TaskError(type="TASK_FAILURE", reason="context_retrieval_failure", message=resolve_error)
+                context_source_note = "resolution_failed"
+            else:
+                file_paths = resolved_paths
+                context_source_note = template_def.get("file_paths_source", {}).get("type", "template_literal") # More specific note
+                logging.debug(f"Resolved file paths from template: {file_paths}")
+        else:
+             logging.debug(f"No explicit file paths and fresh context disabled for template '{request.name}'.")
+
+
+        # 5. Fetch Context (if needed - currently handled by AtomicTaskExecutor/Handler)
+        # The current AtomicTaskExecutor IDL doesn't take file_context directly.
+        # Context fetching logic might need refinement here or within the handler/executor.
+        # For now, we assume the handler's _execute_llm_call uses the file_paths if needed.
+        # We will pass file_paths to the executor for potential future use or logging.
+        context_summary = "Context handling delegated to Handler/Executor" # Placeholder note
+
+        # 6. Execute Atomic Task Body
+        try:
+            # Execute using the instantiated executor
+            result_dict = self._atomic_executor.execute_body(
+                atomic_task_def=template_def,
+                params=request.inputs,
+                handler=handler
+                # file_paths=file_paths, # Pass files if executor signature changes
+                # context_summary=context_summary # Pass context if executor signature changes
+            )
+            # Validate the dictionary against TaskResult model before returning
+            final_result = TaskResult.model_validate(result_dict)
+
+        except ParameterMismatchError as e:
+             logging.error(f"Parameter mismatch executing template '{request.name}': {e}")
+             error = TaskError(type="TASK_FAILURE", reason="input_validation_failure", message=str(e))
+             final_result = TaskResult(content=str(e), status="FAILED", notes={"error": error})
+        except Exception as e:
+            logging.exception(f"Unexpected error executing template body for '{request.name}': {e}")
+            error = TaskError(type="TASK_FAILURE", reason="unexpected_error", message=f"Executor/Handler exception: {e}")
+            final_result = TaskResult(content=f"Executor failed: {e}", status="FAILED", notes={"error": error})
+
+        # 7. Augment Result Notes
+        if final_result.notes is None:
+             final_result.notes = {}
+        final_result.notes["template_used"] = request.name
+        final_result.notes["task_id"] = request.task_id
+        final_result.notes["context_source"] = context_source_note
+        final_result.notes["file_count"] = len(file_paths)
+        # Add merged context settings for debugging?
+        # final_result.notes["context_settings"] = final_context_settings.model_dump() if final_context_settings else None
+
+        logging.info(f"Finished atomic template execution for '{request.name}' with status: {final_result.status}")
+        return final_result
+
 
     def find_matching_tasks(
-        self, input_text: str, memory_system: Any  # MemorySystem
+        self, input_text: str, memory_system: Optional[MemorySystem] # Keep optional for now
     ) -> List[Dict[str, Any]]:
         """
         Finds matching atomic task templates based on similarity to input text.
 
         Args:
             input_text: A string describing the desired task.
-            memory_system: A valid MemorySystem instance.
+            memory_system: A valid MemorySystem instance (currently unused, placeholder).
 
         Returns:
             A list of dictionaries, each representing a matching template, sorted by score.
+            Format: [{"score": float, "task": Dict[str, Any], "taskType": "atomic", "subtype": str}]
         """
-        # Implementation deferred to Phase 2
-        logging.warning("find_matching_tasks called, but implementation is deferred.")
-        # Placeholder structure for return type hint satisfaction
-        return []
-        # raise NotImplementedError("find_matching_tasks implementation deferred to Phase 2")
+        if not input_text:
+            return []
+
+        matches = []
+        # Iterate only through registered *atomic* templates
+        for name, template in self.templates.items():
+            if template.get("type") != "atomic":
+                continue # Skip non-atomic
+
+            description = template.get("description")
+            if not description:
+                continue # Cannot match without description
+
+            # Simple similarity check using SequenceMatcher
+            similarity = SequenceMatcher(None, input_text.lower(), description.lower()).ratio()
+
+            if similarity >= MATCH_THRESHOLD:
+                matches.append({
+                    "score": similarity,
+                    "task": template, # Include the full template definition
+                    "taskType": "atomic",
+                    "subtype": template.get("subtype", "standard") # Include subtype
+                })
+
+        # Sort matches by score in descending order
+        matches.sort(key=lambda x: x["score"], reverse=True)
+
+        logging.info(f"Found {len(matches)} matching atomic tasks for input: '{input_text[:50]}...'")
+        return matches
+
 
     def register_template(self, template: Dict[str, Any]) -> None:
         """
@@ -96,7 +292,6 @@ class TaskSystem:
         subtype = template.get("subtype")
         params = template.get("params")  # Check if params definition exists
 
-        # --- Start Change ---
         # Enforce that only atomic templates are registered via this method
         if template_type != "atomic":
             logging.warning(
@@ -111,8 +306,13 @@ class TaskSystem:
              )
              # IDL doesn't specify error raising, just logging for now
              return
-        # --- End Change ---
 
+        # --- Start Change: Add description warning ---
+        if not template.get("description"):
+            logging.warning(
+                f"Atomic template '{name}' registered without a 'description'."
+            )
+        # --- End Change ---
 
         if params is None:
             logging.warning(
@@ -125,7 +325,24 @@ class TaskSystem:
         # Check for potential overwrite, log if necessary
         if name in self.templates:
             logging.warning(f"Overwriting existing template registration for name: '{name}'")
-        if f"{template_type}:{subtype}" in self.template_index:
+
+        type_subtype_key = f"{template_type}:{subtype}" # type is guaranteed to be 'atomic' here
+
+        # --- Start Change: Handle index overwrite ---
+        # Check if another type:subtype key already maps to this name
+        existing_key_for_name = None
+        for key, mapped_name in self.template_index.items():
+            if mapped_name == name:
+                existing_key_for_name = key
+                break
+
+        if existing_key_for_name and existing_key_for_name != type_subtype_key:
+            logging.warning(
+                f"Template name '{name}' is being re-registered with a new type:subtype "
+                f"('{type_subtype_key}', was '{existing_key_for_name}'). Removing old index entry."
+            )
+            del self.template_index[existing_key_for_name]
+        elif f"{template_type}:{subtype}" in self.template_index:
              existing_name = self.template_index[f"{template_type}:{subtype}"]
              if existing_name != name:
                  logging.warning(
@@ -134,10 +351,10 @@ class TaskSystem:
                  )
              elif self.templates.get(name) != template:
                  logging.info(f"Updating template content for name '{name}' and type:subtype '{template_type}:{subtype}'")
+        # --- End Change ---
 
 
         self.templates[name] = template
-        type_subtype_key = f"{template_type}:{subtype}" # type is guaranteed to be 'atomic' here
         self.template_index[type_subtype_key] = name
         logging.info(f"Registered atomic template: '{name}' ({type_subtype_key})")
 
@@ -153,8 +370,6 @@ class TaskSystem:
         Returns:
             The atomic template definition dictionary if found, otherwise None.
         """
-        # --- Start Change: Simplified Logic ---
-
         # 1. Try direct name lookup (only atomic templates are stored)
         template = self.templates.get(identifier)
         if template:
@@ -181,16 +396,16 @@ class TaskSystem:
                 )
                 return None # Treat as not found
 
-        # --- End Change ---
-
         logging.debug(f"Atomic template not found for identifier: '{identifier}'")
         return None
 
     def generate_context_for_memory_system(
-        self, context_input: Any, global_index: Dict[str, str]  # ContextGenerationInput
-    ) -> Any:  # AssociativeMatchResult
+        self, context_input: ContextGenerationInput, global_index: Dict[str, str]
+    ) -> AssociativeMatchResult:
         """
         Generates context for the Memory System, acting as a mediator.
+
+        This typically involves invoking a specialized 'associative_matching' atomic task.
 
         Args:
             context_input: A valid ContextGenerationInput object.
@@ -199,34 +414,165 @@ class TaskSystem:
         Returns:
             An AssociativeMatchResult object.
         """
-        # Implementation deferred to Phase 2
-        logging.warning(
-            "generate_context_for_memory_system called, but implementation is deferred."
+        logging.info("Generating context for Memory System via internal task.")
+        matching_template_id = "atomic:associative_matching"
+        matching_template = self.find_template(matching_template_id)
+
+        if not matching_template:
+            msg = f"Associative matching template '{matching_template_id}' not found."
+            logging.error(msg)
+            return AssociativeMatchResult(context_summary="", matches=[], error=msg)
+
+        # Prepare the request for the internal matching task
+        # Pass the original context_input and global_index as inputs
+        subtask_request = SubtaskRequest(
+            task_id=f"context-gen-{context_input.model_dump_json()[:50]}", # Generate a unique-ish ID
+            type="atomic",
+            name=matching_template['name'],
+            description="Internal context generation task",
+            inputs={
+                "context_input": context_input.model_dump(exclude_none=True), # Pass the input object as dict
+                "global_index": global_index,
+            },
+            # Ensure this internal task doesn't try to fetch *more* context
+            context_management=ContextManagement(
+                 inheritContext="none",
+                 accumulateData=False,
+                 accumulationFormat="notes_only",
+                 freshContext="disabled" # Crucial override
+            )
         )
-        raise NotImplementedError(
-            "generate_context_for_memory_system implementation deferred to Phase 2"
-        )
+
+        # Execute the internal task
+        task_result = self.execute_atomic_template(subtask_request)
+
+        # Process the result
+        if task_result.status == "FAILED":
+            error_msg = f"Associative matching task failed: {task_result.notes.get('error', {}).get('message', task_result.content)}"
+            logging.error(error_msg)
+            return AssociativeMatchResult(context_summary="", matches=[], error=error_msg)
+
+        # Parse the result content (expected to be JSON of AssociativeMatchResult)
+        try:
+            # Ensure content is string before parsing
+            if not isinstance(task_result.content, str):
+                 raise TypeError(f"Expected string content, got {type(task_result.content)}")
+            # Use Pydantic's validation during parsing
+            assoc_match_result = AssociativeMatchResult.model_validate_json(task_result.content)
+            logging.info(f"Successfully generated context: {len(assoc_match_result.matches)} matches.")
+            return assoc_match_result
+        except (json.JSONDecodeError, PydanticValidationError, TypeError) as e:
+            error_msg = f"Failed to parse AssociativeMatchResult from internal task output: {e}"
+            logging.error(f"{error_msg}\nContent was: {task_result.content}")
+            return AssociativeMatchResult(context_summary="", matches=[], error=error_msg)
+        except Exception as e:
+             error_msg = f"Unexpected error parsing AssociativeMatchResult: {e}"
+             logging.exception(error_msg)
+             return AssociativeMatchResult(context_summary="", matches=[], error=error_msg)
+
 
     def resolve_file_paths(
         self,
         template: Dict[str, Any],
-        memory_system: Any,
-        handler: Any,  # MemorySystem, BaseHandler
+        memory_system: Optional[MemorySystem],
+        handler: Optional[BaseHandler],
     ) -> Tuple[List[str], Optional[str]]:
         """
         Resolves the final list of file paths to be used for context based on template settings.
 
         Args:
             template: A dictionary representing a fully resolved task template.
-            memory_system: A valid MemorySystem instance.
-            handler: A valid Handler instance.
+            memory_system: A valid MemorySystem instance (required for description/context types).
+            handler: A valid Handler instance (required for command type).
 
         Returns:
             A tuple: (list_of_file_paths, optional_error_message).
         """
-        # Implementation deferred to Phase 2
-        logging.warning("resolve_file_paths called, but implementation is deferred.")
-        # Placeholder structure for return type hint satisfaction
-        return ([], "Implementation deferred")
-        # raise NotImplementedError("resolve_file_paths implementation deferred to Phase 2")
+        logging.debug(f"Resolving file paths for template: {template.get('name', 'unnamed')}")
+
+        # Check for top-level literal paths first (legacy?)
+        if "file_paths" in template and isinstance(template["file_paths"], list):
+            logging.debug("Using literal file_paths from template top-level.")
+            return template["file_paths"], None
+
+        source_info = template.get("file_paths_source")
+        if not source_info or not isinstance(source_info, dict):
+            logging.debug("No file_paths_source found or invalid format, returning empty list.")
+            return [], None # No source specified
+
+        source_type = source_info.get("type", "literal") # Default to literal if type missing
+
+        if source_type == "literal":
+            paths = source_info.get("path", []) # Use 'path' key inside source_info
+            if isinstance(paths, list):
+                 logging.debug(f"Using literal paths from file_paths_source: {paths}")
+                 return paths, None
+            else:
+                 msg = "Invalid format for literal file_paths_source: 'path' key must be a list."
+                 logging.error(msg)
+                 return [], msg
+
+        elif source_type == "command":
+            if not handler:
+                return [], "Handler instance is required for file_paths_source type 'command'"
+            command = source_info.get("command")
+            if not command:
+                return [], "Missing command in file_paths_source type 'command'"
+            logging.debug(f"Executing command for file paths: {command}")
+            try:
+                # Assuming handler has a method like execute_file_path_command
+                paths = handler.execute_file_path_command(command)
+                logging.debug(f"Command returned paths: {paths}")
+                return paths, None
+            except Exception as e:
+                msg = f"Error executing command for file paths: {e}"
+                logging.exception(msg)
+                return [], msg
+
+        elif source_type == "description":
+            if not memory_system:
+                return [], "MemorySystem instance is required for file_paths_source type 'description'"
+            # Use specific description if provided, else fall back to template description
+            description = source_info.get("description") or template.get("description")
+            if not description:
+                return [], "Missing description for file_paths_source type 'description'"
+            logging.debug(f"Getting context by description: {description}")
+            try:
+                # Use the specific method for description-based matching
+                result = memory_system.get_relevant_context_with_description(description, description) # Pass desc twice? Check IDL/impl
+                if result.error:
+                    return [], f"Error getting context by description: {result.error}"
+                paths = [match.path for match in result.matches]
+                logging.debug(f"Context by description returned paths: {paths}")
+                return paths, None
+            except Exception as e:
+                msg = f"Error getting context by description: {e}"
+                logging.exception(msg)
+                return [], msg
+
+        elif source_type == "context_description": # Renamed from context_query in some tests? Aligning with IDL
+             if not memory_system:
+                 return [], "MemorySystem instance is required for file_paths_source type 'context_description'"
+             context_query = source_info.get("context_query")
+             if not context_query:
+                 return [], "Missing context_query for file_paths_source type 'context_description'"
+             logging.debug(f"Getting context by context_query: {context_query}")
+             try:
+                 # Use the primary context retrieval method
+                 context_input = ContextGenerationInput(query=context_query)
+                 result = memory_system.get_relevant_context_for(context_input)
+                 if result.error:
+                     return [], f"Error getting context by context_query: {result.error}"
+                 paths = [match.path for match in result.matches]
+                 logging.debug(f"Context by context_query returned paths: {paths}")
+                 return paths, None
+             except Exception as e:
+                 msg = f"Error getting context by context_query: {e}"
+                 logging.exception(msg)
+                 return [], msg
+
+        else:
+            msg = f"Unknown file_paths_source type: {source_type}"
+            logging.error(msg)
+            return [], msg
 

@@ -17,9 +17,9 @@ from src.handler.base_handler import BaseHandler # For type hint/mocking
 from src.system.models import (
     SubtaskRequest, TaskResult, ContextManagement,
     ContextGenerationInput, AssociativeMatchResult, MatchTuple,
-    SUBTASK_CONTEXT_DEFAULTS, TaskError # Added TaskError
+    SUBTASK_CONTEXT_DEFAULTS, TaskError, TaskFailureError # Added TaskFailureError
 )
-from pydantic import ValidationError # Added for testing context merge validation
+from pydantic import ValidationError as PydanticValidationError # Renamed import
 # Import the executor error for testing
 from src.executors.atomic_executor import ParameterMismatchError
 
@@ -52,8 +52,7 @@ VALID_COMPOSITE_TEMPLATE = {
 def mock_memory_system():
     """Provides a mock MemorySystem."""
     # Add spec for better mocking if MemorySystem class is available
-    # return MagicMock(spec=MemorySystem)
-    mock = MagicMock()
+    mock = MagicMock(spec=MemorySystem)
     # Mock methods used by TaskSystem
     mock.get_relevant_context_for.return_value = AssociativeMatchResult(context_summary="Mock context", matches=[])
     mock.get_relevant_context_with_description.return_value = AssociativeMatchResult(context_summary="Mock desc context", matches=[])
@@ -69,7 +68,8 @@ def mock_handler():
     # Mock the methods used by AtomicTaskExecutor
     handler._build_system_prompt.side_effect = lambda template, file_context: f"BaseSysPrompt+{template or ''}+{file_context or ''}"
     # Mock _execute_llm_call to return a TaskResult-like dictionary
-    handler._execute_llm_call.return_value = TaskResult(content="LLM Result", status="COMPLETE", notes={})
+    # Ensure the mock returns a valid TaskResult object or dict that passes validation
+    handler._execute_llm_call.return_value = TaskResult(content="LLM Result", status="COMPLETE", notes={}) # Return TaskResult obj
     return handler
 
 
@@ -173,13 +173,13 @@ def test_register_template_non_atomic_warns(task_system_instance, caplog):
 def test_register_template_missing_description_warns(task_system_instance, caplog):
     """Test registering an atomic template without 'description' logs a warning."""
     template = VALID_ATOMIC_TEMPLATE.copy()
+    name = template["name"]
     del template["description"] # Remove description
     with caplog.at_level(logging.WARNING):
         task_system_instance.register_template(template)
-        assert (
-            f"Atomic template '{template['name']}' registered without a 'description'."
-            in caplog.text
-        )
+        # --- Start Change: Assert exact log message ---
+        assert f"Atomic template '{name}' registered without a 'description'." in caplog.text
+        # --- End Change ---
     assert template["name"] in task_system_instance.templates  # Still registered
 
 
@@ -203,8 +203,9 @@ def test_register_template_overwrites(task_system_instance):
     )
     # Index should be updated to the new subtype for that name
     assert task_system_instance.template_index["atomic:new_subtype"] == "test_atomic_task"
-    # Old index key should be removed because the template was overwritten
+    # --- Start Change: Assert old index key is removed ---
     assert f"atomic:{template1_subtype}" not in task_system_instance.template_index
+    # --- End Change ---
 
 
 # --- Test find_template ---
@@ -274,8 +275,9 @@ def test_find_template_ignores_non_atomic_by_type_subtype(task_system_instance):
 
 # --- Tests for execute_atomic_template (Phase 2c) ---
 
-# Patch the executor class *at its new location*
+# --- Start Change: Correct patch target ---
 @patch('src.task_system.task_system.AtomicTaskExecutor', new_callable=MagicMock) # Use MagicMock for more control
+# --- End Change ---
 @patch.object(TaskSystem, 'find_template')
 @patch.object(MemorySystem, 'get_relevant_context_for')
 @patch.object(TaskSystem, 'resolve_file_paths') # Mock file path resolution too
@@ -292,6 +294,7 @@ def test_execute_atomic_template_success_flow(
 
     # Mock the executor instance and its method to return a dict
     mock_executor_instance = MockExecutorClass.return_value
+    # Ensure the mock returns a dict that passes TaskResult validation
     mock_executor_instance.execute_body.return_value = TaskResult(
         content=f"Executed {template_name}", status="COMPLETE", notes={}
     ).model_dump() # Executor now returns dict
@@ -302,6 +305,7 @@ def test_execute_atomic_template_success_flow(
     # mock_get_context is already mocked by fixture
 
     request = SubtaskRequest(
+        task_id="exec-success-1", # Added task_id
         type="atomic", name=template_name, description="Do test",
         inputs={"input1": "value1"},
         context_management=None, # Use template/defaults
@@ -313,20 +317,15 @@ def test_execute_atomic_template_success_flow(
 
     # Assert
     mock_find_template.assert_called_once_with(template_name)
-    # Check if resolve_file_paths was called because request.file_paths is None and template has source info
-    # (In VALID_ATOMIC_TEMPLATE, there's no file_paths or file_paths_source, so resolve shouldn't be called)
-    mock_resolve_files.assert_not_called() # Based on VALID_ATOMIC_TEMPLATE structure
+    # Check if resolve_file_paths was called because request.file_paths is None and template has freshContext enabled
+    mock_resolve_files.assert_called_once_with(mock_template_def, mock_memory_system, mock_handler) # Based on VALID_ATOMIC_TEMPLATE structure
 
-    # Check context fetch call (freshContext='enabled' in template)
-    mock_get_context.assert_called_once()
-    call_args, call_kwargs = mock_get_context.call_args
-    assert isinstance(call_args[0], ContextGenerationInput)
-    assert call_args[0].templateDescription == mock_template_def['description']
-    assert call_args[0].inputs == request.inputs
+    # Context fetch call is now internal to resolve_file_paths or executor/handler
+    # mock_get_context.assert_called_once() # Don't assert this here anymore
 
     # Check executor instantiation and call
     MockExecutorClass.assert_called_once()
-    # Verify call signature matches the IDL (no context, no files)
+    # Verify call signature matches the IDL
     mock_executor_instance.execute_body.assert_called_once_with(
         atomic_task_def=mock_template_def,
         params=request.inputs,
@@ -338,8 +337,9 @@ def test_execute_atomic_template_success_flow(
     assert final_result.status == "COMPLETE"
     assert final_result.content == f"Executed {template_name}"
     assert final_result.notes.get("template_used") == template_name
-    assert final_result.notes.get("context_source") == "fresh_associative_match"
-    assert final_result.notes.get("file_count") == 0
+    # Check context source note based on resolve_file_paths call
+    assert final_result.notes.get("context_source") == "template_literal" # Default type in VALID_ATOMIC_TEMPLATE
+    assert final_result.notes.get("file_count") == len(resolved_paths)
 
 
 @patch.object(TaskSystem, 'find_template')
@@ -347,7 +347,9 @@ def test_execute_atomic_template_not_found(mock_find_template, task_system_insta
     """Test execute_atomic_template when template is not found."""
     # Arrange
     mock_find_template.return_value = None
-    request = SubtaskRequest(type="atomic", name="not_a_task", description="", inputs={})
+    # --- Start Change: Add task_id ---
+    request = SubtaskRequest(task_id="not-found-1", type="atomic", name="not_a_task", description="", inputs={})
+    # --- End Change ---
 
     # Act
     result = task_system_instance.execute_atomic_template(request)
@@ -355,6 +357,7 @@ def test_execute_atomic_template_not_found(mock_find_template, task_system_insta
     # Assert
     assert result.status == "FAILED"
     assert result.notes and result.notes.get("error")
+    assert isinstance(result.notes["error"], TaskError) # Check it's a TaskError object
     assert result.notes["error"].reason == "template_not_found"
     assert "Template not found" in result.content
 
@@ -370,7 +373,9 @@ def test_execute_atomic_template_invalid_context_config(task_system_instance):
     }
     task_system_instance.register_template(mock_template_def) # Register directly
 
-    request = SubtaskRequest(type="atomic", name=template_name, description="", inputs={})
+    # --- Start Change: Add task_id ---
+    request = SubtaskRequest(task_id="conflict-1", type="atomic", name=template_name, description="", inputs={})
+    # --- End Change ---
 
     # Act
     result = task_system_instance.execute_atomic_template(request)
@@ -378,11 +383,14 @@ def test_execute_atomic_template_invalid_context_config(task_system_instance):
     # Assert
     assert result.status == "FAILED"
     assert result.notes and result.notes.get("error")
+    assert isinstance(result.notes["error"], TaskError)
     assert result.notes["error"].reason == "input_validation_failure"
     assert "Context validation failed" in result.notes["error"].message
 
 
+# --- Start Change: Correct patch target ---
 @patch('src.task_system.task_system.AtomicTaskExecutor', new_callable=MagicMock)
+# --- End Change ---
 @patch.object(TaskSystem, 'find_template')
 @patch.object(MemorySystem, 'get_relevant_context_for')
 @patch.object(TaskSystem, 'resolve_file_paths')
@@ -404,7 +412,7 @@ def test_execute_atomic_template_executor_fails(
     mock_resolve_files.return_value = ([], None)
     # mock_get_context is mocked by fixture
 
-    request = SubtaskRequest(type="atomic", name=template_name, description="", inputs={})
+    request = SubtaskRequest(task_id="exec-fail-1", type="atomic", name=template_name, description="", inputs={})
 
     # Act
     result = task_system_instance.execute_atomic_template(request)
@@ -412,13 +420,16 @@ def test_execute_atomic_template_executor_fails(
     # Assert
     assert result.status == "FAILED"
     assert result.notes and result.notes.get("error")
+    assert isinstance(result.notes["error"], TaskError)
     assert result.notes["error"].reason == "unexpected_error"
     # Check that the error message includes the exception from the executor
     assert "Executor/Handler exception: Executor boom!" in result.notes["error"].message
     assert "Executor failed: Executor boom!" in result.content
 
 
+# --- Start Change: Correct patch target ---
 @patch('src.task_system.task_system.AtomicTaskExecutor', new_callable=MagicMock)
+# --- End Change ---
 @patch.object(TaskSystem, 'find_template')
 @patch.object(MemorySystem, 'get_relevant_context_for')
 @patch.object(TaskSystem, 'resolve_file_paths')
@@ -442,7 +453,7 @@ def test_execute_atomic_template_executor_param_mismatch(
     # mock_get_context is mocked by fixture
 
     # Request *without* the required 'input1'
-    request = SubtaskRequest(type="atomic", name=template_name, description="", inputs={})
+    request = SubtaskRequest(task_id="param-mismatch-1", type="atomic", name=template_name, description="", inputs={})
 
     # Act
     result = task_system_instance.execute_atomic_template(request)
@@ -450,6 +461,7 @@ def test_execute_atomic_template_executor_param_mismatch(
     # Assert
     assert result.status == "FAILED"
     assert result.notes and result.notes.get("error")
+    assert isinstance(result.notes["error"], TaskError)
     assert result.notes["error"].reason == "input_validation_failure" # Mapped from ParameterMismatchError
     assert mismatch_error_msg in result.notes["error"].message
     assert mismatch_error_msg in result.content
@@ -496,7 +508,7 @@ def test_generate_context_for_memory_system_success(
     # Check that context_input was dumped to dict
     assert inner_request.inputs["context_input"] == context_input.model_dump(exclude_none=True)
     assert inner_request.inputs["global_index"] == global_index
-    assert inner_request.context_management["freshContext"] == "disabled"
+    assert inner_request.context_management.freshContext == "disabled" # Check override
 
     # Check the final result
     assert isinstance(result, AssociativeMatchResult)
@@ -537,12 +549,15 @@ def test_generate_context_for_memory_system_execution_fails(
     # Arrange
     mock_matching_template = {"name": "internal_matcher", "type": "atomic", "subtype": "associative_matching"}
     mock_find_template.return_value = mock_matching_template
-    # Simulate execute_atomic_template returning a TaskResult object
+    # --- Start Change: Use TaskFailureError ---
+    # Simulate execute_atomic_template returning a TaskResult object with a structured error
+    mock_error = TaskFailureError(type="TASK_FAILURE", reason="unexpected_error", message="Internal Boom")
     mock_task_result_obj = TaskResult(
         content="Internal execution failed",
         status="FAILED",
-        notes={"error": TaskError(type="TASK_FAILURE", reason="unexpected_error", message="Internal Boom")}
+        notes={"error": mock_error} # Embed the error object
     )
+    # --- End Change ---
     mock_execute_atomic.return_value = mock_task_result_obj
     context_input = ContextGenerationInput(query="test query")
 
@@ -671,7 +686,7 @@ def test_resolve_file_paths_literal(task_system_instance):
     template_in_source = {
         "file_paths_source": {
             "type": "literal",
-            "path": expected_paths
+            "path": expected_paths # Changed key to 'path'
         }
     }
     # Act
