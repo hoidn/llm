@@ -68,6 +68,7 @@ module src.sexp_evaluator.sexp_evaluator {
         // - If `operator_target` is a string, looks up and calls the corresponding TaskSystem task or Handler tool.
         // - If `operator_target` is a callable, invokes it (handling function application scope if closures are implemented).
         // - Returns the result, ensuring TaskResult format for task/tool calls.
+        //       - Note: Arguments to primitives like `get_context` that expect complex data (e.g., `inputs`, `context` settings) should receive that data correctly constructed, often using `(list ...)` or `(quote ...)` within the calling S-expression.
         //       5. Look up `target_id` first in `Handler.tool_executors`, then in `TaskSystem.find_template` (for **atomic** templates **only**).
         //       6. If Direct Tool: Call executor function, passing `resolved_named_args` (potentially merging with positional args based on tool signature - requires convention).
         //       7. If Atomic Template:
