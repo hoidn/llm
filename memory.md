@@ -5,7 +5,7 @@
 
 **Goal:** Implement Phase 4: Parallel Streams (Stream 1: Git Indexer, Stream 2: Sexp/Passthrough).
 
-**Current Sub-task:** Phase 4 - Stream 1: Implement Git Indexer functionality.
+**Current Sub-task:** Phase 4 - Stream 1: Implement Git Indexer functionality & Refactor Tests.
 
 **Relevant Files:**
 - `src/memory/indexers/git_repository_indexer.py`
@@ -15,6 +15,7 @@
 - `tests/memory/indexers/test_git_repository_indexer.py`
 - `tests/memory/test_memory_system.py`
 - `src/memory/indexers/text_extraction.py` (Placeholder)
+- `tests/conftest.py`
 
 **Related IDLs:**
 - `src/memory/indexers/git_repository_indexer_IDL.md`
@@ -36,9 +37,15 @@
     - Created placeholder `src/memory/indexers/text_extraction.py`.
     - Implemented `src.memory.indexers.git_repository_indexer.GitRepositoryIndexer` class based on IDL.
     - Implemented `src.memory.memory_system.MemorySystem.index_git_repository` method based on IDL.
-    - Created `tests/memory/indexers/test_git_repository_indexer.py` with provided tests.
+    - Created `tests/memory/indexers/test_git_repository_indexer.py` with initial unit tests.
     - Added tests for `MemorySystem.index_git_repository` to `tests/memory/test_memory_system.py`.
-    - Ran tests for modified/new files, fixed minor issues (e.g., path normalization, mock setup). Commit `8119e2a`.
+    - Ran tests, encountered issues with mocking in `test_git_repository_indexer.py`. Commit `8119e2a`.
+- **Phase 4 - Stream 1: Refactor Git Indexer Tests:**
+    - Analyzed test failures in `test_git_repository_indexer.py`. Identified issues with mocking (`os.path.splitext`, `side_effect` usage). Commit `c8604ad`.
+    - Discussed replacing brittle unit tests with integration tests.
+    - Removed several heavily mocked unit tests (`test_index_repository_*`, `test_scan_repository`).
+    - Fixed remaining unit test `test_is_text_file`.
+    - Added integration tests using a new `git_repo` fixture in `conftest.py` to test indexing against a real temporary Git repository.
 
 ## Next Steps
 
@@ -51,7 +58,7 @@
     *   `MemorySystem`: `get_relevant_context_for` (ensure full implementation matches IDL/needs of `SexpEvaluator`, including sharding/mediation).
     *   Other deferred methods (`TaskSystem` find/generate/resolve, `MemorySystem` sharding logic).
 4.  **Write Tests for Deferred Methods:** Add tests for the methods implemented in step 3.
-5.  **Integration Testing:** Enhance integration tests covering workflows involving SexpEvaluator -> TaskSystem -> AtomicTaskExecutor -> Handler -> LLMManager and MemorySystem indexing/retrieval.
+5.  **Integration Testing:** Enhance integration tests covering workflows involving SexpEvaluator -> TaskSystem -> AtomicTaskExecutor -> Handler -> LLMManager and MemorySystem indexing/retrieval. Ensure integration tests cover key scenarios previously handled by removed unit tests where appropriate.
 6.  **Review Tool Registration:** Finalize how tools registered in `BaseHandler` are made available during `SexpEvaluator` execution (via `Handler._execute_tool`) and potentially LLM calls.
 7.  **Update Documentation:** Ensure IDLs, rules, and diagrams reflect the implemented state.
 
@@ -63,3 +70,4 @@
 - Phase 2a implemented basic keyword matching in `MemorySystem`.
 - Phase 3 implemented core execution logic (AtomicExecutor, SexpEvaluator, PassthroughHandler).
 - Phase 4 Stream 1 focused on adding the Git repository indexing capability. Requires `GitPython`. Placeholder `text_extraction` used.
+- Refactored `GitRepositoryIndexer` tests to favor integration tests over brittle unit tests, improving confidence and reducing mock complexity. Added `git_repo` fixture to `conftest.py`.
