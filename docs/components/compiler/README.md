@@ -75,3 +75,27 @@ For detailed interface specifications, see:
 - **Handler**: Used for LLM translation
 
 For system-wide contracts, see [Contract:Integration:CompilerTask:1.0] in `/system/contracts/interfaces.md`.
+# Compiler Component [Component:Compiler:1.0]
+
+## Overview
+
+In the current S-expression based architecture, the Compiler's primary role is **XML validation**. It ensures that *atomic task* definitions provided during registration conform to the established schema ([Contract:Tasks:TemplateSchema:1.0]).
+
+Its previous role in generating Abstract Syntax Trees (ASTs) for workflow execution is now handled by the `SexpEvaluator` parsing S-expression strings.
+
+## Core Responsibilities
+
+1.  **Atomic Task XML Validation:** Validate XML structure and content against the defined schema during `TaskSystem.register_template`.
+2.  **(Future Scope):** Potentially handle translation from Natural Language queries to S-expression workflows.
+3.  **(Deprecated):** AST Generation for composite tasks or workflows.
+
+## Key Interfaces
+
+*(Review and simplify Interface:Compiler:1.0 - methods related to the old AST model are likely deprecated or need redefinition)*
+For detailed interface specifications, see:
+- [Interface:Compiler:1.0] in `/components/compiler/api/interfaces.md`
+
+## Integration Points
+
+*   **Task System**: Uses Compiler for XML schema validation during atomic task registration.
+*   **(Future):** May interact with REPL/Dispatcher for NL-to-S-expression translation.

@@ -47,3 +47,26 @@ This document outlines the high-level functional and non‑functional requiremen
 - [XML Schema Definition](../../../system/contracts/protocols.md)
 - [Compiler Interface](../api/interfaces.md)
 - [Function-Based Template Pattern](../../../system/architecture/decisions/completed/012-function-based-templates.md)
+# Compiler Requirements (Revised)
+
+This document outlines the high-level functional requirements for the Compiler component in the S-expression based architecture.
+
+## Key Requirements Summary
+
+### Atomic Task XML Validation
+*   Validate XML strings representing atomic tasks against the official schema defined in [Contract:Tasks:TemplateSchema:1.0].
+*   Report validation errors (e.g., missing required elements/attributes, incorrect types, invalid structure).
+*   Report validation warnings for non-critical issues.
+*   Integrate with `TaskSystem.register_template` to prevent invalid templates from being registered.
+
+### (Future Scope) Natural Language to S-expression Translation
+*   (If implemented) Parse natural language task descriptions or commands.
+*   Translate the parsed input into a corresponding S-expression workflow string.
+*   Handle ambiguity and potentially interact with the user or LLM for clarification.
+
+### (Deprecated) AST Generation/Transformation
+*   The Compiler is **no longer** responsible for generating or transforming Abstract Syntax Trees (ASTs) for workflow execution. This is handled by the `SexpEvaluator` for S-expressions.
+
+## See Also
+*   [XML Schema Definition](../../../system/contracts/protocols.md)
+*   [Compiler Interface](../api/interfaces.md)

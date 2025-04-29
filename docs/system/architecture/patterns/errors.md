@@ -14,10 +14,11 @@ Error handling pattern for the task execution system, focusing on three key conc
 
 ### 1.2 Context
 This pattern is used by:
-- **SexpEvaluator**: Handles errors arising during S-expression workflow execution and errors propagated from atomic tasks it calls. May implement recovery logic within the S-expression.
-- **TaskSystem**: Detects errors during atomic task setup (template lookup, context prep). Propagates errors from AtomicTaskExecutor.
-- **AtomicTaskExecutor**: Detects parameter substitution errors. Propagates errors from Handler.
-- **Handler**: Detects resource exhaustion, LLM API errors, tool execution errors during atomic task execution.
+*   **SexpEvaluator**: Handles errors arising during S-expression workflow execution (parsing, runtime DSL errors) and errors propagated from atomic tasks/tools it calls. May implement recovery logic within the S-expression.
+*   **TaskSystem**: Detects errors during atomic task setup (template lookup, context prep). Propagates errors from AtomicTaskExecutor.
+*   **AtomicTaskExecutor**: Detects parameter substitution errors. Propagates errors from Handler.
+*   **Handler**: Detects resource exhaustion, LLM API errors, tool execution errors during atomic task execution.
+*   **MemorySystem**: Can signal context retrieval/matching/parsing errors (usually as `TASK_FAILURE` with specific reason).
 
 ### 1.3 Core Elements
 - Error Type System: See [Type:TaskSystem:TaskError:1.0]
@@ -162,10 +163,10 @@ function handleTaskError(error: TaskError) {
 Error handling logic resides primarily within the **SexpEvaluator** (for workflow errors and recovery logic within S-expressions) and the components detecting the initial error (**Handler**, **AtomicTaskExecutor**, **TaskSystem**, **MemorySystem**).
 
 Based on error type and reason, the system will surface appropriate error information:
-- **Resource Exhaustion**: Complete resource metrics and context
-- **Context Failures**: Context-related error details
-- **Validation Errors**: Validation failure specifics
-- **Subtask Failures**: Error details including partial execution data
+*   **Resource Exhaustion**: Complete resource metrics and context
+*   **Context Failures**: Context-related error details
+*   **Validation Errors**: Validation failure specifics
+*   **Subtask Failures**: Error details including partial execution data
 
 ### 3.3 Execution Phase
 See [Protocol:Tasks:Reparse:1.0] for execution details.
@@ -317,6 +318,17 @@ try {
 
 When executing workflows defined via the S-expression DSL, specific errors can occur during parsing or evaluation:
 *   **Syntax Errors:** Malformed S-expressions (e.g., unbalanced parentheses) detected by the parser. Typically reported as `TASK_FAILURE` with reason `input_validation_failure` or a dedicated `sexp_syntax_error` reason.
+*   **Evaluation Errors:** Runtime errors during S-expression evaluation, such as:
+    *   Unbound symbol/variable lookup failure.
+    *   Incorrect arguments passed to DSL primitives (e.g., non-list to `map`).
+    *   Type mismatches during operations.
+    *   Misuse of special forms (`let`, `if`, etc.).
+    These are typically reported as `TASK_FAILURE` with reason `sexp_evaluation_error` or similar, including details about the error and location within the expression if possible.
+*   **Propagated Errors:** Errors (`RESOURCE_EXHAUSTION`, `TASK_FAILURE`) raised by underlying atomic task executions or direct tool calls invoked from the S-expression are propagated upwards and typically retain their original type/reason.
+### 2.6 S-Expression Evaluation Errors
+
+When executing workflows defined via the S-expression DSL, specific errors can occur during parsing or evaluation:
+*   **Syntax Errors:** Malformed S-expressions (e.g., unbalanced parentheses) detected by the parser. Typically reported as `TASK_FAILURE` with reason `input_validation_failure` or a dedicated `sexp_syntax_error` reason, potentially using the custom `SexpSyntaxError` exception.
 *   **Evaluation Errors:** Runtime errors during S-expression evaluation, such as:
     *   Unbound symbol/variable lookup failure.
     *   Incorrect arguments passed to DSL primitives (e.g., non-list to `map`).

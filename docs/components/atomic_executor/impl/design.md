@@ -7,6 +7,7 @@ The AtomicTaskExecutor focuses solely on executing the body of a single, pre-par
 ### Input Processing
 - Receives the parsed atomic task definition (`atomic_task_def`) from the Task System. This includes elements like instructions, system prompts, and output format specifications.
 - Receives a `params` dictionary from the Task System. This dictionary contains the fully evaluated input parameters for the task, keyed by the parameter names declared in the task's `<inputs>`. **It does not receive or manage a complex lexical environment.**
+- Receives the prepared `context_string` and `included_files` list from the Task System.
 
 ### Parameter Substitution
 - Iterates through the relevant fields of the `atomic_task_def` (e.g., instructions, system prompt).
@@ -16,9 +17,9 @@ The AtomicTaskExecutor focuses solely on executing the body of a single, pre-par
 
 ### Handler Invocation
 - After substitution, the AtomicTaskExecutor has the fully resolved text for prompts, system messages, etc.
-- It retrieves context information (prepared by the Task System) if needed.
-- It constructs the `HandlerPayload` required by the Handler, including the resolved prompts, system messages, context, and any tool definitions relevant to the task.
-- It invokes the appropriate method on the `handler` instance provided by the Task System (e.g., `handler.executePrompt(payload)`).
+- It uses the `context_string` provided by the Task System.
+- It constructs the `HandlerPayload` required by the Handler, including the resolved prompts, system messages, context string, and any tool definitions relevant to the task.
+- It invokes the appropriate method on the `handler` instance provided by the Task System (e.g., `handler.executePrompt(payload)` or `handler._execute_llm_call(...)`).
 
 ### Output Handling
 - Receives the `TaskResult` (or `TaskError`) directly from the `handler` call.
@@ -26,7 +27,7 @@ The AtomicTaskExecutor focuses solely on executing the body of a single, pre-par
     - Check the `atomic_task_def` for an `<output_format>` specification.
     - Attempt to parse `TaskResult.content` if `type="json"`.
     - Validate against the `schema` if provided.
-    - Add parsed content to `TaskResult.parsedContent` or populate `TaskResult.notes.parseError` / `TaskResult.notes.validationError`.
+    *   Add parsed content to `TaskResult.parsedContent` or populate `TaskResult.notes.parseError` / `TaskResult.notes.validationError`.
 - Returns the final `TaskResult` (potentially augmented with parsed content or validation info) back to the Task System.
 
 ## What AtomicTaskExecutor Does NOT Do
@@ -36,7 +37,7 @@ The AtomicTaskExecutor focuses solely on executing the body of a single, pre-par
 - **Template Lookup/Matching:** Does not find or select task templates. This is the `TaskSystem`'s role.
 - **Context Management Strategy:** Does not decide *how* context is inherited, accumulated, or fetched. It simply receives the final context prepared by the `TaskSystem`.
 - **Environment Management:** Does not manage lexical environments (`SexpEnvironment`). It only uses the flat `params` dictionary for substitution.
-- **Subtask Spawning:** Does not handle `CONTINUATION` results or spawn subtasks. This logic resides in the `SexpEvaluator` or potentially the `TaskSystem` if handling dynamic spawning directly.
+- **Subtask Spawning:** Does not handle `CONTINUATION` results or spawn subtasks. This logic resides in the `SexpEvaluator`.
 
 ## Integration
 

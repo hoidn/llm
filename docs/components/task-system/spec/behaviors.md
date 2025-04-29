@@ -126,3 +126,73 @@ For implementation details, see:
 - [Resource Management Implementation](../impl/resource-management.md)
 - [XML Processing Implementation](../impl/xml-processing.md)
 - [Implementation Examples](../impl/examples/)
+# Task System Behaviors
+
+This document describes the runtime behaviors of the Task System, focusing on its role in managing atomic task templates and orchestrating their execution setup.
+
+## Overview
+
+The Task System manages atomic task definitions (XML) and orchestrates the setup for their execution when requested by components like the SexpEvaluator. It does *not* execute workflows or composite tasks directly.
+
+## Core Behaviors
+
+### Atomic Template Management
+*   **Registration (`register_template`):** Validates atomic task XML against the schema ([Contract:Tasks:TemplateSchema:1.0]). Stores valid definitions, indexed by `name` and `type:subtype` (where type is always 'atomic'). Ensures parameter declarations (`<inputs>`) are present if needed for substitution. Errors prevent registration.
+*   **Lookup (`find_template`):** Retrieves atomic task definitions by `name` or `"atomic:subtype"`. Returns the definition dictionary or `None`.
+*   **Matching (`find_matching_tasks`):** Finds relevant *atomic* task templates based on natural language input using similarity scoring against template descriptions. Returns a scored list of atomic templates.
+
+### Atomic Task Execution Orchestration (`execute_atomic_template`)
+*   **Invocation:** Called by `SexpEvaluator` with a `SubtaskRequest` containing `type='atomic'` and **resolved** inputs, file paths, and context overrides. **Does not receive or use an `SexpEnvironment`.**
+*   **Setup:**
+    *   Finds the specified atomic template via `find_template`. Returns error if not found.
+    *   Determines final effective `ContextManagement` settings (merging request/template overrides with subtype defaults). Validates constraints.
+    *   Resolves the final list of `file_paths` to be included (request > template). May call `self.resolve_file_paths` internally if template uses dynamic source.
+    *   Fetches fresh context via `MemorySystem.getRelevantContextFor` if required by effective settings, using `request.inputs` and template info to build `ContextGenerationInput`. Handles memory system errors.
+    *   Prepares the `params` dictionary directly from `request.inputs` for the `AtomicTaskExecutor`.
+    *   Instantiates/configures a `Handler` with appropriate resource limits.
+    *   Instantiates the `AtomicTaskExecutor`.
+*   **Delegation:** Calls `AtomicTaskExecutor.execute_body(template_def, params, handler, context_string, included_files)`.
+*   **Result Handling:** Receives `TaskResult`/`TaskError` from the executor, adds metadata (template used, context source), and returns it to the caller (`SexpEvaluator`).
+
+### Handler Lifecycle Coordination (for Atomic Tasks)
+*   Ensures a properly configured `Handler` instance is provided to the `AtomicTaskExecutor` for each `execute_atomic_template` call.
+*   Sets resource limits on the Handler based on the specific atomic task being executed.
+
+### XML Processing (Atomic Tasks)
+*   **During Registration:** Parses and validates atomic task XML definitions against the schema.
+*   **During Execution Setup:** Uses the *parsed* template definition when calling `AtomicTaskExecutor`. Passes flags like `manual_xml` within the definition.
+*   **Output Format Validation:** May validate the final output against `<output_format>` *after* `execute_body` returns, or this responsibility might reside within `AtomicTaskExecutor` (TBD). Updates `TaskResult.parsedContent` or `notes.parseError`.
+
+### S-expression Workflow Execution (Not TaskSystem)
+*   Workflows are defined and executed by the **SexpEvaluator**.
+*   The SexpEvaluator calls `TaskSystem.execute_atomic_template` to run individual atomic steps.
+*   TaskSystem is *not* responsible for managing S-expression control flow, environments, or error recovery *within* the workflow.
+
+### Error Handling
+*   **Setup Errors:** Detects errors during `execute_atomic_template` setup (e.g., template not found, context retrieval failure) and returns a `TaskError`.
+*   **Execution Errors:** Receives `TaskError` (e.g., `RESOURCE_EXHAUSTION`, `TASK_FAILURE`) propagated from `AtomicTaskExecutor`.
+*   **Propagation:** Forwards received/generated `TaskError` objects to the caller (`SexpEvaluator`).
+*   **Recovery Delegation:** Does not implement retry logic; delegates recovery handling to the `SexpEvaluator`.
+
+### Context Management Orchestration (for Atomic Tasks)
+*   **Determines Settings:** Calculates final context settings (request > template > defaults).
+*   **Enforces Constraints:** Validates settings (e.g., mutual exclusivity).
+*   **Fetches Context:** Calls `MemorySystem.getRelevantContextFor` if `fresh_context` is enabled.
+*   **Prepares Context:** Assembles context string and file list for `AtomicTaskExecutor`.
+*   **File Path Resolution:** Determines final file paths using `request.file_paths` or template sources (potentially calling `resolve_file_paths`).
+
+### File Operations
+*   TaskSystem does NOT perform file I/O. It coordinates with `MemorySystem` for metadata/paths and relies on the `Handler` (called by `AtomicTaskExecutor`) to read files.
+
+### Programmatic Atomic Task Invocation (`execute_atomic_template`)
+*   Primary interface for `SexpEvaluator` to run atomic tasks.
+*   Requires a `SubtaskRequest` with resolved inputs.
+*   Handles setup and delegates execution to `AtomicTaskExecutor`.
+
+## Related Documentation
+
+For implementation details, see:
+*   [Design Implementation](../impl/design.md)
+*   [Resource Management Implementation](../impl/resource-management.md)
+*   [XML Processing Implementation](../impl/xml-processing.md)
+*   [Implementation Examples](../impl/examples/)

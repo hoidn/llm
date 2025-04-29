@@ -54,30 +54,30 @@
 
 ## Atomic Task Execution Orchestration (`execute_atomic_template`)
 
-This method is the core of the Task System's role during runtime, invoked by the `SexpEvaluator` to run an atomic step.
+This method is the core of the Task System's runtime role during workflow execution, invoked by the `SexpEvaluator` to run an atomic step.
 
 ### Input
-- `request: SubtaskRequest`: Contains `type` ('atomic'), `name`/`subtype`, resolved `inputs` dictionary, optional resolved `file_paths` list, optional resolved `context_management` overrides. **Crucially, the `env` parameter is removed.** The caller (`SexpEvaluator`) must resolve all values *before* calling.
+*   `request: SubtaskRequest`: Contains `type` ('atomic'), `name` (identifying the template), resolved `inputs` dictionary, optional resolved `file_paths` list, optional resolved `context_management` overrides. **Crucially, no `env` parameter is accepted.** The caller (`SexpEvaluator`) must resolve all values *before* calling.
 
 ### Processing Steps
 1.  **Validation:** Ensure `request.type` is 'atomic'.
-2.  **Template Lookup:** Find the atomic template using `self.find_template(request.name or f"atomic:{request.subtype}")`. Return error if not found.
+2.  **Template Lookup:** Find the atomic template using `self.find_template(request.name)`. Return error if not found.
 3.  **Context Determination:**
     *   Determine the effective `ContextManagement` settings by merging defaults (based on template subtype), template `<context_management>`, and `request.context_management` overrides (request takes highest precedence).
     *   Validate constraints (e.g., mutual exclusivity of `fresh_context` and `inherit_context`).
-    *   Determine the final list of `file_paths` using precedence: `request.file_paths` > template `<file_paths>`.
+    *   Determine the final list of `file_paths` using precedence: `request.file_paths` > template `<file_paths>`. If the template defines a dynamic source (`file_paths_source`), call `self.resolve_file_paths` internally.
 4.  **Context Preparation:**
     *   If `fresh_context` is enabled in effective settings:
         *   Construct `ContextGenerationInput` using template info and `request.inputs`.
-        *   Call `MemorySystem.get_relevant_context_for(context_input)`.
-        *   Store the resulting context summary and file paths.
-    *   If `inherit_context` is 'full' or 'subset': Retrieve appropriate context from the parent (Note: Requires mechanism to access parent context, potentially passed implicitly or via a shared object).
-    *   Assemble the final context string and list of file contents to be passed to the Handler (Handler performs file I/O).
+        *   Call `self.memory_system.get_relevant_context_for(context_input)`.
+        *   Store the resulting context summary and matched file paths.
+    *   If `inherit_context` is 'full' or 'subset': Retrieve appropriate context from the parent (Note: Mechanism for accessing parent context needs clarification - likely handled by SexpEvaluator passing relevant history/context within `ContextGenerationInput`).
+    *   Assemble the final `context_string` and `included_files` list to be passed to the `AtomicTaskExecutor`. (Actual file reading happens in Handler).
 5.  **Parameter Preparation:** The `request.inputs` dictionary is used directly as the `params` for the `AtomicTaskExecutor`. No further resolution is done here.
 6.  **Handler Instantiation:** Get or create a `Handler` instance, configured with appropriate resource limits based on the task template or system defaults.
 7.  **Executor Invocation:**
     *   Instantiate `AtomicTaskExecutor`.
-    *   Call `atomicTaskExecutor.execute_body(parsed_template_def, request.inputs, handler_instance)`.
+    *   Call `atomicTaskExecutor.execute_body(parsed_template_def, request.inputs, handler_instance, final_context_string, final_included_files)`.
 8.  **Result Handling:**
     *   Receive `TaskResult` or `TaskError` from the executor.
     *   Add execution metadata (template used, context source/count) to `TaskResult.notes`.
@@ -115,31 +115,31 @@ This ensures consistent application of defaults and overrides for every atomic t
 
 ## Template Substitution Process (Atomic Tasks)
 
-The AtomicTaskExecutor (invoked by the Task System) handles template variable substitution (`{{parameter_name}}`) within an atomic task's body before execution by the Handler. The `SexpEvaluator` (when processing a `call`) evaluates the named arguments provided in the S-expression and constructs the `inputs` dictionary within the `SubtaskRequest`. The `TaskSystem` passes this dictionary to the `AtomicTaskExecutor`. The substitution process within the `AtomicTaskExecutor` exclusively follows the function-style model mandated by ADR 18, resolving placeholders *only* against the keys present in this received `inputs` dictionary.
+The **AtomicTaskExecutor** (invoked by the Task System) handles template variable substitution (`{{parameter_name}}`) within an atomic task's body before execution by the Handler. The `SexpEvaluator` (when processing a `call`) evaluates the named arguments provided in the S-expression and constructs the `inputs` dictionary within the `SubtaskRequest`. The `TaskSystem` passes this dictionary to the `AtomicTaskExecutor`. The substitution process within the `AtomicTaskExecutor` exclusively follows the function-style model, resolving placeholders *only* against the keys present in this received `inputs` dictionary.
 
 ## Integration Points
 
 ### Memory System Integration
-- Task System calls `MemorySystem.getRelevantContextFor` when effective context settings require `fresh_context`.
-- Task System uses the `AssociativeMatchResult` to prepare context for the `AtomicTaskExecutor`.
-- Follows clear separation: Memory handles metadata/matching, Handler handles file I/O.
+*   Task System calls `MemorySystem.getRelevantContextFor` when effective context settings require `fresh_context`.
+*   Task System uses the `AssociativeMatchResult` to prepare context for the `AtomicTaskExecutor`.
+*   Follows clear separation: Memory handles metadata/matching, Handler handles file I/O.
 
 ### SexpEvaluator Integration
-- `SexpEvaluator` calls `TaskSystem.find_template` to identify atomic tasks.
-- `SexpEvaluator` calls `TaskSystem.execute_atomic_template` to run atomic steps, providing a resolved `SubtaskRequest`.
-- Task System returns `TaskResult`/`TaskError` to `SexpEvaluator`.
+*   `SexpEvaluator` calls `TaskSystem.find_template` to identify atomic tasks.
+*   `SexpEvaluator` calls `TaskSystem.execute_atomic_template` to run atomic steps, providing a resolved `SubtaskRequest`.
+*   Task System returns `TaskResult`/`TaskError` to `SexpEvaluator`.
 
 ### AtomicTaskExecutor Integration
-- Task System instantiates `AtomicTaskExecutor`.
-- Task System calls `AtomicTaskExecutor.execute_body`, passing the parsed template definition, resolved `params` dictionary, and a `Handler` instance.
-- Task System receives `TaskResult`/`TaskError` from `AtomicTaskExecutor`.
+*   Task System instantiates `AtomicTaskExecutor`.
+*   Task System calls `AtomicTaskExecutor.execute_body`, passing the parsed template definition, resolved `params` dictionary, context string, file list, and a `Handler` instance.
+*   Task System receives `TaskResult`/`TaskError` from `AtomicTaskExecutor`.
 
 ### Handler Integration
-- Task System obtains/creates `Handler` instances, configuring them with resource limits for specific atomic task executions.
-- Task System passes the `Handler` instance to the `AtomicTaskExecutor`.
+*   Task System obtains/creates `Handler` instances, configuring them with resource limits for specific atomic task executions.
+*   Task System passes the `Handler` instance to the `AtomicTaskExecutor`.
 
 ### Compiler Integration
-- The Compiler's primary role related to the Task System is validating the XML schema of atomic task templates during `register_template`. It's not directly involved in the runtime execution flow managed by TaskSystem.
+*   The Compiler's primary role related to the Task System is validating the XML schema of atomic task templates during `register_template`. It's not directly involved in the runtime execution flow managed by TaskSystem.
 
 ## Resource Management Coordination
 - The Task System determines the resource limits (based on template or defaults).

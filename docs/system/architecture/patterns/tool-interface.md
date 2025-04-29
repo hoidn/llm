@@ -21,12 +21,40 @@ The Unified Tool Interface pattern separates the LLM-facing interface from the u
 
 ```mermaid
 flowchart TD
-    A[LLM] -->|Calls| B[Unified Tool Interface]
-    B -->|Direct Operations| C[Handler Tools]
-    B -->|Complex Operations| D[Subtask Mechanism]
-    C -->|Synchronous| E[File Systems/Scripts]
-    D -->|Asynchronous| F[Template Selection]
-    F -->|CONTINUATION| G[Child LLM Tasks]
+    subgraph Invoker
+        LLM((LLM via Handler))
+        SexpEval[SexpEvaluator]
+    end
+
+    subgraph Interface
+        UnifiedToolInterface[Unified Tool Interface]
+    end
+
+    subgraph Implementation
+        HandlerTools[Handler Direct Tools]
+        SubtaskMechanism[Subtask Mechanism via SexpEvaluator]
+    end
+
+    subgraph Execution
+        SyncExec[Synchronous Execution (Files, Scripts, API)]
+        AsyncExec[Atomic Task Execution via TaskSystem]
+    end
+
+    LLM --> UnifiedToolInterface
+    SexpEval --> UnifiedToolInterface
+
+    UnifiedToolInterface -->|Direct Operations| HandlerTools --> SyncExec
+    UnifiedToolInterface -->|Complex Operations| SubtaskMechanism --> AsyncExec
+
+    classDef invoker fill:#f9f,stroke:#333
+    classDef interface fill:#bbf,stroke:#333
+    classDef mechanism fill:#fb9,stroke:#333
+    classDef execution fill:#9cf,stroke:#333
+
+    class LLM, SexpEval invoker;
+    class UnifiedToolInterface interface;
+    class HandlerTools, SubtaskMechanism mechanism;
+    class SyncExec, AsyncExec execution;
 ```
 
 ## Interface vs. Implementation
@@ -227,36 +255,13 @@ This pattern complements:
 
 ### Function Call Syntax Options
 
-The system supports multiple syntaxes for invoking functions and tools:
+In the S-expression based architecture, all task/tool invocations within workflows use S-expression syntax, typically:
 
-1. **Direct Tool Invocation** (in LLM):
-   ```python
-   result = tools.readFile("path/to/file")
-   ```
+*   `(call <task-name> (arg1 value1) (arg2 value2) ...)`: Explicitly uses the `call` primitive.
+*   `(<task-name> (arg1 value1) (arg2 value2) ...)`: Implicitly calls the task if `<task-name>` is recognized as such by the evaluator.
+*   Primitives like `(system:run_script "command" ...)` are also used.
 
-2. **XML-based Function Calls** (in templates):
-   ```xml
-   <call template="analyze_data">
-     <arg>weather_data</arg>
-     <arg>standard_config</arg>
-   </call>
-   ```
-
-3. **Template-level Function Calls** (in template fields):
-   ```
-   {{analyze_data(weather_data, standard_config)}}
-   ```
-
-The template-level syntax (#3) provides a user-friendly way to embed function calls within text content. It is internally translated to the standard FunctionCallNode AST structure, ensuring consistent execution semantics while offering improved template authoring experience.
-
-All function call mechanisms, regardless of syntax, follow the same execution flow:
-1. Lookup the function/template by name
-2. Evaluate arguments in the caller's environment
-3. Create a new environment with parameter bindings
-4. Execute the function/template in the new environment
-5. Return the result to the caller
-
-This unified approach ensures consistent behavior across different invocation syntaxes while optimizing for both architectural integrity and user experience.
+The previous XML-based `<call>` and template-level `{{func(...)}}` syntaxes are **deprecated**.
 
 ### User Input Request Tool
 
