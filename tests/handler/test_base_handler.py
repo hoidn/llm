@@ -118,28 +118,32 @@ def base_handler_config():
 
 
 @pytest.fixture
-@patch(
-    "src.handler.base_handler.FileAccessManager"
-)  # Mock FileAccessManager instantiation
+@patch("src.handler.base_handler.FileContextManager") # Mock FileContextManager
+@patch("src.handler.base_handler.FileAccessManager") # Mock FileAccessManager instantiation
 def base_handler(
-    mock_fm_class,
+    mock_fm_class, # Mock for FileAccessManager class
+    mock_fcm_class, # Mock for FileContextManager class
     mock_task_system,
     mock_memory_system,
     base_handler_config,
-    mock_file_manager,
+    mock_file_manager, # Instance mock for FileAccessManager
 ):
     """Provides a BaseHandler instance with mocked dependencies and agent."""
-    # Configure the mock FileAccessManager instance returned by the class mock
-    # Use the mock_file_manager fixture which already has base_path set
+    # Configure the mock instances returned by the class mocks
     mock_fm_class.return_value = mock_file_manager
+    # Create a mock instance for FileContextManager to be returned by its class mock
+    mock_fcm_instance = MagicMock(spec=FileContextManager)
+    mock_fcm_class.return_value = mock_fcm_instance
 
     # Instantiate BaseHandler - this will trigger __init__ and agent initialization
+    # It will now receive the mock FileContextManager instance via mock_fcm_class
     handler = BaseHandler(
         task_system=mock_task_system,
         memory_system=mock_memory_system,
         default_model_identifier="openai:gpt-mock",  # Use a mock identifier
         config=base_handler_config.copy(),  # Use a copy to avoid test interference
     )
+    # The handler instance will have handler.file_context_manager = mock_fcm_instance
     return handler
 
 
@@ -542,20 +546,22 @@ def test_build_system_prompt_deferred(base_handler):
         base_handler._build_system_prompt()
 
 
-def test_get_relevant_files_deferred(base_handler):
-    """Verify deferred method raises NotImplementedError."""
-    with pytest.raises(
-        NotImplementedError, match="_get_relevant_files implementation deferred"
-    ):
-        base_handler._get_relevant_files("query")
+# Renamed from test_get_relevant_files_deferred
+def test_get_relevant_files_delegates(base_handler):
+    """Verify _get_relevant_files delegates to FileContextManager."""
+    query = "test query"
+    base_handler._get_relevant_files(query)
+    # BaseHandler.__init__ creates self.file_context_manager using the mocked class
+    # So, base_handler.file_context_manager is the mock instance
+    base_handler.file_context_manager.get_relevant_files.assert_called_once_with(query)
 
 
-def test_create_file_context_deferred(base_handler):
-    """Verify deferred method raises NotImplementedError."""
-    with pytest.raises(
-        NotImplementedError, match="_create_file_context implementation deferred"
-    ):
-        base_handler._create_file_context([])
+# Renamed from test_create_file_context_deferred
+def test_create_file_context_delegates(base_handler):
+    """Verify _create_file_context delegates to FileContextManager."""
+    file_paths = ["path/a.py", "path/b.py"]
+    base_handler._create_file_context(file_paths)
+    base_handler.file_context_manager.create_file_context.assert_called_once_with(file_paths)
 
 
 def test_execute_tool_deferred(base_handler):
