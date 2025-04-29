@@ -238,14 +238,6 @@ def test_index_git_repository_deferred(memory_system):
         )
 
 
-def test_get_relevant_context_for_deferred(memory_system):
-    """Verify deferred method raises NotImplementedError."""
-    with pytest.raises(
-        NotImplementedError, match="get_relevant_context_for implementation deferred"
-    ):
-        memory_system.get_relevant_context_for({"taskText": "some task"})
-
-
 # --- Test _recalculate_shards (Placeholder) ---
 @patch("logging.debug")
 def test_recalculate_shards_placeholder_logs_and_clears_when_enabled(

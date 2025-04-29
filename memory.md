@@ -1,11 +1,11 @@
 <description>Developer's working memory log for tracking current task, progress, next steps, and context.</description>
 # Developer Working Memory
 
-## Current Task/Focus (As of: 2023-07-15)
+## Current Task/Focus (As of: 2025-04-28)
 
-**Goal:** Implement the core components (MemorySystem, TaskSystem, BaseHandler) based on their IDL specifications.
+**Goal:** Implement Phase 2a: Refine `MemorySystem` Logic.
 
-**Current Sub-task:** Fix the TaskSystem.find_template method to correctly handle name collisions between atomic and non-atomic templates.
+**Current Sub-task:** Fix failing unit tests for `MemorySystem.get_relevant_context_for` after initial implementation. Specifically, address failures in `test_get_relevant_context_for_template_description_match` and `test_get_relevant_context_for_query_precedence` due to overly strict substring matching, and remove the obsolete `test_get_relevant_context_for_deferred`.
 
 **Relevant Files:**
 - `src/memory/memory_system.py`
@@ -40,6 +40,18 @@
     - **Commit:** `5a785c8` (fix: Fix failing tests in test_base_handler.py)
     - **Note:** `BaseHandler` line count reduced (435 -> 303 lines). `LLMInteractionManager` has 166 lines. `FileContextManager` has 132 lines. Refactoring successful in reducing `BaseHandler` size and improving modularity.
 - **Reflection & Guide:** Reflected on the refactoring process, identified pitfalls (test brittleness, mocking complexity), and synthesized findings into a new guide `docs/refactor.md`.
+- **Implement MemorySystem Context Retrieval (Phase 2a):**
+    - Added logic to `MemorySystem.get_relevant_context_for` and `get_relevant_context_with_description`.
+    - Implemented basic substring matching.
+    - Added unit tests for the new logic.
+    - **Commit:** `f37c09e` (feat: Implement context retrieval logic in MemorySystem (Phase 2a))
+- **Fix MemorySystem Tests (Part 1):**
+    - Corrected assertion in `test_get_relevant_context_with_description_calls_correctly`.
+    - Removed obsolete `test_get_relevant_context_with_description_deferred`.
+    - **Commit:** `841d680` (fix: Correct tests for memory system context retrieval)
+- **Fix MemorySystem Tests (Part 2):**
+    - Removed `NotImplementedError` from `get_relevant_context_for` as implementation was added.
+    - **Commit:** `a3e5032` (fix: Remove NotImplementedError from get_relevant_context_for)
 
 ## Next Steps
 

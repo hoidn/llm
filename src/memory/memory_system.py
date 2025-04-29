@@ -263,10 +263,20 @@ class MemorySystem:
             logging.debug("Sharding disabled, using global index for matching.")
             index_to_search = self.global_index
 
+        # Create a set of unique words from all search strings
+        search_words = set()
+        for s in search_strings_lower:
+            search_words.update(s.split()) # Split into words
+
+        if not search_words: # Handle case where search strings were present but contained only whitespace
+             return AssociativeMatchResult(context_summary="Empty search criteria after splitting.", matches=[])
+
         for file_path, metadata in index_to_search.items():
             metadata_lower = metadata.lower()
-            # Check if *any* of the search strings are found in the metadata
-            if any(search_str in metadata_lower for search_str in search_strings_lower):
+            metadata_words = set(metadata_lower.split()) # Split metadata into words
+
+            # Check if there's any intersection between search words and metadata words
+            if search_words.intersection(metadata_words):
                 # Create MatchTuple according to Pydantic model
                 # Using placeholder relevance 1.0 for direct match, no excerpt
                 matches.append(MatchTuple(path=file_path, relevance=1.0)) # Adhere to MatchTuple model
