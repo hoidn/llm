@@ -105,6 +105,7 @@ This document outlines the standard conventions, patterns, and rules for impleme
     *   **Guideline 1: Test Dependency Injection by Passing Mocks:**
         *   **Context:** Many classes receive their dependencies via their constructor (`__init__`) - this is Dependency Injection (DI).
         *   **Rule:** The best way to test these classes is usually to create mock *objects* (using `unittest.mock.MagicMock` or similar) for the dependencies and pass these *mock instances* directly into the constructor when creating the object under test in your test setup (e.g., within a `pytest` fixture).
+        *   **Testing Methods on Injected Mocks:** When you need to assert calls to methods on these injected mock *instances* or control their return values/side effects *within a specific test*, use `with patch.object(mock_instance, 'method_name', ...)` inside your test function or fixture. This precisely targets the method on the instance you care about for that test's scope. Avoid patching the method on the dependency's *class* globally if you already have a mock instance.
         *   **Avoid:** Globally patching the dependency *classes* themselves when testing a class that uses DI, as it's often unnecessary and can be complex.
         *   **Example:**
             ```python
@@ -118,6 +119,24 @@ This document outlines the standard conventions, patterns, and rules for impleme
             service_under_test.perform_action()
             mock_worker_instance.do_work.assert_called_once()
             ```
+            
+            ```python
+            # [NEW Example for patching instance method]:
+            # In your test file or conftest.py
+            def test_service_action_with_worker_failure(service_under_test, mock_worker_instance):
+                 # service_under_test created with mock_worker_instance injected
+
+                 # Patch the 'do_work' method *on the specific mock_worker_instance*
+                 # for the duration of this 'with' block
+                 with patch.object(mock_worker_instance, 'do_work', side_effect=SomeException("Boom!")) as patched_method:
+                     # Act: Call the method on the service that uses the worker
+                     with pytest.raises(SomeException):
+                         service_under_test.perform_action()
+
+                     # Assert: Check the call on the patched method
+                     patched_method.assert_called_once()
+                 # Outside the 'with' block, the patch is removed.
+            ```
 
     *   **Guideline 2: Patch Where It's Looked Up:**
         *   **Context:** When you *do* need to patch (e.g., to replace a class used internally, a module function, or a built-in), you use `unittest.mock.patch`.
@@ -126,6 +145,7 @@ This document outlines the standard conventions, patterns, and rules for impleme
             *   If `my_module.py` has `import other_module; result = other_module.some_function()`, you patch `'my_module.other_module.some_function'`.
             *   If `my_module.py` has `from other_module import some_function; result = some_function()`, you patch `'my_module.some_function'`.
             *   Patching built-ins requires `patch('builtins.open', ...)` for example.
+            *   **Patching Internal Component Instances:** If the class under test creates its *own* internal instance of another component (e.g., `self._internal_helper = HelperClass()`), and you need to mock methods on that *internal instance*, you should typically patch the method directly on the instance *after* the object under test is created. Use `with patch.object(object_under_test._internal_helper, 'method_to_mock', ...)` within your test. Avoid patching the `HelperClass` globally if possible.
 
     *   **Guideline 3: Prefer Specific Patching:**
         *   **Context:** You can apply patches globally (e.g., in fixtures with `autouse=True`) or specifically to tests/fixtures.
@@ -157,11 +177,27 @@ This document outlines the standard conventions, patterns, and rules for impleme
     *   **Guideline 5: Mock Object Subtleties (Advanced):**
         *   Be aware that `MagicMock` instances are generally "truthy". If testing code like `if not ImportedClass:`, patching `ImportedClass` with a standard `MagicMock` might not behave as expected. Using `patch('module.ImportedClass', new_callable=MagicMock)` can sometimes help ensure the mock *class* itself is handled correctly in such checks.
 
+    *   **[NEW] Guideline 6: Verify Mock Calls Correctly:** When asserting mock calls (`assert_called_once_with`, `assert_called`), ensure you are checking the correct mock object. If you used `with patch.object(...)` or `@patch.object(...)`, assert against the mock object created by the patcher (often passed into the test function or available as the `as` target in the `with` statement). If you passed a mock instance during DI (Guideline 1), assert against that original mock instance variable.
+
 *   **Test Doubles:** Use `pytest` fixtures, `unittest.mock`, or simple stub classes. Choose the right type (Stub, Mock, Fake) for the job.
 *   **Arrange-Act-Assert:** Structure tests clearly.
 *   **Fixtures:** Use `pytest` fixtures extensively for setting up test environments, component instances (often with injected mocks as per Guideline 1), and test data. Define shared fixtures in `conftest.py`.
 *   **Markers:** Use `pytest.mark` to categorize tests (e.g., `@pytest.mark.integration`, `@pytest.mark.llm`).
 *   **End-to-End Tests:** Define key user workflows and implement them as integration tests, mocking only the outermost boundaries (LLM API, external services).
+
+**Debugging Test Failures**
+
+**[NEW] Inspect Actual vs. Expected:** When an assertion like `assert x == y` fails, don't just assume *why* it failed. Use `print(x)` / `print(y)` or a debugger immediately before the assertion to inspect the *actual runtime values and types* involved. This often reveals the root cause quickly (e.g., asserting an object instance equals a dictionary, slight differences in strings/lists).
+
+**Test Setup for Error Conditions**
+
+**[NEW] Satisfy Preconditions for Errors:** When writing tests to verify specific error handling (e.g., catching an exception, returning a FAILED status), ensure the "Arrange" phase of your test provides all necessary valid inputs and setup to satisfy the preconditions *up to the point where the error is expected to occur*. Don't let the test fail early due to unrelated issues like missing input parameters needed by code paths executed *before* the intended error point.
+
+**Testing Configurable Behavior and Constants**
+
+**[NEW] Handling Constants and Thresholds:** Be mindful when production code logic depends on constants or configurable thresholds (e.g., `MATCH_THRESHOLD`, timeout values).
+    *   **Less Brittle Assertions:** Where possible, write assertions that test the *behavioral outcome* rather than being rigidly tied to the exact constant value. For example, instead of `assert len(results) == 5` (which depends on the threshold), assert that the *highest-scoring* result is the expected one and that its score is *above* the threshold, or that other specific items are *below* it.
+    *   **Review Tests on Change:** If you modify a constant or configuration value that affects logic flow or thresholds in the production code, make it a practice to search for and review tests that might be impacted by this change. Update assertions accordingly.
 
 **8. Error Handling**
 

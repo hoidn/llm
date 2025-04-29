@@ -62,6 +62,12 @@ module src.memory.memory_system {
         // Behavior:
         // - Constructs a simple input dictionary using `context_description` as the 'taskText'.
         // - Calls `get_relevant_context_for` with this constructed input.
+        // [NEW Emphasis] Note: This is a **less common** way to retrieve context, primarily using a simple description string for matching.
+        // **`get_relevant_context_for` is generally preferred** as it handles richer input (`ContextGenerationInput`)
+        // and integrates with the TaskSystem mediation layer. This method might be useful in specific scenarios
+        // where only a simple descriptive string is available and the full context generation input cannot be constructed,
+        // but its use should be limited. Consider if using `get_relevant_context_for` with the description
+        // placed in the `query` field of `ContextGenerationInput` would be more appropriate.
         // Returns: AssociativeMatchResult object
         object get_relevant_context_with_description(string query, string context_description);
 
@@ -89,6 +95,10 @@ module src.memory.memory_system {
         // - Handles exceptions during context generation.
         // - Returns an AssociativeMatchResult object.
         // This method is invoked by the `SexpEvaluator` when processing the `(get_context ...)` S-expression primitive, and by TaskSystem when preparing context for `execute_atomic_template`.
+        // [NEW Emphasis] Note: This is the **primary method** for retrieving context based on task requirements or explicit queries.
+        // It is designed to be called by components like the `TaskSystem` (when preparing context for template execution)
+        // and the `SexpEvaluator` (when handling the `(get_context ...)` primitive).
+        // It handles potential sharding and mediation via the TaskSystem for summary generation if required.
         // @raises_error(condition="TASK_FAILURE", reason="dependency_error", description="Handled internally, returns error result if TaskSystem is unavailable.")
         // @raises_error(condition="CONTEXT_RETRIEVAL_FAILURE", description="Handled internally, returns error result.")
         // Expected JSON format for legacy input_data: { "taskText": "string", ... }
