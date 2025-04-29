@@ -40,6 +40,7 @@ def test_module_import_works_with_mock():
 # Consider placing mocks in conftest.py for broader scope if needed.
 from src.handler.base_handler import BaseHandler, PYDANTIC_AI_AVAILABLE
 from src.handler.file_access import FileAccessManager
+from src.handler.file_context_manager import FileContextManager # Added import
 
 # Import the module itself to mock its functions
 from src.handler import command_executor
