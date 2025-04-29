@@ -177,9 +177,8 @@ def test_handle_query_llm_failure(passthrough_handler):
     assert error_details.reason == "llm_error"
     assert error_details.message == "LLM Error Occurred"
 
-    # Assert history ONLY contains user message (added by _execute_llm_call before failure)
-    assert len(passthrough_handler.conversation_history) == initial_history_len + 1
-    assert passthrough_handler.conversation_history[0] == {"role": "user", "content": query}
+    # Assert history wasn't updated on failure (BaseHandler logic)
+    assert passthrough_handler.conversation_history == []
 
 
 def test_reset_conversation(passthrough_handler):

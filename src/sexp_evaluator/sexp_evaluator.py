@@ -130,7 +130,7 @@ class SexpEvaluator:
     def _eval(self, node: SexpNode, env: SexpEnvironment) -> Any:
         """
         Internal recursive evaluation method for S-expression AST nodes.
-        Handles base cases, key-value pairs, and dispatches list invocation.
+        Handles base cases and dispatches list evaluation.
         """
         logging.debug(f"Eval START: Node={node} (Type={type(node)}) EnvID={id(env)}")
 
@@ -157,74 +157,74 @@ class SexpEvaluator:
             logging.debug("Eval Empty List: -> []")
             return []
 
-        # --- Refined Logic for Lists ---
-        operator_node = node[0]
-        args = node[1:]
+        # 4. Delegate ALL Non-Empty List Evaluation
+        logging.debug(f"Dispatching list evaluation for: {node}")
+        # Pass the original node list to the list evaluation handler
+        return self._eval_list(node, env)
+    def _eval_list(self, node_list: list, env: SexpEnvironment) -> Any:
+        """Handles the evaluation of a non-empty list."""
+        node_str = str(node_list) # For error reporting
+        if not node_list: # Should not happen if called from _eval, but safe check
+             return []
 
-        # 4. Check for Special Forms (must be handled first)
+        operator_node = node_list[0]
+        args = node_list[1:]
+
+        # 1. Check for Special Forms (must be first, operate on unevaluated args)
         if isinstance(operator_node, Symbol):
             op_str = operator_node.value()
             special_forms = {"if", "let", "bind", "progn"}
             if op_str in special_forms:
                 logging.debug(f"Identified Special Form: {op_str}")
+                # Special forms handle their own argument evaluation
                 return self._eval_special_form(op_str, args, env)
 
-        # 5. Check if it's a (key value) pair intended as data/argument
-        #    This structure is common for named arguments in calls.
-        #    We assume a list of length 2 starting with a Symbol that is NOT
-        #    a special form represents a key-value pair to be evaluated.
-        if len(node) == 2 and isinstance(operator_node, Symbol):
-              # We already checked for special forms. If it's not a known primitive
-              # or callable in the env either, it's likely intended as a key-value pair.
-              # Let's evaluate the value part and return the pair.
-              # This relies on _eval_list_invocation later to handle actual primitives/calls.
-              evaluated_value = self._eval(args[0], env)
-              key_str = operator_node.value()
-              logging.debug(f"Eval Key-Value Pair: ({key_str} ...) -> ['{key_str}', {evaluated_value}]")
-              return [key_str, evaluated_value] # Return ['key', value]
-
-        # 6. If not a special form or simple key-value pair, treat as invocation
-        logging.debug(f"Dispatching list invocation for: {node}")
-        return self._eval_list_invocation(operator_node, args, env, node)
-    # This method is no longer needed as its functionality is split between _eval and _eval_list_invocation
-    
-    # New helper method extracted from the original _eval_list
-    def _eval_list_invocation(self, operator_node: SexpNode, args: list, env: SexpEnvironment, original_node: list) -> Any:
-        """Handles evaluation when a list is treated as an invocation."""
-        node_str = str(original_node) # For error reporting
+        # 2. Evaluate Arguments (for primitives and general calls)
         logging.debug(f"Evaluating arguments for operator: {operator_node}")
         try:
-            # Evaluate arguments first *before* evaluating the operator
             evaluated_args = [self._eval(arg, env) for arg in args]
             logging.debug(f"Evaluated args: {evaluated_args}")
         except Exception as e:
             logging.error(f"Error evaluating arguments for {operator_node}: {e}", exc_info=True)
             raise SexpEvaluationError(f"Error evaluating arguments for {operator_node}", node_str) from e
 
+        # 3. Evaluate the Operator itself to determine target
         logging.debug(f"Evaluating operator node: {operator_node}")
+        operator_target_name = None # Keep track of original name if it was a symbol
         try:
-            # Evaluate the operator itself
-            operator_target = self._eval(operator_node, env)
-            logging.debug(f"Operator evaluated to: {operator_target} (Type: {type(operator_target)})")
-        except NameError as e:
-            # If operator was a symbol and unbound, treat it as a name for lookup
             if isinstance(operator_node, Symbol):
-                logging.debug(f"Operator symbol '{operator_node.value()}' is unbound, treating as name.")
-                operator_target = operator_node.value()
-            else: # It was some other expression that failed evaluation
-                raise SexpEvaluationError(f"Failed to evaluate operator: {operator_node}", node_str) from e
+                 operator_target_name = operator_node.value()
+                 # Try lookup first
+                 operator_target = env.lookup(operator_target_name)
+                 logging.debug(f"Operator symbol '{operator_target_name}' evaluated via lookup to: {operator_target} (Type: {type(operator_target)})")
+            else:
+                 # Operator is a complex expression, evaluate it
+                 operator_target = self._eval(operator_node, env)
+                 logging.debug(f"Operator expression '{operator_node}' evaluated to: {operator_target} (Type: {type(operator_target)})")
+
+        except NameError:
+            # Operator was an unbound symbol, treat its name as the target ID
+            if isinstance(operator_node, Symbol):
+                operator_target = operator_target_name # Use the name string
+                logging.debug(f"Operator symbol '{operator_target_name}' is unbound, treating name as target.")
+            else:
+                # This case should be rare (evaluating a non-symbol operator expression failed)
+                raise SexpEvaluationError(f"Failed to evaluate operator expression: {operator_node}", node_str)
         except Exception as e:
              raise SexpEvaluationError(f"Unexpected error evaluating operator: {operator_node}", node_str) from e
 
-        # Check for Primitives (operate on evaluated args)
-        primitives = {"list", "get_context"} # Add other primitives here
-        if isinstance(operator_target, str) and operator_target in primitives:
-            logging.debug(f"Identified Primitive: {operator_target}")
-            return self._eval_primitive(operator_target, evaluated_args, env) # Pass evaluated args
+        # 4. Check for Primitives (using operator name)
+        primitives = {"list", "get_context"}
+        target_name_for_primitive_check = operator_target if isinstance(operator_target, str) else operator_target_name
+        if isinstance(target_name_for_primitive_check, str) and target_name_for_primitive_check in primitives:
+            logging.debug(f"Identified Primitive: {target_name_for_primitive_check}")
+            # Pass the *name* and *evaluated* args to the primitive handler
+            return self._eval_primitive(target_name_for_primitive_check, evaluated_args, env)
 
-        # Handle as General Invocation (Task/Tool/Callable)
+        # 5. Handle General Invocation (Task, Tool, Callable)
         logging.debug("Handling as General Invocation (Task/Tool/Callable)")
-        return self._handle_invocation(operator_target, evaluated_args, env, node_str) # Pass evaluated args
+        # Pass the evaluated operator target and evaluated args
+        return self._handle_invocation(operator_target, evaluated_args, env, node_str)
 
     def _eval_special_form(self, op_str: str, args: list, env: SexpEnvironment) -> Any:
         """Evaluates special forms like if, let, bind, progn."""
@@ -298,11 +298,8 @@ class SexpEvaluator:
                  if isinstance(arg, dict):
                      context_input_args.update(arg)
                  else:
-                     # Or handle (key value) lists if evaluation returns that?
-                     # Let's assume evaluation returns final values, and structure comes from (list (list 'key val)) etc.
-                     # If args are passed positionally, need specific handling.
-                     # For now, assume args evaluate to key-value dicts.
-                     raise SexpEvaluationError(f"Invalid argument type for 'get_context': {type(arg)}. Expected dict.", node_repr)
+                     # For now, assume args evaluate to key-value pairs from the list primitive
+                     raise SexpEvaluationError(f"Invalid argument type for 'get_context': {type(arg)}. Expected key-value pair from (list 'key' value).", node_repr)
 
             if not context_input_args: raise SexpEvaluationError("'get_context' requires options", node_repr)
 
