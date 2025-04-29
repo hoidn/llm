@@ -248,4 +248,3 @@ When implementing components that parse and evaluate Domain-Specific Languages o
 *   **11.5. Ensure Contextual Error Reporting:**
     *   Design error handling (`raise` statements, exception messages) to pinpoint the semantic source of the error as accurately as possible (e.g., "Undefined function 'foo' in expression (foo 1)" is better than "Type error processing arguments").
     *   Include relevant context in error messages, such as the specific expression or node being processed when the error occurred.
-```
