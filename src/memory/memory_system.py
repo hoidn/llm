@@ -7,6 +7,9 @@ import os
 import logging
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+# Import necessary models
+from src.system.models import ContextGenerationInput, AssociativeMatchResult, MatchTuple
+
 # Default sharding config (can be refined)
 DEFAULT_SHARDING_CONFIG = {
     "sharding_enabled": False,
@@ -156,9 +159,10 @@ class MemorySystem:
         # 2. Call self.get_relevant_context_for with the constructed input.
         # 3. Return the result from get_relevant_context_for.
         # --- End Phase 2, Set A ---
-        raise NotImplementedError(
-            "get_relevant_context_with_description implementation deferred to Phase 2"
-        )
+        # Create ContextGenerationInput using context_description as the query
+        input_data = ContextGenerationInput(query=context_description)
+        # Call the main method
+        return self.get_relevant_context_for(input_data)
 
     def get_relevant_context_for(
         self, input_data: Any  # Union[Dict[str, Any], ContextGenerationInput]
@@ -206,6 +210,80 @@ class MemorySystem:
         raise NotImplementedError(
             "get_relevant_context_for implementation deferred to Phase 2"
         )
+        # --- Start Phase 2a Implementation ---
+        # 1. Parse/Validate input_data (Assuming it's already ContextGenerationInput for now)
+        if not isinstance(input_data, ContextGenerationInput):
+            # Basic handling if legacy dict is passed, might need refinement
+            logging.warning("Received non-ContextGenerationInput, attempting conversion.")
+            try:
+                input_data = ContextGenerationInput.model_validate(input_data)
+            except Exception as e:
+                logging.error(f"Failed to parse input_data: {e}")
+                return AssociativeMatchResult(
+                    context_summary="Error: Invalid input data format.",
+                    matches=[],
+                    error=f"Invalid input data format: {e}"
+                )
+
+        # 2. Determine the effective query string(s) for matching
+        search_strings = []
+        if input_data.query:
+            search_strings.append(input_data.query)
+        elif input_data.templateDescription:
+            # Combine description and potentially key inputs for search
+            # Simple approach: use description directly
+            search_strings.append(input_data.templateDescription)
+            # Future enhancement: could extract keywords from inputs dict
+            # if input_data.inputs:
+            #     search_strings.extend([str(v) for v in input_data.inputs.values()])
+        else:
+            # No query or description provided
+            logging.warning("No query or templateDescription in input_data for context matching.")
+            return AssociativeMatchResult(
+                context_summary="No search criteria provided.",
+                matches=[],
+                error="No query or templateDescription provided."
+            )
+
+        # Normalize search strings (e.g., lower case for case-insensitive matching)
+        search_strings_lower = [s.lower() for s in search_strings if s]
+        if not search_strings_lower:
+             return AssociativeMatchResult(context_summary="Empty search criteria.", matches=[])
+
+
+        # 4. Perform associative matching (Simple Substring Search for Phase 2a)
+        matches = []
+        index_to_search = {}
+
+        # Use global index regardless of sharding setting for Phase 2a
+        # Structure is in place for future sharding logic.
+        if self._config.get("sharding_enabled", False):
+            logging.debug("Sharding enabled, but using global index for Phase 2a matching.")
+            # In future: iterate through self._sharded_index
+            index_to_search = self.global_index
+        else:
+            logging.debug("Sharding disabled, using global index for matching.")
+            index_to_search = self.global_index
+
+        for file_path, metadata in index_to_search.items():
+            metadata_lower = metadata.lower()
+            # Check if *any* of the search strings are found in the metadata
+            if any(search_str in metadata_lower for search_str in search_strings_lower):
+                # Create MatchTuple according to Pydantic model
+                # Using placeholder relevance 1.0 for direct match, no excerpt
+                matches.append(MatchTuple(path=file_path, relevance=1.0)) # Adhere to MatchTuple model
+
+        # 5. Format the results
+        context_summary = f"Found {len(matches)} potential matches based on keyword search."
+        logging.debug(f"Context matching complete. Found {len(matches)} matches for query derived from: {search_strings}")
+
+        # 7. Return the AssociativeMatchResult
+        return AssociativeMatchResult(
+            context_summary=context_summary,
+            matches=matches,
+            error=None
+        )
+        # --- End Phase 2a Implementation ---
 
     def _recalculate_shards(self) -> None:
         """

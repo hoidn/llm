@@ -4,11 +4,14 @@ Focuses on logic implemented in Phase 1, Set B.
 """
 
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, call
 import os
 
 # Assuming MemorySystem is importable
 from src.memory.memory_system import MemorySystem, DEFAULT_SHARDING_CONFIG
+# Import necessary models for tests
+from src.system.models import ContextGenerationInput, AssociativeMatchResult, MatchTuple
+
 
 # Default config for tests
 TEST_CONFIG = {
@@ -275,3 +278,198 @@ def test_recalculate_shards_placeholder_clears_when_disabled(mock_log, memory_sy
     assert memory_system._sharded_index == []  # Should clear if called when disabled
     # Should not log the "Recalculating..." message
     assert mock_log.call_count == 0
+
+
+# --- Tests for Phase 2a: Context Retrieval Logic ---
+
+# Use the existing 'memory_system' fixture
+
+def test_get_relevant_context_for_no_matches(memory_system):
+    """Verify behavior when no metadata matches the query."""
+    # Setup: Ensure index has data that *won't* match
+    memory_system.update_global_index({
+        os.path.abspath("/path/to/file1.py"): "metadata about python code",
+        os.path.abspath("/path/to/file2.txt"): "text file description",
+    })
+    input_data = ContextGenerationInput(query="non_existent_keyword")
+
+    result = memory_system.get_relevant_context_for(input_data)
+
+    assert isinstance(result, AssociativeMatchResult)
+    assert result.matches == []
+    assert "Found 0 potential matches" in result.context_summary # Check summary text
+    assert result.error is None
+
+def test_get_relevant_context_for_query_match(memory_system):
+    """Verify matching based on the 'query' field."""
+    # Setup: Add specific metadata to match
+    path1 = os.path.abspath("/path/file1.py")
+    meta1 = "Relevant python code for feature_x"
+    path2 = os.path.abspath("/path/other.txt")
+    meta2 = "Some other text"
+    memory_system.update_global_index({
+        path1: meta1,
+        path2: meta2,
+    })
+    # Use case-insensitive matching for robustness if implemented
+    input_data = ContextGenerationInput(query="feature_x") # Lowercase query
+
+    result = memory_system.get_relevant_context_for(input_data)
+
+    assert isinstance(result, AssociativeMatchResult)
+    assert len(result.matches) == 1
+    # MatchTuple should follow Pydantic model: path, relevance, excerpt
+    expected_match = MatchTuple(path=path1, relevance=1.0) # Placeholder relevance
+    assert result.matches[0].path == expected_match.path
+    assert result.matches[0].relevance == expected_match.relevance
+    assert "Found 1 potential matches" in result.context_summary
+    assert result.error is None
+
+def test_get_relevant_context_for_template_description_match(memory_system):
+    """Verify matching based on templateDescription if query is absent."""
+    path1 = os.path.abspath("/path/template_match.py")
+    meta1 = "Code related to user authentication"
+    memory_system.update_global_index({path1: meta1})
+    input_data = ContextGenerationInput(
+        templateDescription="Handle user login and authentication flow",
+        inputs={"user_id": 123} # Input potentially used if logic combines them
+    )
+
+    result = memory_system.get_relevant_context_for(input_data)
+
+    assert isinstance(result, AssociativeMatchResult)
+    assert len(result.matches) == 1
+    expected_match = MatchTuple(path=path1, relevance=1.0)
+    assert result.matches[0].path == expected_match.path
+    assert result.matches[0].relevance == expected_match.relevance
+    assert result.error is None
+
+def test_get_relevant_context_for_query_precedence(memory_system):
+    """Verify 'query' takes precedence over templateDescription."""
+    path_query = os.path.abspath("/path/query_match.js")
+    meta_query = "JavaScript for query processing"
+    path_template = os.path.abspath("/path/template_match.py")
+    meta_template = "Python for template logic"
+    memory_system.update_global_index({
+        path_query: meta_query,
+        path_template: meta_template
+    })
+    # Both query and templateDesc are provided
+    input_data = ContextGenerationInput(
+        query="javascript query", # Should match this
+        templateDescription="Logic related to python templates" # Should be ignored
+    )
+
+    result = memory_system.get_relevant_context_for(input_data)
+
+    assert isinstance(result, AssociativeMatchResult)
+    assert len(result.matches) == 1
+    # Should match based on query, not templateDescription
+    expected_match = MatchTuple(path=path_query, relevance=1.0)
+    assert result.matches[0].path == expected_match.path
+    assert result.matches[0].relevance == expected_match.relevance
+    assert result.error is None
+
+def test_get_relevant_context_for_multiple_matches(memory_system):
+    """Verify multiple files can be matched."""
+    path1 = os.path.abspath("/proj/common_feature.py")
+    meta1 = "shared code for common_feature"
+    path2 = os.path.abspath("/proj/specific/impl_common.txt")
+    meta2 = "notes about common_feature implementation"
+    path3 = os.path.abspath("/proj/other.java")
+    meta3 = "unrelated java code"
+    memory_system.update_global_index({
+        path1: meta1,
+        path2: meta2,
+        path3: meta3,
+    })
+    input_data = ContextGenerationInput(query="common_feature")
+
+    result = memory_system.get_relevant_context_for(input_data)
+
+    assert isinstance(result, AssociativeMatchResult)
+    assert len(result.matches) == 2
+    # Check if both expected matches are present (order might vary)
+    match_paths = {m.path for m in result.matches}
+    assert match_paths == {path1, path2}
+    assert "Found 2 potential matches" in result.context_summary
+    assert result.error is None
+
+# Use patch.object on the class itself
+@patch.object(MemorySystem, 'get_relevant_context_for')
+def test_get_relevant_context_with_description_calls_correctly(mock_get_relevant_context_for, memory_system):
+    """Verify get_relevant_context_with_description constructs input and calls main method."""
+    # Setup mock return value from the mocked get_relevant_context_for
+    mock_return = AssociativeMatchResult(context_summary="Mocked Result", matches=[], error=None)
+    mock_get_relevant_context_for.return_value = mock_return
+
+    query_text = "Main task query (should be ignored by this method)"
+    context_desc = "Specific description for context lookup" # This should become the query
+
+    # Call the method under test
+    result = memory_system.get_relevant_context_with_description(query_text, context_desc)
+
+    # Assert the result is what the mock returned
+    assert result == mock_return
+    # Assert the mock was called exactly once
+    mock_get_relevant_context_for.assert_called_once()
+
+    # Check the arguments passed to the mocked method
+    # call_args is a tuple, first element is args tuple, second is kwargs dict
+    # In this case, it's called like method(self, input_arg)
+    # So call_args[0] should be (self_instance, input_arg)
+    # We only care about input_arg
+    assert len(mock_get_relevant_context_for.call_args.args) == 2 # self and input_data
+    input_arg = mock_get_relevant_context_for.call_args.args[1]
+
+    assert isinstance(input_arg, ContextGenerationInput)
+    assert input_arg.query == context_desc # Crucial check: context_desc became the query
+    assert input_arg.templateDescription is None # Or default value if model has one
+    assert input_arg.inputs is None # Or default value
+
+def test_get_relevant_context_for_case_insensitive_match(memory_system):
+    """Verify matching is case-insensitive."""
+    path1 = os.path.abspath("/path/case_test.py")
+    meta1 = "Metadata with MixedCaseKeyword"
+    memory_system.update_global_index({path1: meta1})
+    input_data = ContextGenerationInput(query="mixedcasekeyword") # Lowercase query
+
+    result = memory_system.get_relevant_context_for(input_data)
+
+    assert len(result.matches) == 1
+    assert result.matches[0].path == path1
+
+    input_data_upper = ContextGenerationInput(query="MIXEDCASEKEYWORD") # Uppercase query
+    result_upper = memory_system.get_relevant_context_for(input_data_upper)
+    assert len(result_upper.matches) == 1
+    assert result_upper.matches[0].path == path1
+
+def test_get_relevant_context_for_no_query_or_description(memory_system):
+    """Verify behavior when neither query nor templateDescription is provided."""
+    memory_system.update_global_index({os.path.abspath("/path/some_file.py"): "some metadata"})
+    input_data = ContextGenerationInput(inputs={"some": "input"}) # Only inputs
+
+    result = memory_system.get_relevant_context_for(input_data)
+
+    assert isinstance(result, AssociativeMatchResult)
+    assert result.matches == []
+    assert "No search criteria provided" in result.context_summary
+    assert "No query or templateDescription provided" in result.error
+
+# Test sharding path still uses global index for now
+@patch('logging.debug')
+def test_get_relevant_context_for_sharding_enabled_uses_global_index_phase2a(mock_log, memory_system):
+    """Verify sharding path uses global index in Phase 2a."""
+    path1 = os.path.abspath("/path/shard_test.py")
+    meta1 = "Keyword for sharding test"
+    memory_system.update_global_index({path1: meta1})
+    memory_system.enable_sharding(True) # Enable sharding
+
+    input_data = ContextGenerationInput(query="sharding test")
+    result = memory_system.get_relevant_context_for(input_data)
+
+    # Check that matching still worked
+    assert len(result.matches) == 1
+    assert result.matches[0].path == path1
+    # Check that the debug log indicates global index was used despite sharding being enabled
+    mock_log.assert_any_call("Sharding enabled, but using global index for Phase 2a matching.")
