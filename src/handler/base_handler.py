@@ -269,47 +269,33 @@ class BaseHandler:
         )
 
         # Process the result from the manager
-        if manager_result["success"]:
+        # Fix: Use .get() for safer access
+        if isinstance(manager_result, dict) and manager_result.get("success"): # Check type and use get()
             assistant_content = manager_result.get("content", "")
             usage_data = manager_result.get("usage")
-            tool_calls = manager_result.get("tool_calls") # TODO: Handle tool calls if needed
+            tool_calls = manager_result.get("tool_calls")
 
+            # ... (rest of success path: logging, history update, tool call check, return TaskResult) ...
             self.log_debug(f"LLM call successful. Response: '{str(assistant_content)[:100]}...'")
-
-            # Update conversation history *after* successful call
             self.conversation_history.append({"role": "user", "content": prompt})
-            # Ensure assistant content is stored as string
             self.conversation_history.append({"role": "assistant", "content": str(assistant_content)})
             self.log_debug(f"Conversation history updated. New length: {len(self.conversation_history)}")
+            if tool_calls: logging.warning(f"LLM agent returned tool calls, but handling is not implemented: {tool_calls}")
+            return TaskResult(status="COMPLETE", content=str(assistant_content), notes={"usage": usage_data} if usage_data else {})
 
-            # TODO: Process tool_calls if the agent returned any. This might involve
-            # calling _execute_tool and potentially making another LLM call with the results.
-            # This simple implementation assumes no tool calls or handles them elsewhere.
-            if tool_calls:
-                 logging.warning(f"LLM agent returned tool calls, but handling is not implemented in _execute_llm_call: {tool_calls}")
-
-
-            # Return success TaskResult
-            return TaskResult(
-                status="COMPLETE",
-                content=str(assistant_content), # Ensure content is string
-                notes={"usage": usage_data} if usage_data else {}
-            )
         else:
-            # Handle failure
-            error_message = manager_result.get("error", "Unknown LLM interaction error.")
-            logging.error(f"LLM call failed: {error_message}")
-            # Do NOT update history on failure
-            error_details: TaskError = { # type: ignore
-                "type": "TASK_FAILURE",
-                "reason": "llm_error",
-                "message": error_message,
+            # Handle failure or unexpected result structure
+            error_message = "Unknown LLM interaction error."
+            if isinstance(manager_result, dict):
+                error_message = manager_result.get("error", error_message) # Use get()
+            elif hasattr(manager_result, 'error') and manager_result.error: # Example if it were an object
+                 error_message = manager_result.error
+            # ... (rest of failure path: logging, create error details, return FAILED TaskResult) ...
+            logging.error(f"LLM call failed or returned unexpected result: {error_message}")
+            error_details: TaskErrorModel = { # type: ignore
+                "type": "TASK_FAILURE", "reason": "llm_error", "message": error_message,
             }
-            return TaskResult(
-                status="FAILED",
-                content=error_message,
-                notes={"error": error_details}
-            )
+            return TaskResult(status="FAILED", content=error_message, notes={"error": error_details})
 
     def _build_system_prompt(
         self, template: Optional[str] = None, file_context: Optional[str] = None
