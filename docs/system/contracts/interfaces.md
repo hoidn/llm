@@ -4,37 +4,65 @@
 
 ## 1. Component Integration Contracts
 
-### 1.1 Compiler Integration [Contract:Integration:CompilerTask:1.0]
+### 1.2 Compiler Integration [Contract:Integration:CompilerTask:1.0]
 Defined in [Interface:Compiler:1.0]
 
-The Compiler component provides AST generation and transformation services.
-
-### 1.2 Evaluator Integration [Contract:Integration:EvaluatorTask:1.0]
-Defined in [Interface:Evaluator:1.0]
-
-The Evaluator component handles task execution step-by-step, template variable substitution, function call resolution, manages control flow for composite task types like director_evaluator_loop, and manages error recovery.
+The Compiler component is primarily responsible for validating atomic task XML against the schema during registration via `TaskSystem`. Its role in direct AST generation is reduced with the S-expression model.
 
 ### 1.3 Task System Integration [Contract:Integration:TaskSystem:1.0]
 Defined in [Interface:TaskSystem:1.0]
 
 #### Interfaces
-- Task Execution: [Interface:TaskSystem:1.0] 
-- Template Management: [Interface:TaskSystem:Templates:1.0]
-- XML Processing: [Contract:Tasks:TemplateSchema:1.0]
-- Passthrough Processing: Handles raw text queries by wrapping them in subtasks while maintaining context management.
+*   Atomic Task Execution Orchestration: [Interface:TaskSystem:1.0] (`execute_atomic_template`)
+*   Atomic Template Management: [Interface:TaskSystem:1.0] (`register_template`, `find_template`, `find_matching_tasks`)
+*   XML Processing: [Contract:Tasks:TemplateSchema:1.0] (Validation during registration)
 
 #### Component Responsibilities
-- Evaluator: Responsible for all template variable substitution (resolving {{variable_name}} placeholders)
-- Handler: Works with fully resolved content only, no template substitution
+*   **SexpEvaluator:** Responsible for executing S-expression workflows and calling `TaskSystem.execute_atomic_template` for atomic steps.
+*   **AtomicTaskExecutor:** Responsible for executing the body of an atomic task, including `{{parameter}}` substitution using the `params` dict provided by TaskSystem.
+*   **Handler:** Works with fully resolved content only, performs LLM calls, tool execution, file I/O.
 
-### Template Substitution Responsibility
-- The Evaluator is exclusively responsible for all template variable substitution
-- This includes resolving all {{variable_name}} placeholders and input bindings
-- Handlers receive fully resolved content with no remaining template variables
-- This separation ensures clean component boundaries and single responsibility
+#### Template Substitution Responsibility
+*   The **AtomicTaskExecutor** is exclusively responsible for `{{parameter}}` substitution within the body of atomic tasks, using only the parameters passed to it by the TaskSystem.
+*   The **SexpEvaluator** is responsible for evaluating arguments *before* they are passed to `TaskSystem.execute_atomic_template`.
 
 #### Resource Contracts
 See [Contract:Resources:1.0]
+
+### 1.4 Memory System Integration [Contract:Integration:TaskMemory:3.0]
+Defined in [Interface:Memory:3.0]
+
+#### Interfaces
+*   Metadata Management & Context Retrieval: [Interface:Memory:3.0]
+    *   Task System uses `getRelevantContextFor` for context preparation during atomic task orchestration.
+    *   SexpEvaluator uses `getRelevantContextFor` via primitives like `(get_context ...)`.
+*   Index Management: [Interface:Memory:3.0]
+*   Git Repository Indexing: Provided via `indexGitRepository`.
+
+#### Responsibilities
+Memory System:
+*   Maintains global file metadata index (read-only context model).
+*   Provides context via `getRelevantContextFor`.
+*   NEVER performs file I/O operations.
+
+Task System:
+*   Calls `getRelevantContextFor` when orchestrating atomic tasks requiring fresh context.
+*   Receives file references/metadata from MemorySystem.
+*   Delegates file access to Handler via AtomicTaskExecutor.
+
+Handler:
+*   Performs ALL file I/O operations.
+
+AtomicTaskExecutor:
+*   Receives prepared context string/file list from TaskSystem; passes it to Handler.
+
+SexpEvaluator:
+*   Calls `getRelevantContextFor` via DSL primitives.
+
+#### Integration Points
+*   Context flow from MemorySystem -> TaskSystem -> AtomicTaskExecutor -> Handler.
+*   Context flow from MemorySystem -> SexpEvaluator -> TaskSystem (as input/files).
+*   File metadata index used exclusively for matching; file access handled by Handler tools.
 
 ### 1.4 Memory System Integration [Contract:Integration:TaskMemory:3.0]
 Defined in [Interface:Memory:3.0]

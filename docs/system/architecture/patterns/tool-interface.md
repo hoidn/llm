@@ -146,34 +146,15 @@ The modern `register_tool` method:
 3. Handles provider-specific tool formatting internally
 4. Returns success/failure status for error handling
 
-## Subtask Results as Tool Responses
+### Subtask Results Handling (via S-expression)
 
-When a subtask tool is called, the system implements a streamlined approach that preserves session continuity:
+When an atomic task called via the S-expression workflow returns `CONTINUATION` status:
 
-```mermaid
-flowchart TD
-    A[Parent LLM] -->|"tools.analyzeData({...})"| B[Handler]
-    B -->|CONTINUATION with subtask_request| C[Task System]
-    C -->|Execute subtask| D[Subtask LLM]
-    D -->|Result| C
-    C -->|Add as tool response| B
-    B -->|Continue with tool result| A
-```
-
-### Key Benefits
-1. **Session Preservation**: The parent Handler session is maintained throughout execution
-2. **Natural Conversation Flow**: From the LLM's perspective, this is just a tool call and response
-3. **No Special Methods**: No need for `resumeTask()` or similar special continuation methods
-4. **Simplified Implementation**: Clean component boundaries with clear responsibilities
-
-### Example Flow
-1. Parent LLM calls a subtask tool (e.g., `tools.analyzeData({...})`)
-2. Handler recognizes this as a subtask tool and returns CONTINUATION with subtask_request
-3. Task System executes the subtask as a separate LLM interaction
-4. Task System adds the subtask result to the parent's session as a tool response
-5. Parent LLM continues execution with the tool result in its conversation history
-
-This approach eliminates the need for the LLM to understand continuation concepts - it simply sees its tool call and the corresponding response.
+1.  The `SexpEvaluator` receives the `TaskResult` with `status: "CONTINUATION"` and the `subtask_request` in `notes`.
+2.  The `SexpEvaluator` validates the request and checks depth limits.
+3.  The `SexpEvaluator` invokes the subtask by calling `TaskSystem.execute_atomic_template` with the `subtask_request`.
+4.  The `TaskResult` from the subtask execution is returned to the `SexpEvaluator`.
+5.  The S-expression logic then continues, processing the subtask's result as needed (e.g., binding it to a variable using `let` or `bind`, passing it to the next function call). Data flow is explicitly managed within the S-expression workflow.
 
 ### Task System Integration
 
