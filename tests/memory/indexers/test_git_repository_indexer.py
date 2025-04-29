@@ -204,13 +204,16 @@ def test_scan_repository(mock_isfile, mock_glob, indexer, tmp_path):
     ("empty_file.txt", b"", True), # Empty file is considered text
 ])
 @patch('builtins.open', new_callable=mock_open)
-@patch('os.path.splitext') # Patch where splitext is looked up by the code under test
+# FIX: Patch where splitext is looked up by the code under test
+@patch('src.memory.indexers.git_repository_indexer.os.path.splitext')
 def test_is_text_file(mock_splitext, mock_open_file, indexer, file_path, file_content, expected):
     """Test text file detection logic."""
     # Configure mocks
-    # Explicitly set the return value as a proper tuple
-    filename, ext = os.path.splitext(file_path)
-    mock_splitext.return_value = (filename, ext)
+    # Calculate the expected tuple *before* assigning to the mock
+    # Call the *real* os.path.splitext to get the expected output for this file_path
+    expected_splitext_output = os.path.splitext(file_path)
+    # Configure the mock passed into the test function to return this pre-calculated tuple
+    mock_splitext.return_value = expected_splitext_output
     # --- End FIX ---
 
     mock_file_handle = mock_open_file.return_value # Get the mock file handle
@@ -222,7 +225,8 @@ def test_is_text_file(mock_splitext, mock_open_file, indexer, file_path, file_co
     # Assert
     assert result == expected
     mock_open_file.assert_called_once_with(file_path, 'rb') # Check opened in binary mode
-    mock_splitext.assert_called_once_with(file_path) # Verify mock was called
+    # Check that the mock we configured was called by the implementation
+    mock_splitext.assert_called_once_with(file_path)
 
 
 @patch('os.path.getsize')
@@ -355,9 +359,15 @@ def test_index_repository_handles_create_metadata_error(mock_create_meta, mock_o
     result_index = indexer.index_repository(mock_memory_system)
 
     # Assert file2 caused an error log - check records directly
-    assert any("Error processing file" in record.message for record in caplog.records)
-    assert file2 in caplog.text
-    assert "Git history missing" in caplog.text
+    # FIX: Check levelname and message content more robustly
+    error_record_found = False
+    for record in caplog.records:
+        if record.levelname == 'ERROR' and f"Error processing file {file2}" in record.message and "Git history missing" in record.message:
+            error_record_found = True
+            break
+    assert error_record_found, f"Expected ERROR log for {file2} not found in caplog records: {caplog.text}"
+    # --- End FIX ---
+
     # Assert memory system only updated with file1 and file3
     expected_update = {
         file1: "meta_file1.py",
