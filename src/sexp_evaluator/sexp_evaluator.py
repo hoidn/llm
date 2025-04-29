@@ -19,9 +19,10 @@ from src.sexp_evaluator.sexp_environment import SexpEnvironment
 # System Models and Errors
 from src.system.models import (
     TaskResult, SubtaskRequest, ContextGenerationInput, ContextManagement,
-    TaskFailureError, TaskFailureReason, AssociativeMatchResult, MatchTuple
+    TaskFailureError, TaskFailureReason, AssociativeMatchResult, MatchTuple,
+    TaskError as TaskErrorModel  # Import the model with an alias for type hints
 )
-from src.system.errors import SexpSyntaxError, SexpEvaluationError, TaskError # Assuming TaskError is base for system errors
+from src.system.errors import SexpSyntaxError, SexpEvaluationError
 
 # Type for Sexp AST nodes (adjust based on SexpParser output)
 # Assuming sexpdata-like output: lists, tuples, strings, numbers, bools, None, Symbol objects
@@ -125,10 +126,12 @@ class SexpEvaluator:
             if not e.expression:
                  e.expression = sexp_string
             raise # Re-raise evaluation error
-        except TaskError as e:
+        except TaskFailureError as e:
             # Catch errors propagated from underlying system calls
-            logging.error(f"TaskError during S-expression evaluation: {e}")
-            raise # Propagate TaskError
+            logging.error(f"TaskFailureError during S-expression evaluation: {e.message}")
+            raise SexpEvaluationError(f"Task execution failed: {e.message}", 
+                                     expression=sexp_string, 
+                                     error_details=str(e)) from e
         except Exception as e:
             # Catch any other unexpected errors during evaluation
             logging.exception(f"Unexpected error during S-expression evaluation: {e}")
