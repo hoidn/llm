@@ -9,7 +9,7 @@ from src.handler.file_context_manager import FileContextManager
 from src.handler.llm_interaction_manager import LLMInteractionManager
 
 # Import shared types
-from src.system.models import TaskResult, TaskError # Assuming TaskResult is defined here
+from src.system.models import TaskResult, TaskError, TaskFailureError # Import TaskFailureError for type hints
 
 # Forward declarations for type hinting cycles
 # from src.task_system.task_system import TaskSystem
@@ -292,7 +292,7 @@ class BaseHandler:
                  error_message = manager_result.error
             # ... (rest of failure path: logging, create error details, return FAILED TaskResult) ...
             logging.error(f"LLM call failed or returned unexpected result: {error_message}")
-            error_details: TaskErrorModel = { # type: ignore
+            error_details: Dict[str, Any] = {
                 "type": "TASK_FAILURE", "reason": "llm_error", "message": error_message,
             }
             return TaskResult(status="FAILED", content=error_message, notes={"error": error_details})
