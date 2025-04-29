@@ -100,6 +100,9 @@ class SexpParser:
                  "Input string is empty or contains only whitespace.",
                  sexp_string
              ) from None
+        except ExpectClosingBracket as e: # Catch specific bracket error
+            logging.error(f"S-expression syntax error (Unbalanced Parentheses): {e}")
+            raise SexpSyntaxError("S-expression syntax error: Unbalanced parentheses or brackets.", sexp_string, error_details=str(e)) from e
         except ExpectNothing as e:
              # This exception is raised by our check above if there's trailing content
              logging.error(f"S-expression parsing failed: Unexpected content after main expression. Details: {e}")
@@ -108,22 +111,21 @@ class SexpParser:
                  sexp_string,
                  error_details=str(e)
              ) from e
-        except ValueError as e: # Catch ValueError, often raised for parse issues
+        except ValueError as e: # Keep for other potential parse errors
              # Catch specific syntax errors from sexpdata (e.g., unbalanced parens)
-             logging.error(f"S-expression syntax error: {e}")
+             logging.error(f"S-expression syntax error (ValueError): {e}")
              # Make the message more specific based on common sexpdata errors if possible
              msg = f"S-expression syntax error: {e}"
-             if "Unbalanced parentheses" in str(e):
-                 msg = "S-expression syntax error: Unbalanced parentheses or brackets."
-             elif "Invalid literal" in str(e):
-                 msg = "S-expression syntax error: Invalid token or literal."
-
+             # Add more specific checks if needed based on ValueError contents
              raise SexpSyntaxError(
                  msg,
                  sexp_string,
                  error_details=str(e)
              ) from e
-        except Exception as e: # Catch other unexpected errors during parsing or conversion
+        except AssertionError as e: # Catch AssertionError from sexpdata.loads for multiple expressions
+             logging.error(f"S-expression syntax error (Multiple Expressions): {e}")
+             raise SexpSyntaxError("Multiple top-level S-expressions found. Use (progn ...) or ensure single expression.", sexp_string, error_details=str(e)) from e
+        except Exception as e: # Catch-all for truly unexpected issues
              logging.exception(f"Unexpected error during S-expression parsing or conversion: {e}")
              raise SexpSyntaxError(
                  f"An unexpected error occurred during S-expression parsing: {e}",
