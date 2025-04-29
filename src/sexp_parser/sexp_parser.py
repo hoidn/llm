@@ -42,7 +42,17 @@ class SexpParser:
             raise TypeError("Input must be a string.")
 
         logging.debug(f"Attempting to parse S-expression string: '{sexp_string}'")
-        sio = StringIO(sexp_string.strip()) # Use strip to handle leading/trailing whitespace
+        stripped_string = sexp_string.strip() # Use strip to handle leading/trailing whitespace
+        
+        # Explicitly check for empty input before attempting to parse
+        if not stripped_string:
+            logging.error("S-expression parsing failed: Input string is empty or contains only whitespace.")
+            raise SexpSyntaxError(
+                "Input string is empty or contains only whitespace.",
+                sexp_string
+            )
+            
+        sio = StringIO(stripped_string)
 
         try:
             # Configure parser for 'true' and 'false' symbols
@@ -93,6 +103,8 @@ class SexpParser:
                  error_details=str(e)
              ) from e
         except AssertionError as e: # Catch AssertionError from sexpdata.loads for multiple expressions
+             # This now primarily catches the case of >1 top-level expressions,
+             # as the empty case (len=0) is handled before calling load.
              logging.error(f"S-expression syntax error (Multiple Expressions): {e}")
              raise SexpSyntaxError("Multiple top-level S-expressions found. Use (progn ...) or ensure single expression.", sexp_string, error_details=str(e)) from e
         except Exception as e: # Catch-all for truly unexpected issues

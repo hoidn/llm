@@ -215,7 +215,7 @@ def test_parse_nested_lists(parser):
 def test_parse_trailing_content_error(parser):
     """Test that trailing content raises an error."""
     sexp_string = "(expr1) (expr2)"
-    with pytest.raises(SexpSyntaxError, match="Unexpected content after the main expression"):
+    with pytest.raises(SexpSyntaxError, match="Multiple top-level S-expressions found"):
         parser.parse_string(sexp_string)
 
 def test_parse_unbalanced_parentheses_error(parser):
