@@ -6,6 +6,7 @@ from pydantic import ValidationError as PydanticValidationError
 # Assuming MemorySystem and BaseHandler are available for type hinting
 from src.memory.memory_system import MemorySystem
 from src.handler.base_handler import BaseHandler
+from .file_path_resolver import resolve_paths_from_template
 from src.system.models import (
     SubtaskRequest, TaskResult, ContextManagement,
     ContextGenerationInput, AssociativeMatchResult, MatchTuple,
@@ -521,103 +522,8 @@ class TaskSystem:
         handler: Optional[BaseHandler],
     ) -> Tuple[List[str], Optional[str]]:
         """
-        Resolves the final list of file paths to be used for context based on template settings.
-
-        Args:
-            template: A dictionary representing a fully resolved task template.
-            memory_system: A valid MemorySystem instance (required for description/context types).
-            handler: A valid Handler instance (required for command type).
-
-        Returns:
-            A tuple: (list_of_file_paths, optional_error_message).
+        Resolves the final list of file paths by delegating to the utility function.
+        (Original detailed docstring is now in file_path_resolver.py)
         """
-        logging.debug(f"Resolving file paths for template: {template.get('name', 'unnamed')}")
-
-        # Check for top-level literal paths first (legacy?)
-        if "file_paths" in template and isinstance(template["file_paths"], list):
-            logging.debug("Using literal file_paths from template top-level.")
-            return template["file_paths"], None
-
-        source_info = template.get("file_paths_source")
-        if not source_info or not isinstance(source_info, dict):
-            logging.debug("No file_paths_source found or invalid format, returning empty list.")
-            return [], None # No source specified
-
-        source_type = source_info.get("type", "literal") # Default to literal if type missing
-
-        if source_type == "literal":
-            paths = source_info.get("path", []) # Use 'path' key inside source_info
-            if isinstance(paths, list):
-                 logging.debug(f"Using literal paths from file_paths_source: {paths}")
-                 return paths, None
-            else:
-                 msg = "Invalid format for literal file_paths_source: 'path' key must be a list."
-                 logging.error(msg)
-                 return [], msg
-
-        elif source_type == "command":
-            if not handler:
-                return [], "Handler instance is required for file_paths_source type 'command'"
-            command = source_info.get("command")
-            if not command:
-                return [], "Missing command in file_paths_source type 'command'"
-            logging.debug(f"Executing command for file paths: {command}")
-            try:
-                # Assuming handler has a method like execute_file_path_command
-                paths = handler.execute_file_path_command(command)
-                logging.debug(f"Command returned paths: {paths}")
-                return paths, None
-            except Exception as e:
-                msg = f"Error executing command for file paths: {e}"
-                logging.exception(msg)
-                return [], msg
-
-        elif source_type == "description":
-            if not memory_system:
-                return [], "MemorySystem instance is required for file_paths_source type 'description'"
-            # Use specific description if provided, else fall back to template description
-            description = source_info.get("description") or template.get("description")
-            if not description:
-                return [], "Missing description for file_paths_source type 'description'"
-            logging.debug(f"Getting context by description: {description}")
-            try:
-                # Use the primary context retrieval method with description as query
-                context_input = ContextGenerationInput(query=description)
-                result = memory_system.get_relevant_context_for(context_input)
-                if result.error:
-                    return [], f"Error getting context by description: {result.error}"
-                # Ensure matches are MatchTuple instances before accessing path
-                paths = [match.path for match in result.matches if isinstance(match, MatchTuple)]
-                logging.debug(f"Context by description returned paths: {paths}")
-                return paths, None
-            except Exception as e:
-                msg = f"Error getting context by description: {e}"
-                logging.exception(msg)
-                return [], msg
-
-        elif source_type == "context_description": # Renamed from context_query in some tests? Aligning with IDL
-             if not memory_system:
-                 return [], "MemorySystem instance is required for file_paths_source type 'context_description'"
-             context_query = source_info.get("context_query")
-             if not context_query:
-                 return [], "Missing context_query for file_paths_source type 'context_description'"
-             logging.debug(f"Getting context by context_query: {context_query}")
-             try:
-                 # Use the primary context retrieval method
-                 context_input = ContextGenerationInput(query=context_query)
-                 result = memory_system.get_relevant_context_for(context_input)
-                 if result.error:
-                     return [], f"Error getting context by context_query: {result.error}"
-                 # Ensure matches are MatchTuple instances before accessing path
-                 paths = [match.path for match in result.matches if isinstance(match, MatchTuple)]
-                 logging.debug(f"Context by context_query returned paths: {paths}")
-                 return paths, None
-             except Exception as e:
-                 msg = f"Error getting context by context_query: {e}"
-                 logging.exception(msg)
-                 return [], msg
-
-        else:
-            msg = f"Unknown file_paths_source type: {source_type}"
-            logging.error(msg)
-            return [], msg
+        # Delegate directly to the extracted utility function
+        return resolve_paths_from_template(template, memory_system, handler)

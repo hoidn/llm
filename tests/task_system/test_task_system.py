@@ -614,167 +614,17 @@ def test_generate_context_for_memory_system_template_not_found(
 
 # --- Tests for resolve_file_paths (Phase 2c) ---
 
-# Removed patch decorator as we configure the mock instance directly
-def test_resolve_file_paths_command(task_system_instance, mock_handler):
-    """Test resolving file paths using a command."""
-    # Arrange
-    expected_paths = ["/path/a.py", "/path/b.py"]
-    # Configure the mock handler instance directly
-    mock_handler.execute_file_path_command.return_value = expected_paths
-    template = {
-        "file_paths_source": {
-            "type": "command",
-            "command": "find . -name '*.py'"
-        }
-    }
-    # Act
-    paths, error = task_system_instance.resolve_file_paths(template, None, mock_handler) # Memory not needed here
+@patch('src.task_system.task_system.resolve_paths_from_template')
+def test_task_system_resolve_file_paths_delegates(mock_resolve_utility, task_system_instance, mock_memory_system, mock_handler):
+    """Verify TaskSystem.resolve_file_paths delegates to the utility function."""
+    template = {"name": "test_delegate"}
+    expected_result = (["/delegated/path"], None)
+    mock_resolve_utility.return_value = expected_result
 
-    # Assert
-    assert error is None
-    assert paths == expected_paths
-    # Verify the call on the mock handler instance
-    mock_handler.execute_file_path_command.assert_called_once_with("find . -name '*.py'")
+    result = task_system_instance.resolve_file_paths(template, mock_memory_system, mock_handler)
 
-
-def test_resolve_file_paths_description(task_system_instance, mock_memory_system):
-    """Test resolving file paths using a description."""
-    # Arrange
-    expected_path = "/matched/desc.go"
-    template = {
-        "description": "Find Go files", # Used if specific desc missing
-        "file_paths_source": {
-            "type": "description",
-            "description": "Relevant Go source files" # Specific description
-        }
-    }
-    # Patch the method on the instance *within* the test
-    with patch.object(mock_memory_system, 'get_relevant_context_for') as mock_method_on_instance:
-        # Configure the return value on this new mock
-        mock_method_on_instance.return_value = AssociativeMatchResult(
-            context_summary="Desc match",
-            matches=[MatchTuple(path=expected_path, relevance=0.9)], # Use correct MatchTuple structure
-            error=None
-        )
-
-        # Act
-        paths, error = task_system_instance.resolve_file_paths(template, mock_memory_system, None) # Handler not needed
-
-        # Assert - Check the call on the mock created by 'with'
-        mock_method_on_instance.assert_called_once()
-        call_args, call_kwargs = mock_method_on_instance.call_args
-        assert len(call_args) == 1
-        assert isinstance(call_args[0], ContextGenerationInput)
-        assert call_args[0].query == "Relevant Go source files" # Check the query used
-    
-    # Assert results outside the 'with' block
-    assert error is None
-    assert paths == [expected_path]
-
-
-def test_resolve_file_paths_context_description(task_system_instance, mock_memory_system):
-    """Test resolving file paths using context_description."""
-    # Arrange
-    expected_path = "/matched/context.rs"
-    template = {
-        "file_paths_source": {
-            "type": "context_description",
-            "context_query": "Find Rust files about parsing"
-        }
-    }
-    
-    # Patch the method on the instance *within* the test
-    with patch.object(mock_memory_system, 'get_relevant_context_for') as mock_method_on_instance:
-        # Configure the return value on this new mock
-        mock_method_on_instance.return_value = AssociativeMatchResult(
-            context_summary="Context match",
-            matches=[MatchTuple(path=expected_path, relevance=0.85)], # Use correct MatchTuple structure
-            error=None
-        )
-        
-        # Act
-        paths, error = task_system_instance.resolve_file_paths(template, mock_memory_system, None) # Handler not needed
-
-        # Assert - Check the call on the mock created by 'with'
-        mock_method_on_instance.assert_called_once()
-        # Get the actual call arguments
-        call_args, call_kwargs = mock_method_on_instance.call_args
-        # Assert the structure and relevant content of the ContextGenerationInput argument
-        assert len(call_args) == 1
-        assert isinstance(call_args[0], ContextGenerationInput)
-        assert call_args[0].query == "Find Rust files about parsing" # Check the query used
-    
-    # Assert results outside the 'with' block
-    assert error is None
-    assert paths == [expected_path]
-
-
-def test_resolve_file_paths_literal(task_system_instance):
-    """Test resolving file paths using literal paths."""
-    # Arrange
-    expected_paths = ["/literal/a.txt", "/literal/b.txt"]
-    template = {
-        "file_paths": expected_paths # Literal paths at top level
-    }
-    # Act
-    paths, error = task_system_instance.resolve_file_paths(template, None, None)
-
-    # Assert
-    assert error is None
-    assert paths == expected_paths
-
-    # Arrange - Literal paths inside source element
-    template_in_source = {
-        "file_paths_source": {
-            "type": "literal",
-            "path": expected_paths # Changed key to 'path'
-        }
-    }
-    # Act
-    paths_in_source, error_in_source = task_system_instance.resolve_file_paths(template_in_source, None, None)
-
-    # Assert
-    assert error_in_source is None
-    assert paths_in_source == expected_paths
-
-    # Arrange - Literal paths specified via file_paths_source with type literal but no path key
-    template_literal_no_path = {
-        "file_paths_source": { "type": "literal" }
-    }
-    # Act
-    paths_no_path, error_no_path = task_system_instance.resolve_file_paths(template_literal_no_path, None, None)
-    # Assert
-    assert error_no_path is None
-    assert paths_no_path == [] # Should default to empty list
-
-
-def test_resolve_file_paths_missing_info(task_system_instance, mock_handler):
-    """Test error handling for missing information in resolve_file_paths."""
-    # Command missing
-    template_cmd = {"file_paths_source": {"type": "command"}}
-    paths, error = task_system_instance.resolve_file_paths(template_cmd, None, mock_handler)
-    assert error == "Missing command in file_paths_source type 'command'"
-    assert paths == []
-
-    # Description missing
-    template_desc = {"file_paths_source": {"type": "description"}}
-    paths, error = task_system_instance.resolve_file_paths(template_desc, MagicMock(), None)
-    assert error == "Missing description for file_paths_source type 'description'"
-    assert paths == []
-
-    # Context query missing
-    template_ctx = {"file_paths_source": {"type": "context_description"}}
-    paths, error = task_system_instance.resolve_file_paths(template_ctx, MagicMock(), None)
-    assert error == "Missing context_query for file_paths_source type 'context_description'"
-    assert paths == []
-
-
-def test_resolve_file_paths_unknown_type(task_system_instance):
-    """Test handling of unknown source type."""
-    template = {"file_paths_source": {"type": "magic"}}
-    paths, error = task_system_instance.resolve_file_paths(template, None, None)
-    assert error == "Unknown file_paths_source type: magic"
-    assert paths == []
+    mock_resolve_utility.assert_called_once_with(template, mock_memory_system, mock_handler)
+    assert result == expected_result
 
 
 # --- Tests for find_matching_tasks (Phase 2c) ---
