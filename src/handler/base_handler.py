@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional, Callable
 # Import Phase 0 components
 from src.handler.file_access import FileAccessManager
 from src.handler import command_executor
+from src.handler.file_context_manager import FileContextManager # Added import
 
 # Import pydantic-ai (assuming it's installed)
 try:
@@ -63,6 +64,10 @@ class BaseHandler:
         # Assuming base_path for FileAccessManager comes from config or defaults to cwd
         self.file_manager = FileAccessManager(
             base_path=self.config.get("file_manager_base_path")
+        )
+        # Initialize FileContextManager
+        self.file_context_manager = FileContextManager(
+            memory_system=self.memory_system, file_manager=self.file_manager
         )
 
         # Initialize internal state
@@ -390,45 +395,19 @@ class BaseHandler:
         """Gets relevant files based on query (TBD - Phase 2)."""
         # Implementation deferred to Phase 2
         logging.warning("_get_relevant_files called, but implementation is deferred.")
-        # --- Start Phase 2, Set A: Behavior Structure ---
-        # 1. Check if `self.memory_system` is available. If not, return empty list or raise error.
-        # 2. Construct input for memory system context retrieval (e.g., ContextGenerationInput or legacy dict).
-        #    - `input_data = ContextGenerationInput(query=query, ...)` # Add other relevant fields if known
-        # 3. Call `self.memory_system.get_relevant_context_for(input_data)`.
-        # 4. Process the result:
-        #    - If the call fails or returns an error, log it and return empty list.
-        #    - Extract the list of file paths from `result.matches`.
-        #    - `file_paths = [match.path for match in result.matches]`
-        # 5. Return `file_paths`.
-        # --- End Phase 2, Set A ---
-        raise NotImplementedError(
-            "_get_relevant_files implementation deferred to Phase 2"
-        )
+        """Gets relevant files based on query (Delegated to FileContextManager)."""
+        # Implementation deferred to Phase 2 - Now delegated
+        logging.warning("_get_relevant_files called, delegating to FileContextManager.")
+        return self.file_context_manager.get_relevant_files(query)
 
     def _create_file_context(self, file_paths: List[str]) -> str:
         """Creates context string from file paths (TBD - Phase 2)."""
         # Implementation deferred to Phase 2
         logging.warning("_create_file_context called, but implementation is deferred.")
-        # --- Start Phase 2, Set A: Behavior Structure ---
-        # 1. Initialize an empty list `context_parts`.
-        # 2. Iterate through the `file_paths`:
-        #    - For each `file_path`:
-        #        - Try:
-        #            - `content = self.file_manager.read_file(file_path)`
-        #            - If content is not None:
-        #                - Format the content (e.g., add filename header).
-        #                - `formatted_part = f"--- File: {file_path} ---\n{content}\n--- End File: {file_path} ---"`
-        #                - Append `formatted_part` to `context_parts`.
-        #            - Else (file not found or too large):
-        #                - Log a warning.
-        #        - Catch exceptions during file reading, log errors.
-        # 3. Join the `context_parts` into a single string, separated by newlines.
-        #    - `final_context_string = "\n\n".join(context_parts)`
-        # 4. Return `final_context_string`.
-        # --- End Phase 2, Set A ---
-        raise NotImplementedError(
-            "_create_file_context implementation deferred to Phase 2"
-        )
+        """Creates context string from file paths (Delegated to FileContextManager)."""
+        # Implementation deferred to Phase 2 - Now delegated
+        logging.warning("_create_file_context called, delegating to FileContextManager.")
+        return self.file_context_manager.create_file_context(file_paths)
 
     def _execute_tool(
         self, tool_name: str, tool_input: Dict[str, Any]
