@@ -137,13 +137,17 @@ class AtomicTaskExecutor:
             if task_result_dict.get("status") == "COMPLETE" and output_format.get("type") == "json":
                 logging.debug(f"Attempting JSON parsing for task: {task_name}")
                 try:
-                    parsed_content = json.loads(task_result_dict.get("content", ""))
+                    # Ensure content is a string before parsing
+                    content_to_parse = task_result_dict.get("content")
+                    if not isinstance(content_to_parse, str):
+                        raise TypeError(f"Expected string content for JSON parsing, got {type(content_to_parse)}")
+                    parsed_content = json.loads(content_to_parse)
                     task_result_dict["parsedContent"] = parsed_content
                     # TODO: Add schema validation if output_format.schema is provided
-                except json.JSONDecodeError as e:
+                except (json.JSONDecodeError, TypeError) as e:
                     logging.warning(f"Failed to parse JSON output for task '{task_name}': {e}")
                     task_result_dict["notes"] = task_result_dict.get("notes", {})
-                    task_result_dict["notes"]["parseError"] = f"JSONDecodeError: {e}"
+                    task_result_dict["notes"]["parseError"] = f"JSONDecodeError/TypeError: {e}"
                     # Optionally change status to FAILED? Or keep COMPLETE with error note? Keep COMPLETE for now.
                 except Exception as e:
                      logging.exception(f"Unexpected error during output parsing for task '{task_name}': {e}")
@@ -169,6 +173,4 @@ class AtomicTaskExecutor:
 
             error_details = TaskError(type=error_type, reason=error_reason, message=f"Execution failed: {e}")
             return TaskResult(content=f"Execution failed: {e}", status="FAILED", notes={"error": error_details}).model_dump(exclude_none=True)
-
 ```
-src/task_system/task_system.py
