@@ -198,129 +198,37 @@ def test_init_initializes_components(
     assert handler.config == base_handler_config
     assert handler.default_model_identifier == "openai:gpt-mock"
     assert handler.file_manager == mock_file_manager
-    # Check FileAccessManager was called with path from config
+    assert handler.file_context_manager == mock_fcm_instance # Check FCM instance
+    assert handler.llm_manager == mock_llm_manager_instance # Check LLM Manager instance
+
+    # Check managers were initialized correctly
     mock_fm_class.assert_called_once_with(
         base_path=base_handler_config["file_manager_base_path"]
     )
+    mock_fcm_class.assert_called_once_with(
+        memory_system=mock_memory_system, file_manager=mock_file_manager
+    )
+    mock_llm_manager_class.assert_called_once_with(
+        default_model_identifier="openai:gpt-mock", config=base_handler_config
+    )
 
+    # Check other state
     assert handler.tool_executors == {}
     assert handler.registered_tools == {}
     assert handler.conversation_history == []
     assert handler.debug_mode is False
     assert handler.base_system_prompt == base_handler_config["base_system_prompt"]
 
-    # Check pydantic-ai agent initialization (using mocks)
-    assert handler.agent == mock_agent_instance
-    mock_openai_model.assert_called_once_with(
-        api_key=base_handler_config["openai_api_key"], model="gpt-mock"
-    )
-    mock_agent_class.assert_called_once_with(
-        model=mock_openai_model.return_value,
-        system_prompt=base_handler_config["base_system_prompt"],
-    )
+    # Agent initialization is now handled by LLMInteractionManager,
+    # so we just check that the manager was initialized correctly above.
+    # Old checks for direct agent init are removed.
 
 
-@patch("src.handler.base_handler.FileAccessManager")
-def test_init_anthropic_model(
-    mock_fm_class,
-    mock_task_system,
-    mock_memory_system,
-    base_handler_config,
-    mock_file_manager,
-):
-    """Test __init__ selects Anthropic model correctly."""
-    mock_fm_class.return_value = mock_file_manager
+# Remove tests that checked specific agent model selection logic within BaseHandler.__init__
+# as that logic is now inside LLMInteractionManager.
+# We only need to test that BaseHandler passes the correct identifier and config.
 
-    BaseHandler(
-        task_system=mock_task_system,
-        memory_system=mock_memory_system,
-        default_model_identifier="anthropic:claude-mock",
-        config=base_handler_config,
-    )
-    mock_anthropic_model.assert_called_once_with(
-        api_key=base_handler_config["anthropic_api_key"], model="claude-mock"
-    )
-    mock_agent_class.assert_called_once_with(
-        model=mock_anthropic_model.return_value,
-        system_prompt=base_handler_config["base_system_prompt"],
-    )
-
-
-@patch("src.handler.base_handler.FileAccessManager")
-def test_init_no_model_identifier(
-    mock_fm_class,
-    mock_task_system,
-    mock_memory_system,
-    base_handler_config,
-    mock_file_manager,
-    caplog,
-):
-    """Test __init__ handles missing model identifier."""
-    mock_fm_class.return_value = mock_file_manager
-
-    with caplog.at_level(logging.WARNING):
-        handler = BaseHandler(
-            task_system=mock_task_system,
-            memory_system=mock_memory_system,
-            default_model_identifier=None,  # No identifier
-            config=base_handler_config,
-        )
-        assert "No default_model_identifier provided" in caplog.text
-    assert handler.agent is None
-    mock_agent_class.assert_not_called()
-
-
-@patch("src.handler.base_handler.FileAccessManager")
-@patch.dict(os.environ, {}, clear=True)  # Ensure no env vars interfere
-def test_init_missing_api_key(
-    mock_fm_class,
-    mock_task_system,
-    mock_memory_system,
-    base_handler_config,
-    mock_file_manager,
-    caplog,
-):
-    """Test __init__ handles missing API key."""
-    mock_fm_class.return_value = mock_file_manager
-    config_no_key = base_handler_config.copy()
-    del config_no_key["openai_api_key"]  # Remove key from config
-
-    with caplog.at_level(logging.ERROR):
-        handler = BaseHandler(
-            task_system=mock_task_system,
-            memory_system=mock_memory_system,
-            default_model_identifier="openai:gpt-mock",
-            config=config_no_key,  # Use config without key
-        )
-        assert "Failed to initialize pydantic-ai Agent" in caplog.text
-        assert "OpenAI API key not found" in caplog.text
-    assert handler.agent is None
-    mock_agent_class.assert_not_called()  # Agent init should fail before class call
-
-
-@patch("src.handler.base_handler.FileAccessManager")
-def test_init_unsupported_provider(
-    mock_fm_class,
-    mock_task_system,
-    mock_memory_system,
-    base_handler_config,
-    mock_file_manager,
-    caplog,
-):
-    """Test __init__ handles unsupported model provider."""
-    mock_fm_class.return_value = mock_file_manager
-
-    with caplog.at_level(logging.ERROR):
-        handler = BaseHandler(
-            task_system=mock_task_system,
-            memory_system=mock_memory_system,
-            default_model_identifier="unsupported:model-x",  # Unsupported
-            config=base_handler_config,
-        )
-        assert "Failed to initialize pydantic-ai Agent" in caplog.text
-        assert "Unsupported pydantic-ai model provider: unsupported" in caplog.text
-    assert handler.agent is None
-    mock_agent_class.assert_not_called()
+# Keep tests for BaseHandler's handling of config, dependencies, and internal state.
 
 
 # --- Test register_tool ---
