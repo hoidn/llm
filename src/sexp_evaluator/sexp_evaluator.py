@@ -20,7 +20,7 @@ from src.sexp_evaluator.sexp_environment import SexpEnvironment
 from src.system.models import (
     TaskResult, SubtaskRequest, ContextGenerationInput, ContextManagement,
     TaskFailureError, AssociativeMatchResult, MatchTuple,
-    TaskError # Import the TaskError model directly if needed for type hints elsewhere, or remove if unused
+    TaskError, ContextGenerationInput # Ensure ContextGenerationInput is imported
 )
 from src.system.errors import SexpSyntaxError, SexpEvaluationError
 
@@ -348,10 +348,23 @@ class SexpEvaluator:
             if isinstance(e, SexpEvaluationError): raise # Re-raise if already specific
             raise SexpEvaluationError(f"Error evaluating arguments for 'list': {e}", node_repr) from e
 
-    def _eval_get_context(self, args: list, env: SexpEnvironment) -> Any:
-        """Evaluates the built-in 'get_context' primitive."""
-        node_repr = f"(get_context {' '.join(map(str, args))})" # More specific repr
-        logging.debug(f"Eval 'get_context' primitive START")
+    def _parse_and_validate_get_context_args(self, args: list, env: SexpEnvironment, node_repr: str) -> ContextGenerationInput:
+        """
+        Parses, evaluates, and validates arguments for the get_context primitive.
+
+        Args:
+            args: The list of unevaluated argument expressions (e.g., [(Symbol('query'), "string"), ...]).
+            env: The current evaluation environment.
+            node_repr: String representation of the original (get_context...) expression for error reporting.
+
+        Returns:
+            A validated ContextGenerationInput object.
+
+        Raises:
+            SexpEvaluationError: If arguments have invalid format, validation fails,
+                                 or ContextGenerationInput creation fails.
+        """
+        logging.debug(f"Parsing get_context args for: {node_repr}")
         context_input_args: Dict[str, Any] = {}
 
         # Process unevaluated args - each should be (key value_expr)
@@ -361,7 +374,7 @@ class SexpEvaluator:
             if not (isinstance(arg, list) and len(arg) == 2 and isinstance(arg[0], Symbol)):
                 raise SexpEvaluationError(
                     f"Invalid argument format for 'get_context'. Expected (key_symbol value_expression), got: {arg_repr}",
-                    node_repr
+                    node_repr # Use node_repr from parameter
                 )
 
             key_node, value_expr = arg
@@ -370,17 +383,19 @@ class SexpEvaluator:
             # Evaluate the value expression
             try:
                 value = self._eval(value_expr, env)
-                logging.debug(f"  Evaluated 'get_context' arg '{key_str}' to: {value}")
+                logging.debug(f"  _parse_get_context: Evaluated arg '{key_str}' to: {value}")
                 context_input_args[key_str] = value
             except Exception as e:
                 logging.exception(f"Error evaluating argument '{key_str}' for 'get_context': {e}")
                 if isinstance(e, SexpEvaluationError): raise # Re-raise if already specific
+                # Use node_repr from parameter
                 raise SexpEvaluationError(f"Error evaluating argument '{key_str}' for 'get_context': {e}", node_repr) from e
 
         if not context_input_args:
+            # Use node_repr from parameter
             raise SexpEvaluationError("'get_context' requires options", node_repr)
 
-        logging.debug(f"  get_context args dict: {context_input_args}")
+        logging.debug(f"  _parse_get_context: Raw args dict: {context_input_args}")
 
         # Map to ContextGenerationInput fields
         try:
@@ -401,29 +416,56 @@ class SexpEvaluator:
                             # Raise error if the structure isn't a list of pairs
                             raise ValueError(f"Invalid pair format in inputs list: {pair}")
                     context_input_args["inputs"] = inputs_dict
-                    logging.debug(f"  Converted inputs list-of-pairs to dict: {context_input_args['inputs']}")
+                    logging.debug(f"  _parse_get_context: Converted inputs list-of-pairs to dict: {context_input_args['inputs']}")
                 except (ValueError, TypeError) as conv_err:
-                    # Add more context to the error
+                    # Add more context to the error, use node_repr from parameter
                     raise SexpEvaluationError(f"Failed converting 'inputs' list {context_input_args['inputs']!r} to dict: {conv_err}", node_repr)
 
             context_input = ContextGenerationInput(**context_input_args)
+            logging.debug(f"  _parse_get_context: Created ContextGenerationInput: {context_input}")
+            return context_input # Return the validated object
         except Exception as e:
+            # Use node_repr from parameter
             raise SexpEvaluationError(f"Failed creating ContextGenerationInput from args {context_input_args}: {e}", node_repr) from e
 
-        logging.debug(f"Calling memory_system.get_relevant_context_for with: {context_input}")
-        try:
-            match_result: AssociativeMatchResult = self.memory_system.get_relevant_context_for(context_input)
-        except Exception as e:
-            logging.exception(f"MemorySystem.get_relevant_context_for failed: {e}")
-            # Wrap underlying error
-            raise SexpEvaluationError("Context retrieval failed internally", node_repr, error_details=str(e)) from e
 
+    def _eval_get_context(self, args: list, env: SexpEnvironment) -> Any:
+        """Evaluates the built-in 'get_context' primitive."""
+        # Reconstruct node_repr for error context within this scope
+        op_str = "get_context"
+        node_repr = f"({op_str} ...)" # Simplified representation
+        logging.debug("Eval 'get_context' primitive START")
+
+        try:
+            # 1. Parse and validate arguments using the helper
+            context_input = self._parse_and_validate_get_context_args(args, env, node_repr)
+            logging.debug(f"Parsed get_context args into: {context_input}")
+
+        except SexpEvaluationError:
+            # Errors during parsing/validation are already SexpEvaluationError
+            logging.error(f"Failed to parse/validate args for get_context in: {node_repr}")
+            raise # Re-raise the specific error from the helper
+
+        try:
+            # 2. Call MemorySystem with validated input
+            logging.debug(f"Calling memory_system.get_relevant_context_for with: {context_input}")
+            match_result: AssociativeMatchResult = self.memory_system.get_relevant_context_for(context_input)
+
+        except Exception as e:
+            # Catch errors specifically from the MemorySystem call
+            logging.exception(f"MemorySystem.get_relevant_context_for failed: {e}")
+            # Wrap underlying error in SexpEvaluationError
+            raise SexpEvaluationError("Context retrieval failed internally during MemorySystem call", node_repr, error_details=str(e)) from e
+
+        # 3. Process MemorySystem result
         if match_result.error:
-            # Raise error if MemorySystem indicated failure
+            # Raise error if MemorySystem indicated failure in its result object
+            logging.error(f"MemorySystem returned error for get_context: {match_result.error}")
             raise SexpEvaluationError("Context retrieval failed", node_repr, error_details=match_result.error)
 
+        # 4. Return successful result (list of paths)
         file_paths = [m.path for m in match_result.matches if isinstance(m, MatchTuple)]
-        logging.debug(f"Eval 'get_context' primitive END: -> {file_paths}")
+        logging.debug(f"Eval 'get_context' END: -> {file_paths}")
         return file_paths
 
     # --- Invocation Handling ---
