@@ -2,35 +2,12 @@ import pytest
 from unittest.mock import patch, MagicMock, ANY, call
 import os
 
-# Mock dependencies before importing BaseHandler
-MockTaskSystem = MagicMock()
-MockMemorySystem = MagicMock()
-MockFileAccessManager = MagicMock()
-MockFileContextManager = MagicMock()
-MockLLMInteractionManager = MagicMock()
-MockCommandExecutor = MagicMock()
+# Import real classes for spec verification if needed
+from src.handler.file_access import FileAccessManager
+from src.handler.file_context_manager import FileContextManager
+from src.handler.llm_interaction_manager import LLMInteractionManager
 
-# Apply patches globally for the test module
-patchers = [
-    patch('src.handler.base_handler.TaskSystem', MockTaskSystem),
-    patch('src.handler.base_handler.MemorySystem', MockMemorySystem),
-    patch('src.handler.base_handler.FileAccessManager', MockFileAccessManager),
-    patch('src.handler.base_handler.FileContextManager', MockFileContextManager),
-    patch('src.handler.base_handler.LLMInteractionManager', MockLLMInteractionManager),
-    patch('src.handler.base_handler.command_executor', MockCommandExecutor),
-    # Patch TaskResult if it's used for type hinting or instantiation
-    patch('src.handler.base_handler.TaskResult', MagicMock())
-]
-
-@pytest.fixture(autouse=True)
-def apply_patches():
-    for p in patchers:
-        p.start()
-    yield
-    for p in patchers:
-        p.stop()
-
-# Now import the class under test
+# Import the class under test
 from src.handler.base_handler import BaseHandler
 # Import TaskResult properly now that it's potentially patched or available
 from src.system.models import TaskResult
@@ -40,49 +17,51 @@ from src.system.models import TaskResult
 
 @pytest.fixture
 def mock_dependencies():
-    """Provides fresh mocks for each test."""
-    # Reset mocks to clear previous calls and configurations
-    MockTaskSystem.reset_mock()
-    MockMemorySystem.reset_mock()
-    MockFileAccessManager.reset_mock()
-    MockFileContextManager.reset_mock()
-    MockLLMInteractionManager.reset_mock()
-    MockCommandExecutor.reset_mock()
-
-    # Return instances of the mocks
-    return {
-        "task_system": MockTaskSystem(),
-        "memory_system": MockMemorySystem(),
-        "file_manager": MockFileAccessManager(),
-        "file_context_manager": MockFileContextManager(),
-        "llm_manager": MockLLMInteractionManager(),
-        "command_executor": MockCommandExecutor, # Module-level functions
+    """Provides fresh mock instances for dependencies."""
+    # Create instance mocks
+    mocks = {
+        "task_system": MagicMock(name="MockTaskSystemInstance"),
+        "memory_system": MagicMock(name="MockMemorySystemInstance"),
+        "file_manager": MagicMock(spec=FileAccessManager, name="MockFileManagerInstance"),
+        "file_context_manager": MagicMock(spec=FileContextManager, name="MockFileContextManagerInstance"),
+        "llm_manager": MagicMock(spec=LLMInteractionManager, name="MockLLMManagerInstance"),
+        # Mock the command_executor module itself if needed, or specific functions
+        "command_executor": MagicMock(name="MockCommandExecutorModule")
     }
+    # Configure file manager base path if needed by tests
+    mocks["file_manager"].base_path = "/test/base"
+    return mocks
 
 @pytest.fixture
 def base_handler_instance(mock_dependencies):
-    """Provides a BaseHandler instance with mocked dependencies."""
-    # Configure mocks before handler instantiation if needed
-    MockFileAccessManager.return_value = mock_dependencies["file_manager"]
-    MockFileContextManager.return_value = mock_dependencies["file_context_manager"]
-    MockLLMInteractionManager.return_value = mock_dependencies["llm_manager"]
-
+    """Provides a BaseHandler instance with mocked internal managers."""
     config = {
         "base_system_prompt": "Test Handler Prompt",
-        "file_manager_base_path": "/test/base",
+        "file_manager_base_path": "/test/base", # Ensure this matches mock if needed
         "command_executor_timeout": 10,
     }
-    handler = BaseHandler(
-        task_system=mock_dependencies["task_system"],
-        memory_system=mock_dependencies["memory_system"],
-        default_model_identifier="handler:model",
-        config=config,
-    )
-    # Ensure the handler uses the correct mock instances (should happen via patch)
-    assert handler.file_manager == mock_dependencies["file_manager"]
-    assert handler.file_context_manager == mock_dependencies["file_context_manager"]
-    assert handler.llm_manager == mock_dependencies["llm_manager"]
-    return handler
+
+    # Patch the manager classes during BaseHandler init
+    with patch('src.handler.base_handler.FileAccessManager') as MockFM, \
+         patch('src.handler.base_handler.FileContextManager') as MockFCM, \
+         patch('src.handler.base_handler.LLMInteractionManager') as MockLLM:
+
+         # Configure the mock instances returned by the class mocks
+         MockFM.return_value = mock_dependencies["file_manager"]
+         MockFCM.return_value = mock_dependencies["file_context_manager"]
+         MockLLM.return_value = mock_dependencies["llm_manager"]
+
+         handler = BaseHandler(
+             task_system=mock_dependencies["task_system"],
+             memory_system=mock_dependencies["memory_system"],
+             default_model_identifier="handler:model",
+             config=config,
+         )
+         # Verify internal managers were set to our mocks
+         assert handler.file_manager == mock_dependencies["file_manager"]
+         assert handler.file_context_manager == mock_dependencies["file_context_manager"]
+         assert handler.llm_manager == mock_dependencies["llm_manager"]
+         return handler
 
 # --- Test Cases ---
 
@@ -95,45 +74,52 @@ def test_base_handler_init(mock_dependencies):
     mock_task_system = mock_dependencies["task_system"]
     mock_memory_system = mock_dependencies["memory_system"]
 
-    MockFileAccessManager.return_value = mock_file_manager
-    MockFileContextManager.return_value = mock_file_context_manager
-    MockLLMInteractionManager.return_value = mock_llm_manager
-
     config = {"base_system_prompt": "Config Prompt", "file_manager_base_path": "/config/path"}
     model_id = "config:model"
 
     # Act
-    handler = BaseHandler(
-        task_system=mock_task_system,
-        memory_system=mock_memory_system,
-        default_model_identifier=model_id,
-        config=config,
-    )
+    # Patch the manager classes during BaseHandler init for this specific test
+    with patch('src.handler.base_handler.FileAccessManager') as MockFM, \
+         patch('src.handler.base_handler.FileContextManager') as MockFCM, \
+         patch('src.handler.base_handler.LLMInteractionManager') as MockLLM:
 
-    # Assert
-    assert handler.task_system == mock_task_system
-    assert handler.memory_system == mock_memory_system
-    assert handler.config == config
-    assert handler.default_model_identifier == model_id
-    assert handler.base_system_prompt == "Config Prompt"
-    assert handler.debug_mode is False
-    assert handler.conversation_history == []
-    assert handler.tool_executors == {}
-    assert handler.registered_tools == {}
+        # Configure the mock instances returned by the class mocks
+        MockFM.return_value = mock_file_manager
+        MockFCM.return_value = mock_file_context_manager
+        MockLLM.return_value = mock_llm_manager
 
-    # Verify dependencies were instantiated correctly
-    MockFileAccessManager.assert_called_once_with(base_path="/config/path")
-    assert handler.file_manager == mock_file_manager
+        handler = BaseHandler(
+            task_system=mock_task_system,
+            memory_system=mock_memory_system,
+            default_model_identifier=model_id,
+            config=config,
+        )
 
-    MockFileContextManager.assert_called_once_with(
-        memory_system=mock_memory_system, file_manager=mock_file_manager
-    )
-    assert handler.file_context_manager == mock_file_context_manager
+        # Assert
+        assert handler.task_system == mock_task_system
+        assert handler.memory_system == mock_memory_system
+        assert handler.config == config
+        assert handler.default_model_identifier == model_id
+        assert handler.base_system_prompt == "Config Prompt"
+        assert handler.debug_mode is False
+        assert handler.conversation_history == []
+        assert handler.tool_executors == {}
+        assert handler.registered_tools == {}
 
-    MockLLMInteractionManager.assert_called_once_with(
-        default_model_identifier=model_id, config=config
-    )
-    assert handler.llm_manager == mock_llm_manager
+        # Verify dependencies were instantiated correctly within BaseHandler's __init__
+        MockFM.assert_called_once_with(base_path="/config/path")
+        assert handler.file_manager == mock_file_manager
+
+        MockFCM.assert_called_once_with(
+            memory_system=mock_memory_system, file_manager=mock_file_manager
+        )
+        assert handler.file_context_manager == mock_file_context_manager
+
+        MockLLM.assert_called_once_with(
+            default_model_identifier=model_id, config=config
+        )
+        assert handler.llm_manager == mock_llm_manager
+
 
 def test_register_tool_success(base_handler_instance):
     """Test successful tool registration."""
@@ -166,21 +152,24 @@ def test_register_tool_fail_not_callable(base_handler_instance):
     assert result is False
     assert "bad_executor" not in base_handler_instance.tool_executors
 
-def test_execute_file_path_command_success(base_handler_instance, mock_dependencies):
+# Patch the specific command_executor functions used by the method under test
+@patch('src.handler.base_handler.command_executor.parse_file_paths_from_output')
+@patch('src.handler.base_handler.command_executor.execute_command_safely')
+def test_execute_file_path_command_success(mock_exec_safe, mock_parse_paths, base_handler_instance):
     """Test successful execution of a file path command."""
     # Arrange
     command = "find . -name '*.py'"
-    mock_executor = mock_dependencies["command_executor"]
-    mock_executor.execute_command_safely.return_value = {
+    # Configure the patched function mocks directly
+    mock_exec_safe.return_value = {
         "success": True, "exit_code": 0, "output": "file1.py\n./subdir/file2.py\nnonexistent.py", "error": ""
     }
-    # Mock parse_file_paths_from_output to return relative paths
-    mock_executor.parse_file_paths_from_output.return_value = ["file1.py", "subdir/file2.py", "nonexistent.py"]
+    mock_parse_paths.return_value = ["file1.py", "subdir/file2.py", "nonexistent.py"]
 
     # Mock os.path.exists used indirectly via file_manager._resolve_path check
     # We need to mock the check within the handler's logic now
     def mock_resolve_path(path):
         # Simulate resolving relative to the configured base path
+        # Use the file_manager instance attached to the handler instance
         abs_path = os.path.abspath(os.path.join(base_handler_instance.file_manager.base_path, path))
         # Only allow paths starting with the base path
         if abs_path.startswith(os.path.abspath(base_handler_instance.file_manager.base_path)):
@@ -194,16 +183,18 @@ def test_execute_file_path_command_success(base_handler_instance, mock_dependenc
         # Only file1.py and subdir/file2.py exist in our mock scenario
         return "file1.py" in path or "file2.py" in path
 
+    # Attach the mock resolve_path to the mocked file_manager instance
     base_handler_instance.file_manager._resolve_path = MagicMock(side_effect=mock_resolve_path)
+
     with patch('os.path.exists', side_effect=mock_exists):
         # Act
         result = base_handler_instance.execute_file_path_command(command)
 
     # Assert
-    mock_executor.execute_command_safely.assert_called_once_with(
+    mock_exec_safe.assert_called_once_with(
         command, cwd="/test/base", timeout=10
     )
-    mock_executor.parse_file_paths_from_output.assert_called_once_with("file1.py\n./subdir/file2.py\nnonexistent.py")
+    mock_parse_paths.assert_called_once_with("file1.py\n./subdir/file2.py\nnonexistent.py")
     # Check that the returned paths are absolute and exist
     expected_paths = [
         os.path.abspath("/test/base/file1.py"),
@@ -213,22 +204,26 @@ def test_execute_file_path_command_success(base_handler_instance, mock_dependenc
     # Verify resolve was called for each parsed path
     assert base_handler_instance.file_manager._resolve_path.call_count == 3
 
-
-def test_execute_file_path_command_failure(base_handler_instance, mock_dependencies):
+# Patch the specific command_executor functions used by the method under test
+@patch('src.handler.base_handler.command_executor.parse_file_paths_from_output')
+@patch('src.handler.base_handler.command_executor.execute_command_safely')
+def test_execute_file_path_command_failure(mock_exec_safe, mock_parse_paths, base_handler_instance):
     """Test failed execution of a file path command."""
+    # Arrange
     command = "bad command"
-    mock_executor = mock_dependencies["command_executor"]
-    mock_executor.execute_command_safely.return_value = {
+    mock_exec_safe.return_value = {
         "success": False, "exit_code": 1, "output": "", "error": "Command failed"
     }
 
+    # Act
     result = base_handler_instance.execute_file_path_command(command)
 
+    # Assert
     assert result == []
-    mock_executor.execute_command_safely.assert_called_once_with(
+    mock_exec_safe.assert_called_once_with(
         command, cwd="/test/base", timeout=10
     )
-    mock_executor.parse_file_paths_from_output.assert_not_called()
+    mock_parse_paths.assert_not_called() # Ensure parse isn't called on failure
 
 def test_reset_conversation(base_handler_instance):
     """Test resetting the conversation history."""
@@ -236,9 +231,10 @@ def test_reset_conversation(base_handler_instance):
     base_handler_instance.reset_conversation()
     assert base_handler_instance.conversation_history == []
 
-def test_set_debug_mode(base_handler_instance, mock_dependencies):
+def test_set_debug_mode(base_handler_instance):
     """Test enabling and disabling debug mode."""
-    mock_llm_manager = mock_dependencies["llm_manager"]
+    # Access the mocked llm_manager via the handler instance
+    mock_llm_manager = base_handler_instance.llm_manager
     assert base_handler_instance.debug_mode is False
 
     base_handler_instance.set_debug_mode(True)
@@ -264,10 +260,11 @@ def test_log_debug(base_handler_instance):
 
 # --- Tests for Phase 2b Implementation ---
 
-def test_base_handler_execute_llm_call_success(base_handler_instance, mock_dependencies):
+def test_base_handler_execute_llm_call_success(base_handler_instance):
     """Test successful LLM call delegation and history update."""
     # Arrange
-    mock_llm_manager = mock_dependencies["llm_manager"]
+    # Access the mocked llm_manager via the handler instance
+    mock_llm_manager = base_handler_instance.llm_manager
     mock_llm_manager.execute_call.return_value = {
         "success": True,
         "content": "Assistant response",
@@ -301,10 +298,11 @@ def test_base_handler_execute_llm_call_success(base_handler_instance, mock_depen
     assert base_handler_instance.conversation_history[-2] == {"role": "user", "content": user_prompt}
     assert base_handler_instance.conversation_history[-1] == {"role": "assistant", "content": "Assistant response"}
 
-def test_base_handler_execute_llm_call_failure(base_handler_instance, mock_dependencies):
+def test_base_handler_execute_llm_call_failure(base_handler_instance):
     """Test failed LLM call delegation."""
     # Arrange
-    mock_llm_manager = mock_dependencies["llm_manager"]
+    # Access the mocked llm_manager via the handler instance
+    mock_llm_manager = base_handler_instance.llm_manager
     mock_llm_manager.execute_call.return_value = {
         "success": False,
         "error": "LLM API error"
@@ -337,7 +335,7 @@ def test_base_handler_execute_llm_call_failure(base_handler_instance, mock_depen
 
 def test_base_handler_execute_llm_call_no_manager(base_handler_instance):
     """Test LLM call when manager is not available."""
-    base_handler_instance.llm_manager = None
+    base_handler_instance.llm_manager = None # Manually remove manager after setup
     result = base_handler_instance._execute_llm_call("Test")
 
     assert isinstance(result, TaskResult)
@@ -446,9 +444,10 @@ def test_execute_tool_execution_error(base_handler_instance):
     assert str(test_exception) in result.notes["error"]["message"] # type: ignore
     mock_executor.assert_called_once_with(tool_input)
 
-def test_get_relevant_files_delegation(base_handler_instance, mock_dependencies):
+def test_get_relevant_files_delegation(base_handler_instance):
     """Verify _get_relevant_files delegates to FileContextManager."""
-    mock_fcm = mock_dependencies["file_context_manager"]
+    # Access the mocked file_context_manager via the handler instance
+    mock_fcm = base_handler_instance.file_context_manager
     mock_fcm.get_relevant_files.return_value = ["file1.txt", "file2.py"]
     query = "search query"
 
@@ -457,9 +456,10 @@ def test_get_relevant_files_delegation(base_handler_instance, mock_dependencies)
     assert result == ["file1.txt", "file2.py"]
     mock_fcm.get_relevant_files.assert_called_once_with(query)
 
-def test_create_file_context_delegation(base_handler_instance, mock_dependencies):
+def test_create_file_context_delegation(base_handler_instance):
     """Verify _create_file_context delegates to FileContextManager."""
-    mock_fcm = mock_dependencies["file_context_manager"]
+    # Access the mocked file_context_manager via the handler instance
+    mock_fcm = base_handler_instance.file_context_manager
     mock_fcm.create_file_context.return_value = "File Context String"
     paths = ["file1.txt", "file2.py"]
 
