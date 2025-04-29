@@ -5,6 +5,8 @@ module src.handler.base_handler {
     # @depends_on_resource(type="LLMAgentService", purpose="Orchestrating LLM calls via pydantic-ai") // Represents the configured pydantic-ai agent
     # @depends_on(src.handler.file_access.FileAccessManager) // For file operations
     # @depends_on(src.handler.command_executor.CommandExecutorFunctions) // For safe command execution
+    # @depends_on(src.handler.llm_interaction_manager.LLMInteractionManager) // For managing pydantic-ai interactions
+    # @depends_on(src.handler.file_context_manager.FileContextManager) // For managing file context operations
     interface BaseHandler {
 
         // Constructor: Initializes the base handler.
@@ -15,10 +17,10 @@ module src.handler.base_handler {
         // - config is an optional dictionary for configuration settings (e.g., base_system_prompt, API keys for pydantic-ai).
         // Postconditions:
         // - Handler is initialized with references to core systems (TaskSystem, MemorySystem).
-        // - Internally configures and instantiates a pydantic-ai Agent using the default_model_identifier and config.
+        // - LLMInteractionManager is instantiated with the default_model_identifier and config, which internally configures a pydantic-ai Agent.
+        // - FileContextManager is instantiated with the memory_system.
         // - FileAccessManager is instantiated.
         // - Tool registries (registered_tools, tool_executors) are initialized as empty dictionaries.
-        //   (Note: `registered_tools` will likely hold specs formatted for the internal pydantic-ai agent).
         // - Conversation history is initialized as an empty list.
         // - Base system prompt is set from config or default.
         // - Debug mode is initialized to false.
@@ -35,17 +37,18 @@ module src.handler.base_handler {
         // - executor_func is a callable function that implements the tool's logic, typically accepting a dictionary based on input_schema and returning a TaskResult-like dictionary.
         // Expected JSON format for tool_spec: { "name": "string", "description": "string", "input_schema": { ... } }
         // Postconditions:
-        // - If successful, the tool specification and executor are registered with the internal pydantic-ai Agent instance.
-        // - The `tool_executors` dictionary (keyed by name) is updated for direct programmatic access if needed.
+        // - The tool specification and executor are stored in the internal registries.
+        // - The `tool_executors` dictionary (keyed by name) is updated for direct programmatic access.
         // - Returns true if registration is successful (tool_spec has a name).
         // - Returns false if registration fails (e.g., missing name in tool_spec).
         // Behavior:
         // - This is the single, unified method for registering any callable action (tool) intended for LLM use or programmatic invocation.
         // - Validates that tool_spec contains a 'name'.
-        // - **Adapts** the provided tool_spec and executor_func into the format required by the internal pydantic-ai Agent.
-        // - Registers the adapted tool with the pydantic-ai Agent.
-        // - Stores the original executor_func in the `tool_executors` registry for direct programmatic invocation (e.g., by SexpEvaluator).
-        // - The `registered_tools` registry might store the original spec or the adapted spec for reference.
+        // - Stores the original tool_spec in the `registered_tools` registry.
+        // - Stores the executor_func in the `tool_executors` registry for direct programmatic invocation (e.g., by SexpEvaluator).
+        // - Note: Making these tools available to the pydantic-ai Agent may require additional steps during LLM calls, 
+        //   such as passing them to the LLMInteractionManager during execute_llm_call or potentially reinitializing the agent.
+        //   The exact mechanism depends on pydantic-ai's capabilities for dynamic tool registration.
         boolean register_tool(dict<string, Any> tool_spec, function executor_func);
 
         // Executes a shell command expected to output file paths and parses the result.
@@ -64,7 +67,7 @@ module src.handler.base_handler {
         // Preconditions: None.
         // Postconditions:
         // - The `conversation_history` list is cleared.
-        // - May also reset state within the internal pydantic-ai Agent if necessary.
+        // - May also reset state within the LLMInteractionManager if necessary.
         void reset_conversation();
 
         // Logs a debug message if debug mode is enabled.
@@ -80,7 +83,7 @@ module src.handler.base_handler {
         // Postconditions:
         // - The internal `debug_mode` flag is set to the value of `enabled`.
         // - A message indicating the new debug mode status is logged (if debug was already enabled or just got enabled).
-        // - May configure instrumentation on the internal pydantic-ai Agent if applicable.
+        // - Configures debug mode on the LLMInteractionManager if applicable.
         void set_debug_mode(boolean enabled);
 
         // Internal method to execute a call via the LLMInteractionManager.
@@ -91,8 +94,9 @@ module src.handler.base_handler {
         // - Returns the result from the LLM call, typically structured like a TaskResult.
         // - Updates the internal conversation history if the call is successful.
         // Behavior:
-        // - Delegates the primary interaction logic to an internal `LLMInteractionManager` which utilizes the configured `pydantic-ai` agent.
+        // - Delegates the primary interaction logic to the LLMInteractionManager which manages the pydantic-ai agent.
         // - Passes the current conversation history to the manager.
+        // - If tools_override is provided, adapts registered tools to the format required by pydantic-ai.
         // - Handles potential errors during the LLM call.
         // @raises_error(condition="LLMInteractionError", description="If the LLM call fails.")
         Any _execute_llm_call(
@@ -123,7 +127,7 @@ module src.handler.base_handler {
         // Postconditions:
         // - Returns a list of relevant file paths.
         // Behavior:
-        // - Delegates file path retrieval logic to an internal `FileContextManager`, which interacts with the `MemorySystem`.
+        // - Delegates file path retrieval logic to the FileContextManager, which interacts with the MemorySystem.
         // @raises_error(condition="ContextRetrievalError", description="If file relevance lookup fails.")
         list<string> _get_relevant_files(string query);
 
@@ -133,7 +137,7 @@ module src.handler.base_handler {
         // Postconditions:
         // - Returns a single string containing the formatted content of the specified files.
         // Behavior:
-        // - Delegates file reading and formatting logic to an internal `FileContextManager`, which interacts with the `FileAccessManager`.
+        // - Delegates file reading and formatting logic to the FileContextManager, which interacts with the FileAccessManager.
         // @raises_error(condition="FileAccessError", description="If reading any of the files fails.")
         string _create_file_context(list<string> file_paths);
 
@@ -154,8 +158,9 @@ module src.handler.base_handler {
 
         // Invariants:
         // - `task_system`, `memory_system`, `file_manager` hold valid references after initialization.
-        // - An internal `pydantic_ai.Agent` instance is configured and available.
-        // - `registered_tools`, `tool_executors`, `direct_tool_executors` are dictionaries.
+        // - `llm_manager` holds a valid LLMInteractionManager instance.
+        // - `file_context_manager` holds a valid FileContextManager instance.
+        // - `registered_tools`, `tool_executors` are dictionaries.
         // - `conversation_history` is a list.
     };
 };

@@ -40,7 +40,7 @@
 | 3.5 | **Preconditions Documented:** Are the necessary conditions required *before* calling the method clearly listed under "Preconditions"? | ☐ ✅ ☐ ❌ ☐ N/A |  |
 | 3.6 | **Postconditions Documented:** Are the expected outcomes, state changes, or guarantees *after* successful method execution clearly listed under "Postconditions"? | ☐ ✅ ☐ ❌ ☐ N/A |  |
 | 3.7 | **Behavior Described:** Is the core logic and sequence of actions performed by the method clearly described under "Behavior"? Does it mention interactions with dependencies? | ☐ ✅ ☐ ❌ ☐ N/A |  |
-| 3.8 | **Error Conditions Declared:** Are potential error conditions and how they are signaled (e.g., raised exception type, specific return value like FAILED TaskResult) documented using `@raises_error` or within Behavior/Postconditions? | ☐ ✅ ☐ ❌ ☐ N/A |  |
+| 3.8 | **Error Conditions Declared:** Are potential error conditions and how they are signaled (e.g., raised exception type, specific return value like FAILED TaskResult) documented using `@raises_error` or within Behavior/Postconditions? Are errors related to pydantic-ai calls or manager interactions documented? | ☐ ✅ ☐ ❌ ☐ N/A |  |
 
 **IV. Type Definitions (If applicable, e.g., in `types.md` or within module)**
 
@@ -54,12 +54,13 @@
 
 | # | Criteria | Status | Comments / Required Changes |
 |---|---|---|---|
-| 5.1 | **Component Responsibilities:** Does the interface adhere to the defined responsibilities of its component (e.g., MemorySystem doesn't do file I/O, Handler tracks resources, Template Evaluator runs atomic bodies, SexpEvaluator runs workflows)? | ☐ ✅ ☐ ❌ ☐ N/A |  |
+| 5.1 | **Component Responsibilities:** Does the interface adhere to the defined responsibilities of its component (e.g., MemorySystem doesn't do file I/O, Handler delegates to LLMInteractionManager and FileContextManager, Template Evaluator runs atomic bodies, SexpEvaluator runs workflows)? | ☐ ✅ ☐ ❌ ☐ N/A |  |
 | 5.2 | **Removed Composites (XML):** Does the IDL avoid defining or referencing removed XML composite task types (`sequential`, `reduce`, `director_evaluator_loop`)? | ☐ ✅ ☐ ❌ ☐ N/A |  |
 | 5.3 | **S-expression Role:** Does the IDL correctly reflect that workflow composition is handled by the S-expression DSL and its evaluator (where applicable)? | ☐ ✅ ☐ ❌ ☐ N/A |  |
 | 5.4 | **Tool Registration:** Does the Handler IDL reflect the unified `register_tool` approach? | ☐ ✅ ☐ ❌ ☐ N/A |  |
 | 5.5 | **Data Handling:** Does the design encourage parsing into specific types (aligning with "Parse, Don't Validate") rather than passing raw dicts/lists widely? (Assessed via parameter types and JSON format comments). | ☐ ✅ ☐ ❌ ☐ N/A |  |
 | 5.6 | **IDL Versioning:** Is the interface version clearly marked (e.g., `[Interface:Memory:3.0]`) and consistent with related documentation? | ☐ ✅ ☐ ❌ ☐ N/A |  |
+| 5.7 | **LLM Interaction:** Does the interface correctly use LLMInteractionManager and pydantic-ai for LLM interactions where applicable? | ☐ ✅ ☐ ❌ ☐ N/A |  |
 
 **VI. Overall Readiness**
 

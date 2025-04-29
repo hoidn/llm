@@ -5,7 +5,7 @@ module src.executors.atomic_executor {
     # @depends_on(src.system.types.TaskResult) // Return type
 
     // Interface for the Atomic Task Executor.
-    // Responsible for executing the body of a pre-parsed **atomic XML task template** using provided parameters.
+    // Responsible for executing the body of a pre-parsed atomic task template using provided parameters.
     // It handles parameter substitution and invokes the necessary Handler method.
     // It does **not** evaluate S-expressions or handle task composition.
     // For S-expression evaluation, refer to the `SexpEvaluator` component.
