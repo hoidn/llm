@@ -425,8 +425,8 @@ class SexpEvaluator:
                  except Exception as e:
                       # Catch errors during tool execution
                       logging.exception(f"Error executing direct tool '{target_id}': {e}")
-                      # Wrap in TaskError or SexpEvaluationError? Let's use TaskError
-                      raise TaskError(
+                      # Wrap in TaskFailureError for consistency
+                      raise TaskFailureError(
                            type="TASK_FAILURE",
                            reason="tool_execution_error",
                            message=f"Tool '{target_id}' execution failed: {e}"
@@ -468,13 +468,13 @@ class SexpEvaluator:
                       # Return the TaskResult object
                       return TaskResult.model_validate(task_result_dict)
 
-                 except TaskError as e:
-                      logging.error(f"TaskError executing atomic task '{target_id}': {e}")
-                      raise # Propagate TaskError
+                 except TaskFailureError as e:
+                      logging.error(f"TaskFailureError executing atomic task '{target_id}': {e}")
+                      raise # Propagate TaskFailureError
                  except Exception as e:
                       logging.exception(f"Unexpected error executing atomic task '{target_id}': {e}")
-                      # Wrap in TaskError
-                      raise TaskError(
+                      # Wrap in TaskFailureError
+                      raise TaskFailureError(
                            type="TASK_FAILURE",
                            reason="unexpected_error", # Or more specific if possible
                            message=f"Unexpected error executing task '{target_id}': {e}"
