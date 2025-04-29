@@ -107,12 +107,11 @@ def apply_mock_pydantic_ai():
         patch("src.handler.base_handler.Agent", mock_agent_class),
         patch("src.handler.base_handler.OpenAIModel", mock_openai_model),
         patch("src.handler.base_handler.AnthropicModel", mock_anthropic_model),
-        patch("src.handler.base_handler.PYDANTIC_AI_AVAILABLE", True),
-    ):  # Assume available for most tests
+        patch("src.handler.base_handler.PYDANTIC_AI_AVAILABLE", True), # Assume available for most tests
         # Also patch the PYDANTIC_AI_AVAILABLE constant within the llm_interaction_manager module
         patch("src.handler.llm_interaction_manager.PYDANTIC_AI_AVAILABLE", True),
     ):
-        yield # Run the test with mocks active
+        yield  # Run the test with mocks active
 
 
 @pytest.fixture
