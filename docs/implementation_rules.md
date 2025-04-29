@@ -208,7 +208,7 @@ This document outlines the standard conventions, patterns, and rules for impleme
 
 **9. IDL to Python Implementation**
 
-*   **Contractual Obligation:** The IDL file for a module is the source of truth. The Python implementation **must** match the interfaces, method signatures (including type hints), preconditions, postconditions, and described behavior precisely.
+*   **Contractual Obligation:** The IDL file for a module is the source of truth. The Python implementation **must** match the interfaces, method signatures (including type hints), preconditions, postconditions, and described behavior precisely. Strict adherence is crucial; deviations, even seemingly minor ones, can lead to subtle bugs, broken contracts between components, and difficult-to-diagnose test failures (e.g., unexpected name collisions or incorrect behavior).
 *   **Naming:** Python class/module names should correspond directly to the IDL interface/module names (e.g., `MemorySystem` interface in IDL maps to `MemorySystem` class in Python). Method names must match exactly.
 *   **Parameters:** Parameter names and types must match the IDL. Use Pydantic models for complex "Expected JSON format" parameters.
 *   **Return Types:** Return types must match the IDL. Use Pydantic models or `TypedDict` if the IDL specifies a structured dictionary return.
@@ -248,3 +248,4 @@ When implementing components that parse and evaluate Domain-Specific Languages o
 *   **11.5. Ensure Contextual Error Reporting:**
     *   Design error handling (`raise` statements, exception messages) to pinpoint the semantic source of the error as accurately as possible (e.g., "Undefined function 'foo' in expression (foo 1)" is better than "Type error processing arguments").
     *   Include relevant context in error messages, such as the specific expression or node being processed when the error occurred.
+```
