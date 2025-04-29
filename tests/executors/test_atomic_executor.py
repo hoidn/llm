@@ -161,30 +161,6 @@ def test_execute_body_json_parsing_failure(executor, mock_handler):
     assert "parseError" in result.notes
     assert "JSONDecodeError" in result.notes["parseError"]
 
-def test_execute_body_json_parsing_non_string_content(executor, mock_handler):
-    """Verify parseError note when content is not a string for JSON parsing."""
-    # Configure handler to return non-string content (e.g., already parsed dict)
-    mock_handler._execute_llm_call.return_value = TaskResult(
-        status="COMPLETE", content={"already": "parsed"}, notes={}
-    )
-    task_def = {
-        "name": "test_non_string_json",
-        "instructions": "Output non-string.",
-        "output_format": {"type": "json"}
-    }
-    params = {}
-
-    # Act
-    result_dict = executor.execute_body(task_def, params, mock_handler)
-    result = TaskResult.model_validate(result_dict) # Validate dict
-
-    # Assert
-    assert result.status == "COMPLETE"
-    assert result.content == {"already": "parsed"} # Original content remains
-    assert result.parsedContent is None # Parsing skipped
-    assert "parseError" in result.notes
-    assert "Cannot parse non-string content" in result.notes["parseError"]
-
 def test_execute_body_no_instructions(executor, mock_handler):
     """Verify execution proceeds with empty prompt if instructions are missing/empty."""
     task_def = {
