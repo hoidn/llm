@@ -318,11 +318,11 @@ class SexpEvaluator:
 
                     # Handle special args or regular args based on the key name
                     if arg_name == "files":
-                       if not (isinstance(evaluated_value, list) and all(isinstance(i, str) for i in evaluated_value)): raise SexpEvaluationError(f"'files' arg must evaluate to a list of strings. Got: {type(evaluated_value)}", str(arg_pair_expr))
-                       resolved_files = evaluated_value
-                   elif arg_name == "context":
-                       # Value already evaluated by self._eval(value_expr, env)
-                       if not isinstance(evaluated_value, dict):
+                        if not (isinstance(evaluated_value, list) and all(isinstance(i, str) for i in evaluated_value)): raise SexpEvaluationError(f"'files' arg must evaluate to a list of strings. Got: {type(evaluated_value)}", str(arg_pair_expr))
+                        resolved_files = evaluated_value
+                    elif arg_name == "context":
+                        # Value already evaluated by self._eval(value_expr, env)
+                        if not isinstance(evaluated_value, dict):
                             # Allow context to be provided as an evaluated list of pairs
                             if isinstance(evaluated_value, list) and all(isinstance(p, list) and len(p) == 2 for p in evaluated_value):
                                 try:
