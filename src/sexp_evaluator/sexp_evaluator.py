@@ -227,67 +227,98 @@ class SexpEvaluator:
                 raise SexpEvaluationError(f"Failed to evaluate operator expression: {operator_node}", node_str) from e
 
     def _eval_special_form(self, op_str: str, args: list, env: SexpEnvironment) -> Any:
-        """Evaluates special forms like if, let, bind, progn."""
+        """Dispatches evaluation to specific special form handlers."""
         logging.debug(f"Eval Special Form START: {op_str}")
-        node_repr = f"({op_str} {' '.join(map(str, args))})" # For error messages
+        # node_repr is now handled within each helper for specific error messages
+        # Keep a generic one for the final else clause
+        generic_node_repr = f"({op_str} ...)"
 
         if op_str == "if":
-            if len(args) != 3: raise SexpEvaluationError("'if' requires 3 args: (if cond then else)", node_repr)
-            cond_expr, then_expr, else_expr = args
-            condition_result = self._eval(cond_expr, env) # Eval condition
-            logging.debug(f"  'if' condition evaluated to: {condition_result}")
-            result_expr = then_expr if condition_result else else_expr
-            result = self._eval(result_expr, env) # Eval chosen branch
-            logging.debug(f"Eval 'if' END: -> {result}")
-            return result
-
+            return self._eval_if(args, env)
         elif op_str == "let":
-            if len(args) < 1 or not isinstance(args[0], list): raise SexpEvaluationError("'let' requires bindings list and body: (let ((var expr)...) body...)", node_repr)
-            bindings_list, body_exprs = args[0], args[1:]
-            if not body_exprs: raise SexpEvaluationError("'let' requires at least one body expression", node_repr)
-            logging.debug(f"  'let' processing {len(bindings_list)} bindings.")
-            let_env = env.extend({}) # Create child env immediately
-            for binding in bindings_list:
-                if not (isinstance(binding, list) and len(binding) == 2 and isinstance(binding[0], Symbol)):
-                    raise SexpEvaluationError("Invalid 'let' binding format: expected (symbol expression)", str(binding))
-                var_name = binding[0].value()
-                # Evaluate value expression in the *outer* environment
-                val = self._eval(binding[1], env)
-                let_env.define(var_name, val) # Define in the *new* child environment
-                logging.debug(f"    Defined '{var_name}' in let scope {id(let_env)}")
-            result = [] # Default for empty body (though disallowed by check above)
-            for expr in body_exprs: result = self._eval(expr, let_env) # Evaluate body in child env
-            logging.debug(f"Eval 'let' END: -> {result}")
-            return result
-
+            return self._eval_let(args, env)
         elif op_str == "bind":
-             if len(args) != 2 or not isinstance(args[0], Symbol): raise SexpEvaluationError("'bind' requires symbol and value expr: (bind var expr)", node_repr)
-             var_name = args[0].value()
-             logging.debug(f"  Eval 'bind' for '{var_name}'")
-             value = self._eval(args[1], env) # Eval value expr
-             env.define(var_name, value) # Define in *current* env
-             logging.debug(f"  Eval 'bind' END: defined '{var_name}' -> {value} in env {id(env)}")
-             return value # bind returns the assigned value
-
+            return self._eval_bind(args, env)
         elif op_str == "progn":
-            logging.debug("  Eval 'progn'")
-            result = [] # Default result for empty progn is nil/[]
-            for expr in args:
-                result = self._eval(expr, env) # Eval each expression sequentially
-            logging.debug(f"Eval 'progn' END: -> {result}")
-            return result # Return result of last expression
-            
+            return self._eval_progn(args, env)
         elif op_str == "quote":
-            if len(args) != 1:
-                raise SexpEvaluationError("'quote' requires exactly one argument: (quote expression)", node_repr)
-            # Return the argument node *without* evaluating it
-            quoted_expression = args[0]
-            logging.debug(f"Eval 'quote' END: -> {quoted_expression} (unevaluated)")
-            return quoted_expression
-
+            return self._eval_quote(args, env)
         else:
-             # Should not be reached if called from _eval_list correctly
-             raise SexpEvaluationError(f"Internal error: Unknown special form '{op_str}'", node_repr)
+            # This path should ideally not be reached if called correctly
+            raise SexpEvaluationError(f"Internal error: Unknown special form '{op_str}' encountered in dispatcher.", generic_node_repr)
+
+    # --- Special Form Handlers ---
+
+    def _eval_if(self, args: list, env: SexpEnvironment) -> Any:
+        """Evaluates the 'if' special form."""
+        node_repr = f"(if {' '.join(map(str, args))})"
+        logging.debug(f"Eval 'if' START")
+        if len(args) != 3: raise SexpEvaluationError("'if' requires 3 args: (if cond then else)", node_repr)
+        cond_expr, then_expr, else_expr = args
+        condition_result = self._eval(cond_expr, env) # Eval condition
+        logging.debug(f"  'if' condition evaluated to: {condition_result}")
+        result_expr = then_expr if condition_result else else_expr
+        result = self._eval(result_expr, env) # Eval chosen branch
+        logging.debug(f"Eval 'if' END: -> {result}")
+        return result
+
+    def _eval_let(self, args: list, env: SexpEnvironment) -> Any:
+        """Evaluates the 'let' special form."""
+        node_repr = f"(let {' '.join(map(str, args))})"
+        logging.debug(f"Eval 'let' START")
+        if len(args) < 1 or not isinstance(args[0], list): raise SexpEvaluationError("'let' requires bindings list and body: (let ((var expr)...) body...)", node_repr)
+        bindings_list, body_exprs = args[0], args[1:]
+        if not body_exprs: raise SexpEvaluationError("'let' requires at least one body expression", node_repr)
+        logging.debug(f"  'let' processing {len(bindings_list)} bindings.")
+        let_env = env.extend({}) # Create child env immediately
+        for binding in bindings_list:
+            binding_repr = str(binding) # For specific binding error
+            if not (isinstance(binding, list) and len(binding) == 2 and isinstance(binding[0], Symbol)):
+                raise SexpEvaluationError(f"Invalid 'let' binding format: expected (symbol expression), got {binding_repr}", node_repr)
+            var_name = binding[0].value()
+            # Evaluate value expression in the *outer* environment
+            val = self._eval(binding[1], env)
+            let_env.define(var_name, val) # Define in the *new* child environment
+            logging.debug(f"    Defined '{var_name}' in let scope {id(let_env)}")
+        result = [] # Default for empty body (though disallowed by check above)
+        for expr in body_exprs: result = self._eval(expr, let_env) # Evaluate body in child env
+        logging.debug(f"Eval 'let' END: -> {result}")
+        return result
+
+    def _eval_bind(self, args: list, env: SexpEnvironment) -> Any:
+        """Evaluates the 'bind' special form."""
+        node_repr = f"(bind {' '.join(map(str, args))})"
+        logging.debug(f"Eval 'bind' START")
+        if len(args) != 2 or not isinstance(args[0], Symbol): raise SexpEvaluationError("'bind' requires symbol and value expr: (bind var expr)", node_repr)
+        var_name = args[0].value()
+        logging.debug(f"  Eval 'bind' for '{var_name}'")
+        value = self._eval(args[1], env) # Eval value expr
+        env.define(var_name, value) # Define in *current* env
+        logging.debug(f"  Eval 'bind' END: defined '{var_name}' -> {value} in env {id(env)}")
+        return value # bind returns the assigned value
+
+    def _eval_progn(self, args: list, env: SexpEnvironment) -> Any:
+        """Evaluates the 'progn' special form."""
+        node_repr = f"(progn {' '.join(map(str, args))})"
+        logging.debug("Eval 'progn' START")
+        result = [] # Default result for empty progn is nil/[]
+        for expr in args:
+            result = self._eval(expr, env) # Eval each expression sequentially
+        logging.debug(f"Eval 'progn' END: -> {result}")
+        return result # Return result of last expression
+
+    def _eval_quote(self, args: list, env: SexpEnvironment) -> Any:
+        """Evaluates the 'quote' special form."""
+        node_repr = f"(quote {' '.join(map(str, args))})"
+        logging.debug("Eval 'quote' START")
+        if len(args) != 1:
+            raise SexpEvaluationError("'quote' requires exactly one argument: (quote expression)", node_repr)
+        # Return the argument node *without* evaluating it
+        quoted_expression = args[0]
+        logging.debug(f"Eval 'quote' END: -> {quoted_expression} (unevaluated)")
+        return quoted_expression
+
+    # --- Primitive Handlers ---
 
     def _eval_primitive(self, op_str: str, args: list, env: SexpEnvironment) -> Any:
         """Evaluates built-in primitives like list, get_context."""
