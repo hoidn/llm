@@ -37,8 +37,9 @@
     - Extracted LLM interaction logic (`_initialize_pydantic_ai_agent`, `_execute_llm_call`) into a new `src.handler.llm_interaction_manager.LLMInteractionManager` class.
     - Updated `BaseHandler` to instantiate and delegate calls (`_execute_llm_call`, `set_debug_mode`) to `LLMInteractionManager`. Removed direct agent handling (`self.agent`, `_initialize_pydantic_ai_agent`).
     - Updated `tests.handler.test_base_handler` fixture and tests to mock `LLMInteractionManager` and verify delegation/initialization. Removed tests specific to agent initialization within `BaseHandler`. Added tests for `_execute_llm_call` delegation.
-    - **Commit:** (Will be the hash of this change)
-    - **Note:** `BaseHandler` line count reduced further (435 -> ~300 lines - check exact count after applying). `LLMInteractionManager` now contains the LLM logic (~150 lines - check exact count).
+    - **Commit:** `5a785c8` (fix: Fix failing tests in test_base_handler.py)
+    - **Note:** `BaseHandler` line count reduced (435 -> 303 lines). `LLMInteractionManager` has 166 lines. `FileContextManager` has 132 lines. Refactoring successful in reducing `BaseHandler` size and improving modularity.
+- **Reflection & Guide:** Reflected on the refactoring process, identified pitfalls (test brittleness, mocking complexity), and synthesized findings into a new guide `docs/refactor.md`.
 
 ## Next Steps
 
