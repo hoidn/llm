@@ -37,15 +37,26 @@ DEFAULT_MAX_FILE_SIZE = 1 * 1024 * 1024  # 1 MB
 DEFAULT_INCLUDE_PATTERNS = ["**/*.py"] # Example: only Python files by default
 DEFAULT_EXCLUDE_PATTERNS: List[str] = []
 BINARY_EXTENSIONS = {
+    # Executables & Libraries
     '.exe', '.dll', '.so', '.a', '.lib', '.dylib', '.o', '.obj',
+    # Java
     '.jar', '.class', '.war', '.ear',
+    # Archives
     '.zip', '.tar', '.gz', '.bz2', '.7z', '.rar', '.iso', '.dmg',
+    # Documents
     '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
+    # Images
     '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.ico',
+    # Audio
     '.mp3', '.wav', '.ogg', '.flac',
+    # Video
     '.mp4', '.avi', '.mov', '.wmv', '.mkv',
+    # Databases
     '.db', '.sqlite', '.mdb',
+    # Python compiled/specific
     '.pyc', '.pyd',
+    # Generic Binary
+    '.bin', # Added .bin as it commonly signifies a binary file
     # Add more known binary extensions as needed
 }
 BINARY_SIGNATURES = [
