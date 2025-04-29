@@ -107,10 +107,10 @@ When assigned to implement or modify a component specified by an IDL (or tacklin
 *   **Dependency Injection:**
     *   **Concept:** Components receive their dependencies (other components, resources) via their constructor (`__init__`). Avoid global state or direct instantiation of dependencies within methods.
     *   **Practice:** Identify dependencies from IDL (`@depends_on`). Add corresponding parameters to your class `__init__` method with type hints. Store references as instance attributes (e.g., `self.memory_system = memory_system`).
-*   **(Conceptual) Provider-Agnostic LLM Interface:**
-    *   **Goal:** Interact with different LLMs (OpenAI, Anthropic) through a consistent interface.
-    *   **Practice:** Use the `ProviderAdapter` interface (`src/handler/model_provider_IDL.md`) for LLM calls. Consider `pydantic-ai` patterns if integrating that library later.
-    *   **Reference:** See Section 6 in `docs/implementation_rules.md`.
+*   **LLM Interaction (via Pydantic-AI):**
+    *   **Standard:** The project uses the `pydantic-ai` library for interacting with LLMs.
+    *   **Practice:** `BaseHandler` uses an internal `LLMInteractionManager` to manage the `pydantic-ai` `Agent`. Implementations within `BaseHandler` delegate LLM calls to this manager. Tool registration (`register_tool`) stores tool definitions, and making them available to the live agent requires careful integration (see `implementation_rules.md`).
+    *   **Reference:** See Section 6 in `docs/implementation_rules.md` and `docs/librarydocs/pydanticai.md`.
 
 **6. Testing Strategy**
 
@@ -128,7 +128,7 @@ When assigned to implement or modify a component specified by an IDL (or tacklin
 *   **`tests/`**: Pytest tests, mirroring the `src` structure.
 *   **`docs/`**: All project documentation, including architecture, decisions (ADRs), component specs, and these rules.
     *   **`docs/IDL.md`**: Defines the IDL guidelines themselves.
-    *   **`docs/types.md`**: (You may need to create this file) Defines shared data structures (`struct` definitions) used across multiple IDL interfaces (e.g., `TaskResult`).
+    *   `docs/system/contracts/types.md`: Defines shared system-wide data structures (`struct`/Pydantic model definitions) used across multiple IDL interfaces (e.g., `TaskResult`).
     *   **`docs/implementation_rules.md`**: Detailed coding and testing rules.
     *   **`docs/project_rules.md`**: General project conventions (directory structure, Git workflow).
     *   **`src/**/\*_IDL.md`**: The specific interface definitions you will implement.

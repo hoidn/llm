@@ -134,6 +134,7 @@ the goal is a clear, language- and UI-agnostic **specification (SPEC)** that def
     *   **language/platform specifics:** boilerplate code, language-specific idioms, environment configuration loading, build system artifacts, specific library dependencies (unless they form part of public signatures or are abstracted via `@depends_on_resource`).
     *   **internal error handling mechanisms:** specific exception types thrown/caught internally, internal error reporting. Contractual, observable error conditions should be documented using `@raises_error`. Generic internal failures are not part of the IDL spec.
     *   dependencies on concrete libraries or modules *not* represented by an IDL interface or abstracted via `@depends_on_resource`.
+    *   **Internal Helper Components:** Classes, functions, or modules created solely as internal implementation details to support a public interface defined in an IDL, and not intended for direct use by other independent components. The delegation of work to such helpers *should*, however, be documented in the `Behavior` section of the public interface's method(s) that use them.
 
 **iv. idl template**
 
@@ -281,7 +282,7 @@ module socialmediaplatform {
 
 } // end module socialmediaplatform
 ```
-<idl>
+</idl>
 <code to idl>
 **--- Instructions for Iterative IDL Generation ---**
 

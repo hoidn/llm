@@ -88,6 +88,16 @@ project_root/
 └── README.md                # Project documentation
 ```
 
+### IDL File Conventions
+
+Interface Definition Language (IDL) files (`*_IDL.md`) are the primary specification for public component contracts.
+
+*   **Primary Location:** The authoritative IDL file defining the public contract for a Python module or class **should reside directly alongside its implementation file** in the `src/` directory (e.g., `src/handler/base_handler_IDL.md` alongside `src/handler/base_handler.py`). This ensures the specification and implementation are co-located.
+*   **Internal Helpers:** Internal helper classes or modules designed solely to support the implementation of a public interface (and not intended for direct use by other independent components) generally **do not require their own separate IDL file**. However, the delegation of work to such helpers should be documented in the `Behavior` section of the public interface's method(s) that use them (see `docs/IDL.md`). Examples include `FileContextManager` and `LLMInteractionManager` within `src/handler/`.
+*   **API Documentation vs. IDL Contract:** High-level API summaries or alternative representations *may* exist under `docs/components/<component>/api/interfaces.md`. However, for implementation purposes, the `_IDL.md` file located within the `src/` directory is considered the **definitive contract**. Any discrepancies should favor the `_IDL.md` file, and the `.md` API docs should ideally be kept in sync or clearly marked as supplementary.
+*   **Pending/Top-Level Components:** IDLs for components whose implementation is pending (e.g., `SexpEvaluator`, `Dispatcher` in early phases) or whose primary execution script does not reside under `src/` (e.g., `main.py`) might temporarily exist at a higher level (like `src/`). Upon implementation, these IDLs should ideally be moved to be adjacent to their corresponding code.
+*   **(Maintainer Note):** The project structure diagram in this document should be periodically verified against the actual `src/` and `tests/` directory layout to ensure accuracy, especially regarding component locations.
+
 ## Script Conventions
 
 ### Script Organization

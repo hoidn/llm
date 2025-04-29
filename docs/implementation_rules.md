@@ -81,15 +81,20 @@ This document outlines the standard conventions, patterns, and rules for impleme
             # Handle the validation error (e.g., return error TaskResult)
     ```
 
-**6. LLM Interaction (Leveraging Pydantic-AI - Conceptual)**
+**6. LLM Interaction (Leveraging Pydantic-AI via Manager)**
 
-*   **Goal:** Achieve a provider-agnostic interface for core LLM interactions (sending prompts, getting responses, handling tool calls).
-*   **Approach (Conceptual - Requires `pydantic-ai` integration):**
-    *   Define core LLM interactions using `pydantic-ai`'s `Agent` concept where feasible.
-    *   Use `pydantic-ai` Models (`OpenAIModel`, `AnthropicModel`, etc.) to abstract provider details.
-    *   Leverage `pydantic-ai`'s built-in support for structured output (`output_type=YourPydanticModel`) and tool definition/calling (`@agent.tool`).
-    *   Use `pydantic-ai` dependencies (`deps_type`, `RunContext`) for passing context/services to tools.
-*   **Current State Mapping:** The existing `ProviderAdapter` interface in `model_provider_IDL.md` serves a similar purpose. If/when integrating `pydantic-ai`, this adapter could potentially be replaced or refactored to wrap `pydantic-ai` models and agents. For now, implement the `ProviderAdapter` interface as defined, keeping `pydantic-ai` principles in mind for future integration.
+*   **Standard:** The project now uses the **`pydantic-ai`** library for all core LLM interactions. The previous custom `ProviderAdapter` interface is deprecated.
+*   **Implementation Pattern:**
+    *   The `BaseHandler` utilizes an internal helper class, `LLMInteractionManager`, to encapsulate interactions with `pydantic-ai`.
+    *   `BaseHandler.__init__` is responsible for instantiating `LLMInteractionManager`, which in turn initializes the underlying `pydantic-ai` `Agent` based on configuration (model identifier, API keys, base system prompt).
+    *   Core LLM execution logic within `BaseHandler` (e.g., in private methods like `_execute_llm_call`) should **delegate** the actual call to the `LLMInteractionManager` instance (`self.llm_manager`).
+*   **Key `pydantic-ai` Concepts:**
+    *   **Agent:** The primary interface for running LLM calls (`agent.run_sync()`, `agent.run()`, etc.).
+    *   **Models:** Use specific model classes (`OpenAIModel`, `AnthropicModel`, etc.) provided by `pydantic-ai` during `LLMInteractionManager` initialization.
+    *   **Tools:** Tools intended for LLM use must be registered. The `BaseHandler.register_tool` method stores the tool specification and executor.
+        *   **Integration Complexity:** Dynamically registering tools with an already active `pydantic-ai` Agent can be complex. The current `register_tool` implementation stores the necessary information. Further work may be needed within `LLMInteractionManager` or `BaseHandler` to make these dynamically registered tools available to the `pydantic-ai` Agent during its execution run (e.g., potentially passing them as part of the `run_sync`/`run` call if supported, or requiring agent re-initialization). Consult `pydantic-ai` documentation for best practices.
+    *   **Structured Output:** Leverage `pydantic-ai`'s `output_type` parameter in the agent's `run`/`run_sync` methods (passed via `LLMInteractionManager`) when structured output (defined by a Pydantic model) is required.
+*   **Reference:** Familiarize yourself with the `pydantic-ai` library documentation, potentially summarized or linked in `docs/librarydocs/pydanticai.md`.
 
 **7. Testing Conventions**
 

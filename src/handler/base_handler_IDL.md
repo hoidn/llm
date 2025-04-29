@@ -83,6 +83,75 @@ module src.handler.base_handler {
         // - May configure instrumentation on the internal pydantic-ai Agent if applicable.
         void set_debug_mode(boolean enabled);
 
+        // Internal method to execute a call via the LLMInteractionManager.
+        // Preconditions:
+        // - prompt is the user's input string.
+        // - Optional overrides for system prompt, tools, and output type can be provided.
+        // Postconditions:
+        // - Returns the result from the LLM call, typically structured like a TaskResult.
+        // - Updates the internal conversation history if the call is successful.
+        // Behavior:
+        // - Delegates the primary interaction logic to an internal `LLMInteractionManager` which utilizes the configured `pydantic-ai` agent.
+        // - Passes the current conversation history to the manager.
+        // - Handles potential errors during the LLM call.
+        // @raises_error(condition="LLMInteractionError", description="If the LLM call fails.")
+        Any _execute_llm_call(
+            string prompt,
+            optional string system_prompt_override,
+            optional list<function> tools_override,
+            optional type output_type_override
+        );
+
+        // Builds the complete system prompt for an LLM call.
+        // Preconditions:
+        // - template is an optional string containing template-specific instructions.
+        // - file_context is an optional string containing context from relevant files.
+        // Postconditions:
+        // - Returns the final system prompt string.
+        // Behavior:
+        // - Starts with the base system prompt (`self.base_system_prompt`).
+        // - Appends template-specific instructions if provided.
+        // - Appends file context if provided.
+        string _build_system_prompt(
+            optional string template,
+            optional string file_context
+        );
+
+        // Gets relevant file paths based on a query.
+        // Preconditions:
+        // - query is the string used for relevance matching.
+        // Postconditions:
+        // - Returns a list of relevant file paths.
+        // Behavior:
+        // - Delegates file path retrieval logic to an internal `FileContextManager`, which interacts with the `MemorySystem`.
+        // @raises_error(condition="ContextRetrievalError", description="If file relevance lookup fails.")
+        list<string> _get_relevant_files(string query);
+
+        // Creates a formatted context string from a list of file paths.
+        // Preconditions:
+        // - file_paths is a list of strings representing file paths.
+        // Postconditions:
+        // - Returns a single string containing the formatted content of the specified files.
+        // Behavior:
+        // - Delegates file reading and formatting logic to an internal `FileContextManager`, which interacts with the `FileAccessManager`.
+        // @raises_error(condition="FileAccessError", description="If reading any of the files fails.")
+        string _create_file_context(list<string> file_paths);
+
+        // Executes a registered tool directly by name.
+        // Preconditions:
+        // - tool_name is the name of a tool previously registered via `register_tool`.
+        // - tool_input is a dictionary containing the arguments for the tool.
+        // Postconditions:
+        // - Returns the result of the tool execution, typically formatted as a TaskResult.
+        // Behavior:
+        // - Looks up the executor function associated with `tool_name` in `self.tool_executors`.
+        // - Calls the executor function with `tool_input`.
+        // - Handles exceptions during tool execution.
+        // - Formats the result into a TaskResult structure.
+        // @raises_error(condition="ToolNotFound", description="If no tool with the given name is registered.")
+        // @raises_error(condition="ToolExecutionError", description="If the tool's executor function raises an exception.")
+        dict<string, Any> _execute_tool(string tool_name, dict<string, Any> tool_input); // Return should be TaskResult
+
         // Invariants:
         // - `task_system`, `memory_system`, `file_manager` hold valid references after initialization.
         // - An internal `pydantic_ai.Agent` instance is configured and available.
