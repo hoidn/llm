@@ -22,35 +22,37 @@
 
 ## Recent Activity Log
 
-- **Implementation of core components:** Created the basic Python class structure, method signatures, type hints, and docstring outlines for the `MemorySystem`, `TaskSystem`, and `BaseHandler` classes based on their IDL specifications.
-
-- **Implementation of non-deferred methods:** Implemented the internal logic for the non-deferred methods of the core components, including:
-  - `MemorySystem`: `__init__`, `get_global_index`, `update_global_index`, `enable_sharding`, `configure_sharding`
-  - `TaskSystem`: `__init__`, `set_test_mode`, `register_template`, `find_template`
-  - `BaseHandler`: `__init__`, `register_tool`, `execute_file_path_command`, `reset_conversation`, `log_debug`, `set_debug_mode`
-
-- **Test implementation:** Created test files for each component and implemented tests for the non-deferred methods.
-
-- **Bug identification:** Discovered an issue in the `TaskSystem.find_template` method where it doesn't correctly handle name collisions between atomic and non-atomic templates.
-
-- **Bug fix:** Fixed the `TaskSystem.find_template` method to correctly handle name collisions by checking the template_index for atomic templates with the same name when a non-atomic template is found by name.
+- **(Previous) Implementation of core components:** Created basic structures for `MemorySystem`, `TaskSystem`, `BaseHandler`.
+- **(Previous) Implementation of non-deferred methods:** Implemented non-deferred methods in core components.
+- **(Previous) Test implementation:** Created tests for non-deferred methods.
+- **(Previous) Bug fix:** Fixed `TaskSystem.find_template` name collision issue.
+- **Refactoring `BaseHandler` (Part 1):**
+    - Identified `BaseHandler` exceeding module length guidelines (456 lines).
+    - Extracted file context retrieval (`_get_relevant_files`) and creation (`_create_file_context`) logic into a new `src.handler.file_context_manager.FileContextManager` class.
+    - Updated `BaseHandler` to instantiate and delegate calls to `FileContextManager`.
+    - Updated `tests.handler.test_base_handler` fixture and tests to mock `FileContextManager` and verify delegation instead of checking for `NotImplementedError`. Fixed related import issues.
+    - **Commit:** `03e2338` (fix: Import FileContextManager in test_base_handler.py)
+    - **Note:** Line count reduction in `BaseHandler` was modest (456 -> 435) as the removed lines were primarily placeholder comments, not extensive code. The new `FileContextManager` contains the extracted logic (132 lines).
 
 ## Next Steps
 
-1. Implement the deferred methods in Phase 2:
-   - `MemorySystem`: `get_relevant_context_with_description`, `get_relevant_context_for`, `index_git_repository`
-   - `TaskSystem`: `execute_atomic_template`, `find_matching_tasks`, `generate_context_for_memory_system`, `resolve_file_paths`
-   - `BaseHandler`: `_build_system_prompt`, `_get_relevant_files`, `_create_file_context`, `_execute_tool`
-2. Implement tests for the deferred methods once they are implemented.
-3. Update documentation to reflect the implementation details and any design decisions made during implementation.
+1.  **Refactor `BaseHandler` (Part 2):**
+    *   Extract LLM interaction logic (`_initialize_pydantic_ai_agent`, `_execute_llm_call`) from `BaseHandler` into a new `LLMInteractionManager` class (or similar).
+    *   Update `BaseHandler` to use this new manager.
+    *   Update relevant tests in `test_base_handler.py`.
+2.  Implement the remaining deferred methods in Phase 2:
+    *   `MemorySystem`: `get_relevant_context_with_description`, `get_relevant_context_for`, `index_git_repository`
+    *   `TaskSystem`: `execute_atomic_template`, `find_matching_tasks`, `generate_context_for_memory_system`, `resolve_file_paths`
+    *   `BaseHandler`: `_build_system_prompt`, `_execute_tool` (Note: `_get_relevant_files`, `_create_file_context`, `_execute_llm_call` are being handled by refactoring/delegation).
+3.  Implement tests for the deferred methods once they are implemented/refactored.
+4.  Update documentation (IDLs, rules) if refactoring changes public contracts or introduces new patterns.
 
 ## Notes & Context
 
-- The implementation follows the IDL specifications closely, with placeholder implementations for deferred methods.
-- The core components are designed to work together, with `BaseHandler` depending on `TaskSystem` and `MemorySystem`.
-- The implementation includes proper error handling and logging as specified in the IDL.
-- The tests verify that the implemented methods behave as expected according to the IDL specifications.
-- The `find_template` method in `TaskSystem` now correctly handles name collisions between atomic and non-atomic templates, ensuring that atomic templates are always prioritized as specified in the IDL.
+- Refactoring `BaseHandler` aims to improve modularity and adhere to project guidelines (module length).
+- `FileContextManager` now encapsulates file context logic.
+- Tests for `BaseHandler` were updated to reflect the delegation pattern.
+- The core components (`BaseHandler`, `TaskSystem`, `MemorySystem`) continue to rely on dependency injection.
 </file>
 ```
 
