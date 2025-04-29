@@ -227,6 +227,17 @@ class SexpEvaluator:
                       # Evaluate *only* the value expression
                       evaluated_value = self._eval(value_expr, env)
 
+                      # Special handling for 'inputs': convert list of pairs to dict if necessary
+                      if option_name == "inputs":
+                          if isinstance(evaluated_value, list) and all(isinstance(p, list) and len(p) == 2 for p in evaluated_value):
+                              try:
+                                  # Convert keys to strings during dict creation
+                                  evaluated_value = {str(k): v for k, v in evaluated_value}
+                              except (TypeError, ValueError) as conv_err:
+                                   raise SexpEvaluationError(f"'inputs' arg evaluated to list of pairs, but failed dict conversion: {conv_err}", str(option_pair_expr)) from conv_err
+                          elif not isinstance(evaluated_value, dict):
+                               raise SexpEvaluationError(f"'inputs' arg must evaluate to a dictionary or a list of pairs. Got: {type(evaluated_value)}", str(option_pair_expr))
+
                       # Map Sexp option names to ContextGenerationInput fields
                       field_map = { "query": "query", "templateDescription": "templateDescription", "templateType": "templateType", "templateSubtype": "templateSubtype", "inputs": "inputs", "inheritedContext": "inheritedContext", "previousOutputs": "previousOutputs" }
                       if option_name in field_map: context_input_args[field_map[option_name]] = evaluated_value
@@ -301,8 +312,8 @@ class SexpEvaluator:
                              # Allow context to be provided as an evaluated list of pairs
                              if isinstance(evaluated_value, list) and all(isinstance(p, list) and len(p) == 2 for p in evaluated_value):
                                  try:
-                                     # Convert the list of pairs into a dictionary
-                                     evaluated_value = dict(evaluated_value)
+                                     # Convert the list of pairs into a dictionary, ensuring keys are strings
+                                     evaluated_value = {str(k): v for k, v in evaluated_value}
                                  except (TypeError, ValueError) as conv_err:
                                      raise SexpEvaluationError(f"'context' arg evaluated to list of pairs, but failed dict conversion: {conv_err}", str(arg_pair_expr)) from conv_err
                              else:
