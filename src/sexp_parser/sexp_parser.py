@@ -25,24 +25,32 @@ def _convert_common_symbols(item: Any) -> Any:
     """
     if isinstance(item, Symbol):
         val = item.value()
+        logging.debug(f"Convert Symbol: Item={item}, Value={val}, Type(Value)={type(val)}")
         if val == 'true':
+            logging.debug("  Returning True")
             return True
         elif val == 'false':
+            logging.debug("  Returning False")
             return False
         elif val == 'nil':
             # Fix: Ensure this returns None
+            logging.debug("  Returning None")
             return None
         else:
             # Keep other symbols as Symbol objects
+            logging.debug(f"  Returning original Symbol: {item}")
             return item
     elif isinstance(item, list):
         # Recursively convert elements within a list
-        return [_convert_common_symbols(sub_item) for sub_item in item]
+        converted_list = [_convert_common_symbols(sub_item) for sub_item in item]
+        logging.debug(f"  Returning converted list: {converted_list}")
+        return converted_list
     # Add handling for tuples if sexpdata might produce them, though lists are typical
     # elif isinstance(item, tuple):
     #     return tuple(_convert_common_symbols(sub_item) for sub_item in item)
     else:
         # Return atoms (numbers, strings, etc.) and other types unchanged
+        logging.debug(f"  Returning atom: {item}")
         return item
 
 

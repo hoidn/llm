@@ -267,10 +267,13 @@ class BaseHandler:
             tools_override=current_tools, # Pass potentially prepared tools
             output_type_override=output_type_override,
         )
+        
+        logging.debug(f"LLM Manager Raw Result: {manager_result}")
 
         # Process the result from the manager
         # Fix: Use .get() for safer access
         if isinstance(manager_result, dict) and manager_result.get("success"): # Check type and use get()
+            logging.debug("  Processing LLM call as SUCCESS.")
             assistant_content = manager_result.get("content", "")
             usage_data = manager_result.get("usage")
             tool_calls = manager_result.get("tool_calls")
@@ -285,12 +288,15 @@ class BaseHandler:
 
         else:
             # Handle failure or unexpected result structure
+            logging.debug("  Processing LLM call as FAILURE.")
             error_message = "Unknown LLM interaction error." # Default
             # Check if manager_result is a dict and has an 'error' key
             if isinstance(manager_result, dict) and "error" in manager_result:
                 error_message = manager_result.get("error", error_message) # Use get() for safety
+                logging.debug(f"  Found error in dict: {error_message}")
             elif hasattr(manager_result, 'error') and manager_result.error: # Example if it were an object
                  error_message = manager_result.error
+                 logging.debug(f"  Found error attribute: {error_message}")
             # ... (rest of failure path: logging, create error details, return FAILED TaskResult) ...
             logging.error(f"LLM call failed or returned unexpected result: {error_message}")
             # Use the extracted error_message when creating the TaskResult

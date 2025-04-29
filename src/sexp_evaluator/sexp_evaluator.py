@@ -133,6 +133,7 @@ class SexpEvaluator:
         Corrected Logic (Round 2): Handles atoms, special forms, primitives, callables, and data lists accurately.
         """
         logging.debug(f"Eval START: Node={node} (Type={type(node)}) EnvID={id(env)}")
+        logging.debug(f"Eval START: Node={node} (Type={type(node)}) EnvID={id(env)}")
 
         # 1. Handle Standalone Symbols (Lookup in environment)
         if isinstance(node, Symbol):
@@ -158,6 +159,8 @@ class SexpEvaluator:
             operator_node = node[0]
             args = node[1:]
             op_str = str(operator_node) # Use string representation for initial checks
+            logging.debug(f"Eval List Node: {node}")
+            logging.debug(f"  Operator Node: {operator_node} (Type={type(operator_node)})")
 
             # --- Check for Special Forms (operate on unevaluated args) ---
             if op_str == "if":
@@ -223,9 +226,11 @@ class SexpEvaluator:
 
                       option_name_sym, value_expr = option_pair_expr[0], option_pair_expr[1]
                       option_name = str(option_name_sym) # Convert symbol/str to string key
+                      logging.debug(f"  get_context processing pair: NameSym={option_name_sym}, ValueExpr={value_expr}")
 
                       # Evaluate *only* the value expression
                       evaluated_value = self._eval(value_expr, env) # <-- Correct: only eval value
+                      logging.debug(f"    ValueExpr evaluated to: {evaluated_value} (Type={type(evaluated_value)})")
 
                       # Special handling for 'inputs': convert list of pairs to dict if necessary
                       if option_name == "inputs":
@@ -256,6 +261,7 @@ class SexpEvaluator:
                           # Store unknown args too, maybe ContextGenerationInput allows extra fields
                           context_input_args[option_name] = evaluated_value
                  if not context_input_args: raise SexpEvaluationError("'get_context' requires options", str(node))
+                 logging.debug(f"  get_context constructed input args: {context_input_args}")
                  try: context_input = ContextGenerationInput(**context_input_args)
                  except Exception as e: raise SexpEvaluationError(f"Failed creating ContextGenerationInput: {e}", str(node)) from e
                  logging.debug(f"Calling memory_system.get_relevant_context_for with: {context_input}")
@@ -312,9 +318,11 @@ class SexpEvaluator:
 
                     arg_name_sym, value_expr = arg_pair_expr[0], arg_pair_expr[1]
                     arg_name = str(arg_name_sym) # Convert symbol/str to string key
+                    logging.debug(f"  Processing arg pair for call '{target_id}': NameSym={arg_name_sym}, ValueExpr={value_expr}")
 
                     # Evaluate *only* the value expression
                     evaluated_value = self._eval(value_expr, env)
+                    logging.debug(f"    ValueExpr evaluated to: {evaluated_value} (Type={type(evaluated_value)})")
 
                     # Handle special args or regular args based on the key name
                     if arg_name == "files":
@@ -337,12 +345,16 @@ class SexpEvaluator:
                         # Store regular named arguments
                         resolved_named_args[arg_name] = evaluated_value
 
+                # Log resolved arguments before execution
+                logging.debug(f"  Call '{target_id}' resolved args: named={resolved_named_args}, files={resolved_files}, context={resolved_context_settings}")
+                
                 # Execute Tool or Task
                 try:
                     if is_tool:
                         logging.info(f"Invoking direct tool: '{target_id}'")
                         # Handler._execute_tool might return dict or TaskResult based on IDL/impl
                         tool_result_obj = self.handler._execute_tool(target_id, resolved_named_args)
+                        logging.debug(f"  Raw tool result: {tool_result_obj} (Type={type(tool_result_obj)})")
 
                         # Ensure we have a TaskResult object
                         if isinstance(tool_result_obj, dict):
@@ -354,6 +366,7 @@ class SexpEvaluator:
                         elif not isinstance(tool_result_obj, TaskResult):
                             raise SexpEvaluationError("Handler._execute_tool returned unexpected type", str(node), error_details=f"Type: {type(tool_result_obj)}")
 
+                        logging.debug(f"  Validated tool TaskResult: {tool_result_obj}")
                         logging.debug(f"Eval Tool Call END: '{target_id}' -> {tool_result_obj.status}")
                         return tool_result_obj # Return TaskResult object
                     elif is_atomic_task: # Must be atomic task if not tool
@@ -369,6 +382,7 @@ class SexpEvaluator:
                         )
                         # TaskSystem returns TaskResult object
                         task_result_obj = self.task_system.execute_atomic_template(request)
+                        logging.debug(f"  Raw task result: {task_result_obj} (Type={type(task_result_obj)})")
 
                         # Fix 2 START: Ensure we have a TaskResult object
                         if isinstance(task_result_obj, dict):
@@ -382,7 +396,8 @@ class SexpEvaluator:
                             # Raise error if it's neither dict nor TaskResult
                             raise SexpEvaluationError("TaskSystem returned unexpected type", str(node), error_details=f"Type: {type(task_result_obj)}")
                         # Fix 2 END
-
+                        
+                        logging.debug(f"  Validated task TaskResult: {task_result_obj}")
                         logging.debug(f"Eval Atomic Task Call END: '{target_id}' -> {task_result_obj.status}")
                         return task_result_obj # Return TaskResult object
                     else:
@@ -398,8 +413,9 @@ class SexpEvaluator:
             else: # List is not a function call -> Treat as Data List
                  logging.debug(f"List interpreted as DATA. Operator='{operator_node}'")
                  # Evaluate ALL elements recursively, including the operator node itself
+                 logging.debug(f"  List treated as DATA. Evaluating all items.")
                  evaluated_list = [self._eval(item, env) for item in node]
-                 logging.debug(f"Eval Data List END: -> {evaluated_list}")
+                 logging.debug(f"  Eval Data List END: -> {evaluated_list}")
                  return evaluated_list
 
         # Fallback for unhandled node type (should not happen with current checks)
