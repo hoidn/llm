@@ -1,3 +1,5 @@
+https://aistudio.google.com/prompts/1na9I7g_Wwkgs8M0knwLoqQnVxgA0jZC7 
+
 **Full Revised Implementation Plan (Deferring Aider Integration)**
 
 **Overall Goal:** Build a system capable of orchestrating LLM interactions, external tools, and file system operations via an S-expression DSL, with features for context management and Git indexing. *Code editing integration (Aider/MCP) is deferred.*
