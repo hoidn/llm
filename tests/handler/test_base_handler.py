@@ -183,7 +183,12 @@ def test_init_initializes_components(
     mock_file_manager,
 ):
     """Test __init__ stores dependencies and initializes state."""
-    mock_fm_class.return_value = mock_file_manager  # Use the configured mock instance
+    # Configure mock instances returned by class mocks for this specific test
+    mock_fm_class.return_value = mock_file_manager
+    mock_fcm_instance = MagicMock(spec=FileContextManager)
+    mock_fcm_class.return_value = mock_fcm_instance
+    mock_llm_manager_instance = MagicMock(spec=LLMInteractionManager)
+    mock_llm_manager_class.return_value = mock_llm_manager_instance
 
     handler = BaseHandler(
         task_system=mock_task_system,
