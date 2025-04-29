@@ -139,21 +139,22 @@ def test_indexer_init(tmp_path):
 
 
 # Add 'ext' parameter to parametrize to avoid calling real splitext in test
-@pytest.mark.parametrize("file_path, ext, file_content, expected", [
-    ("test.py", ".py", b"print('hello')", True),
-    ("test.txt", ".txt", b"Simple text", True),
-    ("archive.zip", ".zip", b"PK\x03\x04", False), # Known binary signature, also binary extension
-    ("image.jpg", ".jpg", b"\xFF\xD8\xFF", False), # Known binary signature, also binary extension
-    ("unknown.bin", ".bin", b"\x00\x01\x02\x00", False), # Null bytes, also binary extension
-    ("no_extension", "", b"Just text", True), # No extension, relies on content check
-    ("script.sh", ".sh", b"#!/bin/bash\necho hello", True), # Text content, not in BINARY_EXTENSIONS
-    ("utf16_file.txt", ".txt", b'\xff\xfeh\x00e\x00l\x00l\x00o\x00', False), # UTF-16 BOM, fails utf-8/latin-1 decode
-    ("empty_file.txt", ".txt", b"", True), # Empty file is considered text
+# Add 'should_open_file' to test the optimization where known binary extensions skip file reading
+@pytest.mark.parametrize("file_path, ext, file_content, expected, should_open_file", [
+    ("test.py", ".py", b"print('hello')", True, True),  # Not a binary ext, will check content
+    ("test.txt", ".txt", b"Simple text", True, True),   # Not a binary ext, will check content
+    ("archive.zip", ".zip", b"PK\x03\x04", False, False),  # Binary ext, won't check content
+    ("image.jpg", ".jpg", b"\xFF\xD8\xFF", False, False),  # Binary ext, won't check content
+    ("unknown.bin", ".bin", b"\x00\x01\x02\x00", False, False),  # Binary ext, won't check content
+    ("no_extension", "", b"Just text", True, True),  # No ext, must check content
+    ("script.sh", ".sh", b"#!/bin/bash\necho hello", True, True),  # Not binary, checks content
+    ("utf16_file.txt", ".txt", b'\xff\xfeh\x00e\x00l\x00l\x00o\x00', False, True),  # Not binary ext but binary content
+    ("empty_file.txt", ".txt", b"", True, True),  # Not binary ext, empty file is text
 ])
 @patch('builtins.open', new_callable=mock_open)
 # Patch where splitext is looked up by the code under test (git_repository_indexer module)
 @patch('src.memory.indexers.git_repository_indexer.os.path.splitext')
-def test_is_text_file(mock_splitext, mock_open_file, unit_test_indexer, file_path, ext, file_content, expected):
+def test_is_text_file(mock_splitext, mock_open_file, unit_test_indexer, file_path, ext, file_content, expected, should_open_file):
     """Unit Test: text file detection logic."""
     # --- Mock Configuration ---
     # Configure the mock for os.path.splitext directly.
@@ -173,9 +174,15 @@ def test_is_text_file(mock_splitext, mock_open_file, unit_test_indexer, file_pat
 
     # --- Assert ---
     assert result == expected
-    # Check open was called correctly
-    mock_open_file.assert_called_once_with(file_path, 'rb') # Check opened in binary mode
-    # Check that the mock we configured was called by the implementation
+
+    # Verify that open() is called only when expected (i.e., when the extension
+    # is not definitively binary).
+    if should_open_file:
+        mock_open_file.assert_called_once_with(file_path, 'rb') # Check opened in binary mode
+    else:
+        mock_open_file.assert_not_called()
+
+    # Always verify splitext was called to check the extension first
     mock_splitext.assert_called_once_with(file_path)
 
 
