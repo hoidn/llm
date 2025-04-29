@@ -216,18 +216,17 @@ class SexpEvaluator:
             if op_str == "get_context":
                  logging.debug("Eval Primitive: 'get_context'")
                  context_input_args: Dict[str, Any] = {}
-                 for option_pair_expr in args: # Evaluate each option pair expression
-                      # Fix 1 START: Evaluate the option pair expression *itself*
-                      # The result should be the evaluated pair, e.g., ['query', 'find stuff']
-                      evaluated_pair = self._eval(option_pair_expr, env)
-                      # Fix 1 END
+                 for option_pair_expr in args: # Process each option pair expression
+                      # Validate the structure: must be [key_symbol, value_expression]
+                      if not (isinstance(option_pair_expr, list) and len(option_pair_expr) == 2 and isinstance(option_pair_expr[0], (Symbol, str))):
+                           raise SexpEvaluationError("Invalid 'get_context' option format. Expected (key_symbol value_expression) pair.", str(option_pair_expr))
 
-                      # Now validate the *result* of the evaluation
-                      if not (isinstance(evaluated_pair, list) and len(evaluated_pair) == 2 and isinstance(evaluated_pair[0], (Symbol, str))):
-                           # If the evaluated result isn't a (key value) list, it's an error
-                           raise SexpEvaluationError("Invalid 'get_context' option format after evaluation. Expected evaluated (key value) pair.", str(option_pair_expr))
+                      option_name_sym, value_expr = option_pair_expr[0], option_pair_expr[1]
+                      option_name = str(option_name_sym) # Convert symbol/str to string key
 
-                      option_name, evaluated_value = str(evaluated_pair[0]), evaluated_pair[1]
+                      # Evaluate *only* the value expression
+                      evaluated_value = self._eval(value_expr, env)
+
                       # Map Sexp option names to ContextGenerationInput fields
                       field_map = { "query": "query", "templateDescription": "templateDescription", "templateType": "templateType", "templateSubtype": "templateSubtype", "inputs": "inputs", "inheritedContext": "inheritedContext", "previousOutputs": "previousOutputs" }
                       if option_name in field_map: context_input_args[field_map[option_name]] = evaluated_value
@@ -283,29 +282,34 @@ class SexpEvaluator:
                 resolved_files: Optional[List[str]] = None
                 resolved_context_settings: Optional[Dict[str, Any]] = None
                 for arg_pair_expr in args:
-                    # Fix 1 START: Evaluate the argument pair expression *itself*
-                    # The result should be the evaluated pair, e.g., ['arg1', 'value1']
-                    evaluated_pair = self._eval(arg_pair_expr, env)
-                    # Fix 1 END
+                    # Validate the structure: must be [key_symbol, value_expression]
+                    if not (isinstance(arg_pair_expr, list) and len(arg_pair_expr) == 2 and isinstance(arg_pair_expr[0], (Symbol, str))):
+                        raise SexpEvaluationError(f"Invalid arg format for callable '{target_id}'. Expected (key_symbol value_expression). Got: {arg_pair_expr}", str(arg_pair_expr))
 
-                    # Validate the *result* of the evaluation
-                    if not (isinstance(evaluated_pair, list) and len(evaluated_pair) == 2 and isinstance(evaluated_pair[0], (Symbol, str))):
-                        raise SexpEvaluationError(f"Invalid arg format for callable '{target_id}'. Expected evaluated (key value). Got: {evaluated_pair}", str(arg_pair_expr))
+                    arg_name_sym, value_expr = arg_pair_expr[0], arg_pair_expr[1]
+                    arg_name = str(arg_name_sym) # Convert symbol/str to string key
 
-                    arg_name, evaluated_value = str(evaluated_pair[0]), evaluated_pair[1]
+                    # Evaluate *only* the value expression
+                    evaluated_value = self._eval(value_expr, env)
 
-                    # Handle special args or regular args
+                    # Handle special args or regular args based on the key name
                     if arg_name == "files":
-                        if not (isinstance(evaluated_value, list) and all(isinstance(i, str) for i in evaluated_value)): raise SexpEvaluationError(f"'files' arg must be list of strings", str(arg_pair_expr))
+                        if not (isinstance(evaluated_value, list) and all(isinstance(i, str) for i in evaluated_value)): raise SexpEvaluationError(f"'files' arg must evaluate to a list of strings. Got: {type(evaluated_value)}", str(arg_pair_expr))
                         resolved_files = evaluated_value
                     elif arg_name == "context":
                         if not isinstance(evaluated_value, dict):
+                             # Allow context to be provided as an evaluated list of pairs
                              if isinstance(evaluated_value, list) and all(isinstance(p, list) and len(p) == 2 for p in evaluated_value):
-                                 try: evaluated_value = dict(evaluated_value)
-                                 except (TypeError, ValueError) as conv_err: raise SexpEvaluationError(f"'context' arg evaluated to list of pairs, but failed dict conversion: {conv_err}", str(arg_pair_expr)) from conv_err
-                             else: raise SexpEvaluationError(f"'context' arg must evaluate to a dictionary or list of pairs. Got: {type(evaluated_value)}", str(arg_pair_expr))
+                                 try:
+                                     # Convert the list of pairs into a dictionary
+                                     evaluated_value = dict(evaluated_value)
+                                 except (TypeError, ValueError) as conv_err:
+                                     raise SexpEvaluationError(f"'context' arg evaluated to list of pairs, but failed dict conversion: {conv_err}", str(arg_pair_expr)) from conv_err
+                             else:
+                                 raise SexpEvaluationError(f"'context' arg must evaluate to a dictionary or a list of pairs. Got: {type(evaluated_value)}", str(arg_pair_expr))
                         resolved_context_settings = evaluated_value
                     else:
+                        # Store regular named arguments
                         resolved_named_args[arg_name] = evaluated_value
 
                 # Execute Tool or Task
