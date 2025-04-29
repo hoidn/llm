@@ -290,19 +290,31 @@ class BaseHandler:
             # Handle failure or unexpected result structure
             logging.debug("  Processing LLM call as FAILURE.")
             error_message = "Unknown LLM interaction error." # Default
-            # Check if manager_result is a dict and has an 'error' key
-            if isinstance(manager_result, dict) and "error" in manager_result:
-                # Attempt to extract specific message from dict
-                extracted_error = manager_result.get("error", error_message)
-                # Handle cases where 'error' itself might be a dict (like TaskError)
-                if isinstance(extracted_error, dict) and "message" in extracted_error:
-                    error_message = extracted_error["message"]
-                elif isinstance(extracted_error, str):
-                    error_message = extracted_error
-                # else keep the default 'Unknown...'
-                logging.debug(f"  Found error in dict: {error_message}") # Log extracted message
-            elif hasattr(manager_result, 'error') and manager_result.error: # Example if it were an object
-                 error_message = manager_result.error
+
+            # Robust Error Message Extraction
+            if isinstance(manager_result, dict):
+                # 1. Check 'error' key (could be string or dict)
+                extracted_error = manager_result.get("error")
+                if extracted_error:
+                    if isinstance(extracted_error, dict) and "message" in extracted_error:
+                        error_message = extracted_error["message"]
+                    elif isinstance(extracted_error, str):
+                        error_message = extracted_error
+                # 2. If no message from 'error', check 'content' key
+                elif "content" in manager_result and isinstance(manager_result["content"], str):
+                     error_message = manager_result["content"]
+                # 3. If still no message, check 'notes.error.message'
+                elif "notes" in manager_result and isinstance(manager_result["notes"], dict):
+                     notes_error = manager_result["notes"].get("error")
+                     if isinstance(notes_error, dict) and "message" in notes_error:
+                         error_message = notes_error["message"]
+                     # Also check error_details in notes
+                     elif "error_details" in manager_result["notes"] and isinstance(manager_result["notes"]["error_details"], dict):
+                         error_details_dict = manager_result["notes"]["error_details"]
+                         if "message" in error_details_dict:
+                             error_message = error_details_dict["message"]
+            elif hasattr(manager_result, 'error') and manager_result.error: # Check object attribute
+                 error_message = str(manager_result.error)
 
             logging.error(f"LLM call failed or returned unexpected result: {error_message}")
             # Use the extracted error_message when creating the TaskResult

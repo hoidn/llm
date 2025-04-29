@@ -312,9 +312,8 @@ def test_eval_invoke_not_found(evaluator, mock_parser, mock_task_system, mock_ha
     mock_task_system.find_template.return_value = None
     mock_handler.tool_executors = {}
 
-    # Match the actual SexpEvaluationError message format (Unbound symbol)
-    # The evaluator now treats unknown operators in lists as data, leading to symbol lookup failure
-    with pytest.raises(SexpEvaluationError, match=f"Unbound symbol: Name '{unknown_id}' is not defined"):
+    # Match the expected error message for unknown task/tool
+    with pytest.raises(SexpEvaluationError, match=f"Cannot invoke '{unknown_id}': Not a recognized tool or atomic task."):
         evaluator.evaluate_string(f"({unknown_id})")
 
 # Error Handling

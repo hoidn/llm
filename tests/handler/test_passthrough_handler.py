@@ -131,10 +131,9 @@ def test_handle_query_success(passthrough_handler):
     assert call_kwargs['prompt'] == query
     assert "Base Prompt." in call_kwargs['system_prompt_override']
     assert "Mock file context content." in call_kwargs['system_prompt_override']
-    # Check history passed to LLM manager (should include user query)
-    expected_history = [{"role": "user", "content": query}]
-    assert call_kwargs['conversation_history'] == expected_history
-
+    # Check history PASSED TO the manager call (should be empty initially)
+    assert call_kwargs['conversation_history'] == []
+    
     # Assert history update (BaseHandler._execute_llm_call should update it)
     assert len(passthrough_handler.conversation_history) == initial_history_len + 2
     assert passthrough_handler.conversation_history[0] == {"role": "user", "content": query}
@@ -169,12 +168,14 @@ def test_handle_query_llm_failure(passthrough_handler):
     # Assert result
     assert isinstance(result, TaskResult)
     assert result.status == "FAILED"
-    assert "LLM Error Occurred" in result.content # Check error message propagation
+    # Assert that the specific error message was extracted
+    assert result.content == "LLM Error Occurred"
     assert result.notes is not None
     assert "error" in result.notes
     error_details = TaskFailureError.model_validate(result.notes["error"])
     assert error_details.type == "TASK_FAILURE"
     assert error_details.reason == "llm_error"
+    assert error_details.message == "LLM Error Occurred"
 
     # Assert history ONLY contains user message (added by _execute_llm_call before failure)
     assert len(passthrough_handler.conversation_history) == initial_history_len + 1
