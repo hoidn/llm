@@ -5,7 +5,7 @@
 
 **Goal:** Implement Phase 4: Parallel Streams (Stream 1: Git Indexer, Stream 2: Sexp/Passthrough).
 
-**Current Sub-task:** Phase 4 - Stream 1: Implement Git Indexer functionality & Refactor Tests.
+**Current Sub-task:** Phase 4 - Stream 1: Implement Git Indexer functionality & Refactor Tests. Phase 4 - Stream 2: Implement System Tool Executors.
 
 **Relevant Files:**
 - `src/memory/indexers/git_repository_indexer.py`
@@ -16,10 +16,15 @@
 - `tests/memory/test_memory_system.py`
 - `src/memory/indexers/text_extraction.py` (Placeholder)
 - `tests/conftest.py`
+- `src/executors/system_executors.py`
+- `src/executors/system_executors_IDL.md`
+- `tests/executors/test_system_executors.py`
+- `src/system/models.py`
 
 **Related IDLs:**
 - `src/memory/indexers/git_repository_indexer_IDL.md`
 - `src/memory/memory_system_IDL.md`
+- `src/executors/system_executors_IDL.md`
 
 ## Recent Activity Log
 
@@ -46,10 +51,15 @@
     - Removed several heavily mocked unit tests (`test_index_repository_*`, `test_scan_repository`).
     - Fixed remaining unit test `test_is_text_file`.
     - Added integration tests using a new `git_repo` fixture in `conftest.py` to test indexing against a real temporary Git repository.
+- **Phase 4 - Stream 2: Implement System Executors:**
+    - Created `src/executors/system_executors.py` with `execute_get_context` and `execute_read_files`. Commit `5f9a56e`.
+    - Created `tests/executors/test_system_executors.py` with unit tests. Commit `cfeff54`.
+    - Ran tests, identified failures related to Pydantic model access, TaskFailureReason usage, and mock call signatures.
+    - Fixed executor logic and tests. Commit `d61b395`.
 
 ## Next Steps
 
-1.  **Complete Phase 4 - Stream 2:** Implement Sexp/Passthrough related tasks (if assigned to this stream).
+1.  **Complete Phase 4 - Stream 2:** Implement remaining Sexp/Passthrough related tasks (if assigned to this stream and not already covered by System Executors).
 2.  **Merge Streams:** Integrate changes from both Phase 4 streams.
 3.  **Implement Remaining Deferred Methods (Phase 2 Dependencies):**
     *   `LLMInteractionManager`: `execute_call` (needed by `BaseHandler`/`PassthroughHandler`).
@@ -71,3 +81,4 @@
 - Phase 3 implemented core execution logic (AtomicExecutor, SexpEvaluator, PassthroughHandler).
 - Phase 4 Stream 1 focused on adding the Git repository indexing capability. Requires `GitPython`. Placeholder `text_extraction` used.
 - Refactored `GitRepositoryIndexer` tests to favor integration tests over brittle unit tests, improving confidence and reducing mock complexity. Added `git_repo` fixture to `conftest.py`.
+- Phase 4 Stream 2 implemented system-level tool executors (`system:get_context`, `system:read_files`) used for direct invocation, potentially by the Dispatcher or SexpEvaluator.
