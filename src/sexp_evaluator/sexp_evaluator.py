@@ -158,21 +158,32 @@ class SexpEvaluator:
 
         # --- Handle Node Types ---
 
+        # 0. Symbol Lookup (Do this FIRST)
+        # Check if it's a symbol (string or Symbol object) but NOT a list
+        # This ensures we look up symbols unless they are the operator in a list being processed below.
+        if isinstance(node, (Symbol, str)) and not isinstance(node, list):
+            symbol_name = str(node) # Ensure string representation for lookup
+            logging.debug(f"Node is symbol: '{symbol_name}', looking up in env.")
+            try:
+                # Let NameError propagate up if lookup fails
+                value = env.lookup(symbol_name)
+                logging.debug(f"Symbol '{symbol_name}' resolved to: {type(value)}")
+                return value
+            except NameError:
+                # If lookup fails here, it's definitely an unbound symbol error during evaluation
+                raise SexpEvaluationError(f"Unbound symbol: {symbol_name}", expression=str(node)) from None
+
         # 1. Literals (Self-evaluating)
-        if isinstance(node, (str, int, float, bool)) or node is None:
+        if isinstance(node, (int, float, bool)) or node is None: # Removed str check here, handled above
             logging.debug(f"Node is literal: {node} ({type(node)})")
             return node
-
-        # 2. Symbols (Variable Lookup)
-        # Adjust check if parser uses a specific Symbol class
-        if isinstance(node, (Symbol, str)) and not isinstance(node, list):
-             # Assuming symbols are represented as strings or Symbol objects
-             symbol_name = str(node) # Ensure it's a string for lookup
-             logging.debug(f"Node is symbol: '{symbol_name}', looking up in env.")
-             # Let NameError propagate up if lookup fails
-             value = env.lookup(symbol_name)
-             logging.debug(f"Symbol '{symbol_name}' resolved to: {type(value)}")
-             return value
+        # Handle string literals separately if parser doesn't quote them distinctly
+        # If your parser returns strings for both symbols and string literals,
+        # you might need a more sophisticated check, but sexpdata usually distinguishes.
+        # Assuming strings that aren't symbols were handled by the literal check if parser returns them directly.
+        if isinstance(node, str): # Catch string literals specifically if needed
+            logging.debug(f"Node is string literal: {node}")
+            return node
 
         # 3. Lists (Function Calls / Special Forms)
         if isinstance(node, list):
@@ -300,11 +311,8 @@ class SexpEvaluator:
                       logging.error(f"Memory system reported error during get_context: {match_result.error}")
                       # Convert this to a TaskFailureError? Or let caller handle?
                       # Let's raise for now to signal failure clearly.
-                      raise TaskError( # Or a more specific ContextRetrievalError if defined
-                           type="TASK_FAILURE", # Or appropriate type
-                           reason="context_retrieval_failure",
-                           message=f"Context retrieval failed: {match_result.error}"
-                      )
+                      failure_details = TaskFailureError(type="TASK_FAILURE", reason="context_retrieval_failure", message=f"Context retrieval failed: {match_result.error}")
+                      raise SexpEvaluationError(f"Context retrieval failed", expression=str(node), error_details=str(failure_details.model_dump())) from None # Don't chain original TaskError model
 
                  # Return the list of file paths as per IDL
                  file_paths = [match.path for match in match_result.matches]
@@ -338,13 +346,32 @@ class SexpEvaluator:
             # (<identifier> (arg_name1 val_expr1) (arg_name2 val_expr2) ... )
             # Positional arguments are discouraged/disallowed for task/tool calls.
             logging.debug(f"Attempting general invocation for operator: {operator_node}")
-            target_id_node = operator_node
-            # Evaluate the operator node itself (it should be a symbol resolving to a name)
-            target_id = self._eval(target_id_node, env)
-            if not isinstance(target_id, str):
-                 raise SexpEvaluationError(f"Operator must evaluate to a string (task/tool name), got {type(target_id)}", expression=str(target_id_node))
+            target_id_obj = self._eval(operator_node, env)
+            if not isinstance(target_id_obj, str):
+                # If the operator doesn't evaluate to a string name, it's likely data or error
+                # Check if the original operator_node was a list itself (invalid call)
+                if isinstance(operator_node, list):
+                    raise SexpEvaluationError(f"Cannot use a list as an operator: {operator_node}", expression=str(node))
+                # Otherwise, maybe treat the whole list as literal data?
+                # Let's assume for now that if the operator isn't a string, it's an error.
+                raise SexpEvaluationError(f"Operator must evaluate to a string (task/tool name), got {type(target_id_obj)}", expression=str(operator_node))
+            target_id = target_id_obj
 
             logging.debug(f"Invocation target ID: '{target_id}'")
+            
+            # --- Check if target_id is a known callable BEFORE processing args ---
+            is_tool = target_id in self.handler.tool_executors
+            is_atomic_task = False
+            if not is_tool:
+                template_def = self.task_system.find_template(target_id)
+                if template_def and template_def.get("type") == "atomic":
+                    is_atomic_task = True
+            
+            # --- If NOT a known callable, treat as literal data list ---
+            if not is_tool and not is_atomic_task:
+                logging.debug(f"'{target_id}' is not a known tool or atomic task. Treating list as literal data.")
+                # Evaluate elements and return the list
+                return [self._eval(item, env) for item in node]
 
             # Evaluate named arguments
             resolved_named_args: Dict[str, Any] = {}
