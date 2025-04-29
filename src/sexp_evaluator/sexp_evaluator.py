@@ -190,7 +190,7 @@ class SexpEvaluator:
 
             # 3. Check if the operator name is a Primitive
             primitives = {"list", "get_context"}
-            elif operator_target_name in primitives:
+            if operator_target_name in primitives:
                 logging.debug(f"  _eval_list: Dispatching to Primitive: {operator_target_name}")
                 # Primitives receive unevaluated args and handle evaluation internally
                 return self._eval_primitive(operator_target_name, args, env)
