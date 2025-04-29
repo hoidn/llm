@@ -20,8 +20,8 @@ from src.system.models import (
     SUBTASK_CONTEXT_DEFAULTS, TaskError, TaskFailureError # Added TaskFailureError
 )
 from pydantic import ValidationError as PydanticValidationError # Renamed import
-# Import the executor error for testing
-from src.executors.atomic_executor import ParameterMismatchError
+# Import the executor and its error for testing
+from src.executors.atomic_executor import AtomicTaskExecutor, ParameterMismatchError
 
 # Example valid template structure
 VALID_ATOMIC_TEMPLATE = {
