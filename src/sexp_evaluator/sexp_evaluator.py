@@ -112,7 +112,7 @@ class SexpEvaluator:
         except SexpEvaluationError as e:
             logging.error(f"S-expression evaluation error: {e}")
             # Add expression context if not already present
-            if not e.expression:
+            if not hasattr(e, 'expression') or not e.expression: # Check if expression attribute exists and is set
                  e.expression = sexp_string
             raise # Re-raise evaluation error
         except Exception as e:
@@ -121,7 +121,11 @@ class SexpEvaluator:
             # Wrap underlying errors (including TaskFailureError) in SexpEvaluationError
             error_details_str = ""
             if hasattr(e, 'model_dump'):
-                 error_details_str = str(e.model_dump(exclude_none=True))
+                 # Use model_dump() instead of model_dump_json() for potentially non-JSON serializable content
+                 try:
+                     error_details_str = str(e.model_dump(exclude_none=True))
+                 except Exception: # Fallback if model_dump fails
+                     error_details_str = str(e)
             else:
                  error_details_str = str(e)
             raise SexpEvaluationError(f"Evaluation failed: {e}", expression=sexp_string, error_details=error_details_str) from e
@@ -164,31 +168,14 @@ class SexpEvaluator:
     def _eval_list(self, node_list: list, env: SexpEnvironment) -> Any:
         """Handles the evaluation of a non-empty list."""
         node_str = str(node_list) # For error reporting
-        if not node_list: # Should not happen if called from _eval, but safe check
-             return []
+        if not node_list: return [] # Should not happen
 
         operator_node = node_list[0]
-        args = node_list[1:]
+        args = node_list[1:] # Unevaluated args
 
-        # 1. Check for Special Forms (must be first, operate on unevaluated args)
-        if isinstance(operator_node, Symbol):
-            op_str = operator_node.value()
-            special_forms = {"if", "let", "bind", "progn"}
-            if op_str in special_forms:
-                logging.debug(f"Identified Special Form: {op_str}")
-                # Special forms handle their own argument evaluation
-                return self._eval_special_form(op_str, args, env)
+        # --- Refined Evaluation Flow ---
 
-        # 2. Evaluate Arguments (for primitives and general calls)
-        logging.debug(f"Evaluating arguments for operator: {operator_node}")
-        try:
-            evaluated_args = [self._eval(arg, env) for arg in args]
-            logging.debug(f"Evaluated args: {evaluated_args}")
-        except Exception as e:
-            logging.error(f"Error evaluating arguments for {operator_node}: {e}", exc_info=True)
-            raise SexpEvaluationError(f"Error evaluating arguments for {operator_node}", node_str) from e
-
-        # 3. Evaluate the Operator itself to determine target
+        # 1. Evaluate the Operator Node first to determine what it is
         logging.debug(f"Evaluating operator node: {operator_node}")
         operator_target_name = None # Keep track of original name if it was a symbol
         try:
@@ -208,23 +195,71 @@ class SexpEvaluator:
                 operator_target = operator_target_name # Use the name string
                 logging.debug(f"Operator symbol '{operator_target_name}' is unbound, treating name as target.")
             else:
-                # This case should be rare (evaluating a non-symbol operator expression failed)
                 raise SexpEvaluationError(f"Failed to evaluate operator expression: {operator_node}", node_str)
         except Exception as e:
              raise SexpEvaluationError(f"Unexpected error evaluating operator: {operator_node}", node_str) from e
 
-        # 4. Check for Primitives (using operator name)
-        primitives = {"list", "get_context"}
-        target_name_for_primitive_check = operator_target if isinstance(operator_target, str) else operator_target_name
-        if isinstance(target_name_for_primitive_check, str) and target_name_for_primitive_check in primitives:
-            logging.debug(f"Identified Primitive: {target_name_for_primitive_check}")
-            # Pass the *name* and *evaluated* args to the primitive handler
-            return self._eval_primitive(target_name_for_primitive_check, evaluated_args, env)
+        # 2. Check if the operator name (if it was a symbol) is a Special Form
+        special_forms = {"if", "let", "bind", "progn"}
+        if operator_target_name in special_forms:
+            logging.debug(f"Identified Special Form: {operator_target_name}")
+            # Special forms operate on *unevaluated* args
+            return self._eval_special_form(operator_target_name, args, env)
 
-        # 5. Handle General Invocation (Task, Tool, Callable)
-        logging.debug("Handling as General Invocation (Task/Tool/Callable)")
-        # Pass the evaluated operator target and evaluated args
-        return self._handle_invocation(operator_target, evaluated_args, env, node_str)
+        # 3. Check if the operator name (if it was a symbol) is a Primitive
+        primitives = {"list", "get_context"}
+        if operator_target_name in primitives:
+            logging.debug(f"Identified Primitive: {operator_target_name}")
+            # Primitives operate on *evaluated* args
+            try:
+                evaluated_args = [self._eval(arg, env) for arg in args]
+                logging.debug(f"Evaluated args for primitive '{operator_target_name}': {evaluated_args}")
+            except Exception as e:
+                logging.error(f"Error evaluating arguments for primitive {operator_target_name}: {e}", exc_info=True)
+                raise SexpEvaluationError(f"Error evaluating arguments for primitive {operator_target_name}", node_str) from e
+            return self._eval_primitive(operator_target_name, evaluated_args, env)
+
+        # 4. Handle General Invocation (Task, Tool, Callable)
+        logging.debug(f"Handling as General Invocation (Target: {operator_target})")
+        # General invocations use specific argument syntax: `(key value_expr)`
+        # We parse these *unevaluated* args here.
+        parsed_args: Dict[str, Any] = {"named": {}, "files": None, "context": None}
+        try:
+            for arg_pair in args: # Iterate through unevaluated argument pairs
+                if not (isinstance(arg_pair, list) and len(arg_pair) == 2 and isinstance(arg_pair[0], Symbol)):
+                    raise SexpEvaluationError("Invalid argument format for invocation. Expected (key value_expr)", str(arg_pair))
+                key_node, value_expr = arg_pair
+                key_str = key_node.value()
+                logging.debug(f"  Evaluating value for key '{key_str}'...")
+                value = self._eval(value_expr, env) # Evaluate the value expression
+                logging.debug(f"  Evaluated value for '{key_str}': {value}")
+
+                if key_str == "files":
+                    if not (isinstance(value, list) and all(isinstance(i, str) for i in value)):
+                        raise SexpEvaluationError("'files' arg must evaluate to a list of strings", node_str)
+                    parsed_args["files"] = value
+                elif key_str == "context":
+                    # Context value should already be evaluated dict or list of pairs
+                    if isinstance(value, list) and all(isinstance(p, list) and len(p)==2 for p in value):
+                         # Convert list of evaluated pairs to dict
+                         try: value = {str(k):v for k,v in value}
+                         except (ValueError, TypeError): raise SexpEvaluationError("Failed converting 'context' list of pairs", node_str)
+                    elif not isinstance(value, dict):
+                         raise SexpEvaluationError("'context' arg must evaluate to a dict or list of pairs", node_str)
+                    parsed_args["context"] = value
+                else:
+                    parsed_args["named"][key_str] = value
+            logging.debug(f"Parsed invocation args: {parsed_args}")
+        except Exception as e:
+             logging.error(f"Error parsing arguments for invocation {operator_node}: {e}", exc_info=True)
+             # Ensure we wrap the error correctly
+             if isinstance(e, SexpEvaluationError):
+                 raise # Re-raise if already the correct type
+             else:
+                 raise SexpEvaluationError(f"Error parsing arguments for invocation {operator_node}", node_str) from e
+
+        # Pass the evaluated operator target and the fully *parsed* arguments dictionary
+        return self._handle_invocation(operator_target, parsed_args, env, node_str)
 
     def _eval_special_form(self, op_str: str, args: list, env: SexpEnvironment) -> Any:
         """Evaluates special forms like if, let, bind, progn."""
@@ -292,48 +327,42 @@ class SexpEvaluator:
 
         elif op_str == "get_context":
             context_input_args: Dict[str, Any] = {}
-            # Arguments are already evaluated, expect dicts like {'key': value}
+            # Arguments are already evaluated. Expect list of ['key', value] pairs
+            # from the arguments being evaluated `(list 'key' value_expr)` forms.
             for arg in evaluated_args:
-                 # Change: Expect evaluated args to be dicts now
-                 if isinstance(arg, dict):
-                     context_input_args.update(arg)
+                 if isinstance(arg, list) and len(arg) == 2 and isinstance(arg[0], str):
+                     key = arg[0]
+                     value = arg[1]
+                     context_input_args[key] = value
                  else:
-                     # For now, assume args evaluate to key-value pairs from the list primitive
-                     raise SexpEvaluationError(f"Invalid argument type for 'get_context': {type(arg)}. Expected key-value pair from (list 'key' value).", node_repr)
+                     raise SexpEvaluationError(f"Invalid argument type for 'get_context': {type(arg)}. Expected evaluated ['key', value] pair.", node_repr)
 
             if not context_input_args: raise SexpEvaluationError("'get_context' requires options", node_repr)
 
             logging.debug(f"  get_context received evaluated args: {context_input_args}")
 
             # Map to ContextGenerationInput fields (keys should be strings now)
-            final_input_args = {}
-            field_map = {
-                "query": "query", "templateDescription": "templateDescription", "templateType": "templateType",
-                "templateSubtype": "templateSubtype", "inputs": "inputs", "inheritedContext": "inheritedContext",
-                "previousOutputs": "previousOutputs"
-            }
-            for key, value in context_input_args.items():
-                 # Convert list-of-pairs for inputs if needed (value is already evaluated)
-                 if key == "inputs" and isinstance(value, list):
-                     try: value = {str(k): v for k, v in value}
-                     except (TypeError, ValueError): raise SexpEvaluationError("Failed converting 'inputs' list of pairs to dict", node_repr)
-
-                 mapped_key = field_map.get(key, key) # Use mapped key or original if not mapped
-                 final_input_args[mapped_key] = value
-
+            # No mapping needed if keys match ContextGenerationInput fields
             try:
-                context_input = ContextGenerationInput(**final_input_args)
+                # Convert inputs if needed (e.g., from list of pairs if passed that way)
+                if "inputs" in context_input_args and isinstance(context_input_args["inputs"], list):
+                    try: context_input_args["inputs"] = {str(k):v for k,v in context_input_args["inputs"]}
+                    except (ValueError, TypeError): raise SexpEvaluationError("Failed converting 'inputs' list of pairs to dict", node_repr)
+
+                context_input = ContextGenerationInput(**context_input_args)
             except Exception as e:
-                raise SexpEvaluationError(f"Failed creating ContextGenerationInput from args {final_input_args}: {e}", node_repr) from e
+                raise SexpEvaluationError(f"Failed creating ContextGenerationInput from args {context_input_args}: {e}", node_repr) from e
 
             logging.debug(f"Calling memory_system.get_relevant_context_for with: {context_input}")
             try:
                 match_result: AssociativeMatchResult = self.memory_system.get_relevant_context_for(context_input)
             except Exception as e:
                  logging.exception(f"MemorySystem.get_relevant_context_for failed: {e}")
-                 raise SexpEvaluationError("Context retrieval failed internally", node_repr) from e
+                 # Wrap underlying error
+                 raise SexpEvaluationError("Context retrieval failed internally", node_repr, error_details=str(e)) from e
 
             if match_result.error:
+                 # Raise error if MemorySystem indicated failure
                  raise SexpEvaluationError("Context retrieval failed", node_repr, error_details=match_result.error)
 
             file_paths = [m.path for m in match_result.matches if isinstance(m, MatchTuple)]
@@ -343,150 +372,100 @@ class SexpEvaluator:
              # Should not be reached
              raise SexpEvaluationError(f"Internal error: Unknown primitive '{op_str}'", node_repr)
 
-    def _handle_invocation(self, operator_target: Any, evaluated_args: list, env: SexpEnvironment, node_str: str) -> Any:
-        """Handles the invocation of tasks, tools, or other callables."""
-        logging.debug(f"Handle Invocation START: Target={operator_target}, Args={evaluated_args}")
+    def _handle_invocation(self, operator_target: Any, parsed_args: Dict[str, Any], env: SexpEnvironment, node_str: str) -> Any:
+        """Handles the invocation of tasks, tools, or other callables using pre-parsed arguments."""
+        logging.debug(f"Handle Invocation START: Target={operator_target}, ParsedArgs={parsed_args}")
 
-        # 1. Parse evaluated args into structured format
+        # Determine target ID if operator was originally a symbol name
+        target_id = operator_target if isinstance(operator_target, str) else None
+
         try:
-            parsed_args = self._parse_invocation_args(evaluated_args, node_str)
-        except SexpEvaluationError: # Propagate parsing errors
+            if target_id: # Target is identified by name (tool or task)
+                # Pass the parsed_args dict directly to the helper
+                result = self._invoke_target_by_name(target_id, parsed_args, node_str)
+            elif callable(operator_target):
+                # Target is an evaluated callable (e.g., from environment)
+                logging.info(f"Invoking evaluated callable: {operator_target}")
+                try:
+                    # Pass named args only from the parsed dict
+                    result = operator_target(**parsed_args["named"])
+                    # Note: Callables might return non-TaskResult types.
+                except Exception as e:
+                    raise SexpEvaluationError(f"Error invoking callable {operator_target}: {e}", node_str) from e
+            else:
+                # Operator evaluated to something non-callable and wasn't a symbol name
+                raise SexpEvaluationError(f"Cannot apply non-callable operator: {operator_target} (type: {type(operator_target)})", node_str)
+
+            logging.debug(f"Handle Invocation END: Result Type={type(result)}")
+            # Ensure the result is a valid TaskResult if it came from a tool/task
+            # Callables might return other types, which is allowed.
+            if target_id: # Only validate if it was a named tool/task call
+                 if isinstance(result, dict): # Allow dicts that can be validated
+                    try: result = TaskResult.model_validate(result)
+                    except Exception as e: raise SexpEvaluationError(f"Target '{target_id}' result validation failed: {e}", node_str) from e
+                 elif not isinstance(result, TaskResult): # Must be TaskResult object otherwise
+                     raise SexpEvaluationError(f"Target '{target_id}' returned unexpected type {type(result)}", node_str)
+
+            return result
+
+        except SexpEvaluationError: # Propagate evaluation errors cleanly
              raise
         except Exception as e:
-             raise SexpEvaluationError(f"Failed to parse arguments for invocation: {e}", node_str) from e
+            # Catch errors during execution (e.g., from _invoke_target_by_name)
+            logging.exception(f"Error during invocation handling for target '{operator_target}': {e}")
+            # Wrap underlying error
+            raise SexpEvaluationError(f"Invocation of '{operator_target}' failed: {e}", node_str, error_details=str(e)) from e
 
-        # 2. Determine target type and invoke
-        if isinstance(operator_target, str): # Target is a name
-            target_id = operator_target
-            # Invoke by name (tool or task)
-            # _invoke_target handles lookup and execution
-            result = self._invoke_target(target_id, None, parsed_args, node_str)
-
-        elif callable(operator_target):
-            # Target is an evaluated callable (e.g., from environment)
-            logging.info(f"Invoking evaluated callable: {operator_target}")
-            try:
-                # Pass named args only? Or positional? Needs convention.
-                # Assuming named args for now.
-                result = operator_target(**parsed_args["named"])
-                # Wrap result if it's not a TaskResult? Depends on callable contract.
-                # For simplicity, assume callables return compatible results or raise.
-            except Exception as e:
-                raise SexpEvaluationError(f"Error invoking callable {operator_target}: {e}", node_str) from e
-        else:
-            # Operator evaluated to something non-callable and wasn't a symbol name
-            raise SexpEvaluationError(f"Cannot apply non-callable operator: {operator_target} (type: {type(operator_target)})", node_str)
-
-        logging.debug(f"Handle Invocation END: Result Type={type(result)}")
-        return result # Should be TaskResult if tool/task invoked
-
-    def _parse_invocation_args(self, evaluated_args: list, node_str: str) -> Dict[str, Any]:
-        """
-        Parses evaluated arguments into named_args, files, context.
-        Expects evaluated_args to be a list of ['key', value] pairs from _eval.
-        """
-        logging.debug(f"Parsing invocation args: {evaluated_args}")
-        resolved_named_args: Dict[str, Any] = {}
-        resolved_files: Optional[List[str]] = None
-        resolved_context_settings: Optional[Dict[str, Any]] = None
-
-        for arg in evaluated_args:
-            # Expect each evaluated arg to be a ['key', value] pair from _eval
-            if isinstance(arg, list) and len(arg) == 2 and isinstance(arg[0], str):
-                 key = arg[0] # Key is already string from pair evaluation
-                 value = arg[1] # Value is already evaluated from pair evaluation
-                 logging.debug(f"  Processing parsed arg pair: Key='{key}', Value={value}")
-                 if key == "files":
-                     if not (isinstance(value, list) and all(isinstance(i, str) for i in value)):
-                         raise SexpEvaluationError("'files' arg must evaluate to a list of strings", node_str)
-                     resolved_files = value
-                 elif key == "context":
-                     # Now context value should already be evaluated dict or list of pairs
-                     if isinstance(value, list) and all(isinstance(p, list) and len(p)==2 for p in value):
-                          # Convert list of evaluated pairs to dict
-                          try: value = {str(k):v for k,v in value}
-                          except (ValueError, TypeError): raise SexpEvaluationError("Failed converting 'context' list of pairs", node_str)
-                     elif not isinstance(value, dict):
-                          raise SexpEvaluationError("'context' arg must evaluate to a dict or list of pairs", node_str)
-                     resolved_context_settings = value
-                 else:
-                     resolved_named_args[key] = value
-            else:
-                 raise SexpEvaluationError(f"Unsupported argument format in call. Expected evaluated ['key', value] pair. Got: {arg}", node_str)
-
-
-        result = {
-            "named": resolved_named_args,
-            "files": resolved_files,
-            "context": resolved_context_settings
-        }
-        logging.debug(f"Parsed args result: {result}")
-        return result
-
-    def _invoke_target(self, target_id: str, target_callable: Any, parsed_args: Dict[str, Any], node_str: str) -> TaskResult:
-        """Invokes the target (tool or task) and validates the result."""
-        logging.debug(f"Invoking target: ID='{target_id}', ParsedArgs={parsed_args}")
+    def _invoke_target_by_name(self, target_id: str, parsed_args: Dict[str, Any], node_str: str) -> TaskResult:
+        """Invokes the target (tool or task) by name and ensures TaskResult return."""
+        logging.debug(f"Invoking target by name: ID='{target_id}', ParsedArgs={parsed_args}")
+        # Extract args from the pre-parsed dictionary
         named_args = parsed_args["named"]
         files = parsed_args["files"]
         context_settings = parsed_args["context"]
 
-        try:
-            # 1. Check Handler Tools
-            if target_id in self.handler.tool_executors:
-                logging.info(f"Invoking direct tool: '{target_id}'")
-                # Note: Tools might not expect files/context directly. Adapt if needed.
-                if files is not None or context_settings is not None:
-                     logging.warning(f"Tool '{target_id}' invoked with 'files' or 'context' args, which might not be supported by the tool executor.")
-                tool_result_obj = self.handler._execute_tool(target_id, named_args)
-                logging.debug(f"  Raw tool result: {tool_result_obj} (Type={type(tool_result_obj)})")
+        # 1. Check Handler Tools
+        if target_id in self.handler.tool_executors:
+            logging.info(f"Invoking direct tool: '{target_id}'")
+            # Note: Tools might not expect files/context directly. Adapt if needed.
+            if files is not None or context_settings is not None:
+                 logging.warning(f"Tool '{target_id}' invoked with 'files' or 'context' args, which might not be supported by the tool executor.")
+            # _execute_tool should return a TaskResult object or raise
+            tool_result_obj = self.handler._execute_tool(target_id, named_args)
+            logging.debug(f"  Tool '{target_id}' returned: {tool_result_obj}")
+            # Ensure it's a TaskResult object before returning
+            if not isinstance(tool_result_obj, TaskResult):
+                 # This indicates an issue in _execute_tool's contract fulfillment
+                 logging.error(f"Tool executor '{target_id}' did not return a TaskResult object (got {type(tool_result_obj)}).")
+                 raise SexpEvaluationError(f"Tool '{target_id}' execution returned invalid type.", node_str)
+            return tool_result_obj
 
-                # Validate/Convert result to TaskResult
-                if isinstance(tool_result_obj, dict):
-                    try: tool_result_obj = TaskResult.model_validate(tool_result_obj)
-                    except Exception as e: raise SexpEvaluationError(f"Tool '{target_id}' result validation failed: {e}", node_str) from e
-                elif not isinstance(tool_result_obj, TaskResult):
-                    raise SexpEvaluationError(f"Tool '{target_id}' returned unexpected type {type(tool_result_obj)}", node_str)
+        # 2. Check Task System Atomic Templates
+        template_def = self.task_system.find_template(target_id)
+        if template_def and template_def.get("type") == "atomic":
+            logging.info(f"Invoking atomic task: '{target_id}'")
+            context_mgmt_obj: Optional[ContextManagement] = None
+            if context_settings:
+                try: context_mgmt_obj = ContextManagement.model_validate(context_settings)
+                except Exception as e: raise SexpEvaluationError(f"Invalid 'context' settings for task '{target_id}': {e}", node_str) from e
 
-                logging.debug(f"  Validated tool TaskResult: {tool_result_obj}")
-                return tool_result_obj
+            request = SubtaskRequest(
+                task_id=f"sexp_task_{target_id}_{id(node_str)}", # Use node_str hash/id?
+                type="atomic",
+                name=target_id,
+                inputs=named_args,
+                file_paths=files,
+                context_management=context_mgmt_obj
+            )
+            # execute_atomic_template should return a TaskResult object or raise
+            task_result_obj = self.task_system.execute_atomic_template(request)
+            logging.debug(f"  Task '{target_id}' returned: {task_result_obj}")
+            # Ensure it's a TaskResult object before returning
+            if not isinstance(task_result_obj, TaskResult):
+                 # This indicates an issue in execute_atomic_template's contract fulfillment
+                 logging.error(f"Task executor for '{target_id}' did not return a TaskResult object (got {type(task_result_obj)}).")
+                 raise SexpEvaluationError(f"Task '{target_id}' execution returned invalid type.", node_str)
+            return task_result_obj
 
-            # 2. Check Task System Atomic Templates
-            template_def = self.task_system.find_template(target_id)
-            if template_def and template_def.get("type") == "atomic":
-                logging.info(f"Invoking atomic task: '{target_id}'")
-                context_mgmt_obj: Optional[ContextManagement] = None
-                if context_settings:
-                    try: context_mgmt_obj = ContextManagement.model_validate(context_settings)
-                    except Exception as e: raise SexpEvaluationError(f"Invalid 'context' settings for task '{target_id}': {e}", node_str) from e
-
-                request = SubtaskRequest(
-                    task_id=f"sexp_task_{target_id}_{id(node_str)}", # Use node_str hash/id?
-                    type="atomic",
-                    name=target_id,
-                    inputs=named_args,
-                    file_paths=files,
-                    context_management=context_mgmt_obj
-                )
-                task_result_obj = self.task_system.execute_atomic_template(request)
-                logging.debug(f"  Raw task result: {task_result_obj} (Type={type(task_result_obj)})")
-
-                # Validate/Convert result to TaskResult
-                if isinstance(task_result_obj, dict):
-                    try: task_result_obj = TaskResult.model_validate(task_result_obj)
-                    except Exception as e: raise SexpEvaluationError(f"Task '{target_id}' result validation failed: {e}", node_str) from e
-                elif not isinstance(task_result_obj, TaskResult):
-                     raise SexpEvaluationError(f"Task '{target_id}' returned unexpected type {type(task_result_obj)}", node_str)
-
-                logging.debug(f"  Validated task TaskResult: {task_result_obj}")
-                return task_result_obj
-
-            # 3. Not Found
-            raise SexpEvaluationError(f"Cannot invoke '{target_id}': Not a recognized tool or atomic task.", node_str)
-
-        except SexpEvaluationError: # Propagate evaluation errors
-             raise
-        except Exception as e:
-            # Catch errors during execution (e.g., from _execute_tool, execute_atomic_template)
-            logging.exception(f"Error during execution of target '{target_id}': {e}")
-            # Wrap underlying error
-            raise SexpEvaluationError(f"Execution of '{target_id}' failed: {e}", node_str, error_details=str(e)) from e
+        # 3. Not Found
+        raise SexpEvaluationError(f"Cannot invoke '{target_id}': Not a recognized tool or atomic task.", node_str)
