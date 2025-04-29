@@ -5,7 +5,7 @@ Handles workflow composition logic (sequences, conditionals, loops, task/tool ca
 """
 
 import logging
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional # Removed Tuple, Union
 
 # Core System Dependencies (Injected)
 from src.task_system.task_system import TaskSystem
@@ -513,8 +513,8 @@ class SexpEvaluator:
                 # Operator evaluated to something non-callable and wasn't a symbol name
                 raise SexpEvaluationError(f"Cannot apply non-callable operator: {operator_target} (type: {type(operator_target)})", node_str)
 
-            logging.debug(f"Handle Invocation END: Result Type={type(result)}")
-            
+            logging.debug(f"--- _handle_invocation END: Result Type={type(result)}") # Added --- prefix
+
             # Ensure the result is a valid TaskResult if it came from a tool/task
             # Callables might return other types, which is allowed.
             if isinstance(operator_target, str): # Only validate if it was a named tool/task call
