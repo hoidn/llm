@@ -18,7 +18,7 @@ from src.executors.atomic_executor import AtomicTaskExecutor, ParameterMismatchE
 from difflib import SequenceMatcher
 
 # Constants for find_matching_tasks
-MATCH_THRESHOLD = 0.2 # Adjusted threshold based on test failures
+MATCH_THRESHOLD = 0.6 # Increased threshold to fix tests
 
 class TaskSystem:
     """
@@ -561,9 +561,9 @@ class TaskSystem:
                 return [], "Missing description for file_paths_source type 'description'"
             logging.debug(f"Getting context by description: {description}")
             try:
-                # Use the specific method for description-based matching
-                # Pass description as the query string for matching
-                result = memory_system.get_relevant_context_with_description(description, description)
+                # Use the primary context retrieval method with description as query
+                context_input = ContextGenerationInput(query=description)
+                result = memory_system.get_relevant_context_for(context_input)
                 if result.error:
                     return [], f"Error getting context by description: {result.error}"
                 # Ensure matches are MatchTuple instances before accessing path

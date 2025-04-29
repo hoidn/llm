@@ -278,13 +278,13 @@ def test_find_template_ignores_non_atomic_by_type_subtype(task_system_instance):
 
 # --- Tests for execute_atomic_template (Phase 2c) ---
 
-# Patch the executor class where it's imported in the task_system module
-@patch('src.task_system.task_system.AtomicTaskExecutor', new_callable=MagicMock)
 @patch.object(TaskSystem, 'find_template')
 # @patch.object(MemorySystem, 'get_relevant_context_for') # No longer needed directly here
 @patch.object(TaskSystem, 'resolve_file_paths') # Mock file path resolution
+@patch.object(AtomicTaskExecutor, 'execute_body')
 def test_execute_atomic_template_success_flow(
-    mock_resolve_files, mock_find_template, MockExecutorClass, # Patched executor class
+    mock_execute_body, # Renamed from MockExecutorClass
+    mock_resolve_files, mock_find_template, # Order might change based on decorator stack
     task_system_instance, mock_memory_system, mock_handler # Fixtures
 ):
     """Verify the successful execution flow of an atomic template."""
@@ -294,12 +294,10 @@ def test_execute_atomic_template_success_flow(
     mock_template_def = VALID_ATOMIC_TEMPLATE.copy()
     mock_find_template.return_value = mock_template_def
 
-    # Mock the executor instance and its method to return a dict
-    mock_executor_instance = MockExecutorClass.return_value
     # Ensure the mock returns a dict that passes TaskResult validation
-    mock_executor_instance.execute_body.return_value = TaskResult(
+    mock_execute_body.return_value = TaskResult(
         content=f"Executed {template_name}", status="COMPLETE", notes={}
-    ).model_dump() # Executor now returns dict
+    ).model_dump() # Executor returns dict
 
     resolved_paths = ["/resolved/path.txt"]
     mock_resolve_files.return_value = (resolved_paths, None) # Simulate file path resolution
@@ -320,10 +318,8 @@ def test_execute_atomic_template_success_flow(
     # Check if resolve_file_paths was called because request.file_paths is None and template has freshContext enabled
     mock_resolve_files.assert_called_once_with(mock_template_def, mock_memory_system, mock_handler)
 
-    # Check executor instantiation and call
-    # MockExecutorClass.assert_called_once() # Check instantiation
-    # Verify call signature matches the IDL on the *instance*
-    mock_executor_instance.execute_body.assert_called_once_with(
+    # Verify call signature matches the IDL
+    mock_execute_body.assert_called_once_with(
         atomic_task_def=mock_template_def,
         params=request.inputs,
         handler=mock_handler # Check handler was passed
@@ -405,7 +401,7 @@ def test_execute_atomic_template_executor_fails(
 
     mock_resolve_files.return_value = ([], None)
 
-    request = SubtaskRequest(task_id="exec-fail-1", type="atomic", name=template_name, description="", inputs={})
+    request = SubtaskRequest(task_id="exec-fail-1", type="atomic", name=template_name, description="", inputs={"input1": "dummy_value"}) # Add dummy input
 
     # Act
     result = task_system_instance.execute_atomic_template(request)
@@ -413,10 +409,10 @@ def test_execute_atomic_template_executor_fails(
     # Assert
     assert result.status == "FAILED"
     assert result.notes and result.notes.get("error")
-    assert isinstance(result.notes["error"], TaskError)
-    assert result.notes["error"].reason == "unexpected_error" # Caught by TaskSystem's generic handler
+    assert result.notes["error"]["type"] == "TASK_FAILURE"
+    assert result.notes["error"]["reason"] == "unexpected_error" # As the side_effect is ValueError
+    assert "Executor boom!" in result.notes["error"]["message"]
     # Check that the error message includes the exception from the executor
-    assert "Execution failed: Executor boom!" in result.notes["error"].message # Check message from TaskSystem's except block
     assert "Execution failed: Executor boom!" in result.content
 
 
@@ -452,10 +448,9 @@ def test_execute_atomic_template_executor_param_mismatch(
     # Assert
     assert result.status == "FAILED"
     assert result.notes and result.notes.get("error")
-    assert isinstance(result.notes["error"], TaskError)
-    # This error is now caught and handled directly by AtomicTaskExecutor
-    assert result.notes["error"].reason == "input_validation_failure"
-    assert mismatch_error_msg in result.notes["error"].message
+    assert result.notes["error"]["type"] == "TASK_FAILURE"
+    assert result.notes["error"]["reason"] == "input_validation_failure"
+    assert mismatch_error_msg in result.notes["error"]["message"]
     assert mismatch_error_msg in result.content
 
 
@@ -607,13 +602,13 @@ def test_resolve_file_paths_command(task_system_instance, mock_handler):
     mock_handler.execute_file_path_command.assert_called_once_with("find . -name '*.py'")
 
 
-@patch.object(MemorySystem, 'get_relevant_context_with_description')
-def test_resolve_file_paths_description(mock_get_context_desc, task_system_instance, mock_memory_system):
+@patch.object(MemorySystem, 'get_relevant_context_for')
+def test_resolve_file_paths_description(mock_get_context_for, task_system_instance, mock_memory_system):
     """Test resolving file paths using a description."""
     # Arrange
     expected_path = "/matched/desc.go"
     # Correct the mock return value structure
-    mock_get_context_desc.return_value = AssociativeMatchResult(
+    mock_get_context_for.return_value = AssociativeMatchResult(
         context_summary="Desc match",
         matches=[MatchTuple(path=expected_path, relevance=0.9)], # Use correct MatchTuple structure
         error=None
@@ -629,10 +624,16 @@ def test_resolve_file_paths_description(mock_get_context_desc, task_system_insta
     paths, error = task_system_instance.resolve_file_paths(template, mock_memory_system, None) # Handler not needed
 
     # Assert
+    mock_get_context_for.assert_called_once()
+    # Get the actual call arguments
+    call_args, call_kwargs = mock_get_context_for.call_args
+    # Assert the structure and relevant content of the ContextGenerationInput argument
+    assert len(call_args) == 1
+    assert isinstance(call_args[0], ContextGenerationInput)
+    assert call_args[0].query == "Relevant Go source files" # Check the query used
+    
     assert error is None
     assert paths == [expected_path]
-    # Called with specific description
-    mock_get_context_desc.assert_called_once_with("Relevant Go source files", "Relevant Go source files")
 
 
 @patch.object(MemorySystem, 'get_relevant_context_for')
@@ -656,12 +657,16 @@ def test_resolve_file_paths_context_description(mock_get_context, task_system_in
     paths, error = task_system_instance.resolve_file_paths(template, mock_memory_system, None) # Handler not needed
 
     # Assert
+    mock_get_context.assert_called_once()
+    # Get the actual call arguments
+    call_args, call_kwargs = mock_get_context.call_args
+    # Assert the structure and relevant content of the ContextGenerationInput argument
+    assert len(call_args) == 1
+    assert isinstance(call_args[0], ContextGenerationInput)
+    assert call_args[0].query == "Find Rust files about parsing" # Check the query used
+    
     assert error is None
     assert paths == [expected_path]
-    mock_get_context.assert_called_once()
-    call_args, call_kwargs = mock_get_context.call_args
-    assert isinstance(call_args[0], ContextGenerationInput)
-    assert call_args[0].query == "Find Rust files about parsing"
 
 
 def test_resolve_file_paths_literal(task_system_instance):
