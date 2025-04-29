@@ -6,10 +6,10 @@ import pytest
 from unittest.mock import MagicMock, call, ANY, patch
 from src.sexp_evaluator.sexp_evaluator import SexpEvaluator
 from src.sexp_evaluator.sexp_environment import SexpEnvironment
-from src.system.errors import SexpSyntaxError, SexpEvaluationError, TaskError
+from src.system.errors import SexpSyntaxError, SexpEvaluationError # Remove TaskError import from here
 from src.system.models import (
     TaskResult, SubtaskRequest, ContextGenerationInput, AssociativeMatchResult,
-    MatchTuple, TaskFailureError, ContextManagement
+    MatchTuple, TaskFailureError, ContextManagement, TaskError # Import TaskError model here
 )
 
 # Import Symbol if parser uses it, otherwise use str
