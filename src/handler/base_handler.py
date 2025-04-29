@@ -1,23 +1,26 @@
 import logging
 import os
-from typing import Any, Dict, List, Optional, Callable
+from typing import Any, Dict, List, Optional, Callable, Type
 
 # Import Phase 0 components
 from src.handler.file_access import FileAccessManager
 from src.handler import command_executor
 from src.handler.file_context_manager import FileContextManager
-from src.handler.llm_interaction_manager import LLMInteractionManager # Added import
+from src.handler.llm_interaction_manager import LLMInteractionManager
 
+# Import shared types
+from src.system.models import TaskResult, TaskError # Assuming TaskResult is defined here
 
 # Forward declarations for type hinting cycles
 # from src.task_system.task_system import TaskSystem
 # from src.memory.memory_system import MemorySystem
-# from src.system.models import TaskResult # Assuming TaskResult is defined
 
 
 class BaseHandler:
     """
     Base class for handlers, providing core functionalities.
+
+    Implements the contract defined in src/handler/base_handler_IDL.md.
     """
 
     def __init__(
@@ -60,7 +63,7 @@ class BaseHandler:
         )  # Key: tool name, Value: tool spec
         self.conversation_history: List[Dict[str, Any]] = (
             []
-        )  # Placeholder for history management
+        )  # Stores {"role": "user/assistant", "content": ...} dicts
         self.debug_mode: bool = False
         self.base_system_prompt: str = self.config.get(
             "base_system_prompt", "You are a helpful assistant."
@@ -103,24 +106,19 @@ class BaseHandler:
         logging.info(f"Stored executor and spec for tool: '{tool_name}'")
 
         # --- Deferred/Complex Part: Registering with the live pydantic-ai Agent ---
-        # Dynamically registering tools with an already instantiated pydantic-ai Agent
-        # can be complex. The typical pattern is to define tools with decorators
-        # *before* Agent instantiation, or pass a list of tools during init.
-        # For now, we log a warning and acknowledge this step is needed but complex.
-        # TODO: Determine how tool registration interacts with LLMInteractionManager.
-        # Does the manager need to be re-initialized or have a registration method?
+        # This remains complex. Tools might need to be passed per-call via _execute_llm_call
+        # using the stored specs/executors, or the agent might need re-initialization.
         if self.llm_manager and self.llm_manager.agent:
             logging.warning(
-                f"Tool '{tool_name}' spec/executor stored, but dynamic registration with the "
-                "LLMInteractionManager's agent instance is complex and currently NOT implemented. "
-                "Manager/Agent may need re-initialization or a dynamic registration mechanism."
+                f"Tool '{tool_name}' spec/executor stored. Dynamic registration with the live "
+                "pydantic-ai Agent is complex. Tools may need to be passed explicitly during LLM calls."
             )
         else:
             logging.warning(
-                f"Tool '{tool_name}' spec/executor stored, but LLMInteractionManager or its agent is not available for registration."
+                f"Tool '{tool_name}' spec/executor stored, but LLMInteractionManager or its agent is not available."
             )
 
-        return True  # Return True as we stored the spec/executor successfully
+        return True
 
     def execute_file_path_command(self, command: str) -> List[str]:
         """
@@ -155,7 +153,27 @@ class BaseHandler:
             file_paths = command_executor.parse_file_paths_from_output(result["output"])
             if self.debug_mode:
                 self.log_debug(f"Parsed file paths: {file_paths}")
-            return file_paths
+            # Ensure paths are absolute relative to the execution CWD
+            abs_paths = [os.path.abspath(os.path.join(cwd or os.getcwd(), p)) for p in file_paths]
+            # Filter for existence using FileAccessManager's resolved path logic
+            existing_paths = []
+            for p in abs_paths:
+                try:
+                    # Use file_manager's internal logic to check existence within its scope
+                    resolved = self.file_manager._resolve_path(p) # Use internal method carefully
+                    if os.path.exists(resolved): # Check existence of resolved path
+                         existing_paths.append(resolved) # Return the resolved, absolute path
+                    elif self.debug_mode:
+                         self.log_debug(f"Path '{p}' (resolved to '{resolved}') does not exist or is outside base path.")
+                except ValueError: # Path outside base path
+                     if self.debug_mode:
+                         self.log_debug(f"Path '{p}' is outside the allowed base path.")
+                except Exception as e: # Other errors
+                     logging.warning(f"Error checking path existence for '{p}': {e}")
+
+            if self.debug_mode:
+                self.log_debug(f"Filtered existing absolute file paths: {existing_paths}")
+            return existing_paths
         else:
             logging.error(
                 f"Command execution failed (Exit Code: {result['exit_code']}): {command}. Error: {result['error']}"
@@ -168,8 +186,7 @@ class BaseHandler:
         """
         self.conversation_history = []
         logging.info("Conversation history reset.")
-        # LLMInteractionManager currently appears stateless per call, no reset needed there.
-        # If manager becomes stateful, add: self.llm_manager.reset_state()
+        # LLMInteractionManager is stateless per call, no reset needed there.
 
     def log_debug(self, message: str) -> None:
         """
@@ -179,7 +196,6 @@ class BaseHandler:
             message: The message string to log.
         """
         if self.debug_mode:
-            # Using standard logging for consistency, could also just print
             logging.debug(f"[DEBUG] {message}")
 
     def set_debug_mode(self, enabled: bool) -> None:
@@ -191,127 +207,208 @@ class BaseHandler:
         """
         self.debug_mode = enabled
         status = "enabled" if enabled else "disabled"
-        # Log the change using the logger itself
         logging.info(f"Debug mode {status}.")
         self.log_debug(
             "Debug logging is now active."
-        )  # Log a message using the new state
+        )
 
         # Pass debug state to LLMInteractionManager
         if self.llm_manager:
             self.llm_manager.set_debug_mode(enabled)
 
-    # --- Start Phase 2, Set A: Behavior Structure ---
-    # Placeholder for the core LLM interaction logic using the pydantic-ai agent
     def _execute_llm_call(
         self,
         prompt: str,
         system_prompt_override: Optional[str] = None,
-        tools_override: Optional[List[Callable]] = None,
-        output_type_override: Optional[type] = None,
-    ) -> Any: # Should return TaskResult or similar structure
+        tools_override: Optional[List[Callable]] = None, # Or tool specs? Check pydantic-ai
+        output_type_override: Optional[Type] = None,
+    ) -> TaskResult:
         """
-        Internal method to execute a call via the LLMInteractionManager.
-        (Implementation deferred to Phase 2, Set B - Now Delegated)
+        Internal method to execute a call via the LLMInteractionManager and update history.
+
+        Args:
+            prompt: The user's input prompt.
+            system_prompt_override: Optional override for the system prompt.
+            tools_override: Optional override for tools available to the LLM.
+            output_type_override: Optional override for the expected output structure.
+
+        Returns:
+            A TaskResult object representing the outcome.
         """
-        logging.debug("Delegating LLM call to LLMInteractionManager.")
+        self.log_debug(f"Executing LLM call for prompt: '{prompt[:100]}...'")
         if not self.llm_manager:
             logging.error("LLMInteractionManager not initialized, cannot execute LLM call.")
-            # Return error TaskResult
-            raise NotImplementedError("LLM Manager not available - error TaskResult return needed")
+            error_details: TaskError = { # type: ignore # Trusting dict structure matches TaskError union
+                "type": "TASK_FAILURE",
+                "reason": "dependency_error",
+                "message": "LLMInteractionManager not available.",
+            }
+            return TaskResult(status="FAILED", content="LLM Manager not initialized.", notes={"error": error_details})
 
-        # Delegate the call, passing necessary context
-        # Note: The manager executes the call, but BaseHandler updates history
-        try:
-            result = self.llm_manager.execute_call(
-                prompt=prompt,
-                conversation_history=self.conversation_history, # Pass current history
-                system_prompt_override=system_prompt_override,
-                tools_override=tools_override,
-                output_type_override=output_type_override,
+        # --- Prepare tools for the call if needed ---
+        # This is where dynamic tool provision could happen.
+        # If tools_override is not provided, maybe pass self.registered_tools?
+        # The format needed by pydantic-ai (specs vs functions) is crucial here.
+        # For now, we pass tools_override directly as received.
+        current_tools = tools_override
+        # Example: If pydantic-ai needs functions, map registered specs to executors
+        # if not tools_override and self.registered_tools:
+        #     current_tools = list(self.tool_executors.values()) # Simplistic example
+
+        # Delegate the call to the manager
+        manager_result = self.llm_manager.execute_call(
+            prompt=prompt,
+            conversation_history=self.conversation_history, # Pass current history
+            system_prompt_override=system_prompt_override,
+            tools_override=current_tools, # Pass potentially prepared tools
+            output_type_override=output_type_override,
+        )
+
+        # Process the result from the manager
+        if manager_result["success"]:
+            assistant_content = manager_result.get("content", "")
+            usage_data = manager_result.get("usage")
+            tool_calls = manager_result.get("tool_calls") # TODO: Handle tool calls if needed
+
+            self.log_debug(f"LLM call successful. Response: '{str(assistant_content)[:100]}...'")
+
+            # Update conversation history
+            self.conversation_history.append({"role": "user", "content": prompt})
+            # Ensure assistant content is stored as string
+            self.conversation_history.append({"role": "assistant", "content": str(assistant_content)})
+            self.log_debug(f"Conversation history updated. New length: {len(self.conversation_history)}")
+
+            # TODO: Process tool_calls if the agent returned any. This might involve
+            # calling _execute_tool and potentially making another LLM call with the results.
+            # This simple implementation assumes no tool calls or handles them elsewhere.
+            if tool_calls:
+                 logging.warning(f"LLM agent returned tool calls, but handling is not implemented in _execute_llm_call: {tool_calls}")
+
+
+            # Return success TaskResult
+            return TaskResult(
+                status="COMPLETE",
+                content=str(assistant_content), # Ensure content is string
+                notes={"usage": usage_data} if usage_data else {}
+            )
+        else:
+            # Handle failure
+            error_message = manager_result.get("error", "Unknown LLM interaction error.")
+            logging.error(f"LLM call failed: {error_message}")
+            error_details: TaskError = { # type: ignore
+                "type": "TASK_FAILURE",
+                "reason": "llm_error",
+                "message": error_message,
+            }
+            return TaskResult(
+                status="FAILED",
+                content=error_message,
+                notes={"error": error_details}
             )
 
-            # TODO: Process the result from the manager (which should be TaskResult-like)
-            # TODO: Update self.conversation_history based on the interaction (prompt + result.content)
-            # Example (needs refinement based on actual result structure):
-            # if result and result.status == "COMPLETE": # Assuming TaskResult structure
-            #     self.conversation_history.append({"role": "user", "content": prompt})
-            #     self.conversation_history.append({"role": "assistant", "content": result.content})
-            #     logging.debug("Conversation history updated after successful LLM call.")
-
-            return result # Return the result from the manager
-
-        except NotImplementedError as nie:
-             # Re-raise deferred implementation errors from the manager for now
-             logging.error(f"LLM call execution deferred in LLMInteractionManager: {nie}")
-             raise nie
-        except Exception as e:
-            logging.error(f"Error executing LLM call via manager: {e}", exc_info=True)
-            # Return error TaskResult
-            raise NotImplementedError("LLM call error handling - error TaskResult return needed")
-
-    # --- End Phase 2, Set B ---
-
-
-    # Placeholder for potential private methods identified in Phase 1 clarification
-    # These would likely be implemented in subclasses or later refactoring.
     def _build_system_prompt(
         self, template: Optional[str] = None, file_context: Optional[str] = None
     ) -> str:
-        """Builds the system prompt (TBD - Phase 2)."""
-        # Implementation deferred to Phase 2
-        logging.warning("_build_system_prompt called, but implementation is deferred.")
-        # --- Start Phase 2, Set A: Behavior Structure ---
-        # 1. Start with `final_prompt = self.base_system_prompt`.
-        # 2. If `template` (representing a template-specific system prompt part) is provided:
-        #    - Append or prepend the `template` content to `final_prompt` (e.g., `final_prompt += "\n" + template`).
-        # 3. If `file_context` is provided:
-        #    - Append or prepend the `file_context` to `final_prompt` (e.g., `final_prompt += "\n\nFile Context:\n" + file_context`).
-        # 4. Return `final_prompt`.
-        # --- End Phase 2, Set A ---
-        raise NotImplementedError(
-            "_build_system_prompt implementation deferred to Phase 2"
-        )
+        """
+        Builds the complete system prompt for an LLM call.
+
+        Args:
+            template: Optional string containing template-specific instructions.
+            file_context: Optional string containing context from relevant files.
+
+        Returns:
+            The final system prompt string.
+        """
+        final_prompt_parts = [self.base_system_prompt]
+
+        if template:
+            final_prompt_parts.append(template)
+
+        if file_context:
+            final_prompt_parts.append(f"\nRelevant File Context:\n```\n{file_context}\n```")
+
+        final_prompt = "\n\n".join(final_prompt_parts).strip()
+        self.log_debug(f"Built system prompt (length {len(final_prompt)}): '{final_prompt[:200]}...'")
+        return final_prompt
 
     def _get_relevant_files(self, query: str) -> List[str]:
-        """Gets relevant files based on query (TBD - Phase 2)."""
-        # Implementation deferred to Phase 2
-        logging.warning("_get_relevant_files called, but implementation is deferred.")
         """Gets relevant files based on query (Delegated to FileContextManager)."""
-        # Implementation deferred to Phase 2 - Now delegated
-        logging.warning("_get_relevant_files called, delegating to FileContextManager.")
+        self.log_debug(f"Getting relevant files for query: '{query[:100]}...'")
         return self.file_context_manager.get_relevant_files(query)
 
     def _create_file_context(self, file_paths: List[str]) -> str:
-        """Creates context string from file paths (TBD - Phase 2)."""
-        # Implementation deferred to Phase 2
-        logging.warning("_create_file_context called, but implementation is deferred.")
         """Creates context string from file paths (Delegated to FileContextManager)."""
-        # Implementation deferred to Phase 2 - Now delegated
-        logging.warning("_create_file_context called, delegating to FileContextManager.")
+        self.log_debug(f"Creating file context for paths: {file_paths}")
         return self.file_context_manager.create_file_context(file_paths)
 
     def _execute_tool(
         self, tool_name: str, tool_input: Dict[str, Any]
-    ) -> Dict[str, Any]: # Should return TaskResult
-        """Executes a registered tool directly (TBD - Phase 2)."""
-        # Implementation deferred to Phase 2
-        logging.warning("_execute_tool called, but implementation is deferred.")
-        # --- Start Phase 2, Set A: Behavior Structure ---
-        # 1. Look up the executor function in `self.tool_executors`:
-        #    - `executor_func = self.tool_executors.get(tool_name)`
-        # 2. If `executor_func` is not found:
-        #    - Log an error.
-        #    - Return a FAILED TaskResult indicating the tool is not registered or found.
-        # 3. Try to execute the function:
-        #    - `result = executor_func(tool_input)` # Assuming executor takes input dict
-        #    - (Note: Executor might return a TaskResult directly, or raw data that needs formatting)
-        # 4. Catch exceptions during execution:
-        #    - Log the error.
-        #    - Return a FAILED TaskResult detailing the execution error.
-        # 5. Format the result:
-        #    - If the executor returned a raw value, wrap it in a COMPLETE TaskResult.
-        #    - If it returned a TaskResult, return it directly.
-        # 6. Return the TaskResult.
-        # --- End Phase 2, Set A ---
-        raise NotImplementedError("_execute_tool implementation deferred to Phase 2")
+    ) -> TaskResult:
+        """
+        Executes a registered tool directly by name.
+
+        Args:
+            tool_name: The name of the tool to execute.
+            tool_input: Dictionary containing the arguments for the tool.
+
+        Returns:
+            A TaskResult object representing the outcome of the tool execution.
+        """
+        self.log_debug(f"Executing tool '{tool_name}' with input: {tool_input}")
+        executor_func = self.tool_executors.get(tool_name)
+
+        if not executor_func:
+            error_message = f"Tool '{tool_name}' not found in registered executors."
+            logging.error(error_message)
+            error_details: TaskError = { # type: ignore
+                "type": "TASK_FAILURE",
+                "reason": "template_not_found", # Closest reason? Or add 'tool_not_found'?
+                "message": error_message,
+            }
+            return TaskResult(status="FAILED", content=error_message, notes={"error": error_details})
+
+        try:
+            # Execute the tool function
+            result = executor_func(tool_input)
+            self.log_debug(f"Tool '{tool_name}' executed successfully. Result: {result}")
+
+            # Check if the result is already a TaskResult dictionary
+            # (More robust check might be needed depending on TaskResult structure)
+            if isinstance(result, TaskResult):
+                 # If it's already a TaskResult object, return it directly
+                 return result
+            elif isinstance(result, dict) and "status" in result and "content" in result:
+                # Attempt to reconstruct TaskResult if it looks like one
+                try:
+                    # Ensure notes is a dict, handle potential missing keys gracefully
+                    notes = result.get("notes", {})
+                    if not isinstance(notes, dict):
+                        notes = {"original_notes": notes} # Wrap if not a dict
+
+                    # Reconstruct TaskResult, handling potential missing optional fields
+                    return TaskResult(
+                        status=result.get("status", "COMPLETE"), # Default status if missing
+                        content=result.get("content", ""), # Default content if missing
+                        criteria=result.get("criteria"),
+                        parsedContent=result.get("parsedContent"),
+                        notes=notes
+                    )
+                except Exception as parse_exc:
+                     logging.warning(f"Tool '{tool_name}' returned a dict, but failed to parse as TaskResult: {parse_exc}. Wrapping raw result.")
+                     # Fallback to wrapping raw result if parsing fails
+                     return TaskResult(status="COMPLETE", content=str(result), notes={"tool_output": result})
+
+            else:
+                # Wrap raw result in a TaskResult
+                return TaskResult(status="COMPLETE", content=str(result), notes={"tool_output": result})
+
+        except Exception as e:
+            error_message = f"Error executing tool '{tool_name}': {e}"
+            logging.error(error_message, exc_info=True)
+            error_details: TaskError = { # type: ignore
+                "type": "TASK_FAILURE",
+                "reason": "tool_execution_error",
+                "message": error_message,
+                "details": {"tool_name": tool_name, "input": tool_input}
+            }
+            return TaskResult(status="FAILED", content=error_message, notes={"error": error_details})
