@@ -782,10 +782,10 @@ def test_resolve_file_paths_unknown_type(task_system_instance):
 def test_find_matching_tasks_simple(task_system_instance):
     """Test basic matching and scoring."""
     # Arrange
-    template1 = {"name": "task1", "type": "atomic", "subtype": "a", "description": "analyze python code"}
-    template2 = {"name": "task2", "type": "atomic", "subtype": "b", "description": "summarize text document"}
+    template1 = {"name": "task1", "type": "atomic", "subtype": "a", "description": "analyze python code", "params": {}}
+    template2 = {"name": "task2", "type": "atomic", "subtype": "b", "description": "summarize text document", "params": {}}
     template3 = {"name": "task3", "type": "composite", "subtype": "c", "description": "analyze python data"} # Non-atomic
-    template4 = {"name": "task4", "type": "atomic", "subtype": "d", "description": "find python examples"}
+    template4 = {"name": "task4", "type": "atomic", "subtype": "d", "description": "find python examples", "params": {}}
     task_system_instance.register_template(template1)
     task_system_instance.register_template(template2)
     task_system_instance.register_template(template3) # Should be ignored
@@ -823,9 +823,9 @@ def test_find_matching_tasks_empty_input(task_system_instance):
 
 def test_find_matching_tasks_sorting(task_system_instance):
     """Test that results are sorted by score."""
-    template1 = {"name": "task1", "type": "atomic", "subtype": "a", "description": "short"} # Low overlap
-    template2 = {"name": "task2", "type": "atomic", "subtype": "b", "description": "medium length description"} # Medium overlap
-    template3 = {"name": "task3", "type": "atomic", "subtype": "c", "description": "very long and detailed description"} # High overlap
+    template1 = {"name": "task1", "type": "atomic", "subtype": "a", "description": "short", "params": {}} # Low overlap
+    template2 = {"name": "task2", "type": "atomic", "subtype": "b", "description": "medium length description", "params": {}} # Medium overlap
+    template3 = {"name": "task3", "type": "atomic", "subtype": "c", "description": "very long and detailed description", "params": {}} # High overlap
     task_system_instance.register_template(template1)
     task_system_instance.register_template(template2)
     task_system_instance.register_template(template3)
