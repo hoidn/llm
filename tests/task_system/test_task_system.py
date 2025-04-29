@@ -92,8 +92,9 @@ def test_init(mock_memory_system):
     """Test initialization sets defaults correctly."""
     ts = TaskSystem(memory_system=mock_memory_system)
     assert ts.memory_system == mock_memory_system
-    assert ts.templates == {}
-    assert ts.template_index == {}
+    assert hasattr(ts, '_registry')
+    assert ts._registry.templates == {}
+    assert ts._registry.template_index == {}
     assert ts._test_mode is False
     assert ts._handler_cache == {}
 
