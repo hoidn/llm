@@ -101,14 +101,14 @@ def apply_mock_pydantic_ai():
     mock_openai_model.reset_mock()
     mock_anthropic_model.reset_mock()
 
-    # Patch the lookup location within base_handler module specifically
+    # Patch the lookup location within base_handler module specifically (REMOVED - no longer needed)
     # This is more robust than sys.modules patching if imports are complex
     with (
-        patch("src.handler.base_handler.Agent", mock_agent_class),
-        patch("src.handler.base_handler.OpenAIModel", mock_openai_model),
-        patch("src.handler.base_handler.AnthropicModel", mock_anthropic_model),
-        patch("src.handler.base_handler.PYDANTIC_AI_AVAILABLE", True), # Assume available for most tests
-        # Also patch the PYDANTIC_AI_AVAILABLE constant within the llm_interaction_manager module
+        # Patches for Agent, OpenAIModel, AnthropicModel, PYDANTIC_AI_AVAILABLE in base_handler removed
+        # as base_handler no longer directly uses them after refactoring.
+
+        # Patch the PYDANTIC_AI_AVAILABLE constant within the llm_interaction_manager module,
+        # as LLMInteractionManager *does* use it.
         patch("src.handler.llm_interaction_manager.PYDANTIC_AI_AVAILABLE", True),
     ):
         yield  # Run the test with mocks active
