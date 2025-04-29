@@ -347,44 +347,60 @@ class SexpEvaluator:
         parsed_args: Dict[str, Any] = {"named": {}, "files": None, "context": None}
         
         try:
+            # --- Corrected Argument Parsing and Evaluation ---
+            expected_symbol_type = Symbol if 'Symbol' in locals() else str # Determine expected type for keys
+
             for arg_pair in args:
                 # Validate the structure: must be (Symbol ValueExpression)
-                if not (isinstance(arg_pair, list) and len(arg_pair) == 2 and isinstance(arg_pair[0], Symbol)):
+                if not (isinstance(arg_pair, list) and len(arg_pair) == 2 and isinstance(arg_pair[0], expected_symbol_type)):
                     raise SexpEvaluationError(
-                        "Invalid argument format for invocation. Expected (key_symbol value_expression)", 
+                        "Invalid argument format for invocation. Expected (key_symbol value_expression)",
                         str(arg_pair)
                     )
 
                 key_node, value_expr = arg_pair
-                key_str = key_node.value()
+                # Get the string representation of the key symbol
+                key_str = key_node.value() if isinstance(key_node, Symbol) else key_node
 
                 logging.debug(f"  Evaluating value for key '{key_str}'...")
-                # Evaluate the value expression
+                # <<< FIX: Evaluate the value_expr using self._eval >>>
                 value = self._eval(value_expr, env)
                 logging.debug(f"  Evaluated value for '{key_str}': {value} (Type: {type(value)})")
 
-                # Assign to the correct category in parsed_args
+                # Assign the *evaluated* value to the correct category
                 if key_str == "files":
                     # Ensure evaluated value is a list of strings
                     if not (isinstance(value, list) and all(isinstance(i, str) for i in value)):
-                        raise SexpEvaluationError(f"'files' arg must evaluate to a list of strings, got {type(value)}", node_str)
+                        # Add the problematic value to the error message
+                        raise SexpEvaluationError(f"'files' arg must evaluate to a list of strings, got {type(value)}: {value!r}", node_str)
                     parsed_args["files"] = value
                 elif key_str == "context":
+                    # <<< FIX: Convert list of pairs *after* evaluation >>>
                     # If the evaluated value is a list of pairs, convert to dict
                     if isinstance(value, list) and all(isinstance(p, list) and len(p)==2 for p in value):
                         try:
-                            value = {str(k):v for k,v in value} # Assumes keys in pairs are strings or Symbols
-                            logging.debug(f"  Converted context list of pairs to dict: {value}")
+                            context_dict = {}
+                            for pair in value:
+                                # Keys in the pairs could be symbols or strings from evaluation
+                                key = pair[0]
+                                val = pair[1]
+                                key_str_inner = key.value() if isinstance(key, Symbol) else str(key)
+                                context_dict[key_str_inner] = val
+                            value = context_dict # Replace list with converted dict
+                            logging.debug(f"  Converted evaluated context list of pairs to dict: {value}")
                         except (ValueError, TypeError) as conv_err:
                             raise SexpEvaluationError(f"Failed converting evaluated 'context' list of pairs to dict: {conv_err}", node_str)
+
                     # Value must now be a dictionary (either originally or after conversion)
                     if not isinstance(value, dict):
-                        raise SexpEvaluationError(f"'context' arg must evaluate to a dict or list of pairs, got {type(value)}", node_str)
+                         # Add the problematic value to the error message
+                        raise SexpEvaluationError(f"'context' arg must evaluate to a dict or list of pairs, got {type(value)}: {value!r}", node_str)
                     parsed_args["context"] = value
                 else:
-                    # Regular named argument
+                    # Regular named argument - store the evaluated value
                     parsed_args["named"][key_str] = value
-            
+            # --- End Corrected Argument Parsing ---
+
             logging.debug(f"Parsed invocation args: {parsed_args}")
 
             # Determine if target is a name string or a callable
