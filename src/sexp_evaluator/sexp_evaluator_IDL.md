@@ -58,9 +58,18 @@ module src.sexp_evaluator.sexp_evaluator {
         //     - **Dispatch Order & Explicitness:** Follows a strict dispatch order:
         //   1. Check if operator is a symbol matching a **Special Form** (`if`, `let`, `bind`, `progn`, `quote`, `lambda`). If yes, execute special form logic (which handles its own argument evaluation).
         //   2. Else, check if operator is a symbol matching a **Primitive** (`list`, `get_context`). If yes, execute primitive logic (which evaluates necessary arguments internally).
-        //   3. Else, check if operator is a symbol matching a **known Task/Tool name** (via TaskSystem/Handler lookup). If yes, delegate to `_handle_invocation` (passing the *name* and *unevaluated* args).
-        //   4. Else, if operator is a symbol but **not recognized** as executable (special form, primitive, task, tool), raise an "Undefined function or task" error. **Guideline:** Do not implicitly treat unrecognized symbols as data constructors.
-        //   5. Else (operator is not a symbol, e.g., another list): Evaluate the operator expression itself using `_eval`. If the result is a callable object (e.g., a lambda/closure), delegate to `_handle_invocation` (passing the *callable* and *unevaluated* args). If the result is not callable, raise a "Cannot apply non-callable operator" error.
+        //   3. Else (operator is not a special form or primitive symbol, OR operator is a complex expression like another list): Evaluate the operator expression itself using `_eval`. Let the result be `evaluated_operator`.
+        //      a. If `evaluated_operator` is a **Closure object** (a function created by `lambda`): Trigger the **Function Application** process:
+        //          i.   Evaluate the argument expressions (`<arg1>`, `<arg2>`, ...) provided in the *call* within the *current calling environment*.
+        //          ii.  Create a *new environment frame* for the function execution.
+        //          iii. Link the new frame's parent to the environment **captured within the Closure object** (this provides lexical scope).
+        //          iv.  Bind the function's formal parameter names (from the Closure) to the evaluated argument values in the new frame. Check for correct argument count.
+        //          v.   Evaluate the function's body expression(s) (from the Closure) sequentially within the new environment frame.
+        //          vi.  The result of the last body expression is the result of the function application. Return this result.
+        //      b. Else, if `evaluated_operator` is a **known Task/Tool name string**, delegate to `_handle_invocation` (passing the *name* and *unevaluated* args from the original list).
+        //      c. Else, if `evaluated_operator` is a **Python callable** (but not a Closure, e.g., a built-in function exposed directly), delegate to `_handle_invocation` (passing the *callable* and *unevaluated* args).
+        //      d. Else, if `evaluated_operator` is a symbol but **not recognized** as executable (special form, primitive, task, tool, Closure, callable), raise an "Undefined function or task" error.
+        //      e. Else (e.g., `evaluated_operator` is a non-callable value like a list or number), raise a "Cannot apply non-callable operator" error.
         // - `(lambda (param...) body...)`: **Special Form.** Creates and returns a first-class function object (a Closure). Does *not* evaluate the parameter list or body immediately. The returned Closure captures the parameter list (symbols), the body AST nodes, and the current lexical environment (the environment where the lambda expression itself was evaluated). This captured environment enables lexical scoping when the function is later applied.
         
         // **Note on Closures:** A Closure is a runtime object representing a function created by `lambda` (or potentially `define` if added later). It bundles the function's code (parameter list and body AST) with a reference to the environment where it was defined, enabling lexical scoping. It is a first-class value that can be passed around, stored in variables, and invoked later.
