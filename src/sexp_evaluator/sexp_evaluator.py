@@ -332,9 +332,9 @@ class SexpEvaluator:
                                     raise SexpEvaluationError(f"'context' arg evaluated to list of pairs, but failed dict conversion: {conv_err}", str(arg_pair_expr)) from conv_err
                             else:
                                 raise SexpEvaluationError(f"'context' arg must evaluate to a dictionary or a list of pairs. Got: {type(evaluated_value)}", str(arg_pair_expr))
-                       resolved_context_settings = evaluated_value # Assign the dict
-                   else:
-                       # Store regular named arguments
+                        resolved_context_settings = evaluated_value # Assign the dict
+                    else:
+                        # Store regular named arguments
                         resolved_named_args[arg_name] = evaluated_value
 
                 # Execute Tool or Task
