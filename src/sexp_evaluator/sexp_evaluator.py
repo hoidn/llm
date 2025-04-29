@@ -168,7 +168,7 @@ class SexpEvaluator:
     def _eval_list(self, node_list: list, env: SexpEnvironment) -> Any:
         """Handles the evaluation of a non-empty list."""
         node_str = str(node_list) # For error reporting
-        if not node_list: return [] # Should not happen
+        if not node_list: return []
 
         operator_node = node_list[0]
         args = node_list[1:] # Unevaluated args
@@ -203,7 +203,7 @@ class SexpEvaluator:
         special_forms = {"if", "let", "bind", "progn"}
         if operator_target_name in special_forms:
             logging.debug(f"Identified Special Form: {operator_target_name}")
-            # Special forms operate on *unevaluated* args
+            # Special forms handle their own *unevaluated* args
             return self._eval_special_form(operator_target_name, args, env)
 
         # 3. Check if the operator name (if it was a symbol) is a Primitive
@@ -212,51 +212,64 @@ class SexpEvaluator:
             logging.debug(f"Identified Primitive: {operator_target_name}")
             # Primitives operate on *evaluated* args
             try:
+                # Evaluate each argument expression *before* calling the primitive handler
                 evaluated_args = [self._eval(arg, env) for arg in args]
                 logging.debug(f"Evaluated args for primitive '{operator_target_name}': {evaluated_args}")
             except Exception as e:
                 logging.error(f"Error evaluating arguments for primitive {operator_target_name}: {e}", exc_info=True)
+                # Wrap error if needed
+                if isinstance(e, SexpEvaluationError): raise
                 raise SexpEvaluationError(f"Error evaluating arguments for primitive {operator_target_name}", node_str) from e
+            # Pass the list of *evaluated* results to the primitive handler
             return self._eval_primitive(operator_target_name, evaluated_args, env)
 
-        # 4. Handle General Invocation (Task, Tool, Callable)
+        # 4. Handle General Invocation (Task, Tool, or Callable)
+        # This path is taken if the operator is not a special form or primitive.
+        # It requires arguments in the specific `(key value_expr)` format.
         logging.debug(f"Handling as General Invocation (Target: {operator_target})")
-        # General invocations use specific argument syntax: `(key value_expr)`
-        # We parse these *unevaluated* args here.
         parsed_args: Dict[str, Any] = {"named": {}, "files": None, "context": None}
         try:
-            for arg_pair in args: # Iterate through unevaluated argument pairs
+            for arg_pair in args: # Iterate through *unevaluated* argument pairs
+                # Validate the structure: must be (Symbol ValueExpression)
                 if not (isinstance(arg_pair, list) and len(arg_pair) == 2 and isinstance(arg_pair[0], Symbol)):
-                    raise SexpEvaluationError("Invalid argument format for invocation. Expected (key value_expr)", str(arg_pair))
+                    raise SexpEvaluationError("Invalid argument format for invocation. Expected (key_symbol value_expression)", str(arg_pair))
+
                 key_node, value_expr = arg_pair
                 key_str = key_node.value()
-                logging.debug(f"  Evaluating value for key '{key_str}'...")
-                value = self._eval(value_expr, env) # Evaluate the value expression
-                logging.debug(f"  Evaluated value for '{key_str}': {value}")
 
+                logging.debug(f"  Evaluating value for key '{key_str}'...")
+                # Evaluate the value expression *now*
+                value = self._eval(value_expr, env)
+                logging.debug(f"  Evaluated value for '{key_str}': {value} (Type: {type(value)})")
+
+                # Assign to the correct category in parsed_args
                 if key_str == "files":
+                    # Ensure evaluated value is a list of strings
                     if not (isinstance(value, list) and all(isinstance(i, str) for i in value)):
-                        raise SexpEvaluationError("'files' arg must evaluate to a list of strings", node_str)
+                        raise SexpEvaluationError(f"'files' arg must evaluate to a list of strings, got {type(value)}", node_str)
                     parsed_args["files"] = value
                 elif key_str == "context":
-                    # Context value should already be evaluated dict or list of pairs
+                    # If the evaluated value is a list of pairs, convert to dict
                     if isinstance(value, list) and all(isinstance(p, list) and len(p)==2 for p in value):
-                         # Convert list of evaluated pairs to dict
-                         try: value = {str(k):v for k,v in value}
-                         except (ValueError, TypeError): raise SexpEvaluationError("Failed converting 'context' list of pairs", node_str)
-                    elif not isinstance(value, dict):
-                         raise SexpEvaluationError("'context' arg must evaluate to a dict or list of pairs", node_str)
+                         try:
+                             value = {str(k):v for k,v in value} # Assumes keys in pairs are strings or Symbols
+                             logging.debug(f"  Converted context list of pairs to dict: {value}")
+                         except (ValueError, TypeError) as conv_err:
+                             raise SexpEvaluationError(f"Failed converting evaluated 'context' list of pairs to dict: {conv_err}", node_str)
+                    # Value must now be a dictionary (either originally or after conversion)
+                    if not isinstance(value, dict):
+                         raise SexpEvaluationError(f"'context' arg must evaluate to a dict or list of pairs, got {type(value)}", node_str)
                     parsed_args["context"] = value
                 else:
+                    # Regular named argument
                     parsed_args["named"][key_str] = value
             logging.debug(f"Parsed invocation args: {parsed_args}")
+
         except Exception as e:
-             logging.error(f"Error parsing arguments for invocation {operator_node}: {e}", exc_info=True)
+             logging.error(f"Error parsing/evaluating arguments for invocation {operator_node}: {e}", exc_info=True)
              # Ensure we wrap the error correctly
-             if isinstance(e, SexpEvaluationError):
-                 raise # Re-raise if already the correct type
-             else:
-                 raise SexpEvaluationError(f"Error parsing arguments for invocation {operator_node}", node_str) from e
+             if isinstance(e, SexpEvaluationError): raise
+             raise SexpEvaluationError(f"Error parsing/evaluating arguments for invocation {operator_node}", node_str) from e
 
         # Pass the evaluated operator target and the fully *parsed* arguments dictionary
         return self._handle_invocation(operator_target, parsed_args, env, node_str)
@@ -323,29 +336,34 @@ class SexpEvaluator:
 
         if op_str == "list":
             logging.debug(f"Eval 'list' END: -> {evaluated_args}")
-            return evaluated_args # Primitive just returns the evaluated args
+            # The `list` primitive simply returns its already evaluated arguments
+            return evaluated_args
 
         elif op_str == "get_context":
             context_input_args: Dict[str, Any] = {}
             # Arguments are already evaluated. Expect list of ['key', value] pairs
-            # from the arguments being evaluated `(list 'key' value_expr)` forms.
+            # (because args to get_context should be (list 'key' value_expr) forms,
+            # and the 'list' primitive returns the evaluated ['key', value] pair).
             for arg in evaluated_args:
+                 # Check if the evaluated argument is the expected ['key', value] pair
                  if isinstance(arg, list) and len(arg) == 2 and isinstance(arg[0], str):
                      key = arg[0]
                      value = arg[1]
                      context_input_args[key] = value
                  else:
-                     raise SexpEvaluationError(f"Invalid argument type for 'get_context': {type(arg)}. Expected evaluated ['key', value] pair.", node_repr)
+                     # If an argument wasn't evaluated to ['key', value], it's an error
+                     # This indicates the caller used incorrect syntax for the get_context args
+                     raise SexpEvaluationError(f"Invalid argument structure for 'get_context': {arg}. Expected evaluated ['key', value] pair (use (list 'key' value_expr) for args).", node_repr)
 
             if not context_input_args: raise SexpEvaluationError("'get_context' requires options", node_repr)
 
-            logging.debug(f"  get_context received evaluated args: {context_input_args}")
+            logging.debug(f"  get_context received evaluated args dict: {context_input_args}")
 
-            # Map to ContextGenerationInput fields (keys should be strings now)
-            # No mapping needed if keys match ContextGenerationInput fields
+            # Map to ContextGenerationInput fields
             try:
-                # Convert inputs if needed (e.g., from list of pairs if passed that way)
+                # Convert 'inputs' if it was evaluated from (list 'inputs' (list (list 'k1' v1)...))
                 if "inputs" in context_input_args and isinstance(context_input_args["inputs"], list):
+                    # Assume inputs value was evaluated from (list (list 'k1' v1) ...)
                     try: context_input_args["inputs"] = {str(k):v for k,v in context_input_args["inputs"]}
                     except (ValueError, TypeError): raise SexpEvaluationError("Failed converting 'inputs' list of pairs to dict", node_repr)
 
