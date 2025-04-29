@@ -49,6 +49,7 @@ class MatchTuple(BaseModel):
     path: str  # Path to the matched item (e.g., file path)
     relevance: confloat(ge=0.0, le=1.0)  # Relevance score (0.0 to 1.0)
     excerpt: Optional[str] = None  # Optional excerpt from the matched content
+    # Removed 'score' as it's not in the IDL/Type definition
 
 class AssociativeMatchResult(BaseModel):
     """
@@ -71,6 +72,10 @@ TaskFailureReason = Literal[
     'execution_halted',
     'subtask_failure',
     'input_validation_failure',
+    'template_not_found', # Added common failure reason
+    'tool_execution_error', # Added common failure reason
+    'llm_error', # Added common failure reason
+    'dependency_error', # Added for handler/dependency issues
     'unexpected_error'
 ]
 """
@@ -78,14 +83,14 @@ Reasons for task failure
 [Type:System:TaskFailureReason:1.0]
 """
 
-# Forward references for nested types
-class SubtaskRequest(BaseModel):
-    # Define fields for SubtaskRequest if known, otherwise use Any or Dict
-    # Example:
-    task_id: str
-    inputs: Dict[str, Any]
-    # ... other relevant fields ...
-    pass # Placeholder until structure is defined
+# Forward references for nested types - Updated SubtaskRequest definition below
+# class SubtaskRequest(BaseModel):
+#     # Define fields for SubtaskRequest if known, otherwise use Any or Dict
+#     # Example:
+#     task_id: str
+#     inputs: Dict[str, Any]
+#     # ... other relevant fields ...
+#     pass # Placeholder until structure is defined
 
 # Define base model for discriminated union
 class BaseTaskError(BaseModel):
@@ -104,7 +109,7 @@ class TaskFailureDetails(BaseModel):
     partial_context: Optional[Any] = None
     context_metrics: Optional[Any] = None
     violations: Optional[List[str]] = None
-    subtaskRequest: Optional[Any] = None # Using Any until SubtaskRequest is fully defined
+    subtaskRequest: Optional[Any] = None # Using Any until SubtaskRequest is fully defined below
     subtaskError: Optional[Any] = None # Recursive TaskError structure, use Any for now
     nestingDepth: Optional[NonNegativeInt] = None
     s_expression_environment: Optional[Dict[str, Any]] = None
@@ -188,7 +193,7 @@ Core task type (now only atomic defined in XML)
 [Type:System:TaskType:1.0]
 """
 
-AtomicTaskSubtype = Literal["standard", "subtask", "director", "evaluator"]
+AtomicTaskSubtype = Literal["standard", "subtask", "director", "evaluator", "associative_matching"] # Added matching
 """
 Atomic task subtypes
 [Type:System:AtomicTaskSubtype:1.0]
@@ -230,3 +235,44 @@ class ContextGenerationInput(BaseModel):
     inputs: Optional[Dict[str, Any]] = None
     inheritedContext: Optional[str] = None
     previousOutputs: Optional[str] = None
+
+# --- Subtask Request Definition ---
+class SubtaskRequest(BaseModel):
+    """
+    Subtask Request structure used by Dispatcher and SexpEvaluator to invoke tasks via TaskSystem.
+    Based on src/task_system/task_system_IDL.md execute_atomic_template args and docs/system/contracts/types.md.
+    [Type:System:SubtaskRequest:1.0]
+    """
+    task_id: str # Unique identifier for this specific request instance
+
+    # Fields from IDL/Type definition
+    type: TaskType # Should always be "atomic" for direct execution
+    name: str # Name of the atomic template to execute
+    description: Optional[str] = None # Optional description for logging/context
+    inputs: Dict[str, Any] # Input parameters for the subtask
+
+    # Optional fields from IDL/Type definition
+    template_hints: Optional[List[str]] = None
+    context_management: Optional[ContextManagement] = None # Use the ContextManagement model
+    max_depth: Optional[PositiveInt] = None
+    file_paths: Optional[List[str]] = None
+
+# --- Evaluation Result Definition ---
+class EvaluationResult(TaskResult):
+    """
+    Specialized result structure potentially returned by 'evaluator' subtype tasks.
+    Extends the base TaskResult with evaluation-specific notes.
+    [Type:System:EvaluationResult:1.0]
+    """
+    notes: Dict[str, Any] = Field(default_factory=dict) # Override notes to add specific fields
+
+    # Pydantic v2 doesn't directly support extending nested dicts like this easily.
+    # We define the full structure expected within notes for clarity.
+    # Consumers will need to access notes['success'], notes['feedback'], etc.
+    # It's recommended to define a separate Pydantic model for the notes structure
+    # if it becomes complex, e.g., class EvaluationNotes(BaseModel): ...
+
+    # Example structure expected within notes:
+    # success: bool
+    # feedback: str
+    # details: Optional[Dict[str, Any]] = None # e.g., {'metrics': {...}, 'violations': [...]}
