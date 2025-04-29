@@ -238,15 +238,6 @@ def test_index_git_repository_deferred(memory_system):
         )
 
 
-def test_get_relevant_context_with_description_deferred(memory_system):
-    """Verify deferred method raises NotImplementedError."""
-    with pytest.raises(
-        NotImplementedError,
-        match="get_relevant_context_with_description implementation deferred",
-    ):
-        memory_system.get_relevant_context_with_description("query", "desc")
-
-
 def test_get_relevant_context_for_deferred(memory_system):
     """Verify deferred method raises NotImplementedError."""
     with pytest.raises(
@@ -416,11 +407,10 @@ def test_get_relevant_context_with_description_calls_correctly(mock_get_relevant
 
     # Check the arguments passed to the mocked method
     # call_args is a tuple, first element is args tuple, second is kwargs dict
-    # In this case, it's called like method(self, input_arg)
-    # So call_args[0] should be (self_instance, input_arg)
-    # We only care about input_arg
-    assert len(mock_get_relevant_context_for.call_args.args) == 2 # self and input_data
-    input_arg = mock_get_relevant_context_for.call_args.args[1]
+    # In this case, it's called like method(input_arg) on the instance,
+    # so the mock receives only input_arg.
+    assert len(mock_get_relevant_context_for.call_args.args) == 1 # Only input_data is passed to the mock
+    input_arg = mock_get_relevant_context_for.call_args.args[0]
 
     assert isinstance(input_arg, ContextGenerationInput)
     assert input_arg.query == context_desc # Crucial check: context_desc became the query
