@@ -285,13 +285,15 @@ class BaseHandler:
 
         else:
             # Handle failure or unexpected result structure
-            error_message = "Unknown LLM interaction error."
-            if isinstance(manager_result, dict):
-                error_message = manager_result.get("error", error_message) # Use get()
+            error_message = "Unknown LLM interaction error." # Default
+            # Check if manager_result is a dict and has an 'error' key
+            if isinstance(manager_result, dict) and "error" in manager_result:
+                error_message = manager_result.get("error", error_message) # Use get() for safety
             elif hasattr(manager_result, 'error') and manager_result.error: # Example if it were an object
                  error_message = manager_result.error
             # ... (rest of failure path: logging, create error details, return FAILED TaskResult) ...
             logging.error(f"LLM call failed or returned unexpected result: {error_message}")
+            # Use the extracted error_message when creating the TaskResult
             error_details: Dict[str, Any] = {
                 "type": "TASK_FAILURE", "reason": "llm_error", "message": error_message,
             }

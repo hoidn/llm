@@ -36,10 +36,13 @@ def passthrough_handler(mock_task_system, mock_memory_system, mocker):
 
     # Mock LLMInteractionManager methods used by BaseHandler._execute_llm_call
     mock_llm_manager = MagicMock(spec=LLMInteractionManager)
-    # Simulate successful LLM call returning a dictionary (not TaskResult object)
-    mock_llm_manager.execute_call.return_value = TaskResult(
-        status="COMPLETE", content="Passthrough Response", notes={}
-    ).model_dump()
+    # Simulate successful LLM call returning a dictionary indicating success
+    mock_llm_manager.execute_call.return_value = {
+        "success": True,
+        "content": "Passthrough Response", # Keep content consistent with test assertion
+        "usage": {"prompt_tokens": 10, "completion_tokens": 20}, # Example usage
+        "tool_calls": None
+    }
     # Add the 'agent' attribute to the mock manager BEFORE patching/instantiation
     mock_llm_manager.agent = None # Or MagicMock() if needed elsewhere
 

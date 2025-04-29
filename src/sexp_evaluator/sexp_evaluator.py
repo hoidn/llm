@@ -225,10 +225,11 @@ class SexpEvaluator:
                       option_name = str(option_name_sym) # Convert symbol/str to string key
 
                       # Evaluate *only* the value expression
-                      evaluated_value = self._eval(value_expr, env)
+                      evaluated_value = self._eval(value_expr, env) # <-- Correct: only eval value
 
                       # Special handling for 'inputs': convert list of pairs to dict if necessary
                       if option_name == "inputs":
+                          # Check if it's a list of pairs that needs conversion
                           if isinstance(evaluated_value, list) and all(isinstance(p, list) and len(p) == 2 for p in evaluated_value):
                               try:
                                   # Convert keys to strings during dict creation
@@ -238,10 +239,22 @@ class SexpEvaluator:
                           elif not isinstance(evaluated_value, dict):
                                raise SexpEvaluationError(f"'inputs' arg must evaluate to a dictionary or a list of pairs. Got: {type(evaluated_value)}", str(option_pair_expr))
 
+
                       # Map Sexp option names to ContextGenerationInput fields
-                      field_map = { "query": "query", "templateDescription": "templateDescription", "templateType": "templateType", "templateSubtype": "templateSubtype", "inputs": "inputs", "inheritedContext": "inheritedContext", "previousOutputs": "previousOutputs" }
-                      if option_name in field_map: context_input_args[field_map[option_name]] = evaluated_value
-                      else: context_input_args[option_name] = evaluated_value # Store unknown
+                      field_map = {
+                          "query": "query",
+                          "templateDescription": "templateDescription",
+                          "templateType": "templateType",
+                          "templateSubtype": "templateSubtype",
+                          "inputs": "inputs", # Use the potentially converted dict
+                          "inheritedContext": "inheritedContext",
+                          "previousOutputs": "previousOutputs"
+                      }
+                      if option_name in field_map:
+                          context_input_args[field_map[option_name]] = evaluated_value
+                      else:
+                          # Store unknown args too, maybe ContextGenerationInput allows extra fields
+                          context_input_args[option_name] = evaluated_value
                  if not context_input_args: raise SexpEvaluationError("'get_context' requires options", str(node))
                  try: context_input = ContextGenerationInput(**context_input_args)
                  except Exception as e: raise SexpEvaluationError(f"Failed creating ContextGenerationInput: {e}", str(node)) from e
@@ -305,45 +318,46 @@ class SexpEvaluator:
 
                     # Handle special args or regular args based on the key name
                     if arg_name == "files":
-                        if not (isinstance(evaluated_value, list) and all(isinstance(i, str) for i in evaluated_value)): raise SexpEvaluationError(f"'files' arg must evaluate to a list of strings. Got: {type(evaluated_value)}", str(arg_pair_expr))
-                        resolved_files = evaluated_value
-                    elif arg_name == "context":
-                        if not isinstance(evaluated_value, dict):
-                             # Allow context to be provided as an evaluated list of pairs
-                             if isinstance(evaluated_value, list) and all(isinstance(p, list) and len(p) == 2 for p in evaluated_value):
-                                 try:
-                                     # Convert the list of pairs into a dictionary, ensuring keys are strings
-                                     evaluated_value = {str(k): v for k, v in evaluated_value}
-                                 except (TypeError, ValueError) as conv_err:
-                                     raise SexpEvaluationError(f"'context' arg evaluated to list of pairs, but failed dict conversion: {conv_err}", str(arg_pair_expr)) from conv_err
-                             else:
-                                 raise SexpEvaluationError(f"'context' arg must evaluate to a dictionary or a list of pairs. Got: {type(evaluated_value)}", str(arg_pair_expr))
-                        resolved_context_settings = evaluated_value
-                    else:
-                        # Store regular named arguments
+                       if not (isinstance(evaluated_value, list) and all(isinstance(i, str) for i in evaluated_value)): raise SexpEvaluationError(f"'files' arg must evaluate to a list of strings. Got: {type(evaluated_value)}", str(arg_pair_expr))
+                       resolved_files = evaluated_value
+                   elif arg_name == "context":
+                       # Value already evaluated by self._eval(value_expr, env)
+                       if not isinstance(evaluated_value, dict):
+                            # Allow context to be provided as an evaluated list of pairs
+                            if isinstance(evaluated_value, list) and all(isinstance(p, list) and len(p) == 2 for p in evaluated_value):
+                                try:
+                                    # Convert the list of pairs into a dictionary, ensuring keys are strings
+                                    evaluated_value = {str(k): v for k, v in evaluated_value} # Convert keys to strings
+                                except (TypeError, ValueError) as conv_err:
+                                    raise SexpEvaluationError(f"'context' arg evaluated to list of pairs, but failed dict conversion: {conv_err}", str(arg_pair_expr)) from conv_err
+                            else:
+                                raise SexpEvaluationError(f"'context' arg must evaluate to a dictionary or a list of pairs. Got: {type(evaluated_value)}", str(arg_pair_expr))
+                       resolved_context_settings = evaluated_value # Assign the dict
+                   else:
+                       # Store regular named arguments
                         resolved_named_args[arg_name] = evaluated_value
 
                 # Execute Tool or Task
                 try:
                     if is_tool:
                         logging.info(f"Invoking direct tool: '{target_id}'")
-                        # Handler._execute_tool might return dict or TaskResult based on IDL/impl
-                        tool_result_obj = self.handler._execute_tool(target_id, resolved_named_args)
+                       # Handler._execute_tool might return dict or TaskResult based on IDL/impl
+                       tool_result_obj = self.handler._execute_tool(target_id, resolved_named_args)
 
-                        # Ensure we have a TaskResult object
-                        if isinstance(tool_result_obj, dict):
-                             logging.warning("Handler._execute_tool returned dict, attempting TaskResult validation.")
-                             try:
-                                 tool_result_obj = TaskResult.model_validate(tool_result_obj)
-                             except Exception as model_val_err:
-                                 raise SexpEvaluationError(f"Failed to validate Handler._execute_tool result as TaskResult: {model_val_err}", str(node), error_details=str(tool_result_obj)) from model_val_err
-                        elif not isinstance(tool_result_obj, TaskResult):
-                             raise SexpEvaluationError("Handler._execute_tool returned unexpected type", str(node), error_details=f"Type: {type(tool_result_obj)}")
+                       # Ensure we have a TaskResult object
+                       if isinstance(tool_result_obj, dict):
+                            logging.warning("Handler._execute_tool returned dict, attempting TaskResult validation.")
+                            try:
+                                tool_result_obj = TaskResult.model_validate(tool_result_obj)
+                            except Exception as model_val_err:
+                                raise SexpEvaluationError(f"Failed to validate Handler._execute_tool result as TaskResult: {model_val_err}", str(node), error_details=str(tool_result_obj)) from model_val_err
+                       elif not isinstance(tool_result_obj, TaskResult):
+                            raise SexpEvaluationError("Handler._execute_tool returned unexpected type", str(node), error_details=f"Type: {type(tool_result_obj)}")
 
-                        logging.debug(f"Eval Tool Call END: '{target_id}' -> {tool_result_obj.status}")
-                        return tool_result_obj # Return TaskResult object
-                    elif is_atomic_task: # Must be atomic task if not tool
-                        logging.info(f"Invoking atomic task: '{target_id}'")
+                       logging.debug(f"Eval Tool Call END: '{target_id}' -> {tool_result_obj.status}")
+                       return tool_result_obj # Return TaskResult object
+                   elif is_atomic_task: # Must be atomic task if not tool
+                       logging.info(f"Invoking atomic task: '{target_id}'")
                         context_management_obj: Optional[ContextManagement] = None
                         if resolved_context_settings:
                             try: context_management_obj = ContextManagement.model_validate(resolved_context_settings)
@@ -353,26 +367,26 @@ class SexpEvaluator:
                             inputs=resolved_named_args, file_paths=resolved_files,
                             context_management=context_management_obj
                         )
-                        # TaskSystem returns TaskResult object
-                        task_result_obj = self.task_system.execute_atomic_template(request)
+                       # TaskSystem returns TaskResult object
+                       task_result_obj = self.task_system.execute_atomic_template(request)
 
-                        # Fix 2 START: Ensure we have a TaskResult object
-                        if isinstance(task_result_obj, dict):
-                             # Attempt conversion if TaskSystem returned dict (e.g., from mock)
-                             logging.warning("TaskSystem returned dict, attempting TaskResult validation.")
-                             try:
-                                 task_result_obj = TaskResult.model_validate(task_result_obj)
-                             except Exception as model_val_err:
-                                 raise SexpEvaluationError(f"Failed to validate TaskSystem result as TaskResult: {model_val_err}", str(node), error_details=str(task_result_obj)) from model_val_err
-                        elif not isinstance(task_result_obj, TaskResult):
-                             # Raise error if it's neither dict nor TaskResult
-                             raise SexpEvaluationError("TaskSystem returned unexpected type", str(node), error_details=f"Type: {type(task_result_obj)}")
-                        # Fix 2 END
+                       # Fix 2 START: Ensure we have a TaskResult object
+                       if isinstance(task_result_obj, dict):
+                            # Attempt conversion if TaskSystem returned dict (e.g., from mock)
+                            logging.warning("TaskSystem returned dict, attempting TaskResult validation.")
+                            try:
+                                task_result_obj = TaskResult.model_validate(task_result_obj)
+                            except Exception as model_val_err:
+                                raise SexpEvaluationError(f"Failed to validate TaskSystem result as TaskResult: {model_val_err}", str(node), error_details=str(task_result_obj)) from model_val_err
+                       elif not isinstance(task_result_obj, TaskResult):
+                            # Raise error if it's neither dict nor TaskResult
+                            raise SexpEvaluationError("TaskSystem returned unexpected type", str(node), error_details=f"Type: {type(task_result_obj)}")
+                       # Fix 2 END
 
-                        logging.debug(f"Eval Atomic Task Call END: '{target_id}' -> {task_result_obj.status}")
-                        return task_result_obj # Return TaskResult object
-                    else:
-                         # This case should theoretically not be reached if is_function_call is true
+                       logging.debug(f"Eval Atomic Task Call END: '{target_id}' -> {task_result_obj.status}")
+                       return task_result_obj # Return TaskResult object
+                   else:
+                        # This case should theoretically not be reached if is_function_call is true
                          raise SexpEvaluationError(f"Internal Error: Operator '{target_id}' determined as callable but neither tool nor atomic task.", str(node))
 
                 except Exception as e:
