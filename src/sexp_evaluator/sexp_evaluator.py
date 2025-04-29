@@ -321,88 +321,112 @@ class SexpEvaluator:
     # --- Primitive Handlers ---
 
     def _eval_primitive(self, op_str: str, args: list, env: SexpEnvironment) -> Any:
-        """Evaluates built-in primitives like list, get_context."""
+        """Dispatches evaluation to specific primitive handlers."""
         logging.debug(f"Eval Primitive START: {op_str} with unevaluated args")
         node_repr = f"({op_str} ...)" # Approximate representation for errors
 
         if op_str == "list":
-            # Evaluate each argument and return the list of results
-            evaluated_args = [self._eval(arg, env) for arg in args]
-            logging.debug(f"Eval 'list' END: -> {evaluated_args}")
-            return evaluated_args
-
+            return self._eval_list_primitive(args, env)
         elif op_str == "get_context":
-            context_input_args: Dict[str, Any] = {}
-            
-            # Process unevaluated args - each should be (key value_expr)
-            for arg in args:
-                # Validate the structure: must be (Symbol ValueExpression)
-                if not (isinstance(arg, list) and len(arg) == 2 and isinstance(arg[0], Symbol)):
-                    raise SexpEvaluationError(
-                        f"Invalid argument format for 'get_context'. Expected (key_symbol value_expression), got: {arg}", 
-                        node_repr
-                    )
-                
-                key_node, value_expr = arg
-                key_str = key_node.value()
-                
-                # Evaluate the value expression
+            return self._eval_get_context(args, env)
+        else:
+            # This path should ideally not be reached if called correctly
+            raise SexpEvaluationError(f"Internal error: Unknown primitive '{op_str}' encountered in dispatcher.", node_repr)
+
+    def _eval_list_primitive(self, args: list, env: SexpEnvironment) -> Any:
+        """Evaluates the built-in 'list' primitive."""
+        node_repr = f"(list {' '.join(map(str, args))})" # More specific repr
+        logging.debug(f"Eval 'list' primitive START")
+        # Evaluate each argument and return the list of results
+        try:
+            evaluated_args = [self._eval(arg, env) for arg in args]
+            logging.debug(f"Eval 'list' primitive END: -> {evaluated_args}")
+            return evaluated_args
+        except Exception as e:
+            # Catch potential errors during argument evaluation
+            logging.exception(f"Error evaluating arguments for 'list' primitive: {e}")
+            if isinstance(e, SexpEvaluationError): raise # Re-raise if already specific
+            raise SexpEvaluationError(f"Error evaluating arguments for 'list': {e}", node_repr) from e
+
+    def _eval_get_context(self, args: list, env: SexpEnvironment) -> Any:
+        """Evaluates the built-in 'get_context' primitive."""
+        node_repr = f"(get_context {' '.join(map(str, args))})" # More specific repr
+        logging.debug(f"Eval 'get_context' primitive START")
+        context_input_args: Dict[str, Any] = {}
+
+        # Process unevaluated args - each should be (key value_expr)
+        for arg in args:
+            arg_repr = str(arg) # For specific arg error
+            # Validate the structure: must be (Symbol ValueExpression)
+            if not (isinstance(arg, list) and len(arg) == 2 and isinstance(arg[0], Symbol)):
+                raise SexpEvaluationError(
+                    f"Invalid argument format for 'get_context'. Expected (key_symbol value_expression), got: {arg_repr}",
+                    node_repr
+                )
+
+            key_node, value_expr = arg
+            key_str = key_node.value()
+
+            # Evaluate the value expression
+            try:
                 value = self._eval(value_expr, env)
                 logging.debug(f"  Evaluated 'get_context' arg '{key_str}' to: {value}")
-                
                 context_input_args[key_str] = value
-            
-            if not context_input_args: 
-                raise SexpEvaluationError("'get_context' requires options", node_repr)
-
-            logging.debug(f"  get_context args dict: {context_input_args}")
-
-            # Map to ContextGenerationInput fields
-            try:
-                # Convert 'inputs' if it's a list of pairs to a dictionary
-                if "inputs" in context_input_args and isinstance(context_input_args["inputs"], list):
-                    try:
-                        inputs_dict = {}
-                        # Handle Symbols in quoted list keys
-                        for pair in context_input_args["inputs"]:
-                            # Ensure it's a list pair first
-                            if isinstance(pair, list) and len(pair) == 2:
-                                key_node = pair[0] # Key might be Symbol or string
-                                val = pair[1]
-                                # Convert symbol key to string if necessary
-                                key_str = key_node.value() if isinstance(key_node, Symbol) else str(key_node)
-                                inputs_dict[key_str] = val
-                            else:
-                                # Raise error if the structure isn't a list of pairs
-                                raise ValueError(f"Invalid pair format in inputs list: {pair}")
-                        context_input_args["inputs"] = inputs_dict
-                        logging.debug(f"  Converted inputs list-of-pairs to dict: {context_input_args['inputs']}")
-                    except (ValueError, TypeError) as conv_err:
-                        # Add more context to the error
-                        raise SexpEvaluationError(f"Failed converting 'inputs' list {context_input_args['inputs']!r} to dict: {conv_err}", node_repr)
-
-                context_input = ContextGenerationInput(**context_input_args)
             except Exception as e:
-                raise SexpEvaluationError(f"Failed creating ContextGenerationInput from args {context_input_args}: {e}", node_repr) from e
+                logging.exception(f"Error evaluating argument '{key_str}' for 'get_context': {e}")
+                if isinstance(e, SexpEvaluationError): raise # Re-raise if already specific
+                raise SexpEvaluationError(f"Error evaluating argument '{key_str}' for 'get_context': {e}", node_repr) from e
 
-            logging.debug(f"Calling memory_system.get_relevant_context_for with: {context_input}")
-            try:
-                match_result: AssociativeMatchResult = self.memory_system.get_relevant_context_for(context_input)
-            except Exception as e:
-                logging.exception(f"MemorySystem.get_relevant_context_for failed: {e}")
-                # Wrap underlying error
-                raise SexpEvaluationError("Context retrieval failed internally", node_repr, error_details=str(e)) from e
+        if not context_input_args:
+            raise SexpEvaluationError("'get_context' requires options", node_repr)
 
-            if match_result.error:
-                # Raise error if MemorySystem indicated failure
-                raise SexpEvaluationError("Context retrieval failed", node_repr, error_details=match_result.error)
+        logging.debug(f"  get_context args dict: {context_input_args}")
 
-            file_paths = [m.path for m in match_result.matches if isinstance(m, MatchTuple)]
-            logging.debug(f"Eval 'get_context' END: -> {file_paths}")
-            return file_paths
-        else:
-            # Should not be reached
-            raise SexpEvaluationError(f"Internal error: Unknown primitive '{op_str}'", node_repr)
+        # Map to ContextGenerationInput fields
+        try:
+            # Convert 'inputs' if it's a list of pairs to a dictionary
+            if "inputs" in context_input_args and isinstance(context_input_args["inputs"], list):
+                try:
+                    inputs_dict = {}
+                    # Handle Symbols in quoted list keys
+                    for pair in context_input_args["inputs"]:
+                        # Ensure it's a list pair first
+                        if isinstance(pair, list) and len(pair) == 2:
+                            key_node = pair[0] # Key might be Symbol or string
+                            val = pair[1]
+                            # Convert symbol key to string if necessary
+                            inner_key_str = key_node.value() if isinstance(key_node, Symbol) else str(key_node)
+                            inputs_dict[inner_key_str] = val
+                        else:
+                            # Raise error if the structure isn't a list of pairs
+                            raise ValueError(f"Invalid pair format in inputs list: {pair}")
+                    context_input_args["inputs"] = inputs_dict
+                    logging.debug(f"  Converted inputs list-of-pairs to dict: {context_input_args['inputs']}")
+                except (ValueError, TypeError) as conv_err:
+                    # Add more context to the error
+                    raise SexpEvaluationError(f"Failed converting 'inputs' list {context_input_args['inputs']!r} to dict: {conv_err}", node_repr)
+
+            context_input = ContextGenerationInput(**context_input_args)
+        except Exception as e:
+            raise SexpEvaluationError(f"Failed creating ContextGenerationInput from args {context_input_args}: {e}", node_repr) from e
+
+        logging.debug(f"Calling memory_system.get_relevant_context_for with: {context_input}")
+        try:
+            match_result: AssociativeMatchResult = self.memory_system.get_relevant_context_for(context_input)
+        except Exception as e:
+            logging.exception(f"MemorySystem.get_relevant_context_for failed: {e}")
+            # Wrap underlying error
+            raise SexpEvaluationError("Context retrieval failed internally", node_repr, error_details=str(e)) from e
+
+        if match_result.error:
+            # Raise error if MemorySystem indicated failure
+            raise SexpEvaluationError("Context retrieval failed", node_repr, error_details=match_result.error)
+
+        file_paths = [m.path for m in match_result.matches if isinstance(m, MatchTuple)]
+        logging.debug(f"Eval 'get_context' primitive END: -> {file_paths}")
+        return file_paths
+
+    # --- Invocation Handling ---
 
     def _handle_invocation(self, operator_target: Any, args: list, env: SexpEnvironment, node_str: str) -> Any:
         """Handles the invocation of tasks, tools, or other callables."""
