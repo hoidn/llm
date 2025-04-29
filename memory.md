@@ -52,17 +52,26 @@
 - **Fix MemorySystem Tests (Part 2):**
     - Removed `NotImplementedError` from `get_relevant_context_for` as implementation was added.
     - **Commit:** `a3e5032` (fix: Remove NotImplementedError from get_relevant_context_for)
+- **Start Phase 3 Implementation:**
+    - Implement `AtomicTaskExecutor` logic and tests.
+    - Implement `SexpEnvironment` logic.
+    - Implement `SexpEvaluator` logic and tests.
+    - Implement `PassthroughHandler` logic and tests.
+    - Adhere to IDLs and Unified ADR mandates.
 
 ## Next Steps
 
-1.  Implement the remaining deferred methods in Phase 2:
-    *   `LLMInteractionManager`: `execute_call` (implement actual agent call, result processing, error handling).
-    *   `MemorySystem`: `get_relevant_context_with_description`, `get_relevant_context_for`, `index_git_repository`
-    *   `TaskSystem`: `execute_atomic_template`, `find_matching_tasks`, `generate_context_for_memory_system`, `resolve_file_paths`
-    *   `BaseHandler`: `_build_system_prompt`, `_execute_tool` (Note: `_get_relevant_files`, `_create_file_context`, `_execute_llm_call` are now delegated). Also need to implement conversation history update after `_execute_llm_call`.
-2.  Implement tests for the deferred methods once they are implemented/refactored (including tests for `LLMInteractionManager.execute_call`).
-3.  Review tool registration logic (`BaseHandler.register_tool`) and how it should interact with `LLMInteractionManager`.
-4.  Update documentation (IDLs, rules) if refactoring changes public contracts or introduces new patterns.
+1.  **Complete Phase 3 Implementation:** Finish implementing `AtomicTaskExecutor`, `SexpEnvironment`, `SexpEvaluator`, `PassthroughHandler` and their tests.
+2.  **Implement Remaining Deferred Methods (Phase 2 Dependencies):**
+    *   `LLMInteractionManager`: `execute_call` (needed by `BaseHandler`/`PassthroughHandler`).
+    *   `TaskSystem`: `execute_atomic_template` (needed by `SexpEvaluator`).
+    *   `BaseHandler`: `_execute_tool` (needed by `SexpEvaluator`).
+    *   `MemorySystem`: `get_relevant_context_for` (ensure full implementation matches IDL/needs of `SexpEvaluator`).
+    *   Other deferred methods (`TaskSystem` find/generate/resolve, `MemorySystem` index).
+3.  **Write Tests for Deferred Methods:** Add tests for the methods implemented in step 2.
+4.  **Integration Testing:** Enhance integration tests covering workflows involving SexpEvaluator -> TaskSystem -> AtomicTaskExecutor -> Handler -> LLMManager.
+5.  **Review Tool Registration:** Finalize how tools registered in `BaseHandler` are made available during `SexpEvaluator` execution (via `Handler._execute_tool`) and potentially LLM calls.
+6.  **Update Documentation:** Ensure IDLs, rules, and diagrams reflect the implemented state.
 
 ## Notes & Context
 
