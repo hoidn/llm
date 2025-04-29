@@ -34,19 +34,20 @@ This section outlines a structured approach for identifying refactoring needs, a
 
 **Phase 1: Identification & Initial Assessment**
 
-*Input:*
+*   **Input:**
 * Code base or component under review
 * Project quality metrics (if available)
 * Developer observations/pain points
 
-*Actions:*
+*   **Actions:**
 * Scan for code smells (duplicated code, long methods, complex conditionals, etc.)
 * Review module length against guidelines in `docs/project_rules.md`
 * Identify components with high change frequency or bug density
 * Note areas where developers frequently express confusion or frustration
 * Check for violations of project architecture or implementation rules
+* Run automated checks (e.g., line count, cyclomatic complexity) to identify overly long or complex components
 
-*Output:*
+*   **Output:**
 * List of refactoring candidates with brief descriptions of issues
 * Initial severity assessment (High/Medium/Low) based on:
   * Impact on development velocity
@@ -56,21 +57,22 @@ This section outlines a structured approach for identifying refactoring needs, a
 
 **Phase 2: Detailed Analysis**
 
-*Input:*
+*   **Input:**
 * Refactoring candidates from Phase 1
 * Relevant documentation (IDL files, architecture diagrams)
 * Test coverage reports
 
-*Actions:*
+*   **Actions:**
 * For each high-priority candidate:
   * Analyze dependencies (what components depend on this code?)
   * Assess test coverage (is behavior well-tested?)
   * Identify specific design problems (SRP violations, tight coupling, etc.)
+  * Analyze complexity metrics (e.g., cyclomatic complexity) to pinpoint complex areas within the code
   * Determine root causes (why did the code evolve this way?)
   * Estimate effort required to refactor
   * Evaluate risks (complexity, potential for regression)
 
-*Output:*
+*   **Output:**
 * Detailed analysis document for each candidate, including:
   * Specific problems identified
   * Dependencies and potential impact areas
@@ -80,12 +82,12 @@ This section outlines a structured approach for identifying refactoring needs, a
 
 **Phase 3: Strategy Selection**
 
-*Input:*
+*   **Input:**
 * Detailed analysis from Phase 2
 * Project priorities and constraints
 * Available developer resources
 
-*Actions:*
+*   **Actions:**
 * For each refactoring candidate, select an appropriate strategy:
   * **Extract Method/Class:** For cohesive chunks of functionality that can be isolated
   * **Move Method/Field:** For functionality in the wrong place
@@ -103,7 +105,7 @@ This section outlines a structured approach for identifying refactoring needs, a
   * **Replace Exception with Test:** For using exceptions for control flow
   * **Introduce Assertion:** For assumptions that should be explicit
 
-*Output:*
+*   **Output:**
 * Refactoring plan for each candidate, including:
   * Selected strategy or combination of strategies
   * Specific steps to implement the strategy
@@ -112,12 +114,12 @@ This section outlines a structured approach for identifying refactoring needs, a
 
 **Phase 4: Planning & Preparation**
 
-*Input:*
+*   **Input:**
 * Refactoring plans from Phase 3
 * Project schedule and priorities
 * Test infrastructure status
 
-*Actions:*
+*   **Actions:**
 * Break down large refactorings into smaller, incremental steps
 * Identify or create tests that verify the current behavior
 * Ensure test coverage is adequate before starting
@@ -128,7 +130,7 @@ This section outlines a structured approach for identifying refactoring needs, a
   * Risk level (higher risk = more careful planning)
 * Update `docs/memory.md` with the refactoring task
 
-*Output:*
+*   **Output:**
 * Detailed, step-by-step refactoring plan with:
   * Specific files and code sections to modify
   * Order of operations to minimize merge conflicts
@@ -138,12 +140,12 @@ This section outlines a structured approach for identifying refactoring needs, a
 
 **Phase 5: Verification & Cleanup**
 
-*Input:*
+*   **Input:**
 * Completed refactoring changes
 * Test results
 * Code review feedback
 
-*Actions:*
+*   **Actions:**
 * Verify all tests pass (existing and new)
 * Conduct code review to ensure the refactoring meets quality standards
 * Check for any unintended side effects or regressions
@@ -152,14 +154,14 @@ This section outlines a structured approach for identifying refactoring needs, a
 * Run linters and formatters
 * Update `docs/memory.md` with the completed refactoring
 
-*Output:*
+*   **Output:**
 * Verified, clean, refactored code
 * Updated documentation
 * Lessons learned for future refactorings
 
 Once a refactoring strategy is chosen (Phase 3) and planned (Phase 4), the execution steps often follow the patterns described in the next section.
 
-**5. Recommended Refactoring Workflow**
+**6. Recommended Refactoring Workflow**
 
 This workflow is based on successful refactoring patterns observed in this project:
 
@@ -202,7 +204,7 @@ This workflow is based on successful refactoring patterns observed in this proje
     *   Update `docs/memory.md` reflecting the completed refactoring step and commit hash.
     *   If the refactoring changed any public interfaces or introduced significant structural changes visible to other components, consider if corresponding IDL files or architecture diagrams need updates.
 
-**5. Common Pitfalls & How to Avoid Them**
+**7. Common Pitfalls & How to Avoid Them**
 
 *   **Breaking Behavior:** Accidentally changing what the code does.
     *   **Avoidance:** Ensure good test coverage *before* starting. Test frequently after small steps.
@@ -217,7 +219,7 @@ This workflow is based on successful refactoring patterns observed in this proje
 *   **Forgetting Cleanup:** Leaving behind unused imports, variables, or methods.
     *   **Avoidance:** Explicitly review for dead code after tests pass. Use linters that detect unused code.
 
-**6. Example (Conceptual: Extracting a Helper Function)**
+**8. Example (Conceptual: Extracting a Helper Function)**
 
 1.  **Identify:** A complex calculation is repeated within a method `process_data`.
 2.  **Test (Before):** Ensure `test_process_data` covers cases involving this calculation.
