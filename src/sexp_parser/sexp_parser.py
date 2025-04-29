@@ -11,46 +11,44 @@ from sexpdata import load, Symbol, ExpectNothing, ExpectClosingBracket # Add spe
 # Import the custom error type
 from src.system.errors import SexpSyntaxError # This is our custom error
 
-# Helper function to recursively convert common symbols
-def _convert_common_symbols(item: Any) -> Any:
+# Helper function to recursively post-process parsed data
+def _post_process_parsed_data(item: Any) -> Any:
     """
-    Recursively traverses the parsed AST and converts specific symbols
-    ('true', 'false', 'nil') to their Python equivalents (True, False, None).
+    Recursively traverses the parsed AST and performs post-processing:
+    1. Converts empty lists [] to Python None (to handle 'nil' -> [] default).
+    2. Converts specific symbols ('true', 'false') if not handled by parser args.
 
     Args:
-        item: The current item in the AST (could be a list, tuple, Symbol, or other atom).
+        item: The current item in the AST.
 
     Returns:
-        The item with common symbols converted, preserving the structure.
+        The processed item.
     """
-    if isinstance(item, Symbol):
+    # 1. Handle 'nil' -> [] conversion AFTER parsing
+    if isinstance(item, list) and not item: # Check for empty list
+        logging.debug("Post-process: Converting [] to None")
+        return None
+    elif isinstance(item, list):
+        # Recursively process elements within non-empty lists
+        processed_list = [_post_process_parsed_data(sub_item) for sub_item in item]
+        logging.debug(f"Post-process: Returning processed list: {processed_list}")
+        return processed_list
+    elif isinstance(item, Symbol):
+        # 2. Handle true/false symbols (optional, parser args should handle literals)
         val = item.value()
-        logging.debug(f"Convert Symbol: Item={item}, Value={val}, Type(Value)={type(val)}")
+        logging.debug(f"Post-process Symbol: Item={item}, Value={val}")
         if val == 'true':
-            logging.debug("  Returning True")
+            logging.debug("  Symbol 'true' -> True")
             return True
         elif val == 'false':
-            logging.debug("  Returning False")
+            logging.debug("  Symbol 'false' -> False")
             return False
-        elif val == 'nil':
-            # Fix: Ensure this returns None
-            logging.debug("  Returning None")
-            return None
         else:
-            # Keep other symbols as Symbol objects
-            logging.debug(f"  Returning original Symbol: {item}")
-            return item
-    elif isinstance(item, list):
-        # Recursively convert elements within a list
-        converted_list = [_convert_common_symbols(sub_item) for sub_item in item]
-        logging.debug(f"  Returning converted list: {converted_list}")
-        return converted_list
-    # Add handling for tuples if sexpdata might produce them, though lists are typical
-    # elif isinstance(item, tuple):
-    #     return tuple(_convert_common_symbols(sub_item) for sub_item in item)
+            logging.debug(f"  Keeping symbol: {item}")
+            return item # Keep other symbols
     else:
         # Return atoms (numbers, strings, etc.) and other types unchanged
-        logging.debug(f"  Returning atom: {item}")
+        logging.debug(f"Post-process: Keeping atom: {item}")
         return item
 
 
@@ -87,8 +85,14 @@ class SexpParser:
         sio = StringIO(sexp_string.strip()) # Use strip to handle leading/trailing whitespace
 
         try:
-            # Use sexpdata.load, which expects a single S-expression from the stream
-            parsed_expression = load(sio)
+            # Configure parser for 'true' and 'false' symbols
+            # Let 'nil' parse to its default '[]'
+            parsed_expression = load(sio,
+                                     nil='nil', # Keep default symbol for []
+                                     true='true', # Map 'true' symbol to True
+                                     false='false' # Map 'false' symbol to False
+                                    )
+            logging.debug(f"Raw parsed expression: {parsed_expression}")
 
             # Check if there's any non-whitespace content left in the stream
             remainder = sio.read().strip()
@@ -97,10 +101,11 @@ class SexpParser:
                 # Raise SexpSyntaxError directly for clarity and consistency
                 raise SexpSyntaxError("Unexpected content after the main expression.", sexp_string, error_details=f"Trailing content: '{remainder}'")
 
-            # Apply symbol conversion after successful parsing of a single expression
-            converted_ast = _convert_common_symbols(parsed_expression)
-            logging.debug(f"Successfully parsed and converted AST: {converted_ast}")
-            return converted_ast
+            # Post-process the parsed data (convert [] to None, etc.)
+            processed_ast = _post_process_parsed_data(parsed_expression)
+
+            logging.debug(f"Successfully parsed and post-processed AST: {processed_ast}")
+            return processed_ast
 
         except StopIteration: # Raised by sexpdata.load if the stream is empty after stripping
              logging.error("S-expression parsing failed: Input string is empty or contains only whitespace.")

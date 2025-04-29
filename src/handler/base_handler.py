@@ -292,12 +292,18 @@ class BaseHandler:
             error_message = "Unknown LLM interaction error." # Default
             # Check if manager_result is a dict and has an 'error' key
             if isinstance(manager_result, dict) and "error" in manager_result:
-                error_message = manager_result.get("error", error_message) # Use get() for safety
-                logging.debug(f"  Found error in dict: {error_message}")
+                # Attempt to extract specific message from dict
+                extracted_error = manager_result.get("error", error_message)
+                # Handle cases where 'error' itself might be a dict (like TaskError)
+                if isinstance(extracted_error, dict) and "message" in extracted_error:
+                    error_message = extracted_error["message"]
+                elif isinstance(extracted_error, str):
+                    error_message = extracted_error
+                # else keep the default 'Unknown...'
+                logging.debug(f"  Found error in dict: {error_message}") # Log extracted message
             elif hasattr(manager_result, 'error') and manager_result.error: # Example if it were an object
                  error_message = manager_result.error
-                 logging.debug(f"  Found error attribute: {error_message}")
-            # ... (rest of failure path: logging, create error details, return FAILED TaskResult) ...
+
             logging.error(f"LLM call failed or returned unexpected result: {error_message}")
             # Use the extracted error_message when creating the TaskResult
             error_details: Dict[str, Any] = {
