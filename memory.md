@@ -38,7 +38,7 @@
     - Implemented `src.memory.memory_system.MemorySystem.index_git_repository` method based on IDL.
     - Created `tests/memory/indexers/test_git_repository_indexer.py` with provided tests.
     - Added tests for `MemorySystem.index_git_repository` to `tests/memory/test_memory_system.py`.
-    - Ran tests for modified/new files, fixed minor issues (e.g., path normalization, mock setup).
+    - Ran tests for modified/new files, fixed minor issues (e.g., path normalization, mock setup). Commit `8119e2a`.
 
 ## Next Steps
 
@@ -63,5 +63,3 @@
 - Phase 2a implemented basic keyword matching in `MemorySystem`.
 - Phase 3 implemented core execution logic (AtomicExecutor, SexpEvaluator, PassthroughHandler).
 - Phase 4 Stream 1 focused on adding the Git repository indexing capability. Requires `GitPython`. Placeholder `text_extraction` used.
-</file>
-```

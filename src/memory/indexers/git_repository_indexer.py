@@ -6,7 +6,7 @@ Implements the contract defined in src/memory/indexers/git_repository_indexer_ID
 import os
 import glob
 import logging
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Any # Added Any
 
 try:
     import git
