@@ -1,6 +1,6 @@
 # System-Wide Type Definitions [Type:System:1.0]
 
-> This document is the authoritative source for system-wide shared types.
+> This document is the authoritative source for system-wide shared types used across multiple components and defined in IDLs.
 
 ## Resource Management Types
 
@@ -11,14 +11,14 @@
  */
 interface ResourceMetrics {
     turns: {
-        used: number;
-        limit: number;
-        lastTurnAt: Date;
+        used: number; // NonNegativeInt
+        limit: number; // PositiveInt
+        lastTurnAt?: Date;
     };
     context: {
-        used: number;
-        limit: number;
-        peakUsage: number;
+        used: number; // NonNegativeInt
+        limit: number; // PositiveInt
+        peakUsage: number; // NonNegativeInt
     };
 }
 
@@ -27,15 +27,25 @@ interface ResourceMetrics {
  * [Type:System:ResourceLimits:1.0]
  */
 interface ResourceLimits {
-    maxTurns: number;
-    maxContextWindow: number;
-    warningThreshold: number;
-    timeout?: number;
+    maxTurns: number; // PositiveInt
+    maxContextWindow: number; // PositiveInt (e.g., token count)
+    warningThreshold: number; // Float between 0.0 and 1.0
+    timeout?: number; // Optional PositiveInt (seconds)
 }
 
 /**
- * Result of associative matching operations
- * [Type:System:AssociativeMatchResult:1.0] // Assuming version 1.0
+ * Individual match result with relevance information
+ * [Type:System:MatchTuple:1.0]
+ */
+interface MatchTuple {
+    path: string;  // Path to the matched item (e.g., file path)
+    relevance: number;  // Relevance score (0.0 to 1.0)
+    excerpt?: string;  // Optional excerpt from the matched content
+}
+
+/**
+ * Result of associative matching operations (Memory System output)
+ * [Type:System:AssociativeMatchResult:1.0]
  */
 interface AssociativeMatchResult {
     context_summary: string;  // Summarized context information
@@ -43,95 +53,91 @@ interface AssociativeMatchResult {
     error?: string;  // Error message if the matching operation failed
 }
 
-/**
- * Individual match result with relevance information
- * [Type:System:MatchTuple:1.0] // Assuming version 1.0
- */
-interface MatchTuple {
-    path: string;  // Path to the matched item (e.g., file path)
-    relevance: number;  // Relevance score (0.0 to 1.0)
-    excerpt?: string;  // Optional excerpt from the matched content
-}
 ```
 
 ## Error Types
 
 ```typescript
 /**
- * Standardized task error structure
- * [Type:System:TaskError:1.0]
- */
-type TaskError = 
-    | { 
-        type: 'RESOURCE_EXHAUSTION';
-        resource: 'turns' | 'context' | 'output';
-        message: string;
-        metrics?: { used: number; limit: number; };
-        content?: string;  // May contain partial output before exhaustion
-    }
-    | { 
-        type: 'TASK_FAILURE';
-        reason: TaskFailureReason;
-        message: string;
-        content?: string;  // Contains partial output if available
-        notes?: Record<string, any>;  // Contains task metadata
-        details?: {
-            // Common fields for any failure
-            partial_context?: any; // Context data retrieved before failure
-            context_metrics?: any; // Metrics related to context operations
-            violations?: string[]; // e.g., Schema validation violations
-
-            // Fields for subtask failures (within atomic or S-expression)
-            subtaskRequest?: SubtaskRequest; // The request that failed
-            subtaskError?: TaskError;       // The actual error from the subtask
-            nestingDepth?: number;          // Depth at which subtask failed
-
-            // Fields for S-expression evaluation failures
-            s_expression_environment?: Record<string, any>; // Environment state at failure
-            failing_expression?: string; // The S-expression form that failed
-
-            // Fields for script execution failures
-            script_stdout?: string;
-            script_stderr?: string;
-            script_exit_code?: number;
-
-            // Other error-specific details can be added here
-        };
-    }
-    | {
-        type: 'INVALID_OUTPUT'; // Kept for cases where output is structurally invalid (e.g., malformed XML/JSON) before format validation
-        message: string;
-        content?: string;  // The invalid output
-        violations?: string[];
-    }
-    | { 
-        type: 'VALIDATION_ERROR';
-        message: string;
-        path?: string;
-        invalidModel?: boolean;
-    }
-    | { 
-        type: 'XML_PARSE_ERROR';
-        message: string;
-        location?: string;
-        content?: string;  // The unparseable content
-    };
-
-/**
  * Reasons for task failure
  * [Type:System:TaskFailureReason:1.0]
  */
-type TaskFailureReason = 
+type TaskFailureReason =
     | 'context_retrieval_failure'
     | 'context_matching_failure'
     | 'context_parsing_failure'
-    | 'xml_validation_failure'
+    | 'xml_validation_failure' // May become less relevant with Sexp focus
     | 'output_format_failure'
     | 'execution_timeout'
     | 'execution_halted'
     | 'subtask_failure'
     | 'input_validation_failure'
+    | 'template_not_found' // Added common failure reason
+    | 'tool_execution_error' // Added common failure reason
+    | 'llm_error' // Added common failure reason
     | 'unexpected_error';
+
+// Forward declaration for TaskError used within TaskFailureDetails
+interface TaskErrorBase { message: string; content?: string; type: string; }
+
+/**
+ * Detailed information for task failures
+ * [Type:System:TaskFailureDetails:1.0]
+ */
+interface TaskFailureDetails {
+    partial_context?: any;
+    context_metrics?: any;
+    violations?: string[];
+    subtaskRequest?: any; // Type: SubtaskRequest (defined below) - Use Any for simplicity if nesting is complex
+    subtaskError?: TaskErrorBase; // Recursive TaskError structure
+    nestingDepth?: number; // NonNegativeInt
+    s_expression_environment?: Record<string, any>;
+    failing_expression?: string;
+    script_stdout?: string;
+    script_stderr?: string;
+    script_exit_code?: number;
+}
+
+/**
+ * Standardized task error structure (Discriminated Union)
+ * [Type:System:TaskError:1.0]
+ */
+type TaskError =
+    | {
+        type: 'RESOURCE_EXHAUSTION';
+        resource: 'turns' | 'context' | 'output';
+        message: string;
+        metrics?: { used: number; limit: number; };
+        content?: string;
+    }
+    | {
+        type: 'TASK_FAILURE';
+        reason: TaskFailureReason;
+        message: string;
+        content?: string;
+        notes?: Record<string, any>;
+        details?: TaskFailureDetails;
+    }
+    | {
+        type: 'INVALID_OUTPUT';
+        message: string;
+        content?: string;
+        violations?: string[];
+    }
+    | {
+        type: 'VALIDATION_ERROR';
+        message: string;
+        path?: string;
+        invalidModel?: boolean;
+        content?: string; // Added content for consistency
+    }
+    | {
+        type: 'XML_PARSE_ERROR'; // Keep for potential legacy XML handling
+        message: string;
+        location?: string;
+        content?: string;
+    };
+
 ```
 
 ## Context Management Types
@@ -139,132 +145,170 @@ type TaskFailureReason =
 ```typescript
 /**
  * Defines context management settings using the standardized three-dimensional model.
+ * Used by TaskSystem and Handlers.
  * Note: fresh_context="enabled" cannot be combined with inherit_context="full" or "subset"
  * [Type:System:ContextManagement:1.0]
  */
 interface ContextManagement {
-    /**
-     * Controls whether parent context is inherited
-     * - full: Complete inheritance of parent context
-     * - none: No inheritance from parent
-     * - subset: Selective inheritance based on relevance
-     */
+    /** Controls whether parent context is inherited */
     inheritContext: 'full' | 'none' | 'subset';
-    
-    /**
-     * Controls whether outputs from prior steps are accumulated
-     */
-    accumulateData: boolean;
-    
-    /**
-     * Controls what information is preserved during sequential task execution:
-     * - notes_only: Only the notes field is preserved (default for atomic tasks)
-     * - full_output: Both content and notes fields are preserved (affects partial output on atomic task failure)
-     */
-    accumulationFormat: 'full_output' | 'notes_only'; // Note: This primarily affects atomic task partial output format on failure now.
 
-    /**
-     * Controls whether new context is fetched via associative matching
-     * - enabled: Fresh context is retrieved for this task
-     * - disabled: No fresh context retrieval
-     */
+    /** Controls whether outputs from prior steps are accumulated */
+    accumulateData: boolean;
+
+    /** Controls what information is preserved during sequential task execution */
+    accumulationFormat: 'full_output' | 'notes_only';
+
+    /** Controls whether new context is fetched via associative matching */
     freshContext: 'enabled' | 'disabled';
 }
 
 /**
  * Default context management settings for atomic tasks invoked as subtasks
- * (e.g., via CONTINUATION or `call-atomic-task` with subtype='subtask')
  * [Type:System:SubtaskContextDefaults:1.0]
  */
 const SUBTASK_CONTEXT_DEFAULTS: ContextManagement = {
-    inheritContext: 'subset', // Changed default based on typical subtask usage
+    inheritContext: 'subset',
     accumulateData: false,
     accumulationFormat: 'notes_only',
     freshContext: 'enabled'
 };
+
+/**
+ * Input structure for Memory System context requests.
+ * Used by TaskSystem and SexpEvaluator to request context.
+ * [Type:System:ContextGenerationInput:4.0] // Kept version 4.0 as it matched
+ */
+interface ContextGenerationInput {
+    /** Optional: Template description */
+    templateDescription?: string;
+    /** Optional: Template type */
+    templateType?: string; // e.g., "atomic"
+    /** Optional: Template subtype */
+    templateSubtype?: string; // e.g., "standard", "evaluator"
+
+    /** Optional: Explicit query string (used by Sexp get_context or direct query) */
+    query?: string;
+
+    /** Optional: Inputs provided to the task/template */
+    inputs?: Record<string, any>;
+
+    /** Optional: Context inherited from parent task/environment */
+    inheritedContext?: string;
+    /** Optional: String summarizing accumulated outputs from previous steps */
+    previousOutputs?: string;
+}
 ```
 
 ## Task Execution Types
 
 ```typescript
 /**
- * Task execution status
+ * Task execution status enum
  * [Type:System:ReturnStatus:1.0]
  */
 type ReturnStatus = "COMPLETE" | "CONTINUATION" | "FAILED";
 
 /**
- * Core task type (now only atomic defined in XML)
+ * Core task type enum (now only atomic defined in XML/registered directly)
+ * Composition handled by S-expression DSL.
  * [Type:System:TaskType:1.0]
  */
-type TaskType = "atomic"; // Composition handled by S-expression DSL
-// Script execution is likely invoked via an S-expression primitive e.g., (system:run_script ...)
+type TaskType = "atomic";
 
 /**
- * Atomic task subtypes
+ * Atomic task subtype enum
  * [Type:System:AtomicTaskSubtype:1.0]
  */
-type AtomicTaskSubtype = "standard" | "subtask" | "director" | "evaluator";
+type AtomicTaskSubtype = "standard" | "subtask" | "director" | "evaluator" | "associative_matching"; // Added matching
 
 /**
- * Handler configuration
+ * Handler configuration parameters
  * [Type:System:HandlerConfig:1.0]
  */
 interface HandlerConfig {
     provider: string;  // e.g., "anthropic", "openai"
-    maxTurns: number;
-    maxContextWindowFraction: number;
+    maxTurns: number; // PositiveInt
+    maxContextWindowFraction: number; // Float between 0.0 and 1.0
     defaultModel?: string;
-    systemPrompt: string;
-    tools?: string[];  // Tool types needed ("file_access", "bash", etc.)
+    systemPrompt: string; // Base system prompt
+    tools?: string[];  // Tool types needed ("file_access", "bash", etc.) - Informational
 }
 
 /**
- * Task execution result
- * [Type:TaskSystem:TaskResult:1.0]
+ * Task execution result structure returned by TaskSystem and Handlers.
+ * [Type:System:TaskResult:1.0] // Renamed from TaskSystem specific
  */
 interface TaskResult {
-    content: string; // Complete or partial output
+    /** Output content from the task execution. Complete or partial. */
+    content: string;
+    /** Execution status of the task. */
     status: ReturnStatus; // COMPLETE, CONTINUATION, FAILED
+    /** Optional free-form criteria description (e.g., for evaluator selection) */
     criteria?: string;
-    parsedContent?: any; // If output was parsed JSON
+    /** Parsed content if output was successfully parsed (e.g., JSON). */
+    parsedContent?: any;
+    /** Task-level metadata about execution, resource usage, errors etc. */
     notes: {
         dataUsage?: string;
-        successScore?: number;
-        parseError?: string;
-        [key: string]: any;
+        successScore?: number; // Optional score (0.0-1.0)
+        parseError?: string; // Present when parsing `content` fails
+        error?: TaskError; // Embed structured error info here instead of just message?
+        [key: string]: any; // Allow extension
     };
 }
 
 /**
- * Input structure for Memory System context requests.
- * Can be called with template context or a direct query.
- * [Type:Memory:ContextGenerationInput:4.0] // Version bumped due to change
+ * Subtask Request structure used by Dispatcher and SexpEvaluator to invoke tasks via TaskSystem.
+ * Based on src/task_system/task_system_IDL.md execute_atomic_template args.
+ * [Type:System:SubtaskRequest:1.0]
  */
-interface ContextGenerationInput {
-    /** Optional: Template description */
-    templateDescription?: string;
-    /** Optional: Template type */
-    templateType?: string;
-    /** Optional: Template subtype */
-    templateSubtype?: string;
+interface SubtaskRequest {
+    /** Type of subtask ('atomic' is the only directly executable type now) */
+    type: TaskType; // Should be "atomic"
 
-    /** Optional: Explicit query string (used by Sexp get_context) */
-    query?: string;
+    /** Name or identifier of the specific atomic template to execute */
+    name: string; // Added 'name' field based on how execute_atomic_template finds templates
 
-    /** Optional: Inputs to the task/template */
-    inputs?: Record<string, any>;
+    /** Description of the subtask (for logging/context) */
+    description?: string; // Made optional as name is primary identifier
 
-    /** Optional: Context inherited from parent */
-    inheritedContext?: string;
-    /** Optional: String summarizing accumulated outputs */
-    previousOutputs?: string;
+    /** Input parameters for the subtask */
+    inputs: Record<string, any>;
+
+    /** Optional hints for template selection (less relevant now with direct name lookup) */
+    template_hints?: string[];
+
+    /** Optional context management overrides */
+    context_management?: Partial<ContextManagement>; // Use Partial for overrides
+
+    /** Optional maximum nesting depth override */
+    max_depth?: number; // PositiveInt
+
+    /**
+     * Specific files to include in subtask context.
+     * Takes precedence over context management fetching for these specific files.
+     */
+    file_paths?: string[];
 }
+
+/**
+ * Specialized result structure potentially returned by 'evaluator' subtype tasks.
+ * Extends the base TaskResult with evaluation-specific notes.
+ * [Type:System:EvaluationResult:1.0]
+ */
+interface EvaluationResult extends TaskResult {
+    notes: TaskResult['notes'] & { // Intersect with base notes type
+        success: boolean;        // Whether the evaluation passed
+        feedback: string;        // Human-readable feedback message
+        details?: {              // Optional structured details
+            metrics?: Record<string, number>;
+            violations?: string[];
+            suggestions?: string[];
+            [key: string]: any;
+        };
+        [key: string]: any; // Allow other notes inherited from TaskResult['notes']
+    };
+}
+
 ```
-
-## Cross-References
-
-- For XML schema definitions, see [Contract:Tasks:TemplateSchema:1.0] in `/system/contracts/protocols.md`
-- For Memory System types, see [Type:Memory:3.0] in `/components/memory/spec/types.md`
-- For Task System types, see [Type:TaskSystem:1.0] in `/components/task-system/spec/types.md`
-- For resource management contracts, see [Contract:Resources:1.0] in `/system/contracts/resources.md`

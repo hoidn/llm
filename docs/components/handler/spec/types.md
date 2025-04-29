@@ -1,43 +1,43 @@
 # Handler Types [Type:Handler:1.0]
 
+> **Note:** Shared types like `HandlerConfig` and `ResourceMetrics` are defined centrally. Please refer to the authoritative definitions in `/docs/system/contracts/types.md`. This file defines types primarily used internally by the Handler component.
+
 ```typescript
-/**
- * Handler configuration parameters
- */
-export interface HandlerConfig {
-    maxTurns: number;             // Maximum turns allowed for this Handler
-    maxContextWindowFraction: number; // Fraction of model's context window to use
-    defaultModel?: string;        // Default LLM model to use
-    baseSystemPrompt: string;     // Base system prompt for universal behaviors
-}
+// ## Removed Types (Now Defined Centrally) ##
+// HandlerConfig -> Defined in /docs/system/contracts/types.md
+// ResourceMetrics -> Defined in /docs/system/contracts/types.md
 
 /**
- * Payload sent to LLM provider
+ * Payload structure potentially used internally by the Handler before sending to the LLM service.
+ * [Type:Handler:HandlerPayload:Local:1.0] // Marked as local
  */
 export interface HandlerPayload {
-    systemPrompt: string;         // Combined system-level instructions (base + template-specific)
+    systemPrompt: string;         // Combined system-level instructions
     messages: Array<{             // Conversation history
         role: "user" | "assistant" | "system";
         content: string;
         timestamp?: Date;
     }>;
     context?: string;             // Context from Memory System
-    tools?: ToolDefinition[];     // Available tools
+    tools?: ToolDefinition[];     // Available tools formatted for the specific LLM service/library
     metadata?: {
         model: string;
         temperature?: number;
         maxTokens?: number;
-        resourceUsage: ResourceMetrics;
+        // ResourceUsage is tracked but the definition comes from system types
+        // resourceUsage: ResourceMetrics; // Use imported ResourceMetrics type
     };
 }
 
 /**
- * Tool definition for LLM
+ * Tool definition structure potentially used internally by the Handler.
+ * The actual registration format might depend on the LLM service/library.
+ * [Type:Handler:ToolDefinition:Local:1.0] // Marked as local
  */
 export interface ToolDefinition {
     name: string;
     description: string;
-    parameters: {
+    parameters: { // Note: 'input_schema' in IDL, 'parameters' here. Align if necessary.
         type: "object";
         properties: Record<string, {
             type: string;
@@ -47,20 +47,7 @@ export interface ToolDefinition {
     };
 }
 
-/**
- * Resource metrics tracked by Handler
- */
-export interface ResourceMetrics {
-    turns: {
-        used: number;
-        limit: number;
-        lastTurnAt: Date;
-    };
-    context: {
-        used: number;
-        limit: number;
-    };
-}
 ```
 
 For related resource management patterns, see [Pattern:ResourceManagement:1.0].
+For shared types, see `/docs/system/contracts/types.md`.
