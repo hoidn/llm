@@ -64,13 +64,16 @@ module src.task_system.task_system {
         // - Returns a TaskResult object representing the outcome of the template execution.
         // - Returns a FAILED TaskResult if the template is not found or execution fails.
         // Behavior:
+        // - This method only executes templates of type "atomic".
         // - Finds the template by name using `find_template`.
         // - Validates and merges context management settings from the template and request.
         // - If file_paths are specified in the request, uses those directly.
         // - Otherwise, resolves file paths based on the template and context settings using `resolve_file_paths`.
         // - If fresh context is enabled, retrieves relevant context from the MemorySystem.
         // - Prepares the final context by combining inherited context, fresh context, and previous outputs based on context settings.
-        // - Instantiates an AtomicTaskExecutor and calls its `execute_body` method with the template, inputs, and a BaseHandler.
+        // - Instantiates an AtomicTaskExecutor and calls its `execute_body` method with the template definition,
+        //   the evaluated `request.inputs` (as the `params` dictionary), and a BaseHandler instance.
+        // - The executor operates in an isolated scope, using only the passed parameters for substitution.
         // - Returns the TaskResult from the executor, potentially with additional notes about context usage.
         // @raises_error(condition="TEMPLATE_NOT_FOUND", description="Handled internally, returns FAILED TaskResult.")
         // @raises_error(condition="CONTEXT_RETRIEVAL_FAILURE", description="Handled internally, returns FAILED TaskResult.")
@@ -83,10 +86,11 @@ module src.task_system.task_system {
         // - input_text is a string containing the natural language query or task description.
         // - memory_system is an optional MemorySystem instance for context retrieval.
         // Postconditions:
-        // - Returns a list of tuples, each containing a template identifier and a relevance score (0.0 to 1.0).
+        // - Returns a list of tuples, each containing an atomic template identifier and a relevance score (0.0 to 1.0).
         // - The list is sorted by relevance score in descending order.
         // - Returns an empty list if no matching templates are found.
         // Behavior:
+        // - This method only searches for and considers templates where `type` is "atomic".
         // - Filters the template registry for atomic templates.
         // - For each template, calculates a relevance score based on similarity between the input_text and the template's name, description, and other metadata.
         // - If memory_system is provided, may use it to enhance matching with relevant context.
@@ -99,6 +103,8 @@ module src.task_system.task_system {
         // Preconditions:
         // - template is a dictionary representing a valid task template.
         // - The template must have a 'name' field as its identifier.
+        // - The template dictionary MUST contain a 'params' key defining its accepted parameters.
+        // - The template dictionary MUST have 'type' set to "atomic".
         // Expected JSON format for template: { "name": "string", "type": "atomic", "subtype": "string", ... }
         // Postconditions:
         // - The template is added to the internal template registry (`_templates`), keyed by its name.
@@ -107,6 +113,7 @@ module src.task_system.task_system {
         // - Validates that the template has a 'name' field.
         // - Adds the template to the registry.
         // - May perform additional validation or preprocessing of the template.
+        // - Templates with a 'type' other than "atomic" will be ignored and not registered.
         // @raises_error(condition="VALIDATION_ERROR", description="If the template is missing required fields or has invalid structure.")
         void register_template(dict<string, Any> template);
 
@@ -114,9 +121,10 @@ module src.task_system.task_system {
         // Preconditions:
         // - identifier is a string representing the template name or ID.
         // Postconditions:
-        // - Returns the template dictionary if found.
+        // - Returns the atomic template dictionary if found.
         // - Returns None if no template with the given identifier exists.
         // Behavior:
+        // - This method only searches for and considers templates where `type` is "atomic".
         // - Looks up the template in the internal registry (`_templates`) by the identifier.
         // - May perform additional processing or validation before returning the template.
         optional dict<string, Any> find_template(string identifier);

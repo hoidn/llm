@@ -38,7 +38,7 @@ module src.dispatcher {
         //   - Skips the subsequent template/tool lookup steps.
         // - If the identifier is *not* an S-expression, performs routing lookup with the following precedence:
         // - Parses 'file_context' parameter if present (handles list or JSON string array).
-        // - Routing Precedence: Checks TaskSystem templates first using `task_system_instance.find_template(identifier)`.
+        // - Routing Precedence: Checks TaskSystem first for an **atomic** template using `task_system_instance.find_template(identifier)`.
         // - If not found as a template, checks Handler's unified tool registry using `handler_instance.tool_executors`.
         // - If template found: Creates a `SubtaskRequest` (ensuring inputs are values, not expressions) and calls `task_system_instance.execute_atomic_template(request)`.
         // - If direct tool found: Calls the tool function directly with `params`. Wraps result in TaskResult if needed. Populates standard notes if the tool didn't.

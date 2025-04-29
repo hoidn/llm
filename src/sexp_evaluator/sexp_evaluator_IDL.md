@@ -10,6 +10,7 @@ module src.sexp_evaluator.sexp_evaluator {
 
     // Interface for the S-expression DSL Evaluator.
     // Responsible for parsing and executing workflows defined in S-expression syntax.
+    // This component is the exclusive mechanism for executing all workflow composition logic (sequences, conditionals, loops, etc.).
     interface SexpEvaluator {
 
         // Constructor: Initializes the S-expression evaluator.
@@ -71,7 +72,7 @@ module src.sexp_evaluator.sexp_evaluator {
         //             iv.  Else if `arg_name` is "context": Set `resolved_context_settings = evaluated_value` (ensure it's a dictionary matching context settings).
         //             v.   Else (regular named argument): Store `resolved_named_args[arg_name] = evaluated_value`.
         //          b. Else (treat as positional argument - **Note: Discouraged for task/tool calls**): Evaluate the element and add to a temporary list (handle with care or disallow for task/tool calls).
-        //       5. Look up `target_id` in `Handler.tool_executors` then `TaskSystem.find_template` (atomic only).
+        //       5. Look up `target_id` first in `Handler.tool_executors`, then in `TaskSystem.find_template` (for **atomic** templates **only**).
         //       6. If Direct Tool: Call executor function, passing `resolved_named_args` (potentially merging with positional args based on tool signature - requires convention).
         //       7. If Atomic Template:
         //          a. Construct the `SubtaskRequest` object.
@@ -80,6 +81,11 @@ module src.sexp_evaluator.sexp_evaluator {
         //          d. Set `request.context_management = resolved_context_settings` if it's not None.
         //          e. Call `TaskSystem.execute_atomic_template(request)`.
         //       8. Return result.
+        //       
+        // Note: Complex patterns requiring loops or sophisticated state management (like Director-Evaluator)
+        // must be implemented using combinations of S-expression primitives like `let`/`bind` and `if`,
+        // potentially involving recursive S-expression structures or dedicated loop primitives if available.
+        // This evaluator does not handle XML composite types.
         // @raises_error(...) // Various evaluation errors
         // Any _eval(Any node, object env); // Arg represents SexpEnvironment
     };

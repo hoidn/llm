@@ -61,6 +61,7 @@ When assigned to implement or modify a component specified by an IDL (or tacklin
     *   Ensure your implementation fulfills the `Postconditions`.
     *   Respect `Preconditions` (often handled by type hints or initial checks).
     *   Implement `raise` statements for specific exceptions documented with `@raises_error`.
+    *   For template variable substitution (`{{variable}}`), remember that variables can **only** be accessed from explicitly passed parameters, not from any wider environment.
 9.  **Write Tests:**
     *   If appropriate for the component, write `pytest` tests (prioritizing integration/functional tests) that verify your implementation against the *entire* IDL contract:
         *   Does it perform the described `Behavior`?
@@ -107,6 +108,10 @@ When assigned to implement or modify a component specified by an IDL (or tacklin
 *   **Dependency Injection:**
     *   **Concept:** Components receive their dependencies (other components, resources) via their constructor (`__init__`). Avoid global state or direct instantiation of dependencies within methods.
     *   **Practice:** Identify dependencies from IDL (`@depends_on`). Add corresponding parameters to your class `__init__` method with type hints. Store references as instance attributes (e.g., `self.memory_system = memory_system`).
+*   **Template & Workflow Separation:**
+    *   **Concept:** XML files define **only atomic tasks** with explicit parameter declarations, while S-expressions handle **all workflow composition** (sequences, loops, conditionals).
+    *   **Practice:** When implementing `AtomicTaskExecutor`, ensure template variables are substituted **only from explicitly passed parameters**. When implementing `SexpEvaluator`, ensure it handles all composition logic.
+    *   **Reference:** See the relevant IDLs for `AtomicTaskExecutor`, `TaskSystem`, and `SexpEvaluator`.
 *   **LLM Interaction (via Pydantic-AI):**
     *   **Standard:** The project uses the `pydantic-ai` library for interacting with LLMs.
     *   **Practice:** `BaseHandler` uses an internal `LLMInteractionManager` to manage the `pydantic-ai` `Agent`. Implementations within `BaseHandler` delegate LLM calls to this manager. Tool registration (`register_tool`) stores tool definitions, and making them available to the live agent requires careful integration (see `implementation_rules.md`).
