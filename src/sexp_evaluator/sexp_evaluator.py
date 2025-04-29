@@ -19,10 +19,10 @@ from src.sexp_evaluator.sexp_environment import SexpEnvironment
 # System Models and Errors
 from src.system.models import (
     TaskResult, SubtaskRequest, ContextGenerationInput, ContextManagement,
-    TaskFailureError, TaskFailureReason, AssociativeMatchResult, MatchTuple,
-    TaskError as TaskErrorModel  # Import the model with an alias for type hints
+    TaskFailureError, AssociativeMatchResult, MatchTuple,
+    TaskError # Import the TaskError model directly if needed for type hints elsewhere, or remove if unused
 )
-from src.system.errors import SexpSyntaxError, SexpEvaluationError # Removed NameError import
+from src.system.errors import SexpSyntaxError, SexpEvaluationError
 
 # Type for Sexp AST nodes (adjust based on SexpParser output)
 # Assuming sexpdata-like output: lists, tuples, strings, numbers, bools, None, Symbol objects
@@ -168,8 +168,8 @@ class SexpEvaluator:
     def _eval_list(self, node_list: list, env: SexpEnvironment) -> Any:
         """Handles the evaluation of a non-empty list."""
         node_str = str(node_list) # For error reporting
-        logging.debug(f"--- _eval_list ENTRY: node_list={node_list}")
-        if not node_list: return []
+        logging.debug(f"--- _eval_list START: node_list={node_list}")
+        if not node_list: return [] # Should not happen if called from _eval
 
         operator_node = node_list[0]
         args = node_list[1:] # Unevaluated args
@@ -430,10 +430,9 @@ class SexpEvaluator:
 
     def _handle_invocation(self, operator_target: Any, args: list, env: SexpEnvironment, node_str: str) -> Any:
         """Handles the invocation of tasks, tools, or other callables."""
-        logging.debug(f"--- _handle_invocation ENTRY: target={operator_target} (Type: {type(operator_target)}), args={args}")
-        logging.debug(f"Handle Invocation START: Target={operator_target}, Args={args}")
-        
-        # Parse arguments from unevaluated args list
+        logging.debug(f"--- _handle_invocation START: target={operator_target} (Type: {type(operator_target)}), unevaluated_args={args}")
+
+        # Evaluate arguments from unevaluated args list
         parsed_args: Dict[str, Any] = {"named": {}, "files": None, "context": None}
         
         try:
@@ -491,10 +490,11 @@ class SexpEvaluator:
                     parsed_args["context"] = evaluated_context_value
                 else:
                     # Regular named argument - store the evaluated value
+                    # Regular named argument - store the evaluated value
                     parsed_args["named"][key_str] = value
-            # --- End Corrected Argument Parsing ---
+            # --- End Argument Evaluation ---
 
-            logging.debug(f"Parsed invocation args: {parsed_args}")
+            logging.debug(f"Evaluated invocation args: {parsed_args}")
 
             # Determine if target is a name string or a callable
             if isinstance(operator_target, str):
