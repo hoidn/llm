@@ -1,6 +1,6 @@
-**Full Revised Implementation Plan (with `defatom`)**
+**Full Revised Implementation Plan (Deferring Aider Integration)**
 
-**Overall Goal:** Build a system capable of orchestrating LLM interactions, external tools, and file system operations via an S-expression DSL, with features for context management, Git indexing, and Aider integration.
+**Overall Goal:** Build a system capable of orchestrating LLM interactions, external tools, and file system operations via an S-expression DSL, with features for context management and Git indexing. *Code editing integration (Aider/MCP) is deferred.*
 
 **Phase Breakdown:**
 
@@ -32,48 +32,42 @@
     *   **Components:** `AtomicTaskExecutor` (executes template bodies), `SexpEvaluator` (parses/runs S-expressions, calls tasks/tools/primitives), `PassthroughHandler` (basic chat interaction).
     *   **Outcome:** System can execute atomic tasks and complex S-expression workflows; basic user interaction via PassthroughHandler is possible. **Achieves Feature Readiness Levels 2, 3, 4.**
 
-*   **Phase 4:** Specialized Features (Indexers, Aider, System Tools) - **PENDING (NEXT)**
-    *   **Goal:** Implement integrations with Git, Aider, and add specific system-level tools.
+*   **Phase 4:** Specialized Features (Indexers & System Tools) - **PENDING (NEXT)**
+    *   **Goal:** Implement integration with Git and add specific system-level tools. *(Aider integration deferred)*.
     *   **Components:**
         *   `GitRepositoryIndexer`: Implement class based on IDL, including scanning, metadata creation (using `text_extraction` helpers and Git library/CLI), and calling `memory_system.update_global_index`.
         *   `MemorySystem.index_git_repository`: Implement method to use the indexer.
-        *   `AiderBridge`, `AiderAutomaticHandler`, `AiderInteractiveSession`: Implement classes based on IDLs, handling Aider availability check, context management, and interaction with Aider library/CLI (requires careful design, likely involving subprocess management or Aider's Python API if available).
         *   `SystemExecutorFunctions`: Implement `execute_get_context` (using `MemorySystem`) and `execute_read_files` (using `FileAccessManager`) based on IDL.
-        *   `AiderExecutorFunctions`: Implement `execute_aider_automatic` and `execute_aider_interactive` (wrapping `AiderBridge` calls) based on IDL.
-    *   **Integration:** Ensure `Application` (in Phase 6) will register System and Aider tools/executors with the `PassthroughHandler`.
-    *   **Testing:** Requires significant mocking for external dependencies (Git, Aider).
-    *   **Outcome:** System gains advanced capabilities for interacting with Git repos, performing code edits via Aider, and using specific system utilities within workflows. **Achieves Feature Readiness Level 5.**
+    *   **Integration:** Ensure `Application` (in Phase 6) will register System tools/executors with the `PassthroughHandler`. *(No Aider tool registration needed here)*.
+    *   **Testing:** Requires mocking for Git interaction.
+    *   **Outcome:** System gains advanced capabilities for interacting with Git repos and using specific system utilities within workflows. **Achieves partial Feature Readiness Level 5** (Git indexing and system tools enabled, code editing feature deferred).
 
 *   **Phase 5:** Implement `defatom` Special Form - **PENDING**
     *   **Goal:** Enhance the S-expression DSL to allow inline definition of simple atomic tasks.
     *   **Components:** `SexpEvaluator`.
-    *   **Tasks:**
-        1.  Modify `SexpEvaluator._eval_list`: Add `defatom` to the `special_forms` set.
-        2.  Modify `SexpEvaluator._eval_special_form`: Implement the logic for `defatom` as specified in the ADR:
-            *   Parse task name symbol, params list, instructions string, optional description/subtype.
-            *   Validate the inputs.
-            *   Construct the atomic task template dictionary.
-            *   Call `self.task_system.register_template()` with the dictionary.
-            *   **(Recommended):** Bind the task name symbol in the current lexical environment (`env.define(...)`) to a callable wrapper that invokes `task_system.execute_atomic_template`.
-            *   Return the task name symbol.
-        3.  Write Unit Tests: Create new tests in `tests/sexp_evaluator/test_sexp_evaluator.py` specifically for `defatom`, covering:
-            *   Successful definition and registration.
-            *   Correct handling of optional description/subtype.
-            *   Invocation of a task defined via `defatom` (both via lexical binding and global lookup if applicable).
-            *   Error handling for incorrect `defatom` syntax.
+    *   **Tasks:** (Same as previous plan) Implement `defatom` special form logic, test cases.
     *   **Outcome:** Users can define simple atomic LLM tasks directly within S-expression workflows, improving encapsulation and prototyping speed. DSL expressiveness increased.
 
 *   **Phase 6:** Top-Level Integration & Dispatching (`Dispatcher`, `Application`) - **PENDING**
     *   **Goal:** Create the main application entry point and the dispatcher for `/task` commands.
     *   **Components:** `Dispatcher` (`src/dispatcher.py`), `Application` (`src/main.py`).
     *   **Tasks:**
-        *   Implement `DispatcherFunctions.execute_programmatic_task`: Handle parsing of identifier/params/flags, differentiate S-expressions vs direct calls, route S-expressions to `SexpEvaluator.evaluate_string`, route direct calls to `TaskSystem.execute_atomic_template` or `Handler._execute_tool`, format results/errors into `TaskResult`.
-        *   Implement `Application`: `__init__` to instantiate and wire all core components (`MemorySystem`, `TaskSystem`, `Handler`, `AiderBridge` etc.), load configuration. Implement methods like `handle_query` (using `PassthroughHandler`), `index_repository` (using `MemorySystem`), potentially a method to handle `/task` commands via the `Dispatcher`. Implement helper methods for tool registration (`initialize_aider`, `_register_system_tools`).
-    *   **Testing:** Requires integration tests covering the Dispatcher routing and Application lifecycle.
-    *   **Outcome:** System functions as a cohesive whole, callable via the `Application` class. Programmatic task execution (`/task`) is enabled. **Achieves Feature Readiness Level 6.**
+        *   Implement `DispatcherFunctions.execute_programmatic_task`: Handle parsing, routing (Sexp vs direct), invocation, result formatting.
+        *   Implement `Application`: `__init__` (wire components), `handle_query`, `index_repository`, `/task` handling via Dispatcher. Implement helper for system tool registration (`_register_system_tools`). *(No Aider initialization/registration needed here)*.
+    *   **Testing:** Integration tests for Dispatcher and Application.
+    *   **Outcome:** System functions as a cohesive whole, callable via the `Application` class. Programmatic task execution (`/task`) is enabled. **Achieves Feature Readiness Level 6** (minus code editing).
 
-*   **Phase 7:** Documentation Alignment & Final Review - **PENDING**
-    *   **Goal:** Ensure all documentation (IDLs, READMEs, guides) matches the final implementation. Perform final code review and cleanup.
-    *   **Tasks:** Update IDLs, `start_here.md`, `implementation_rules.md`, potentially add usage examples. Final linting/formatting. Review for consistency.
-    *   **Outcome:** Project is well-documented, consistent, and ready for use/further development.
+*   **Phase 7:** Code Editing Integration (Aider/MCP/Other) - **PENDING (DEFERRED)**
+    *   **Goal:** Add code editing capabilities.
+    *   **Tasks:** Based on the chosen approach (Direct Aider, MCP Client+Server, etc.):
+        *   Implement necessary bridge/client components.
+        *   Implement corresponding executor functions.
+        *   Integrate with `Application` (instantiation, tool registration).
+        *   Write tests (likely heavy mocking).
+    *   **Outcome:** System gains code editing functionality, completing Feature Readiness Level 5.
+
+*   **Phase 8:** Documentation Alignment & Final Review - **PENDING** (Renumbered from Phase 6)
+    *   **Goal:** Ensure all documentation matches the final implementation. Perform final code review and cleanup.
+    *   **Tasks:** Update IDLs, guides, examples. Final linting/formatting. Review.
+    *   **Outcome:** Project is well-documented, consistent, and ready.
 
