@@ -9,7 +9,7 @@ import json
 from unittest.mock import patch, MagicMock, ANY
 
 # Assuming TaskSystem is importable
-from src.task_system.task_system import TaskSystem
+from src.task_system.task_system import TaskSystem, MATCH_THRESHOLD
 
 # Import necessary types and dependencies for testing
 from src.memory.memory_system import MemorySystem # For type hint/mocking
