@@ -44,17 +44,26 @@ When assigned to implement or modify a component specified by an IDL (or tacklin
 
 1.  **Define Task:** Clearly understand the goal (e.g., from an issue tracker, user story).
 2.  **Locate/Review IDL:** Find the relevant `*_IDL.md` file(s). If modifying existing code without a complete IDL, consider generating/updating the IDL first (Code-to-IDL).
-3.  **Understand Contract:** Thoroughly read the IDL: `module`/`interface` purpose, `@depends_on*`, function/method signatures, and especially the documentation blocks (`Preconditions`, `Postconditions`, `Behavior`, `Expected JSON format`, `@raises_error`).
-4.  **Review Rules:** Briefly refresh understanding of key guidelines in `docs/implementation_rules.md` and `docs/project_rules.md`.
-5.  **Setup Working Memory:** Update `docs/memory.md` with your "Current Task/Focus" and initial "Next Steps".
+3.  **Understand Contract:** Thoroughly read the IDL: `module`/`interface` purpose, `@depends_on*`, function/method signatures, and especially the documentation blocks (`Preconditions`, `Postconditions`, `Behavior`, `Expected JSON format`, `@raises_error`). **Pay close attention to the `@depends_on*` declarations, as these explicitly state the component's dependencies and will force consideration of how to handle them during testing.**
+4.  **Review Rules:** Briefly refresh understanding of key guidelines in `docs/implementation_rules.md` (especially Section 7 on Testing) and `docs/project_rules.md`.
+5.  **Outline Testing Strategy:**
+    *   Based on the IDL dependencies (`@depends_on*`) and the project's testing guidelines (prioritizing integration tests, minimizing mocking), outline the primary testing approach for the component.
+    *   **Ask:** Given the dependencies, is unit testing with mocks feasible and valuable, or are integration tests (using real dependencies or fakes/stubs) more appropriate for verifying the core behavior?
+    *   **Identify:** For parts requiring unit tests, identify the specific dependencies that will need mocking/stubbing.
+    *   **Consider:** How will error conditions specified in `@raises_error` be simulated in tests?
+    *   *(This initial strategy may be refined in Phase 1).*
+6.  **Setup Working Memory:** Update `docs/memory.md` with your "Current Task/Focus", initial "Testing Strategy Outline", and initial "Next Steps".
 
-**Phase 1: Core Implementation & Unit/Integration Testing ("Main Step")**
+**Phase 1: Implementation & Testing ("Main Step")**
 
-6.  **Create/Modify Files:** Ensure Python file/directory structure matches the IDL `module` path (e.g., `src/component/module.py` for `src.component.module`).
-7.  **Implement Structure & Dependencies:**
+7.  **Refine Testing Strategy & Identify Mock Targets:**
+    *   Solidify the testing approach outlined in Phase 0.
+    *   If using mocks, explicitly identify the correct patch targets according to **Guideline 2: Patch Where It's Looked Up** (`docs/implementation_rules.md`, Section 7). Determine *before* writing test code how mocks will be configured (e.g., `return_value`, `side_effect`).
+8.  **Create/Modify Files:** Ensure Python file/directory structure matches the IDL `module` path (e.g., `src/component/module.py` for `src.component.module`).
+9.  **Implement Structure & Dependencies:**
     *   If the IDL defines an `interface`, create the corresponding Python class. Implement its constructor (`__init__`), injecting dependencies specified in `@depends_on`.
     *   If the IDL defines module-level functions, ensure the module exists. Handle any module-level setup or configuration needed. Dependencies specified in `@depends_on` might be injected into functions directly as parameters or managed via module initialization.
-8.  **Implement Functions/Methods:**
+10. **Implement Functions/Methods:**
     *   Define function/method signatures **exactly** matching the IDL (name, parameters, type hints corresponding to IDL types).
     *   Implement the logic described in the `Behavior` section.
     *   Use Pydantic models for complex `Expected JSON format` parameters/returns (Parse, Don't Validate).
@@ -62,28 +71,31 @@ When assigned to implement or modify a component specified by an IDL (or tacklin
     *   Respect `Preconditions` (often handled by type hints or initial checks).
     *   Implement `raise` statements for specific exceptions documented with `@raises_error`.
     *   For template variable substitution (`{{variable}}`), remember that variables can **only** be accessed from explicitly passed parameters, not from any wider environment.
-9.  **Write Tests:**
-    *   If appropriate for the component, write `pytest` tests (prioritizing integration/functional tests) that verify your implementation against the *entire* IDL contract:
+11. **Write Tests (Unit and/or Integration):**
+    *   Implement the tests according to the refined strategy.
+    *   Write `pytest` tests that verify your implementation against the *entire* IDL contract:
         *   Does it perform the described `Behavior`?
         *   Does it meet the `Postconditions`?
-        *   Does it correctly handle specified `Error Conditions` (`@raises_error`)?
+        *   Does it correctly handle specified `Error Conditions` (`@raises_error`), simulating them appropriately?
         *   Does it handle edge cases implied by `Preconditions`?
-10. **Log Progress:** Update `docs/memory.md` (Recent Activity, Notes, Blockers) as you make progress or encounter issues.
+    *   Follow the Arrange-Act-Assert pattern.
+    *   Use fixtures for setup (`tests/conftest.py`).
+12. **Log Progress:** Update `docs/memory.md` (Recent Activity, Notes, Blockers) as you make progress or encounter issues.
 
 **Phase 2: Finalization & Sanity Checks ("Cleanup Step")**
 
-11. **Format Code:** If possible, run the project's code formatter (e.g., `make format` or `black .`).
-12. **Lint Code:** If possible, run the project's linter (e.g., `make lint` or `ruff check . --fix`) and address all reported issues.
-13. **Run All Tests:** If possible, execute the full test suite (e.g., `pytest tests/` or `make test`) and ensure all tests pass.
-14. **Perform Sanity Checks:**
+13. **Format Code:** If possible, run the project's code formatter (e.g., `make format` or `black .`).
+14. **Lint Code:** If possible, run the project's linter (e.g., `make lint` or `ruff check . --fix`) and address all reported issues.
+15. **Run All Tests:** If possible, execute the full test suite (e.g., `pytest tests/` or `make test`) and ensure all tests pass.
+16. **Perform Sanity Checks:**
     *   **Self-Review:** Read through your code. Is it clear? Simple? Are comments/docstrings accurate?
-    *   **Implementation Rules Check:** Does the code adhere to `docs/implementation_rules.md` (imports, naming, patterns, etc.)?
+    *   **Implementation Rules Check:** Does the code adhere to `docs/implementation_rules.md` (imports, naming, patterns, testing guidelines, etc.)?
     *   **Project Rules Check:** Does the code adhere to `docs/project_rules.md`?
         *   **(Guideline Check): Is any module significantly longer than the recommended limit (e.g., 300 lines)?** If yes, evaluate if refactoring/splitting the module makes sense for clarity and maintainability. *If you refactor, go back to the formatting, linting and testing steps before proceeding.*
     *   **Update Directory Structure Doc:** If your changes added, removed, or renamed files/directories, update the structure diagram in `project_rules.md` to reflect the current state.
     *   **IDL Check:** Does the final code *still* precisely match the public contract defined in the IDL (signatures, error conditions)?
     *   **(New) Configuration Check:** Verify that related configuration files (especially test setups like `tests/conftest.py`) have been updated if your changes affect shared types, interfaces, or component instantiation relied upon by tests or fixtures. Ensure imports point to the correct new locations.
-15. **Finalize Working Memory:** Update `docs/memory.md` with the final status and any relevant closing thoughts or context, including lessons learned (if any debugging was done) and guidance for the next steps. 
+17. **Finalize Working Memory:** Update `docs/memory.md` with the final status and any relevant closing thoughts or context, including lessons learned (if any debugging was done) and guidance for the next steps.
 </idl to code>
 
 ---
@@ -143,6 +155,7 @@ When assigned to implement or modify a component specified by an IDL (or tacklin
 **9. Development Workflow & Recommended Practices**
 
 *   **Follow the IDL:** Adhere strictly to the IDL specification (`*_IDL.md`) for the component you are implementing (See Section 3).
+*   **Plan Your Tests:** Explicitly consider how you will test the component based on its IDL contract and dependencies *before* writing implementation code (See Section 3, Phase 0).
 *   **Use Working Memory:** Maintain a running log of your development progress, current focus, and next steps in `docs/memory.md`. Update it frequently during your work session and commit it along with your code changes. This aids context retention for yourself and helps reviewers understand the development path. (See `docs/memory.md` for the template and detailed guidelines).
 *   **Be Aware of Existing Code & Configuration:** When implementing new components or modifying existing ones, always consider how your changes might affect related parts of the codebase, *especially configuration files (like `tests/conftest.py`)*, test setups, and integration points. Verify that related files are updated accordingly.
 *   **Test Driven:** Write tests (especially integration tests) to verify your implementation against the IDL contract (See Section 6 and `docs/implementation_rules.md`).
