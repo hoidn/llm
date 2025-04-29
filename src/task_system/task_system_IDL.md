@@ -1,150 +1,118 @@
 // == !! BEGIN IDL TEMPLATE !! ===
-module src.task_system.task_system {
+module src.memory.memory_system {
 
-    # @depends_on(src.memory.memory_system.MemorySystem) // For context generation mediation
-    # @depends_on(src.handler.base_handler.BaseHandler) // For obtaining handlers for execution
+    # @depends_on(src.handler.base_handler.BaseHandler) // For context generation LLM calls
+    # @depends_on(src.task_system.task_system.TaskSystem) // For mediating context generation
+    # @depends_on(src.memory.indexers.git_repository_indexer.GitRepositoryIndexer) // For indexing repos
 
-    // Interface for the Task System, responsible for managing and executing task templates.
-    interface TaskSystem {
+    // Interface for the Memory System. Manages file metadata and context retrieval.
+    interface MemorySystem {
 
-        // Constructor: Initializes the Task System.
+        // Constructor: Initializes the Memory System.
         // Preconditions:
-        // - memory_system is an optional instance of MemorySystem.
+        // - handler is an optional BaseHandler instance (required for context generation).
+        // - task_system is an optional TaskSystem instance (required for context generation mediation).
+        // - config is an optional dictionary for sharding parameters and other settings.
         // Postconditions:
-        // - TaskSystem is initialized with empty template storage (`templates`, `template_index`).
-        // - Reference to memory_system is stored.
-        // - Handler cache and test mode flag are initialized.
-        void __init__(optional object memory_system); // Arg represents MemorySystem
+        // - MemorySystem is initialized with an empty global index (`global_index`).
+        // - References to handler and task_system are stored.
+        // - Sharding configuration (`_config`) is initialized with defaults or values from config.
+        // - Sharded index (`_sharded_index`) is initialized as an empty list.
+        void __init__(optional object handler, optional object task_system, optional dict<string, Any> config); // Args represent BaseHandler, TaskSystem
 
-        // Enables or disables test mode.
+        // Retrieves the current global file metadata index.
+        // Preconditions: None.
+        // Postconditions:
+        // - Returns the dictionary mapping absolute file paths to metadata strings.
+        dict<string, string> get_global_index();
+
+        // Updates the global file metadata index with new entries.
+        // Preconditions:
+        // - index is a dictionary mapping file paths to metadata strings.
+        // - File paths in the index MUST be absolute paths (validation performed).
+        // Postconditions:
+        // - Entries from the input `index` are added to or update the internal `global_index`.
+        // - If sharding is enabled, the internal shards (`_sharded_index`) are recalculated based on the updated `global_index`.
+        // @raises_error(condition="INPUT_VALIDATION_FAILURE", description="Raised if a non-absolute path is provided.")
+        void update_global_index(dict<string, string> index);
+
+        // Enables or disables the use of sharded context retrieval.
         // Preconditions:
         // - enabled is a boolean value.
         // Postconditions:
-        // - The internal `_test_mode` flag is set.
-        // - If enabled, subsequent requests for handlers via `_get_handler` will return MockHandler instances.
-        void set_test_mode(boolean enabled);
+        // - The internal sharding flag `_config['sharding_enabled']` is set.
+        // - If enabling sharding, the internal shards (`_sharded_index`) are calculated/updated based on the current `global_index`.
+        void enable_sharding(boolean enabled);
 
-        // Executes a single *atomic* Task System template workflow directly from a SubtaskRequest.
-        // This is the primary entry point for programmatic execution of registered *atomic* tasks,
-        // typically invoked by the SexpEvaluator.
+        // Configures parameters for sharded context retrieval.
         // Preconditions:
-        // - request is a valid SubtaskRequest object containing type ('atomic'), name/subtype, and fully resolved inputs.
-        // - request.inputs MUST be a dictionary of evaluated parameter values.
-        // - request.file_paths (if present) MUST be a list of resolved file path strings.
-        // - request.context_management (if present) MUST contain resolved settings.
-        // - The caller (e.g., SexpEvaluator) is responsible for resolving any expressions within the original request before calling this method.
+        // - Parameters (token_size_per_shard, max_shards, token_estimation_ratio, max_parallel_shards) are optional and must be valid types (int, float) if provided.
         // Postconditions:
-        // - Returns the final TaskResult dictionary from the executed atomic template.
-        // - The result's 'notes' dictionary includes 'template_used', 'context_source', and 'context_files_count'.
-        // - Returns a FAILED TaskResult if the template is not found or execution fails.
+        // - The corresponding keys in the internal `_config` dictionary are updated.
+        // - If sharding is enabled, the internal shards (`_sharded_index`) are recalculated based on the updated configuration and `global_index`.
+        void configure_sharding(optional int token_size_per_shard, optional int max_shards, optional float token_estimation_ratio, optional int max_parallel_shards);
+
+        // Retrieves relevant context using a specific description string for matching, bypassing the main query.
+        // Deprecated or less common way to get context. `get_relevant_context_for` is preferred.
+        // Preconditions:
+        // - query is the main task query string (potentially used for logging/metadata but not matching).
+        // - context_description is the string to be used for the associative matching process.
+        // Postconditions:
+        // - Returns an AssociativeMatchResult object.
         // Behavior:
-        // - Executes the workflow defined within a single *atomic* task template. Composite task types are not supported.
-        // - This method is invoked by the `SexpEvaluator` when an S-expression calls a registered atomic task template identifier.
-        // - Validates that the `request.type` is 'atomic'. Returns error if not.
-        // - Identifies the target atomic template using `request.name` (preferred) or `request.type`/`request.subtype`. Returns error if not found.
-        // - **Determines Context:** Resolves the final context settings and file paths using the following precedence:
-        //   1. Files from `request.file_paths` (if provided) OVERRIDE any `<file_paths>` in the XML template.
-        //   2. Context settings from `request.context_management` (if provided) OVERRIDE any `<context_management>` in the XML template.
-        //   3. If not overridden by the request, settings from `<file_paths>` in the XML template are used.
-        //   4. If not overridden by the request, settings from `<context_management>` in the XML template are used.
-        //   5. If no settings are provided by request or template, system defaults for atomic tasks apply.
-        // - Retrieves necessary file content (if file paths determined) via the Handler.
-        // - Retrieves fresh context via `MemorySystem.get_relevant_context_for` if the final effective context settings require it. Constructs `ContextGenerationInput` using template info and `request.inputs`.
-        // - Uses the `request.inputs` dictionary directly as the parameters for the atomic task.
-        // - Obtains an appropriate Handler instance.
-        // - Instantiates the `AtomicTaskExecutor`.
-        // - Calls `atomic_task_executor.execute_body`, passing the parsed template definition, the `request.inputs` dictionary, and the handler instance.
-        // - The `request.inputs` dictionary is expected to contain parameter names as keys and their corresponding evaluated values as provided by the caller (typically the `SexpEvaluator` processing evaluated named arguments from an S-expression `call`).
-        // - Handles TaskErrors and unexpected exceptions from the executor, returning formatted error results.
-        // - Includes execution metadata (template used, final context source/count) in the result notes.
-        // @raises_error(condition="INPUT_VALIDATION_FAILURE", description="Handled internally, returns FAILED TaskResult if template not found or type is not 'atomic'.")
-        // @raises_error(condition="TASK_FAILURE", description="Handled internally, returns FAILED TaskResult.")
-        // @raises_error(condition="UNEXPECTED_ERROR", description="Handled internally, returns FAILED TaskResult.")
-        // Expected JSON format for request.inputs: { "param1": "value1", ... } (Must be pre-resolved)
-        // Expected JSON format for return value: TaskResult structure { "status": "string", "content": "Any", "notes": { ... } }
-        dict<string, Any> execute_atomic_template(object request); // Arg represents SubtaskRequest
-
-        // Finds matching atomic task templates based on similarity to input text.
-        // Preconditions:
-        // - input_text is a string describing the desired task.
-        // - memory_system is a valid MemorySystem instance (currently unused in implementation but part of signature).
-        // Postconditions:
-        // - Returns a list of dictionaries, each representing a matching template.
-        // - Each dictionary contains 'task' (the template dict), 'score' (float similarity), 'taskType', 'subtype'.
-        // - The list is sorted by score in descending order. Returns empty list if no matches found.
-        // Behavior:
-        // - Iterates through registered templates, filtering for type="atomic".
-        // - Calculates a similarity score (e.g., Jaccard index on words) between input_text and template description.
-        // - Includes templates with scores above a threshold (e.g., 0.1).
-        // Expected JSON format for return list items: { "task": { ... }, "score": "float", "taskType": "string", "subtype": "string" }
-        list<dict<string, Any>> find_matching_tasks(string input_text, object memory_system); // Arg represents MemorySystem
-
-        // Registers an *atomic* task template definition.
-        // Preconditions:
-        // - template is a dictionary representing the template, expected to have 'name', 'type', 'subtype'.
-        // Expected JSON format for template: { "name": "string", "type": "string", "subtype": "string", "description": "string", "params": "string", ... }
-        // Postconditions:
-        // - The template is validated and enhanced for compatibility (using `ensure_template_compatibility`).
-        // - Performs validation to ensure the template definition includes the required parameter declaration (e.g., a non-missing `params` attribute in the source).
-        // - The template is stored in the internal `templates` dictionary, keyed by its 'name'.
-        // - An index mapping 'type:subtype' to the template 'name' is updated in `template_index`.
-        // Note: Composite tasks are no longer registered here; they are defined and executed via S-expressions.
-        void register_template(dict<string, Any> template);
-
-        // Finds a template definition by its identifier.
-        // Used by Dispatcher/SexpEvaluator to locate atomic tasks.
-        // Preconditions:
-        // - identifier is a string, either the template's unique 'name' or its 'type:subtype' combination.
-        // Postconditions:
-        // - Returns the template definition dictionary if found.
-        // - Returns None if no template matches the identifier.
-        // Behavior:
-        // - First attempts lookup by direct name in the `templates` dictionary.
-        // - If not found by name, attempts lookup using the identifier as a 'type:subtype' key in the `template_index`.
-        // Only searches for templates of type 'atomic'.
-        optional dict<string, Any> find_template(string identifier);
-
-        // Generates context for the Memory System, acting as a mediator.
-        // This method delegates the actual context generation (often involving LLM calls)
-        // to a specialized task ('atomic:associative_matching') executed via the appropriate Handler.
-        // Preconditions:
-        // - context_input is a valid ContextGenerationInput object containing details about the required context.
-        // - global_index is a dictionary mapping file paths to their metadata strings.
-        // - The TaskSystem must have a valid reference to the MemorySystem, which in turn must have a valid Handler.
-        // Postconditions:
-        // - Returns an AssociativeMatchResult object containing a context summary string and a list of MatchTuple objects (path, relevance, score).
-        // - Returns an empty/error result if the Handler is not available or the context generation task fails.
-        // Behavior:
-        // - Verifies that a Handler instance is accessible via the MemorySystem.
-        // - Formats the global_index metadata and context_input into parameters for the 'atomic:associative_matching' task.
-        // - Executes the 'atomic:associative_matching' task using `execute_task`, passing the correct Handler.
-        // - Parses the JSON response from the task execution (expected to be a list of file objects with path, relevance, score).
-        // - Validates and formats the parsed file list into MatchTuple objects.
-        // - Constructs and returns the final AssociativeMatchResult.
-        // @raises_error(condition="TASK_FAILURE", reason="dependency_error", description="Handled internally, returns error result if Handler not available.")
-        // @raises_error(condition="TASK_FAILURE", reason="output_format_failure", description="Handled internally, returns error/empty result if JSON parsing fails.")
-        // @raises_error(condition="TASK_FAILURE", description="If the underlying context generation task fails.")
-        // Expected JSON format for global_index: { "path/to/file": "metadata string", ... }
+        // - Constructs a simple input dictionary using `context_description` as the 'taskText'.
+        // - Calls `get_relevant_context_for` with this constructed input.
         // Returns: AssociativeMatchResult object
-        object generate_context_for_memory_system(object context_input, dict<string, string> global_index); // Args represent ContextGenerationInput, AssociativeMatchResult
+        object get_relevant_context_with_description(string query, string context_description);
 
-        // Resolves the final list of file paths to be used for context based on template settings.
+        // Retrieves relevant context for a task, mediating through the TaskSystem.
+        // This is the primary method for context retrieval.
         // Preconditions:
-        // - template is a dictionary representing a fully resolved task template (variables substituted).
-        // - memory_system is a valid MemorySystem instance.
-        // - handler is a valid Handler instance (needed for command execution).
+        // - input_data is either a legacy dictionary (containing 'taskText') or a ContextGenerationInput object.
+        // - The TaskSystem dependency must be available and correctly configured.
         // Postconditions:
-        // - Returns a tuple: (list_of_file_paths, optional_error_message).
-        // - The list contains absolute file paths determined by the template's context strategy.
-        // - error_message is a string if context retrieval failed (e.g., command error), otherwise None.
+        // - Returns an AssociativeMatchResult object containing the context summary and a list of MatchTuple objects (path, relevance, score).
+        // - Returns an error result if TaskSystem is unavailable or context generation fails.
         // Behavior:
-        // - Aggregates paths from multiple sources based on template configuration:
-        //   - Explicit `file_paths` defined in the template.
-        //   - Context generated via MemorySystem using `template['_context_input']` (if present).
-        //   - Paths retrieved using `memory_system.get_relevant_context_with_description` if `file_paths_source.type` is 'description'.
-        //   - Paths obtained by executing a command via the handler if `file_paths_source.type` is 'command'.
-        // - Handles potential errors during context retrieval or command execution.
-        tuple<list<string>, optional string> resolve_file_paths(dict<string, Any> template, object memory_system, object handler); // Args represent MemorySystem, BaseHandler
+        // - Converts legacy dictionary input to ContextGenerationInput if necessary.
+        // - Checks if fresh context is disabled; if so, returns inherited context.
+        // - If sharding is enabled and applicable, processes shards in parallel using `_process_single_shard`, then aggregates results.
+        // - If sharding is disabled or not applicable, calls `_get_relevant_context_with_mediator`.
+        // - The mediator method (`_get_relevant_context_with_mediator`) delegates the actual context generation (LLM call) to `TaskSystem.generate_context_for_memory_system`.
+        // Behavior:
+        // - Receives a `ContextGenerationInput` object.
+        // - **Determines Match Query:** Prioritizes `input_data.query` if present (typically from Sexp `get_context`). If `query` is absent, uses `input_data.templateDescription` and relevant `input_data.inputs` (typically from TaskSystem calling for a template).
+        // - Checks if fresh context is effectively disabled based on other context factors (e.g., if only `inheritedContext` is provided and no fresh lookup needed based on task settings - logic handled by caller like TaskSystem, MemorySystem just performs match if asked).
+        // - Performs associative matching against the `global_index` using the determined match query and potentially `input_data.inheritedContext` / `input_data.previousOutputs` as additional signals.
+        // - If sharding is enabled and applicable, processes shards in parallel using `_process_single_shard`, then aggregates results.
+        // - If sharding is disabled or not applicable, calls `_get_relevant_context_with_mediator` (delegating actual LLM call for summary to TaskSystem if needed).
+        // - Handles exceptions during context generation.
+        // - Returns an AssociativeMatchResult object.
+        // This method is invoked by the `SexpEvaluator` when processing the `(get_context ...)` S-expression primitive, and by TaskSystem when preparing context for `execute_atomic_template`.
+        // @raises_error(condition="TASK_FAILURE", reason="dependency_error", description="Handled internally, returns error result if TaskSystem is unavailable.")
+        // @raises_error(condition="CONTEXT_RETRIEVAL_FAILURE", description="Handled internally, returns error result.")
+        // Expected JSON format for legacy input_data: { "taskText": "string", ... }
+        // Returns: AssociativeMatchResult object.
+        object get_relevant_context_for(object input_data); // Arg represents updated ContextGenerationInput
+
+        // Indexes a Git repository and updates the global index.
+        // Preconditions:
+        // - repo_path is a string representing a valid path to a local Git repository.
+        // - options is an optional dictionary for indexer configuration (include_patterns, exclude_patterns, max_file_size).
+        // Expected JSON format for options: { "include_patterns": list<string>, "exclude_patterns": list<string>, "max_file_size": int }
+        // Postconditions:
+        // - Instantiates GitRepositoryIndexer with the repo_path.
+        // - Configures the indexer based on the provided options.
+        // - Calls the indexer's `index_repository` method, passing `self` (the MemorySystem instance).
+        // - The indexer updates the MemorySystem's global index via `update_global_index`.
+        // - Logs the number of files indexed.
+        // Behavior:
+        // - Delegates the indexing process to the GitRepositoryIndexer class.
+        void index_git_repository(string repo_path, optional dict<string, Any> options);
+
+        // Invariants:
+        // - `global_index` is always a dictionary.
+        // - `_sharded_index` is always a list of dictionaries if sharding is enabled and index updated.
     };
 };
 // == !! END IDL TEMPLATE !! ===
