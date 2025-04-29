@@ -255,10 +255,13 @@ class BaseHandler:
         # if not tools_override and self.registered_tools:
         #     current_tools = list(self.tool_executors.values()) # Simplistic example
 
+        # Store history *before* the call for accurate logging/debugging if needed
+        history_before_call = list(self.conversation_history)
+
         # Delegate the call to the manager
         manager_result = self.llm_manager.execute_call(
             prompt=prompt,
-            conversation_history=self.conversation_history, # Pass current history
+            conversation_history=history_before_call, # Pass current history
             system_prompt_override=system_prompt_override,
             tools_override=current_tools, # Pass potentially prepared tools
             output_type_override=output_type_override,
@@ -272,7 +275,7 @@ class BaseHandler:
 
             self.log_debug(f"LLM call successful. Response: '{str(assistant_content)[:100]}...'")
 
-            # Update conversation history
+            # Update conversation history *after* successful call
             self.conversation_history.append({"role": "user", "content": prompt})
             # Ensure assistant content is stored as string
             self.conversation_history.append({"role": "assistant", "content": str(assistant_content)})
@@ -295,6 +298,7 @@ class BaseHandler:
             # Handle failure
             error_message = manager_result.get("error", "Unknown LLM interaction error.")
             logging.error(f"LLM call failed: {error_message}")
+            # Do NOT update history on failure
             error_details: TaskError = { # type: ignore
                 "type": "TASK_FAILURE",
                 "reason": "llm_error",
@@ -325,7 +329,8 @@ class BaseHandler:
             final_prompt_parts.append(template)
 
         if file_context:
-            final_prompt_parts.append(f"\nRelevant File Context:\n```\n{file_context}\n```")
+            # **Fix 3: Append context block without leading newline**
+            final_prompt_parts.append(f"Relevant File Context:\n```\n{file_context}\n```")
 
         final_prompt = "\n\n".join(final_prompt_parts).strip()
         self.log_debug(f"Built system prompt (length {len(final_prompt)}): '{final_prompt[:200]}...'")

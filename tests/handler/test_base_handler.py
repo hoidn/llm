@@ -30,6 +30,8 @@ def mock_dependencies():
     }
     # Configure file manager base path if needed by tests
     mocks["file_manager"].base_path = "/test/base"
+    # **Fix 1: Add the 'agent' attribute to the llm_manager mock**
+    mocks["llm_manager"].agent = MagicMock(name="MockAgentInstance")
     return mocks
 
 @pytest.fixture
@@ -49,6 +51,7 @@ def base_handler_instance(mock_dependencies):
          # Configure the mock instances returned by the class mocks
          MockFM.return_value = mock_dependencies["file_manager"]
          MockFCM.return_value = mock_dependencies["file_context_manager"]
+         # Return the pre-configured mock LLM manager (which now has .agent)
          MockLLM.return_value = mock_dependencies["llm_manager"]
 
          handler = BaseHandler(
@@ -61,6 +64,9 @@ def base_handler_instance(mock_dependencies):
          assert handler.file_manager == mock_dependencies["file_manager"]
          assert handler.file_context_manager == mock_dependencies["file_context_manager"]
          assert handler.llm_manager == mock_dependencies["llm_manager"]
+         # Verify the llm_manager mock instance has the agent attribute
+         assert hasattr(handler.llm_manager, 'agent')
+         assert handler.llm_manager.agent is not None
          return handler
 
 # --- Test Cases ---
@@ -86,7 +92,7 @@ def test_base_handler_init(mock_dependencies):
         # Configure the mock instances returned by the class mocks
         MockFM.return_value = mock_file_manager
         MockFCM.return_value = mock_file_context_manager
-        MockLLM.return_value = mock_llm_manager
+        MockLLM.return_value = mock_llm_manager # Use the pre-configured mock
 
         handler = BaseHandler(
             task_system=mock_task_system,
@@ -125,6 +131,11 @@ def test_register_tool_success(base_handler_instance):
     """Test successful tool registration."""
     tool_spec = {"name": "my_tool", "description": "Does something", "input_schema": {}}
     def executor_func(inp): return f"Executed with {inp}"
+
+    # Ensure the llm_manager and its agent are mocked correctly by the fixture
+    assert base_handler_instance.llm_manager is not None
+    assert hasattr(base_handler_instance.llm_manager, 'agent')
+    assert base_handler_instance.llm_manager.agent is not None
 
     result = base_handler_instance.register_tool(tool_spec, executor_func)
 
@@ -273,7 +284,10 @@ def test_base_handler_execute_llm_call_success(base_handler_instance):
     }
     user_prompt = "User query"
     base_handler_instance.conversation_history = [{"role": "user", "content": "Previous"}]
-    initial_history_len = len(base_handler_instance.conversation_history)
+    # **Fix 2: Store history *before* the call**
+    history_before_call = list(base_handler_instance.conversation_history)
+    initial_history_len = len(history_before_call)
+
 
     # Act
     result = base_handler_instance._execute_llm_call(user_prompt)
@@ -284,10 +298,11 @@ def test_base_handler_execute_llm_call_success(base_handler_instance):
     assert result.content == "Assistant response"
     assert result.notes == {"usage": {"tokens": 50}}
 
-    # Verify manager call
+    # Verify manager call using the history *before* the call
     mock_llm_manager.execute_call.assert_called_once_with(
         prompt=user_prompt,
-        conversation_history=base_handler_instance.conversation_history[:-2], # Original history passed
+        # **Fix 2: Use the stored history for assertion**
+        conversation_history=history_before_call,
         system_prompt_override=None,
         tools_override=None,
         output_type_override=None
@@ -359,7 +374,9 @@ def test_build_system_prompt(base_handler_instance):
 
     # Base + File Context
     prompt3 = base_handler_instance._build_system_prompt(file_context=file_ctx)
-    assert prompt3 == f"{base_prompt}\n\nRelevant File Context:\n```\n{file_ctx}\n```"
+    # **Fix 3: Assertion matches the corrected code output (double newline)**
+    expected_prompt3 = f"{base_prompt}\n\nRelevant File Context:\n```\n{file_ctx}\n```"
+    assert prompt3 == expected_prompt3
 
     # Base + Template + File Context
     prompt4 = base_handler_instance._build_system_prompt(template=template_instr, file_context=file_ctx)
