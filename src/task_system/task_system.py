@@ -7,6 +7,7 @@ from pydantic import ValidationError as PydanticValidationError
 from src.memory.memory_system import MemorySystem
 from src.handler.base_handler import BaseHandler
 from .file_path_resolver import resolve_paths_from_template
+from .template_registry import TemplateRegistry
 from src.system.models import (
     SubtaskRequest, TaskResult, ContextManagement,
     ContextGenerationInput, AssociativeMatchResult, MatchTuple,
@@ -36,10 +37,7 @@ class TaskSystem:
             memory_system: An optional instance of MemorySystem.
         """
         self.memory_system = memory_system
-        self.templates: Dict[str, Dict[str, Any]] = {}  # Keyed by template 'name'
-        self.template_index: Dict[str, str] = (
-            {}
-        )  # Keyed by 'type:subtype', value is 'name'
+        self._registry = TemplateRegistry()
         self._test_mode: bool = False
         self._handler_cache: Dict[str, BaseHandler] = (
             {}
@@ -262,10 +260,11 @@ class TaskSystem:
             return []
 
         matches = []
-        # Iterate only through registered *atomic* templates
-        for name, template in self.templates.items():
-            if template.get("type") != "atomic":
-                continue # Skip non-atomic
+        # Iterate through all atomic templates from the registry
+        for template in self._registry.get_all_atomic_templates():
+            name = template.get("name")
+            if not name:
+                continue # Should not happen if registered correctly
 
             description = template.get("description")
             if not description:
@@ -292,140 +291,26 @@ class TaskSystem:
 
     def register_template(self, template: Dict[str, Any]) -> None:
         """
-        Registers an *atomic* task template definition.
-
-        Non-atomic templates will be ignored as per IDL guidance (they are
-        handled via S-expressions).
-
+        Delegates template registration to the internal registry.
+        
         Args:
             template: A dictionary representing the template.
         """
-        name = template.get("name")
-        template_type = template.get("type")
-        subtype = template.get("subtype")
-        params = template.get("params")  # Check if params definition exists
-
-        # --- BEGIN NEW VALIDATION BLOCK ---
-        # 1. Enforce Atomic Type: Only atomic templates are allowed.
-        if template_type != "atomic":
-            logging.error(
-                f"Registration failed: Template '{name}' is not atomic (type: '{template_type}'). Only atomic templates can be registered via TaskSystem."
-            )
-            return # Stop processing, do not register
-
-        # 2. Enforce Mandatory Params: Atomic templates must define parameters.
-        if params is None: # Check if 'params' key exists and its value is not None
-             logging.error(
-                 f"Registration failed: Atomic template '{name}' must have a 'params' definition."
-             )
-             return # Stop processing, do not register
-
-        # Optional but recommended: Check if params is actually a dictionary
-        if not isinstance(params, dict):
-            logging.error(
-                f"Registration failed: Atomic template '{name}' has invalid 'params' definition (must be a dictionary)."
-            )
-            return # Stop processing, do not register
-        # --- END NEW VALIDATION BLOCK ---
-
-        if not all([name, subtype]): # Type is already checked
-             logging.error(
-                 f"Atomic template registration failed: Missing 'name' or 'subtype' in {template}"
-             )
-             # IDL doesn't specify error raising, just logging for now
-             return
-
-        # --- Start Change: Add description warning ---
-        if not template.get("description"):
-            logging.warning(
-                f"Atomic template '{name}' registered without a 'description'."
-            )
-        # --- End Change ---
-
-        if params is None:
-            logging.warning(
-                f"Atomic template '{name}' registered without a 'params' attribute. Validation might fail later."
-            )
-            # Allow registration but warn.
-
-        # TODO: Implement ensure_template_compatibility if needed
-
-        # Check for potential overwrite, log if necessary
-        if name in self.templates:
-            logging.warning(f"Overwriting existing template registration for name: '{name}'")
-
-        type_subtype_key = f"{template_type}:{subtype}" # type is guaranteed to be 'atomic' here
-
-        # --- Start Change: Handle index overwrite ---
-        # Check if another type:subtype key already maps to this name
-        existing_key_for_name = None
-        for key, mapped_name in self.template_index.items():
-            if mapped_name == name:
-                existing_key_for_name = key
-                break
-
-        if existing_key_for_name and existing_key_for_name != type_subtype_key:
-            logging.warning(
-                f"Template name '{name}' is being re-registered with a new type:subtype "
-                f"('{type_subtype_key}', was '{existing_key_for_name}'). Removing old index entry."
-            )
-            del self.template_index[existing_key_for_name]
-        elif f"{template_type}:{subtype}" in self.template_index:
-             existing_name = self.template_index[f"{template_type}:{subtype}"]
-             if existing_name != name:
-                 logging.warning(
-                     f"Overwriting template index for '{template_type}:{subtype}'. "
-                     f"Old name: '{existing_name}', New name: '{name}'"
-                 )
-             elif self.templates.get(name) != template:
-                 logging.info(f"Updating template content for name '{name}' and type:subtype '{template_type}:{subtype}'")
-        # --- End Change ---
-
-
-        self.templates[name] = template
-        self.template_index[type_subtype_key] = name
-        logging.info(f"Registered atomic template: '{name}' ({type_subtype_key})")
+        # Validation and storage is now handled by the registry
+        self._registry.register(template)
+        # Return value from registry indicates success/failure, but TaskSystem method is void
 
     def find_template(self, identifier: str) -> Optional[Dict[str, Any]]:
         """
-        Finds an *atomic* template definition by its identifier (name or type:subtype).
-
-        As per the IDL, this method only returns templates of type 'atomic'.
-
+        Delegates template finding to the internal registry.
+        
         Args:
             identifier: The template's unique 'name' or 'atomic:subtype'.
-
+            
         Returns:
             The atomic template definition dictionary if found, otherwise None.
         """
-        # 1. Try direct name lookup (only atomic templates are stored)
-        template = self.templates.get(identifier)
-        if template:
-            # Since only atomic templates are stored by register_template,
-            # we can assume template.get("type") == "atomic" here.
-            logging.debug(f"Found atomic template by name: '{identifier}'")
-            return template
-
-        # 2. Try type:subtype lookup (index only stores atomic type:subtype keys)
-        if identifier in self.template_index:
-            name = self.template_index[identifier]
-            template = self.templates.get(name)
-            if template:
-                # Again, assume template is atomic if found via index/name
-                logging.debug(
-                    f"Found atomic template by type:subtype '{identifier}' (name: '{name}')"
-                )
-                return template
-            else:
-                # This case indicates an inconsistent state (index points to a non-existent name)
-                logging.error(
-                    f"Template index inconsistency: Identifier '{identifier}' points to name '{name}', "
-                    f"but template not found in main storage."
-                )
-                return None # Treat as not found
-
-        logging.debug(f"Atomic template not found for identifier: '{identifier}'")
-        return None
+        return self._registry.find(identifier)
 
     def generate_context_for_memory_system(
         self, context_input: ContextGenerationInput, global_index: Dict[str, str]

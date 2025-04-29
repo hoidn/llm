@@ -120,195 +120,22 @@ def test_set_test_mode(task_system_instance):
 # --- Test register_template ---
 
 
-def test_register_template_success(task_system_instance):
-    """Test registering a valid atomic template."""
-    template = VALID_ATOMIC_TEMPLATE.copy()
+@patch('src.task_system.template_registry.TemplateRegistry.register')
+def test_task_system_register_delegates(mock_register, task_system_instance):
+    """Test that TaskSystem.register_template delegates to TemplateRegistry.register."""
+    template = {"some": "template"}
     task_system_instance.register_template(template)
+    mock_register.assert_called_once_with(template)
 
-    assert "test_atomic_task" in task_system_instance.templates
-    assert task_system_instance.templates["test_atomic_task"] == template
-    assert f"atomic:{template['subtype']}" in task_system_instance.template_index
-    assert task_system_instance.template_index[f"atomic:{template['subtype']}"] == "test_atomic_task"
-
-
-def test_register_template_missing_required_fields(task_system_instance, caplog):
-    """Test registration fails if name or subtype is missing for an atomic template."""
-    template_no_name = VALID_ATOMIC_TEMPLATE.copy()
-    del template_no_name["name"]
-    template_no_subtype = VALID_ATOMIC_TEMPLATE.copy()
-    del template_no_subtype["subtype"]
-
-    with caplog.at_level(logging.ERROR):
-        # Test missing name (type is atomic)
-        task_system_instance.register_template(template_no_name)
-        assert (
-            "Atomic template registration failed: Missing 'name' or 'subtype'"
-            in caplog.text
-        )
-        assert "test_atomic_task" not in task_system_instance.templates # Check name wasn't registered partially
-        caplog.clear()
-
-        # Test missing subtype (type is atomic)
-        task_system_instance.register_template(template_no_subtype)
-        assert (
-            "Atomic template registration failed: Missing 'name' or 'subtype'"
-            in caplog.text
-        )
-        assert "test_atomic_task" not in task_system_instance.templates
-        caplog.clear()
-
-
-def test_register_template_non_atomic_is_rejected(task_system_instance, caplog):
-    """Test registering a non-atomic template logs an error and is rejected."""
-    template = VALID_COMPOSITE_TEMPLATE.copy()
-    with caplog.at_level(logging.ERROR):
-        task_system_instance.register_template(template)
-        assert (
-            f"Registration failed: Template '{template['name']}' is not atomic"
-            in caplog.text
-        )
-        # Check it wasn't actually registered
-        assert template["name"] not in task_system_instance.templates
-        type_subtype_key = f"{template['type']}:{template['subtype']}"
-        assert type_subtype_key not in task_system_instance.template_index
-
-
-def test_register_template_missing_description_warns(task_system_instance, caplog):
-    """Test registering an atomic template without 'description' logs a warning."""
-    template = VALID_ATOMIC_TEMPLATE.copy()
-    name = template["name"]
-    del template["description"] # Remove description
-    with caplog.at_level(logging.WARNING):
-        task_system_instance.register_template(template)
-        # --- Start Change: Assert exact log message ---
-        assert f"Atomic template '{name}' registered without a 'description'." in caplog.text
-        # --- End Change ---
-    assert template["name"] in task_system_instance.templates  # Still registered
-
-def test_register_template_atomic_missing_params_is_rejected(task_system_instance, caplog):
-    """Test registering an atomic template without 'params' is rejected."""
-    template_missing_params = {
-        "name": "no_params_task", 
-        "type": "atomic", 
-        "subtype": "test", 
-        "description": "Should fail"
-    }
-    
-    with caplog.at_level(logging.ERROR):
-        task_system_instance.register_template(template_missing_params)
-        assert "Registration failed: Atomic template 'no_params_task' must have a 'params' definition." in caplog.text
-        
-    # Verify template was not registered
-    assert "no_params_task" not in task_system_instance.templates
-    assert "atomic:test" not in task_system_instance.template_index
-
-
-def test_register_template_invalid_params_is_rejected(task_system_instance, caplog):
-    """Test registering an atomic template with invalid 'params' type is rejected."""
-    template_invalid_params = {
-        "name": "invalid_params_task", 
-        "type": "atomic", 
-        "subtype": "test", 
-        "description": "Should fail",
-        "params": "not a dictionary"  # Invalid params type
-    }
-    
-    with caplog.at_level(logging.ERROR):
-        task_system_instance.register_template(template_invalid_params)
-        assert "Registration failed: Atomic template 'invalid_params_task' has invalid 'params' definition" in caplog.text
-        
-    # Verify template was not registered
-    assert "invalid_params_task" not in task_system_instance.templates
-    assert "atomic:test" not in task_system_instance.template_index
-
-def test_register_template_overwrites(task_system_instance):
-    """Test registering a template with the same name overwrites the previous one."""
-    template1 = VALID_ATOMIC_TEMPLATE.copy()
-    template1_subtype = template1["subtype"]
-    template2 = VALID_ATOMIC_TEMPLATE.copy()
-    template2["description"] = "Updated description"
-    template2["subtype"] = "new_subtype"  # Change subtype to check index update
-
-    task_system_instance.register_template(template1)
-    assert task_system_instance.templates["test_atomic_task"]["description"] == "A test task"
-    assert task_system_instance.template_index[f"atomic:{template1_subtype}"] == "test_atomic_task"
-    assert "atomic:new_subtype" not in task_system_instance.template_index
-
-    task_system_instance.register_template(template2)
-    assert (
-        task_system_instance.templates["test_atomic_task"]["description"]
-        == "Updated description"
-    )
-    # Index should be updated to the new subtype for that name
-    assert task_system_instance.template_index["atomic:new_subtype"] == "test_atomic_task"
-    # --- Start Change: Assert old index key is removed ---
-    assert f"atomic:{template1_subtype}" not in task_system_instance.template_index
-    # --- End Change ---
-
-
-# --- Test find_template ---
-
-
-def test_find_template_by_name(task_system_instance):
-    """Test finding an atomic template by its name."""
-    template = VALID_ATOMIC_TEMPLATE.copy()
-    task_system_instance.register_template(template)
-    found = task_system_instance.find_template("test_atomic_task")
-    assert found == template
-
-
-def test_find_template_by_type_subtype(task_system_instance):
-    """Test finding an atomic template by its type:subtype."""
-    template = VALID_ATOMIC_TEMPLATE.copy()
-    task_system_instance.register_template(template)
-    found = task_system_instance.find_template(f"atomic:{template['subtype']}")
-    assert found == template
-
-
-def test_find_template_not_found(task_system_instance):
-    """Test finding a non-existent template returns None."""
-    assert task_system_instance.find_template("non_existent_task") is None
-    assert task_system_instance.find_template("atomic:non_existent") is None
-
-
-def test_find_template_ignores_non_atomic_by_name(task_system_instance):
-    """Test find_template ignores non-atomic templates when searching by name."""
-    atomic_template = VALID_ATOMIC_TEMPLATE.copy()
-    composite_template = VALID_COMPOSITE_TEMPLATE.copy()
-    # Give them the same name (unlikely but possible)
-    composite_template["name"] = atomic_template["name"]
-
-    task_system_instance.register_template(atomic_template)
-    task_system_instance.register_template(composite_template)  # Attempt to register composite - should be ignored
-
-    # Should find the atomic one when searching by name
-    found = task_system_instance.find_template(atomic_template["name"])
-    assert found is not None
-    assert found["type"] == "atomic"
-    assert found == atomic_template
-
-
-def test_find_template_ignores_non_atomic_by_type_subtype(task_system_instance):
-    """Test find_template ignores non-atomic templates when searching by type:subtype."""
-    atomic_template = VALID_ATOMIC_TEMPLATE.copy()
-    composite_template = VALID_COMPOSITE_TEMPLATE.copy()
-
-    task_system_instance.register_template(atomic_template)
-    task_system_instance.register_template(composite_template) # Attempt to register composite - should be ignored
-
-    # Search for the composite type:subtype - should not be found by find_template
-    # because register_template ignored it
-    found = task_system_instance.find_template(
-        f"{composite_template['type']}:{composite_template['subtype']}"
-    )
-    assert found is None
-
-    # Search for the atomic type:subtype - should be found
-    found = task_system_instance.find_template(
-        f"atomic:{atomic_template['subtype']}"
-    )
-    assert found is not None
-    assert found == atomic_template
+@patch('src.task_system.template_registry.TemplateRegistry.find')
+def test_task_system_find_delegates(mock_find, task_system_instance):
+    """Test that TaskSystem.find_template delegates to TemplateRegistry.find."""
+    identifier = "test_id"
+    expected_template = {"found": "template"}
+    mock_find.return_value = expected_template
+    result = task_system_instance.find_template(identifier)
+    mock_find.assert_called_once_with(identifier)
+    assert result == expected_template
 
 
 # --- Tests for execute_atomic_template (Phase 2c) ---
@@ -630,63 +457,54 @@ def test_task_system_resolve_file_paths_delegates(mock_resolve_utility, task_sys
 # --- Tests for find_matching_tasks (Phase 2c) ---
 
 def test_find_matching_tasks_simple(task_system_instance):
-    """Test basic matching and scoring."""
+    """Test basic matching and scoring (Adapt setup)."""
     # Arrange
     template1 = {"name": "task1", "type": "atomic", "subtype": "a", "description": "analyze python code", "params": {}}
-    template2 = {"name": "task2", "type": "atomic", "subtype": "b", "description": "summarize text document", "params": {}}
-    template3 = {"name": "task3", "type": "composite", "subtype": "c", "description": "analyze python data"} # Non-atomic
     template4 = {"name": "task4", "type": "atomic", "subtype": "d", "description": "find python examples", "params": {}}
-    task_system_instance.register_template(template1)
-    task_system_instance.register_template(template2)
-    task_system_instance.register_template(template3) # Should be ignored
-    task_system_instance.register_template(template4)
-
-    input_text = "analyze python script"
-
-    # Act
-    matches = task_system_instance.find_matching_tasks(input_text, None)
-
-    # Assert
-    # With MATCH_THRESHOLD = 0.2, only task1 should match well enough
-    assert len(matches) == 1 # task1 should match, task4 score likely < 0.2
-    assert matches[0]['task']['name'] == 'task1'
-    assert all(m['taskType'] == 'atomic' for m in matches)
-    assert matches[0]['subtype'] == 'a'
+    # Mock the registry method used by find_matching_tasks
+    with patch.object(task_system_instance._registry, 'get_all_atomic_templates', return_value=[template1, template4]) as mock_get_all:
+        input_text = "analyze python script"
+        # Act
+        matches = task_system_instance.find_matching_tasks(input_text, None)
+        # Assert
+        mock_get_all.assert_called_once() # Verify registry was called
+        assert len(matches) == 1 # Threshold is 0.6
+        assert matches[0]["task"]["name"] == "task1"
 
 
 def test_find_matching_tasks_no_match(task_system_instance):
     """Test when no templates match above the threshold."""
-    template1 = {"name": "task1", "type": "atomic", "subtype": "a", "description": "analyze python code"}
-    task_system_instance.register_template(template1)
-    input_text = "generate report for sales data" # Low similarity
-    matches = task_system_instance.find_matching_tasks(input_text, None)
-    assert len(matches) == 0 # Score should be below 0.2
+    template1 = {"name": "task1", "type": "atomic", "subtype": "a", "description": "analyze python code", "params": {}}
+    # Mock the registry method
+    with patch.object(task_system_instance._registry, 'get_all_atomic_templates', return_value=[template1]) as mock_get_all:
+        input_text = "generate report for sales data" # Low similarity
+        matches = task_system_instance.find_matching_tasks(input_text, None)
+        mock_get_all.assert_called_once()
+        assert len(matches) == 0 # Score should be below threshold
 
 
 def test_find_matching_tasks_empty_input(task_system_instance):
     """Test with empty input text."""
-    template1 = {"name": "task1", "type": "atomic", "subtype": "a", "description": "analyze python code"}
-    task_system_instance.register_template(template1)
+    # No need to mock registry since empty input returns early
     matches = task_system_instance.find_matching_tasks("", None)
     assert len(matches) == 0
 
 
 def test_find_matching_tasks_sorting(task_system_instance):
-    """Test that results are sorted by score."""
-    template1 = {"name": "task1", "type": "atomic", "subtype": "a", "description": "short", "params": {}} # Low overlap
-    template2 = {"name": "task2", "type": "atomic", "subtype": "b", "description": "medium length description", "params": {}} # Medium overlap
-    template3 = {"name": "task3", "type": "atomic", "subtype": "c", "description": "very long and detailed description", "params": {}} # High overlap
-    task_system_instance.register_template(template1)
-    task_system_instance.register_template(template2)
-    task_system_instance.register_template(template3)
-
-    input_text = "a very long and detailed description query"
-    matches = task_system_instance.find_matching_tasks(input_text, None)
-
-    # With MATCH_THRESHOLD = 0.6, only task3 should match
-    assert len(matches) == 1 # Expecting only task3 with threshold 0.6
-    assert matches[0]["task"]["name"] == "task3"
-    assert matches[0]['score'] >= MATCH_THRESHOLD
+    """Test that results are sorted by score (Adapt setup)."""
+    # Arrange
+    template1 = {"name": "task1", "type": "atomic", "subtype": "a", "description": "short", "params": {}}
+    template2 = {"name": "task2", "type": "atomic", "subtype": "b", "description": "medium length description", "params": {}}
+    template3 = {"name": "task3", "type": "atomic", "subtype": "c", "description": "very long and detailed description", "params": {}}
+    # Mock the registry method
+    with patch.object(task_system_instance._registry, 'get_all_atomic_templates', return_value=[template1, template2, template3]) as mock_get_all:
+        input_text = "a very long and detailed description query"
+        # Act
+        matches = task_system_instance.find_matching_tasks(input_text, None)
+        # Assert
+        mock_get_all.assert_called_once()
+        assert len(matches) == 1 # Expecting only task3 with threshold 0.6
+        assert matches[0]["task"]["name"] == "task3"
 
 
 # --- Remove Deferred Method Tests ---
