@@ -158,8 +158,8 @@ def test_is_text_file(mock_splitext, mock_open_file, unit_test_indexer, file_pat
     # FIX: Don't call the real splitext here as the patch is active.
     # Determine the expected return value based on the input file_path.
     # The real os.path.splitext returns a tuple: (root, ext)
-    # root, ext = os.path.splitext(file_path) # <-- REMOVE THIS LINE
     # Calculate the expected tuple *outside* the patch scope conceptually
+    # This calculation happens *before* the mock is configured below.
     expected_root, expected_ext = os.path.splitext(file_path)
     expected_splitext_output = (expected_root, expected_ext)
     # Configure the mock passed into the test function to return the pre-calculated tuple
