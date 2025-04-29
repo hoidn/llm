@@ -36,10 +36,10 @@ def passthrough_handler(mock_task_system, mock_memory_system, mocker):
 
     # Mock LLMInteractionManager methods used by BaseHandler._execute_llm_call
     mock_llm_manager = MagicMock(spec=LLMInteractionManager)
-    # Simulate successful LLM call returning a TaskResult object
+    # Simulate successful LLM call returning a dictionary (not TaskResult object)
     mock_llm_manager.execute_call.return_value = TaskResult(
         status="COMPLETE", content="Passthrough Response", notes={}
-    )
+    ).model_dump()
     # Add the 'agent' attribute to the mock manager BEFORE patching/instantiation
     mock_llm_manager.agent = None # Or MagicMock() if needed elsewhere
 
@@ -142,11 +142,20 @@ def test_handle_query_llm_failure(passthrough_handler):
     """Test query handling when the LLM call fails."""
     query = "Query that causes failure"
     mock_llm = passthrough_handler._mock_llm_manager
-    # Configure LLM Manager mock to return failure by raising an exception
-    # or returning a specific failure object if _execute_llm_call handles it
-    mock_llm.execute_call.side_effect = TaskError(
-        type="TASK_FAILURE", reason="llm_error", message="LLM Error Occurred"
-    )
+    # Configure LLM Manager mock to return a failure dictionary
+    mock_llm.execute_call.return_value = {
+        "status": "FAILED",
+        "content": "LLM Error Occurred",
+        "notes": {
+            "error": {
+                "type": "TASK_FAILURE",
+                "reason": "llm_error",
+                "message": "LLM Error Occurred"
+            }
+        }
+    }
+    # Remove any side_effect that might interfere
+    mock_llm.execute_call.side_effect = None
 
     passthrough_handler.conversation_history = []
     initial_history_len = 0
@@ -182,8 +191,7 @@ def test_reset_conversation(passthrough_handler):
     # Assert
     assert passthrough_handler.conversation_history == []
     assert passthrough_handler.active_subtask_id is None
-    # Check if LLM manager's reset was called (assuming BaseHandler calls it)
-    mock_llm.reset_conversation.assert_called_once()
+    # LLMInteractionManager doesn't have reset_conversation method
 
 
 def test_command_execution_tool_wrapper_success(passthrough_handler, mocker):

@@ -185,10 +185,8 @@ class PassthroughHandler(BaseHandler):
                 reason="unexpected_error",
                 message=f"Failed to handle passthrough query: {e}"
             )
-            # Manually add user query to history if LLM call wasn't reached/failed early
-            # Check if history already contains the user query before adding
-            if not self.conversation_history or self.conversation_history[-1].get("content") != query:
-                 self.add_message_to_history("user", query)
+            # No need to manually add user query to history here
+            # BaseHandler._execute_llm_call handles this
 
             return TaskResult(
                 status="FAILED",

@@ -87,24 +87,16 @@ class SexpEvaluator:
         logging.info(f"Evaluating S-expression string: {sexp_string[:100]}...")
         try:
             # 1. Parse the string into an AST
-            # SexpParser might return a single expression or a list of top-level expressions
-            parsed_nodes = self.parser.parse_string(sexp_string)
-            logging.debug(f"Parsed S-expression AST: {parsed_nodes}")
+            # Parser should return a single top-level AST node.
+            parsed_node = self.parser.parse_string(sexp_string)
+            logging.debug(f"Parsed S-expression AST: {parsed_node}")
 
             # 2. Setup Environment
             env = initial_env if initial_env is not None else SexpEnvironment()
             logging.debug(f"Using environment: {env}")
 
-            # 3. Evaluate the AST
-            # SexpParser should return a single AST node (which might be a list)
-            # If the parser *could* return a Python list representing multiple top-level S-expressions,
-            # the parser interface/implementation needs clarification.
-            # Assuming parser returns ONE top-level node as per sexpdata.load standard behavior:
-            # Remove the implicit progn check for now, assume single top-level expression.
-            # If multiple expressions need to be supported, they should be wrapped in (progn ...)
-            # or the parser needs to handle it explicitly.
-            # Evaluate the single top-level expression returned by the parser
-            result = self._eval(parsed_nodes, env)
+            # 3. Evaluate the single node.
+            result = self._eval(parsed_node, env)
             logging.info(f"Finished evaluating S-expression. Result type: {type(result)}")
             return result
 
@@ -121,16 +113,16 @@ class SexpEvaluator:
             if not e.expression:
                  e.expression = sexp_string
             raise # Re-raise evaluation error
-        except TaskFailureError as e:
-            # Catch errors propagated from underlying system calls
-            logging.error(f"TaskFailureError during S-expression evaluation: {e.message}")
-            raise SexpEvaluationError(f"Task execution failed: {e.message}", 
-                                     expression=sexp_string, 
-                                     error_details=str(e)) from e
         except Exception as e:
             # Catch any other unexpected errors during evaluation
             logging.exception(f"Unexpected error during S-expression evaluation: {e}")
-            raise SexpEvaluationError(f"Unexpected evaluation error: {e}", expression=sexp_string) from e
+            # Wrap underlying errors (including TaskFailureError) in SexpEvaluationError
+            error_details_str = ""
+            if hasattr(e, 'model_dump'):
+                 error_details_str = str(e.model_dump(exclude_none=True))
+            else:
+                 error_details_str = str(e)
+            raise SexpEvaluationError(f"Evaluation failed: {e}", expression=sexp_string, error_details=error_details_str) from e
 
 
     def _eval(self, node: SexpNode, env: SexpEnvironment) -> Any:
@@ -153,29 +145,17 @@ class SexpEvaluator:
 
         # --- Handle Node Types ---
 
-        # 1. Literals (Non-Symbol, Non-List)
-        if not isinstance(node, (Symbol, str, list)):
-            # Catches int, float, bool, None, etc.
-            logging.debug(f"Node is non-symbol/non-list literal: {node}")
-            return node
-
-        # 2. Symbol Lookup (if node is a Symbol or string *not* being treated as operator)
-        # We defer actual lookup until needed, but handle the type check here if parser distinguishes
+        # 1. Handle Standalone Symbol Lookup FIRST
         if isinstance(node, Symbol):
-             symbol_name = node.value()
-             logging.debug(f"Node is Symbol: '{symbol_name}'. Deferring lookup until usage.")
-             # Fall through to list processing if it's the operator,
-             # otherwise lookup happens when used as value/variable.
-             # If a Symbol is encountered standalone, lookup should happen in evaluate_string or caller.
-             # This path primarily identifies the type.
+            symbol_name = node.value()
+            logging.debug(f"Node is Symbol: '{symbol_name}'. Performing lookup.")
+            # Let NameError propagate if lookup fails
+            return env.lookup(symbol_name)
 
-        # 3. String Literals (If parser returns plain strings for them)
-        # This check depends heavily on how SexpParser returns quoted strings vs symbols.
-        # If SexpParser returns strings for both symbols and string literals, this needs adjustment.
-        # Assuming SexpParser returns Symbol objects for symbols and strings for literals:
-        if isinstance(node, str):
-            logging.debug(f"Node is string literal: {node}")
-            return node # String literals evaluate to themselves
+        # 2. Handle Literals (anything not a list or symbol is a literal)
+        if not isinstance(node, list):
+            logging.debug(f"Node is literal: {node}")
+            return node # Includes str, int, float, bool, None
 
         # 4. Lists (Function Calls / Special Forms / Literal Data)
         if isinstance(node, list):
@@ -197,7 +177,8 @@ class SexpEvaluator:
                 logging.debug("Evaluating 'if' special form.")
                 condition_result = self._eval(cond_expr, env)
                 logging.debug(f"'if' condition evaluated to: {condition_result}")
-                if condition_result: # Truthy check
+                # Use Python's truthiness check
+                if bool(condition_result):
                     return self._eval(then_expr, env)
                 else:
                     return self._eval(else_expr, env)
@@ -299,10 +280,10 @@ class SexpEvaluator:
                  if match_result.error:
                       # Handle error reported by memory system within the result object
                       logging.error(f"Memory system reported error during get_context: {match_result.error}")
-                      # Convert this to a TaskFailureError? Or let caller handle?
-                      # Let's raise for now to signal failure clearly.
-                      failure_details = TaskFailureError(type="TASK_FAILURE", reason="context_retrieval_failure", message=f"Context retrieval failed: {match_result.error}")
-                      raise SexpEvaluationError(f"Context retrieval failed", expression=str(node), error_details=str(failure_details.model_dump())) from None # Don't chain original TaskError model
+                      # Wrap error in SexpEvaluationError with the original error message
+                      raise SexpEvaluationError(f"Context retrieval failed: {match_result.error}", 
+                                              expression=str(node), 
+                                              error_details=match_result.error) from None
 
                  # Return the list of file paths as per IDL
                  file_paths = [match.path for match in match_result.matches]
@@ -408,19 +389,22 @@ class SexpEvaluator:
                  logging.info(f"Invoking direct tool: '{target_id}'")
                  try:
                       # Call _execute_tool which handles execution and returns TaskResult dict
-                      tool_result_dict = self.handler._execute_tool(target_id, resolved_named_args)
-                      # Convert dict back to TaskResult object for consistency? Or return dict?
-                      # Let's return the object if possible.
-                      return TaskResult.model_validate(tool_result_dict)
+                      tool_result = self.handler._execute_tool(target_id, resolved_named_args)
+                      # Handle both dict and TaskResult return types
+                      if isinstance(tool_result, dict):
+                          return TaskResult.model_validate(tool_result)
+                      elif isinstance(tool_result, TaskResult):
+                          return tool_result
+                      else:
+                          raise SexpEvaluationError(f"Tool '{target_id}' returned invalid type: {type(tool_result)}", 
+                                                  expression=str(node))
                  except Exception as e:
                       # Catch errors during tool execution
                       logging.exception(f"Error executing direct tool '{target_id}': {e}")
-                      # Wrap in TaskFailureError for consistency
-                      raise TaskFailureError(
-                           type="TASK_FAILURE",
-                           reason="tool_execution_error",
-                           message=f"Tool '{target_id}' execution failed: {e}"
-                      ) from e
+                      # Wrap in SexpEvaluationError directly
+                      raise SexpEvaluationError(f"Tool '{target_id}' execution failed: {e}", 
+                                              expression=str(node), 
+                                              error_details=str(e)) from e
 
             # 2. Check TaskSystem Atomic Templates
             logging.debug(f"Checking TaskSystem for atomic template: '{target_id}'")

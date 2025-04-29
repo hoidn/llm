@@ -30,8 +30,8 @@ def _convert_common_symbols(item: Any) -> Any:
         elif val == 'false':
             return False
         elif val == 'nil':
-            # Convert the symbol 'nil' to Python's None
-            return None # Correct: Map Symbol('nil') to None
+            # Fix: Convert the symbol 'nil' to Python's None
+            return None
         else:
             # Keep other symbols as Symbol objects
             return item

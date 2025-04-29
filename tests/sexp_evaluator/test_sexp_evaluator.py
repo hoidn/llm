@@ -341,16 +341,17 @@ def test_evaluate_string_task_error_propagation(evaluator, mock_parser, mock_tas
 
 # Implicit Progn (Sequence at top level)
 def test_evaluate_string_implicit_progn(evaluator, mock_parser):
-    """Test evaluation of a sequence of top-level expressions."""
+    """Test evaluation of a sequence of top-level expressions (SHOULD FAIL PARSING)."""
     bind_sym = Symbol("bind") if Symbol != str else "bind"
     x_sym = Symbol("x") if Symbol != str else "x"
     y_sym = Symbol("y") if Symbol != str else "y"
     # Sexp: (bind x 10) (bind y 20) y
-    mock_parser.parse_string.return_value = [
-        [bind_sym, x_sym, 10],
-        [bind_sym, y_sym, 20],
-        y_sym
-    ]
-    result = evaluator.evaluate_string("(bind x 10) (bind y 20) y")
-    # Should return the result of the last expression
-    assert result == 20
+    # Mock parser to simulate invalid input (multiple expressions)
+    # This depends on the SexpParser raising SexpSyntaxError for multiple expressions now.
+    mock_parser.parse_string.side_effect = SexpSyntaxError(
+        "Multiple top-level S-expressions found.", "(bind x 10) (bind y 20) y"
+    )
+
+    # Assert that SexpSyntaxError is raised by the parser
+    with pytest.raises(SexpSyntaxError, match="Multiple top-level S-expressions found"):
+        evaluator.evaluate_string("(bind x 10) (bind y 20) y")
