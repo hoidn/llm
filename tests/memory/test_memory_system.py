@@ -6,6 +6,7 @@ Focuses on logic implemented in Phase 1, Set B.
 import pytest
 from unittest.mock import MagicMock, patch, call
 import os
+import logging # Ensure logging is imported
 
 # Assuming MemorySystem is importable
 from src.memory.memory_system import MemorySystem, DEFAULT_SHARDING_CONFIG
@@ -28,7 +29,7 @@ def mock_dependencies():
 
 
 @pytest.fixture
-def memory_system(mock_dependencies):
+def memory_system_instance(mock_dependencies): # Renamed fixture
     """Provides a MemorySystem instance with mock dependencies."""
     handler_mock, task_system_mock = mock_dependencies
     # Use TEST_CONFIG for a predictable starting state, overriding defaults
@@ -86,60 +87,62 @@ def test_init_with_config(mock_dependencies):
 # --- Test get_global_index ---
 
 
-def test_get_global_index_empty(memory_system):
+def test_get_global_index_empty(memory_system_instance):
     """Test getting index when it's empty."""
-    assert memory_system.get_global_index() == {}
+    assert memory_system_instance.get_global_index() == {}
 
 
-def test_get_global_index_populated(memory_system):
+def test_get_global_index_populated(memory_system_instance):
     """Test getting index after updates."""
     # Use real absolute paths for realism if possible, or mocked ones
     abs_path1 = os.path.abspath("file1.py")
     abs_path2 = os.path.abspath("dir/file2.txt")
     test_index = {abs_path1: "meta1", abs_path2: "meta2"}
-    memory_system.global_index = test_index  # Directly set internal state for test
-    retrieved_index = memory_system.get_global_index()
+    memory_system_instance.global_index = test_index  # Directly set internal state for test
+    retrieved_index = memory_system_instance.get_global_index()
     assert retrieved_index == test_index
     # Ensure it returns a copy
     retrieved_index["new_key"] = "new_value"
-    assert "new_key" not in memory_system.global_index
+    assert "new_key" not in memory_system_instance.global_index
 
 
 # --- Test update_global_index ---
 
 
 @patch("os.path.isabs")
-def test_update_global_index_success(mock_isabs, memory_system):
+def test_update_global_index_success(mock_isabs, memory_system_instance):
     """Test updating index with valid absolute paths."""
     mock_isabs.return_value = True  # Assume all paths are absolute
-    abs_path1 = "/path/to/file1.py"
-    abs_path2 = "/another/path/file2.txt"
+    abs_path1 = os.path.abspath("/path/to/file1.py") # Use abspath for consistency
+    abs_path2 = os.path.abspath("/another/path/file2.txt")
     initial_index = {abs_path1: "meta1"}
     update_data = {abs_path2: "meta2", abs_path1: "meta1_updated"}
 
-    memory_system.global_index = initial_index.copy()  # Set initial state
-    memory_system.update_global_index(update_data)
+    memory_system_instance.global_index = initial_index.copy()  # Set initial state
+    memory_system_instance.update_global_index(update_data)
 
-    # Check that the index is correctly updated/merged
-    assert memory_system.global_index == {
+    # Check that the index is correctly updated/merged with absolute paths
+    expected_index = {
         abs_path1: "meta1_updated",
         abs_path2: "meta2",
     }
+    assert memory_system_instance.global_index == expected_index
     # Check that path validation was called for each key in update_data
     assert mock_isabs.call_count == len(update_data)
 
 
 @patch("os.path.isabs")
-def test_update_global_index_invalid_path(mock_isabs, memory_system):
+def test_update_global_index_invalid_path(mock_isabs, memory_system_instance):
     """Test updating index with a non-absolute path raises ValueError."""
     abs_path = "/path/to/file1.py"
     rel_path = "relative/file.txt"
     # Configure mock_isabs to return False only for the relative path
-    mock_isabs.side_effect = lambda p: os.path.normpath(p) == os.path.normpath(abs_path)
+    # Use normpath to handle potential OS differences in path representation
+    mock_isabs.side_effect = lambda p: os.path.normpath(p) == os.path.abspath(abs_path)
     update_data = {abs_path: "meta1", rel_path: "meta_rel"}
 
     with pytest.raises(ValueError, match="Non-absolute paths provided"):
-        memory_system.update_global_index(update_data)
+        memory_system_instance.update_global_index(update_data)
     # Ensure validation was attempted on both paths before raising
     assert mock_isabs.call_count == len(update_data)
 
@@ -147,26 +150,26 @@ def test_update_global_index_invalid_path(mock_isabs, memory_system):
 @patch("src.memory.memory_system.MemorySystem._recalculate_shards")
 @patch("os.path.isabs", return_value=True)  # Assume paths are valid
 def test_update_global_index_recalculates_shards_if_enabled(
-    mock_isabs, mock_recalc, memory_system
+    mock_isabs, mock_recalc, memory_system_instance
 ):
     """Test that shards are recalculated on update if sharding is enabled."""
-    memory_system._config["sharding_enabled"] = True  # Enable sharding for this test
-    update_data = {"/abs/path.py": "meta"}
+    memory_system_instance._config["sharding_enabled"] = True  # Enable sharding for this test
+    update_data = {os.path.abspath("/abs/path.py"): "meta"} # Use abspath
 
-    memory_system.update_global_index(update_data)
+    memory_system_instance.update_global_index(update_data)
     mock_recalc.assert_called_once()
 
 
 @patch("src.memory.memory_system.MemorySystem._recalculate_shards")
 @patch("os.path.isabs", return_value=True)  # Assume paths are valid
 def test_update_global_index_does_not_recalculate_if_disabled(
-    mock_isabs, mock_recalc, memory_system
+    mock_isabs, mock_recalc, memory_system_instance
 ):
     """Test that shards are not recalculated on update if sharding is disabled."""
-    memory_system._config["sharding_enabled"] = False  # Ensure sharding is disabled
-    update_data = {"/abs/path.py": "meta"}
+    memory_system_instance._config["sharding_enabled"] = False  # Ensure sharding is disabled
+    update_data = {os.path.abspath("/abs/path.py"): "meta"} # Use abspath
 
-    memory_system.update_global_index(update_data)
+    memory_system_instance.update_global_index(update_data)
     mock_recalc.assert_not_called()
 
 
@@ -174,22 +177,22 @@ def test_update_global_index_does_not_recalculate_if_disabled(
 
 
 @patch("src.memory.memory_system.MemorySystem._recalculate_shards")
-def test_enable_sharding_enables_and_recalculates(mock_recalc, memory_system):
+def test_enable_sharding_enables_and_recalculates(mock_recalc, memory_system_instance):
     """Test enabling sharding sets flag and triggers recalculation."""
-    memory_system._config["sharding_enabled"] = False  # Start disabled
-    memory_system.enable_sharding(True)
-    assert memory_system._config["sharding_enabled"] is True
+    memory_system_instance._config["sharding_enabled"] = False  # Start disabled
+    memory_system_instance.enable_sharding(True)
+    assert memory_system_instance._config["sharding_enabled"] is True
     mock_recalc.assert_called_once()
 
 
 @patch("src.memory.memory_system.MemorySystem._recalculate_shards")
-def test_enable_sharding_disables_and_clears(mock_recalc, memory_system):
+def test_enable_sharding_disables_and_clears(mock_recalc, memory_system_instance):
     """Test disabling sharding sets flag and clears shards list."""
-    memory_system._config["sharding_enabled"] = True  # Start enabled
-    memory_system._sharded_index = [{"/some/path": "meta"}]  # Add dummy shard data
-    memory_system.enable_sharding(False)
-    assert memory_system._config["sharding_enabled"] is False
-    assert memory_system._sharded_index == []  # Check shards list is cleared
+    memory_system_instance._config["sharding_enabled"] = True  # Start enabled
+    memory_system_instance._sharded_index = [{"/some/path": "meta"}]  # Add dummy shard data
+    memory_system_instance.enable_sharding(False)
+    assert memory_system_instance._config["sharding_enabled"] is False
+    assert memory_system_instance._sharded_index == []  # Check shards list is cleared
     mock_recalc.assert_not_called()  # Recalculate should not be called when disabling
 
 
@@ -198,18 +201,18 @@ def test_enable_sharding_disables_and_clears(mock_recalc, memory_system):
 
 @patch("src.memory.memory_system.MemorySystem._recalculate_shards")
 def test_configure_sharding_updates_config_and_recalculates_if_enabled(
-    mock_recalc, memory_system
+    mock_recalc, memory_system_instance
 ):
     """Test configuring updates config and recalculates if sharding enabled."""
-    memory_system._config["sharding_enabled"] = True  # Enable sharding
-    memory_system.configure_sharding(max_shards=50, token_estimation_ratio=0.8)
+    memory_system_instance._config["sharding_enabled"] = True  # Enable sharding
+    memory_system_instance.configure_sharding(max_shards=50, token_estimation_ratio=0.8)
 
     # Check specified values were updated
-    assert memory_system._config["max_shards"] == 50
-    assert memory_system._config["token_estimation_ratio"] == 0.8
+    assert memory_system_instance._config["max_shards"] == 50
+    assert memory_system_instance._config["token_estimation_ratio"] == 0.8
     # Check other values remain from the initial TEST_CONFIG fixture
     assert (
-        memory_system._config["token_size_per_shard"]
+        memory_system_instance._config["token_size_per_shard"]
         == TEST_CONFIG["token_size_per_shard"]
     )
     mock_recalc.assert_called_once()
@@ -217,87 +220,79 @@ def test_configure_sharding_updates_config_and_recalculates_if_enabled(
 
 @patch("src.memory.memory_system.MemorySystem._recalculate_shards")
 def test_configure_sharding_updates_config_no_recalculate_if_disabled(
-    mock_recalc, memory_system
+    mock_recalc, memory_system_instance
 ):
     """Test configuring updates config but doesn't recalculate if sharding disabled."""
-    memory_system._config["sharding_enabled"] = False  # Disable sharding
-    memory_system.configure_sharding(max_shards=50)
-    assert memory_system._config["max_shards"] == 50
+    memory_system_instance._config["sharding_enabled"] = False  # Disable sharding
+    memory_system_instance.configure_sharding(max_shards=50)
+    assert memory_system_instance._config["max_shards"] == 50
     mock_recalc.assert_not_called()
 
 
 # --- Test Deferred Methods (Placeholders) ---
 
-
-def test_index_git_repository_deferred(memory_system):
-    """Verify deferred method has placeholder (logs warning, doesn't raise)."""
-    with patch("logging.warning") as mock_log:
-        memory_system.index_git_repository("/fake/repo")
-        mock_log.assert_called_with(
-            "index_git_repository called, but implementation is deferred."
-        )
-
+# Test for index_git_repository is added below
 
 # --- Test _recalculate_shards (Placeholder) ---
 @patch("logging.debug")
 def test_recalculate_shards_placeholder_logs_and_clears_when_enabled(
-    mock_log, memory_system
+    mock_log, memory_system_instance
 ):
     """Test the placeholder recalculate method logs and clears shards when enabled."""
-    memory_system._config["sharding_enabled"] = True
-    memory_system._sharded_index = [{"a": "b"}]  # Add dummy data
-    memory_system._recalculate_shards()
-    assert memory_system._sharded_index == []  # Placeholder clears it
+    memory_system_instance._config["sharding_enabled"] = True
+    memory_system_instance._sharded_index = [{"a": "b"}]  # Add dummy data
+    memory_system_instance._recalculate_shards()
+    assert memory_system_instance._sharded_index == []  # Placeholder clears it
     mock_log.assert_any_call("Recalculating shards (logic TBD)...")
     mock_log.assert_any_call("Shards recalculated. Count: 0")
 
 
 @patch("logging.debug")
-def test_recalculate_shards_placeholder_clears_when_disabled(mock_log, memory_system):
+def test_recalculate_shards_placeholder_clears_when_disabled(mock_log, memory_system_instance):
     """Test the placeholder recalculate method clears shards when disabled."""
-    memory_system._config["sharding_enabled"] = False
-    memory_system._sharded_index = [{"a": "b"}]  # Add dummy data
-    memory_system._recalculate_shards()
-    assert memory_system._sharded_index == []  # Should clear if called when disabled
+    memory_system_instance._config["sharding_enabled"] = False
+    memory_system_instance._sharded_index = [{"a": "b"}]  # Add dummy data
+    memory_system_instance._recalculate_shards()
+    assert memory_system_instance._sharded_index == []  # Should clear if called when disabled
     # Should not log the "Recalculating..." message
     assert mock_log.call_count == 0
 
 
 # --- Tests for Phase 2a: Context Retrieval Logic ---
 
-# Use the existing 'memory_system' fixture
+# Use the existing 'memory_system_instance' fixture
 
-def test_get_relevant_context_for_no_matches(memory_system):
+def test_get_relevant_context_for_no_matches(memory_system_instance):
     """Verify behavior when no metadata matches the query."""
     # Setup: Ensure index has data that *won't* match
-    memory_system.update_global_index({
+    memory_system_instance.update_global_index({
         os.path.abspath("/path/to/file1.py"): "metadata about python code",
         os.path.abspath("/path/to/file2.txt"): "text file description",
     })
     input_data = ContextGenerationInput(query="non_existent_keyword")
 
-    result = memory_system.get_relevant_context_for(input_data)
+    result = memory_system_instance.get_relevant_context_for(input_data)
 
     assert isinstance(result, AssociativeMatchResult)
     assert result.matches == []
     assert "Found 0 potential matches" in result.context_summary # Check summary text
     assert result.error is None
 
-def test_get_relevant_context_for_query_match(memory_system):
+def test_get_relevant_context_for_query_match(memory_system_instance):
     """Verify matching based on the 'query' field."""
     # Setup: Add specific metadata to match
     path1 = os.path.abspath("/path/file1.py")
     meta1 = "Relevant python code for feature_x"
     path2 = os.path.abspath("/path/other.txt")
     meta2 = "Some other text"
-    memory_system.update_global_index({
+    memory_system_instance.update_global_index({
         path1: meta1,
         path2: meta2,
     })
     # Use case-insensitive matching for robustness if implemented
     input_data = ContextGenerationInput(query="feature_x") # Lowercase query
 
-    result = memory_system.get_relevant_context_for(input_data)
+    result = memory_system_instance.get_relevant_context_for(input_data)
 
     assert isinstance(result, AssociativeMatchResult)
     assert len(result.matches) == 1
@@ -308,17 +303,17 @@ def test_get_relevant_context_for_query_match(memory_system):
     assert "Found 1 potential matches" in result.context_summary
     assert result.error is None
 
-def test_get_relevant_context_for_template_description_match(memory_system):
+def test_get_relevant_context_for_template_description_match(memory_system_instance):
     """Verify matching based on templateDescription if query is absent."""
     path1 = os.path.abspath("/path/template_match.py")
     meta1 = "Code related to user authentication"
-    memory_system.update_global_index({path1: meta1})
+    memory_system_instance.update_global_index({path1: meta1})
     input_data = ContextGenerationInput(
         templateDescription="Handle user login and authentication flow",
         inputs={"user_id": 123} # Input potentially used if logic combines them
     )
 
-    result = memory_system.get_relevant_context_for(input_data)
+    result = memory_system_instance.get_relevant_context_for(input_data)
 
     assert isinstance(result, AssociativeMatchResult)
     assert len(result.matches) == 1
@@ -327,13 +322,13 @@ def test_get_relevant_context_for_template_description_match(memory_system):
     assert result.matches[0].relevance == expected_match.relevance
     assert result.error is None
 
-def test_get_relevant_context_for_query_precedence(memory_system):
+def test_get_relevant_context_for_query_precedence(memory_system_instance):
     """Verify 'query' takes precedence over templateDescription."""
     path_query = os.path.abspath("/path/query_match.js")
     meta_query = "JavaScript for query processing"
     path_template = os.path.abspath("/path/template_match.py")
     meta_template = "Python for template logic"
-    memory_system.update_global_index({
+    memory_system_instance.update_global_index({
         path_query: meta_query,
         path_template: meta_template
     })
@@ -343,7 +338,7 @@ def test_get_relevant_context_for_query_precedence(memory_system):
         templateDescription="Logic related to python templates" # Should be ignored
     )
 
-    result = memory_system.get_relevant_context_for(input_data)
+    result = memory_system_instance.get_relevant_context_for(input_data)
 
     assert isinstance(result, AssociativeMatchResult)
     assert len(result.matches) == 1
@@ -353,7 +348,7 @@ def test_get_relevant_context_for_query_precedence(memory_system):
     assert result.matches[0].relevance == expected_match.relevance
     assert result.error is None
 
-def test_get_relevant_context_for_multiple_matches(memory_system):
+def test_get_relevant_context_for_multiple_matches(memory_system_instance):
     """Verify multiple files can be matched."""
     path1 = os.path.abspath("/proj/common_feature.py")
     meta1 = "shared code for common_feature"
@@ -361,14 +356,14 @@ def test_get_relevant_context_for_multiple_matches(memory_system):
     meta2 = "notes about common_feature implementation"
     path3 = os.path.abspath("/proj/other.java")
     meta3 = "unrelated java code"
-    memory_system.update_global_index({
+    memory_system_instance.update_global_index({
         path1: meta1,
         path2: meta2,
         path3: meta3,
     })
     input_data = ContextGenerationInput(query="common_feature")
 
-    result = memory_system.get_relevant_context_for(input_data)
+    result = memory_system_instance.get_relevant_context_for(input_data)
 
     assert isinstance(result, AssociativeMatchResult)
     assert len(result.matches) == 2
@@ -380,7 +375,7 @@ def test_get_relevant_context_for_multiple_matches(memory_system):
 
 # Use patch.object on the class itself
 @patch.object(MemorySystem, 'get_relevant_context_for')
-def test_get_relevant_context_with_description_calls_correctly(mock_get_relevant_context_for, memory_system):
+def test_get_relevant_context_with_description_calls_correctly(mock_get_relevant_context_for, memory_system_instance):
     """Verify get_relevant_context_with_description constructs input and calls main method."""
     # Setup mock return value from the mocked get_relevant_context_for
     mock_return = AssociativeMatchResult(context_summary="Mocked Result", matches=[], error=None)
@@ -390,7 +385,7 @@ def test_get_relevant_context_with_description_calls_correctly(mock_get_relevant
     context_desc = "Specific description for context lookup" # This should become the query
 
     # Call the method under test
-    result = memory_system.get_relevant_context_with_description(query_text, context_desc)
+    result = memory_system_instance.get_relevant_context_with_description(query_text, context_desc)
 
     # Assert the result is what the mock returned
     assert result == mock_return
@@ -409,29 +404,29 @@ def test_get_relevant_context_with_description_calls_correctly(mock_get_relevant
     assert input_arg.templateDescription is None # Or default value if model has one
     assert input_arg.inputs is None # Or default value
 
-def test_get_relevant_context_for_case_insensitive_match(memory_system):
+def test_get_relevant_context_for_case_insensitive_match(memory_system_instance):
     """Verify matching is case-insensitive."""
     path1 = os.path.abspath("/path/case_test.py")
     meta1 = "Metadata with MixedCaseKeyword"
-    memory_system.update_global_index({path1: meta1})
+    memory_system_instance.update_global_index({path1: meta1})
     input_data = ContextGenerationInput(query="mixedcasekeyword") # Lowercase query
 
-    result = memory_system.get_relevant_context_for(input_data)
+    result = memory_system_instance.get_relevant_context_for(input_data)
 
     assert len(result.matches) == 1
     assert result.matches[0].path == path1
 
     input_data_upper = ContextGenerationInput(query="MIXEDCASEKEYWORD") # Uppercase query
-    result_upper = memory_system.get_relevant_context_for(input_data_upper)
+    result_upper = memory_system_instance.get_relevant_context_for(input_data_upper)
     assert len(result_upper.matches) == 1
     assert result_upper.matches[0].path == path1
 
-def test_get_relevant_context_for_no_query_or_description(memory_system):
+def test_get_relevant_context_for_no_query_or_description(memory_system_instance):
     """Verify behavior when neither query nor templateDescription is provided."""
-    memory_system.update_global_index({os.path.abspath("/path/some_file.py"): "some metadata"})
+    memory_system_instance.update_global_index({os.path.abspath("/path/some_file.py"): "some metadata"})
     input_data = ContextGenerationInput(inputs={"some": "input"}) # Only inputs
 
-    result = memory_system.get_relevant_context_for(input_data)
+    result = memory_system_instance.get_relevant_context_for(input_data)
 
     assert isinstance(result, AssociativeMatchResult)
     assert result.matches == []
@@ -440,18 +435,119 @@ def test_get_relevant_context_for_no_query_or_description(memory_system):
 
 # Test sharding path still uses global index for now
 @patch('logging.debug')
-def test_get_relevant_context_for_sharding_enabled_uses_global_index_phase2a(mock_log, memory_system):
+def test_get_relevant_context_for_sharding_enabled_uses_global_index_phase2a(mock_log, memory_system_instance):
     """Verify sharding path uses global index in Phase 2a."""
     path1 = os.path.abspath("/path/shard_test.py")
     meta1 = "Keyword for sharding test"
-    memory_system.update_global_index({path1: meta1})
-    memory_system.enable_sharding(True) # Enable sharding
+    memory_system_instance.update_global_index({path1: meta1})
+    memory_system_instance.enable_sharding(True) # Enable sharding
 
     input_data = ContextGenerationInput(query="sharding test")
-    result = memory_system.get_relevant_context_for(input_data)
+    result = memory_system_instance.get_relevant_context_for(input_data)
 
     # Check that matching still worked
     assert len(result.matches) == 1
     assert result.matches[0].path == path1
     # Check that the debug log indicates global index was used despite sharding being enabled
     mock_log.assert_any_call("Sharding enabled, but using global index for Phase 2a matching.")
+
+
+# --- Tests for index_git_repository ---
+
+# Make sure GitRepositoryIndexer is importable for patching
+try:
+    # Adjust path if needed based on where MemorySystem imports it from
+    # Assuming MemorySystem imports it like: from src.memory.indexers.git_repository_indexer import GitRepositoryIndexer
+    from src.memory.indexers.git_repository_indexer import GitRepositoryIndexer
+except ImportError:
+    GitRepositoryIndexer = MagicMock() # Define dummy if import fails in test env
+
+@patch('src.memory.memory_system.GitRepositoryIndexer', new_callable=MagicMock) # Patch the class where it's imported/used in memory_system.py
+def test_index_git_repository_success(MockGitIndexer, memory_system_instance): # Use memory_system_instance fixture
+    """Test successful call to index_git_repository delegates correctly."""
+    repo_path = "/path/to/valid/repo"
+    options = {"max_file_size": 50000, "include_patterns": ["*.js"]}
+    mock_indexer_instance = MockGitIndexer.return_value # Get the instance created inside the method
+    # Mock return value of the indexer's method (though not strictly needed for this test)
+    mock_indexer_instance.index_repository.return_value = {os.path.abspath("/path/to/valid/repo/file.js"): "js metadata"}
+
+    # Act
+    memory_system_instance.index_git_repository(repo_path, options)
+
+    # Assert
+    # 1. Indexer was instantiated with the correct path
+    MockGitIndexer.assert_called_once_with(repo_path=repo_path)
+    # 2. Indexer was configured with options (check attributes or specific config methods if they exist)
+    #    Need to assume indexer class allows setting these directly or via methods
+    #    If indexer uses configure methods:
+    #    mock_indexer_instance.set_max_file_size.assert_called_once_with(50000)
+    #    mock_indexer_instance.set_include_patterns.assert_called_once_with(["*.js"])
+    #    If indexer uses attributes (as implemented):
+    #    Verify attributes were set on the *mock* instance
+    assert mock_indexer_instance.max_file_size == 50000 # Assumes attribute setting works
+    assert mock_indexer_instance.include_patterns == ["*.js"] # Assumes attribute setting works
+
+    # 3. index_repository was called with the memory_system instance
+    mock_indexer_instance.index_repository.assert_called_once_with(memory_system=memory_system_instance)
+
+@patch('src.memory.memory_system.GitRepositoryIndexer', new_callable=MagicMock)
+def test_index_git_repository_no_options(MockGitIndexer, memory_system_instance):
+    """Test call without options uses indexer defaults."""
+    repo_path = "/path/to/another/repo"
+    mock_indexer_instance = MockGitIndexer.return_value
+    mock_indexer_instance.index_repository.return_value = {}
+
+    # Act
+    memory_system_instance.index_git_repository(repo_path) # No options passed
+
+    # Assert
+    MockGitIndexer.assert_called_once_with(repo_path=repo_path)
+    # Verify config methods weren't called / default attributes remain (if accessible)
+    # e.g., mock_indexer_instance.set_max_file_size.assert_not_called()
+    # Check that options attributes were NOT set (or retain defaults)
+    # This requires knowing the defaults set in GitRepositoryIndexer.__init__
+    # Example check (assuming direct attribute access on mock):
+    # assert mock_indexer_instance.max_file_size == DEFAULT_INDEXER_MAX_SIZE # Example check
+    # Check that the config methods/attributes were not called/set with specific values from 'options'
+    # For attribute setting, we can check they weren't set to the values used in the previous test
+    assert getattr(mock_indexer_instance, 'max_file_size', None) != 50000
+    assert getattr(mock_indexer_instance, 'include_patterns', None) != ["*.js"]
+
+    mock_indexer_instance.index_repository.assert_called_once_with(memory_system=memory_system_instance)
+
+@patch('src.memory.memory_system.GitRepositoryIndexer', new_callable=MagicMock)
+def test_index_git_repository_indexer_error(MockGitIndexer, memory_system_instance, caplog): # Inject caplog fixture
+    """Test handling of errors during the indexer's execution."""
+    repo_path = "/path/to/error/repo"
+    mock_indexer_instance = MockGitIndexer.return_value
+    # Simulate indexer raising an error
+    mock_indexer_instance.index_repository.side_effect = Exception("Git command failed")
+
+    # Act
+    with caplog.at_level(logging.ERROR): # Ensure logging level is captured
+        memory_system_instance.index_git_repository(repo_path)
+
+    # Assert
+    MockGitIndexer.assert_called_once_with(repo_path=repo_path)
+    mock_indexer_instance.index_repository.assert_called_once_with(memory_system=memory_system_instance)
+    # Check that an error was logged
+    assert "Error indexing repository" in caplog.text
+    assert repo_path in caplog.text # Check repo path is in the log
+    assert "Git command failed" in caplog.text
+
+@patch('src.memory.memory_system.GitRepositoryIndexer', new_callable=MagicMock)
+@patch('os.path.isdir', return_value=False) # Mock isdir to return False
+def test_index_git_repository_invalid_path(mock_isdir, MockGitIndexer, memory_system_instance, caplog):
+    """Test handling when the provided repo_path is invalid."""
+    repo_path = "/invalid/path/does/not/exist"
+
+    with caplog.at_level(logging.ERROR):
+        memory_system_instance.index_git_repository(repo_path)
+
+    # Assert
+    mock_isdir.assert_called_with(repo_path)
+    # Check that an error was logged
+    assert "Repository path is not a valid directory" in caplog.text
+    assert repo_path in caplog.text
+    # Check that the indexer was NOT instantiated or called
+    MockGitIndexer.assert_not_called()

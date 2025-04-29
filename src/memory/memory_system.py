@@ -10,6 +10,14 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 # Import necessary models
 from src.system.models import ContextGenerationInput, AssociativeMatchResult, MatchTuple
 
+# Import the indexer
+try:
+    from src.memory.indexers.git_repository_indexer import GitRepositoryIndexer
+except ImportError:
+    logging.error("GitRepositoryIndexer could not be imported. Indexing features will be unavailable.")
+    GitRepositoryIndexer = None # type: ignore
+
+
 # Default sharding config (can be refined)
 DEFAULT_SHARDING_CONFIG = {
     "sharding_enabled": False,
@@ -78,15 +86,20 @@ class MemorySystem:
         """
         invalid_paths = []
         for path in index.keys():
-            if not os.path.isabs(path):
+             # Normalize path for consistent checks
+            norm_path = os.path.normpath(path)
+            if not os.path.isabs(norm_path):
                 invalid_paths.append(path)
 
         if invalid_paths:
             raise ValueError(f"Non-absolute paths provided in index: {invalid_paths}")
 
-        self.global_index.update(index)
+        # Store with normalized absolute paths
+        normalized_index = {os.path.abspath(p): meta for p, meta in index.items()}
+
+        self.global_index.update(normalized_index)
         logging.debug(
-            f"Global index updated with {len(index)} entries. Total size: {len(self.global_index)}"
+            f"Global index updated with {len(normalized_index)} entries. Total size: {len(self.global_index)}"
         )
 
         if self._config.get("sharding_enabled", False):
@@ -150,8 +163,8 @@ class MemorySystem:
             An AssociativeMatchResult object.
         """
         # Implementation deferred to Phase 2
-        logging.warning(
-            "get_relevant_context_with_description called, but implementation is deferred."
+        logging.debug(
+            "get_relevant_context_with_description called. Constructing input for get_relevant_context_for."
         )
         # --- Start Phase 2, Set A: Behavior Structure ---
         # 1. Construct a simple ContextGenerationInput-like dictionary using context_description.
@@ -177,9 +190,9 @@ class MemorySystem:
             An AssociativeMatchResult object.
         """
         # Implementation deferred to Phase 2
-        logging.warning(
-            "get_relevant_context_for called, but implementation is deferred."
-        )
+        # logging.warning( # Changed to debug as it's expected to be called now
+        #     "get_relevant_context_for called, but implementation is deferred."
+        # )
         # --- Start Phase 2, Set A: Behavior Structure ---
         # 1. Parse/Validate input_data:
         #    - If it's a legacy dict, convert it to ContextGenerationInput.
@@ -209,6 +222,7 @@ class MemorySystem:
         # --- End Phase 2, Set A ---
 
         # --- Start Phase 2a Implementation ---
+        logging.debug(f"get_relevant_context_for called with input: {input_data}")
         # 1. Parse/Validate input_data (Assuming it's already ContextGenerationInput for now)
         if not isinstance(input_data, ContextGenerationInput):
             # Basic handling if legacy dict is passed, might need refinement
@@ -227,10 +241,12 @@ class MemorySystem:
         search_strings = []
         if input_data.query:
             search_strings.append(input_data.query)
+            logging.debug(f"Using explicit query for search: '{input_data.query}'")
         elif input_data.templateDescription:
             # Combine description and potentially key inputs for search
             # Simple approach: use description directly
             search_strings.append(input_data.templateDescription)
+            logging.debug(f"Using templateDescription for search: '{input_data.templateDescription}'")
             # Future enhancement: could extract keywords from inputs dict
             # if input_data.inputs:
             #     search_strings.extend([str(v) for v in input_data.inputs.values()])
@@ -246,6 +262,7 @@ class MemorySystem:
         # Normalize search strings (e.g., lower case for case-insensitive matching)
         search_strings_lower = [s.lower() for s in search_strings if s]
         if not search_strings_lower:
+             logging.warning("Search criteria became empty after normalization.")
              return AssociativeMatchResult(context_summary="Empty search criteria.", matches=[])
 
 
@@ -266,10 +283,14 @@ class MemorySystem:
         # Create a set of unique words from all search strings
         search_words = set()
         for s in search_strings_lower:
-            search_words.update(s.split()) # Split into words
+            # Basic word splitting, might need more sophisticated tokenization
+            search_words.update(s.split())
 
         if not search_words: # Handle case where search strings were present but contained only whitespace
+             logging.warning("Search words set is empty after splitting.")
              return AssociativeMatchResult(context_summary="Empty search criteria after splitting.", matches=[])
+
+        logging.debug(f"Searching index with {len(index_to_search)} entries using words: {search_words}")
 
         for file_path, metadata in index_to_search.items():
             metadata_lower = metadata.lower()
@@ -280,6 +301,7 @@ class MemorySystem:
                 # Create MatchTuple according to Pydantic model
                 # Using placeholder relevance 1.0 for direct match, no excerpt
                 matches.append(MatchTuple(path=file_path, relevance=1.0)) # Adhere to MatchTuple model
+                logging.debug(f"Match found: {file_path}")
 
         # 5. Format the results
         context_summary = f"Found {len(matches)} potential matches based on keyword search."
@@ -320,10 +342,11 @@ class MemorySystem:
 
         Args:
             repo_path: Path to the local Git repository.
-            options: Optional dictionary for indexer configuration.
+            options: Optional dictionary for indexer configuration (e.g., max_file_size, include_patterns).
+                     Expected keys: 'max_file_size' (int), 'include_patterns' (List[str]), 'exclude_patterns' (List[str]).
         """
         # Implementation deferred to Phase 2
-        logging.warning("index_git_repository called, but implementation is deferred.")
+        # logging.warning("index_git_repository called, but implementation is deferred.") # Removed warning
         # --- Start Phase 2, Set A: Behavior Structure ---
         # 1. Import GitRepositoryIndexer (likely needs to be done at module level or carefully handled).
         # 2. Validate/Normalize repo_path (e.g., check if it exists and is a directory).
@@ -336,4 +359,46 @@ class MemorySystem:
         # 6. Log the results:
         #    - Log the number of files indexed or any errors encountered.
         # --- End Phase 2, Set A ---
-        pass
+
+        # --- Start Phase 4 Implementation ---
+        if GitRepositoryIndexer is None:
+            logging.error("GitRepositoryIndexer is not available. Cannot index repository.")
+            return
+
+        logging.info(f"Received request to index Git repository: {repo_path}")
+        if not os.path.isdir(repo_path):
+             logging.error(f"Repository path is not a valid directory: {repo_path}")
+             # Consider raising an error or returning a status
+             return
+
+        try:
+            # 3. Instantiate the indexer
+            indexer = GitRepositoryIndexer(repo_path=repo_path)
+
+            # 4. Configure the indexer based on options
+            if options:
+                logging.debug(f"Configuring indexer with options: {options}")
+                if 'max_file_size' in options and isinstance(options['max_file_size'], int):
+                    # Use setter method if available, otherwise direct attribute access (matching test assumption)
+                    # indexer.set_max_file_size(options['max_file_size'])
+                    indexer.max_file_size = options['max_file_size']
+                if 'include_patterns' in options and isinstance(options['include_patterns'], list):
+                    # indexer.set_include_patterns(options['include_patterns'])
+                    indexer.include_patterns = options['include_patterns']
+                if 'exclude_patterns' in options and isinstance(options['exclude_patterns'], list):
+                    # indexer.set_exclude_patterns(options['exclude_patterns'])
+                    indexer.exclude_patterns = options['exclude_patterns']
+
+            # 5. Call the indexer's main method, passing self
+            # The indexer's method will call self.update_global_index internally
+            indexed_data = indexer.index_repository(memory_system=self)
+
+            # 6. Log results (already done within indexer.index_repository)
+            logging.info(f"Successfully initiated indexing for {repo_path}. {len(indexed_data)} files processed by indexer.")
+
+        except ValueError as ve: # Catch init errors
+            logging.error(f"Error initializing GitRepositoryIndexer for {repo_path}: {ve}")
+        except Exception as e:
+            logging.error(f"Error indexing repository {repo_path}: {e}", exc_info=True)
+            # Potentially re-raise or handle more gracefully depending on desired system behavior
+        # --- End Phase 4 Implementation ---
