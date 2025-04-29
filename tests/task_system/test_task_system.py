@@ -380,12 +380,13 @@ def test_execute_atomic_template_invalid_context_config(task_system_instance):
     assert "Context validation failed" in result.notes["error"].message
 
 
-@patch('src.task_system.task_system.AtomicTaskExecutor', new_callable=MagicMock)
 @patch.object(TaskSystem, 'find_template')
 # @patch.object(MemorySystem, 'get_relevant_context_for') # No longer needed
 @patch.object(TaskSystem, 'resolve_file_paths')
+@patch.object(AtomicTaskExecutor, 'execute_body')
 def test_execute_atomic_template_executor_fails(
-    mock_resolve_files, mock_find_template, MockExecutorClass,
+    mock_execute_body, # Renamed from MockExecutorClass
+    mock_resolve_files, mock_find_template, # Order might change
     task_system_instance, mock_memory_system, mock_handler
 ):
     """Test execute_atomic_template when the executor raises an exception."""
@@ -395,9 +396,8 @@ def test_execute_atomic_template_executor_fails(
     mock_template_def["name"] = template_name
     mock_find_template.return_value = mock_template_def
 
-    mock_executor_instance = MockExecutorClass.return_value
     # Simulate executor raising an exception (NOT ParameterMismatchError)
-    mock_executor_instance.execute_body.side_effect = ValueError("Executor boom!")
+    mock_execute_body.side_effect = ValueError("Executor boom!")
 
     mock_resolve_files.return_value = ([], None)
 
@@ -602,17 +602,10 @@ def test_resolve_file_paths_command(task_system_instance, mock_handler):
     mock_handler.execute_file_path_command.assert_called_once_with("find . -name '*.py'")
 
 
-@patch.object(MemorySystem, 'get_relevant_context_for')
-def test_resolve_file_paths_description(mock_get_context_for, task_system_instance, mock_memory_system):
+def test_resolve_file_paths_description(task_system_instance, mock_memory_system):
     """Test resolving file paths using a description."""
     # Arrange
     expected_path = "/matched/desc.go"
-    # Correct the mock return value structure
-    mock_get_context_for.return_value = AssociativeMatchResult(
-        context_summary="Desc match",
-        matches=[MatchTuple(path=expected_path, relevance=0.9)], # Use correct MatchTuple structure
-        error=None
-    )
     template = {
         "description": "Find Go files", # Used if specific desc missing
         "file_paths_source": {
@@ -620,51 +613,63 @@ def test_resolve_file_paths_description(mock_get_context_for, task_system_instan
             "description": "Relevant Go source files" # Specific description
         }
     }
-    # Act
-    paths, error = task_system_instance.resolve_file_paths(template, mock_memory_system, None) # Handler not needed
+    # Patch the method on the instance *within* the test
+    with patch.object(mock_memory_system, 'get_relevant_context_for') as mock_method_on_instance:
+        # Configure the return value on this new mock
+        mock_method_on_instance.return_value = AssociativeMatchResult(
+            context_summary="Desc match",
+            matches=[MatchTuple(path=expected_path, relevance=0.9)], # Use correct MatchTuple structure
+            error=None
+        )
 
-    # Assert
-    mock_get_context_for.assert_called_once()
-    # Get the actual call arguments
-    call_args, call_kwargs = mock_get_context_for.call_args
-    # Assert the structure and relevant content of the ContextGenerationInput argument
-    assert len(call_args) == 1
-    assert isinstance(call_args[0], ContextGenerationInput)
-    assert call_args[0].query == "Relevant Go source files" # Check the query used
+        # Act
+        paths, error = task_system_instance.resolve_file_paths(template, mock_memory_system, None) # Handler not needed
+
+        # Assert - Check the call on the mock created by 'with'
+        mock_method_on_instance.assert_called_once()
+        call_args, call_kwargs = mock_method_on_instance.call_args
+        assert len(call_args) == 1
+        assert isinstance(call_args[0], ContextGenerationInput)
+        assert call_args[0].query == "Relevant Go source files" # Check the query used
     
+    # Assert results outside the 'with' block
     assert error is None
     assert paths == [expected_path]
 
 
-@patch.object(MemorySystem, 'get_relevant_context_for')
-def test_resolve_file_paths_context_description(mock_get_context, task_system_instance, mock_memory_system):
+def test_resolve_file_paths_context_description(task_system_instance, mock_memory_system):
     """Test resolving file paths using context_description."""
     # Arrange
     expected_path = "/matched/context.rs"
-    # Correct the mock return value structure
-    mock_get_context.return_value = AssociativeMatchResult(
-        context_summary="Context match",
-        matches=[MatchTuple(path=expected_path, relevance=0.85)], # Use correct MatchTuple structure
-        error=None
-    )
     template = {
         "file_paths_source": {
             "type": "context_description",
             "context_query": "Find Rust files about parsing"
         }
     }
-    # Act
-    paths, error = task_system_instance.resolve_file_paths(template, mock_memory_system, None) # Handler not needed
-
-    # Assert
-    mock_get_context.assert_called_once()
-    # Get the actual call arguments
-    call_args, call_kwargs = mock_get_context.call_args
-    # Assert the structure and relevant content of the ContextGenerationInput argument
-    assert len(call_args) == 1
-    assert isinstance(call_args[0], ContextGenerationInput)
-    assert call_args[0].query == "Find Rust files about parsing" # Check the query used
     
+    # Patch the method on the instance *within* the test
+    with patch.object(mock_memory_system, 'get_relevant_context_for') as mock_method_on_instance:
+        # Configure the return value on this new mock
+        mock_method_on_instance.return_value = AssociativeMatchResult(
+            context_summary="Context match",
+            matches=[MatchTuple(path=expected_path, relevance=0.85)], # Use correct MatchTuple structure
+            error=None
+        )
+        
+        # Act
+        paths, error = task_system_instance.resolve_file_paths(template, mock_memory_system, None) # Handler not needed
+
+        # Assert - Check the call on the mock created by 'with'
+        mock_method_on_instance.assert_called_once()
+        # Get the actual call arguments
+        call_args, call_kwargs = mock_method_on_instance.call_args
+        # Assert the structure and relevant content of the ContextGenerationInput argument
+        assert len(call_args) == 1
+        assert isinstance(call_args[0], ContextGenerationInput)
+        assert call_args[0].query == "Find Rust files about parsing" # Check the query used
+    
+    # Assert results outside the 'with' block
     assert error is None
     assert paths == [expected_path]
 
@@ -793,11 +798,10 @@ def test_find_matching_tasks_sorting(task_system_instance):
     input_text = "a very long and detailed description query"
     matches = task_system_instance.find_matching_tasks(input_text, None)
 
-    # With MATCH_THRESHOLD = 0.2, task3 and task2 should match, task1 might not
-    assert len(matches) == 2 # Expecting task3 and task2
-    assert matches[0]['task']['name'] == 'task3'
-    assert matches[1]['task']['name'] == 'task2'
-    assert matches[0]['score'] >= matches[1]['score']
+    # With MATCH_THRESHOLD = 0.6, only task3 should match
+    assert len(matches) == 1 # Expecting only task3 with threshold 0.6
+    assert matches[0]["task"]["name"] == "task3"
+    assert matches[0]['score'] >= MATCH_THRESHOLD
 
 
 # --- Remove Deferred Method Tests ---
