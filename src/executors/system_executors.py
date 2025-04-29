@@ -53,7 +53,8 @@ class SystemExecutorFunctions:
             logging.error(f"execute_get_context: {error_msg}")
             error_details = TaskFailureError(
                 type="TASK_FAILURE",
-                reason=TaskFailureReason.INPUT_VALIDATION_FAILURE, # Use enum value
+                # FIX: Use string literal for reason
+                reason="input_validation_failure",
                 message=error_msg
             )
             # Use .model_dump() for Pydantic v2
@@ -70,7 +71,8 @@ class SystemExecutorFunctions:
             logging.error(f"execute_get_context: {error_msg}")
             error_details = TaskFailureError(
                 type="TASK_FAILURE",
-                reason=TaskFailureReason.INPUT_VALIDATION_FAILURE, # Use enum value
+                # FIX: Use string literal for reason
+                reason="input_validation_failure",
                 message=error_msg
             )
             return TaskResult(
@@ -107,7 +109,8 @@ class SystemExecutorFunctions:
             logging.error(f"execute_get_context: {error_msg}")
             error_details = TaskFailureError(
                 type="TASK_FAILURE",
-                reason=TaskFailureReason.INPUT_VALIDATION_FAILURE,
+                # FIX: Use string literal for reason
+                reason="input_validation_failure",
                 message=error_msg
             )
             return TaskResult(
@@ -154,7 +157,8 @@ class SystemExecutorFunctions:
             logging.exception(f"execute_get_context: {error_msg}") # Use logging.exception to include traceback
             error_details = TaskFailureError(
                 type="TASK_FAILURE",
-                reason=TaskFailureReason.CONTEXT_RETRIEVAL_FAILURE, # Use enum value
+                # FIX: Use string literal for reason
+                reason="context_retrieval_failure",
                 message=error_msg
             )
             return TaskResult(
@@ -187,7 +191,8 @@ class SystemExecutorFunctions:
             logging.error(f"execute_read_files: {error_msg}")
             error_details = TaskFailureError(
                 type="TASK_FAILURE",
-                reason=TaskFailureReason.INPUT_VALIDATION_FAILURE, # Use enum value
+                # FIX: Use string literal for reason
+                reason="input_validation_failure",
                 message=error_msg
             )
             # Use .model_dump() for Pydantic v2
@@ -203,7 +208,8 @@ class SystemExecutorFunctions:
             logging.error(f"execute_read_files: {error_msg}")
             error_details = TaskFailureError(
                 type="TASK_FAILURE",
-                reason=TaskFailureReason.INPUT_VALIDATION_FAILURE, # Use enum value
+                # FIX: Use string literal for reason
+                reason="input_validation_failure",
                 message=error_msg
             )
             return TaskResult(
@@ -240,7 +246,8 @@ class SystemExecutorFunctions:
 
             try:
                 # Assuming file_manager.read_file returns Optional[str]
-                file_content: Optional[str] = file_manager.read_file(file_path)
+                # FIX: Explicitly pass max_size=None
+                file_content: Optional[str] = file_manager.read_file(file_path, max_size=None)
                 if file_content is not None:
                     # Add a delimiter before the file content, using basename for readability
                     # Use os.path.basename for cross-platform compatibility

@@ -39,6 +39,7 @@ def mock_file_manager():
     # Use spec=FileAccessManager if importable
     file_manager = MagicMock() # spec=FileAccessManager
     # Configure default behavior for read_file - returns content for valid paths, None for invalid
+    # Ensure the mock signature matches the expected call (with max_size)
     file_manager.read_file.side_effect = lambda path, max_size=None: (
         f"Content of {path}" if "nonexistent" not in path and "error" not in path else None
     )
@@ -99,8 +100,10 @@ def test_execute_get_context_success(mock_memory_system):
     call_args = mock_memory_system.get_relevant_context_for.call_args[0][0]
     assert isinstance(call_args, ContextGenerationInput)
     assert call_args.query == "search term"
-    assert call_args.history is None # Check optional params not passed if not provided
-    assert call_args.target_files is None
+    # FIX: Check inheritedContext instead of history
+    assert call_args.inheritedContext is None
+    # FIX: Check inputs instead of target_files directly
+    assert call_args.inputs is None
 
 def test_execute_get_context_with_history(mock_memory_system):
     """Test context retrieval with history parameter."""
@@ -121,8 +124,9 @@ def test_execute_get_context_with_history(mock_memory_system):
     call_args = mock_memory_system.get_relevant_context_for.call_args[0][0]
     assert isinstance(call_args, ContextGenerationInput)
     assert call_args.query == "search term"
-    assert call_args.history == "Previous conversation context"
-    assert call_args.target_files is None
+    # FIX: Check inheritedContext instead of history
+    assert call_args.inheritedContext == "Previous conversation context"
+    assert call_args.inputs is None # Check inputs is None when only history is passed
 
 def test_execute_get_context_with_target_files(mock_memory_system):
     """Test context retrieval with target_files parameter."""
@@ -144,8 +148,12 @@ def test_execute_get_context_with_target_files(mock_memory_system):
     call_args = mock_memory_system.get_relevant_context_for.call_args[0][0]
     assert isinstance(call_args, ContextGenerationInput)
     assert call_args.query == "search term"
-    assert call_args.history is None
-    assert call_args.target_files == target_list
+    # FIX: Check inheritedContext instead of history
+    assert call_args.inheritedContext is None
+    # FIX: Check inputs['target_files'] instead of target_files directly
+    assert call_args.inputs is not None
+    assert "target_files" in call_args.inputs
+    assert call_args.inputs["target_files"] == target_list
 
 def test_execute_get_context_missing_query(mock_memory_system):
     """Test validation failure when query parameter is missing."""
@@ -162,7 +170,8 @@ def test_execute_get_context_missing_query(mock_memory_system):
     error_details = result["notes"]["error"]
     assert isinstance(error_details, dict) # Should be a dict representation of TaskFailureError
     assert error_details["type"] == "TASK_FAILURE"
-    assert error_details["reason"] == TaskFailureReason.INPUT_VALIDATION_FAILURE.value # Use enum value
+    # FIX: Use string literal for reason check
+    assert error_details["reason"] == "input_validation_failure"
     mock_memory_system.get_relevant_context_for.assert_not_called()
 
 def test_execute_get_context_empty_query(mock_memory_system):
@@ -175,9 +184,10 @@ def test_execute_get_context_empty_query(mock_memory_system):
 
     # Assert
     assert result["status"] == "FAILED"
-    assert "empty" in result["content"].lower() or "blank" in result["content"].lower() # Error message mentions empty query
+    assert "empty" in result["content"].lower() or "null" in result["content"].lower() # Error message mentions empty query
     assert "error" in result["notes"]
-    assert result["notes"]["error"]["reason"] == TaskFailureReason.INPUT_VALIDATION_FAILURE.value
+    # FIX: Use string literal for reason check
+    assert result["notes"]["error"]["reason"] == "input_validation_failure"
     mock_memory_system.get_relevant_context_for.assert_not_called()
 
 def test_execute_get_context_memory_system_error(mock_memory_system):
@@ -193,7 +203,8 @@ def test_execute_get_context_memory_system_error(mock_memory_system):
     assert result["status"] == "FAILED"
     assert "context retrieval" in result["content"].lower() or "memory" in result["content"].lower()
     assert "error" in result["notes"]
-    assert result["notes"]["error"]["reason"] == TaskFailureReason.CONTEXT_RETRIEVAL_FAILURE.value
+    # FIX: Use string literal for reason check
+    assert result["notes"]["error"]["reason"] == "context_retrieval_failure"
 
 def test_execute_get_context_memory_system_returns_error(mock_memory_system):
     """Test handling when MemorySystem returns result with error."""
@@ -228,7 +239,7 @@ def test_execute_read_files_success(mock_file_manager):
     """Test successful reading of files."""
     # Setup
     # Use a more specific side effect for this test
-    def read_side_effect(path, max_size=None):
+    def read_side_effect(path, max_size=None): # Ensure signature matches call
         if path == "/path/file1.txt":
             return "Content of file1"
         elif path == "/path/file2.txt":
@@ -264,6 +275,7 @@ def test_execute_read_files_success(mock_file_manager):
 
     # Verify read_file was called for each path
     assert mock_file_manager.read_file.call_count == 3
+    # FIX: Assertions now match the expected call signature
     mock_file_manager.read_file.assert_any_call("/path/file1.txt", max_size=None)
     mock_file_manager.read_file.assert_any_call("/path/file2.txt", max_size=None)
     mock_file_manager.read_file.assert_any_call("/path/nonexistent.txt", max_size=None)
@@ -319,7 +331,8 @@ def test_execute_read_files_missing_paths_param(mock_file_manager):
     assert result["status"] == "FAILED"
     assert "file_paths" in result["content"].lower()  # Error message mentions missing param
     assert "error" in result["notes"]
-    assert result["notes"]["error"]["reason"] == TaskFailureReason.INPUT_VALIDATION_FAILURE.value
+    # FIX: Use string literal for reason check
+    assert result["notes"]["error"]["reason"] == "input_validation_failure"
     mock_file_manager.read_file.assert_not_called()
 
 def test_execute_read_files_invalid_paths_type(mock_file_manager):
@@ -334,14 +347,15 @@ def test_execute_read_files_invalid_paths_type(mock_file_manager):
     assert result["status"] == "FAILED"
     assert "list" in result["content"].lower()  # Error message mentions expected list
     assert "error" in result["notes"]
-    assert result["notes"]["error"]["reason"] == TaskFailureReason.INPUT_VALIDATION_FAILURE.value
+    # FIX: Use string literal for reason check
+    assert result["notes"]["error"]["reason"] == "input_validation_failure"
     mock_file_manager.read_file.assert_not_called()
 
 def test_execute_read_files_with_unexpected_error(mock_file_manager):
     """Test handling of unexpected exceptions during file reading."""
     # Setup
     # Make read_file raise an exception for a specific path
-    def side_effect(path, max_size=None):
+    def side_effect(path, max_size=None): # Ensure signature matches call
         if path == "/path/error.txt":
             raise Exception("Unexpected file error")
         elif path == "/path/file1.txt":
