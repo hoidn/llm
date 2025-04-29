@@ -221,8 +221,13 @@ class TaskSystem:
         # So, we only need to catch other potential exceptions from execute_body here.
         except Exception as e:
             logging.exception(f"Unexpected error executing template body for '{request.name}': {e}")
-            error = TaskFailureError(type="TASK_FAILURE", reason="unexpected_error", message=f"Execution failed: {e}")
-            final_result = TaskResult(content=f"Execution failed: {e}", status="FAILED", notes={"error": error})
+            # Create error dictionary directly instead of using TaskFailureError object
+            error_dict = {
+                "type": "TASK_FAILURE",
+                "reason": "unexpected_error",
+                "message": f"Execution failed: {e}"
+            }
+            final_result = TaskResult(content=f"Execution failed: {e}", status="FAILED", notes={"error": error_dict})
 
         # 7. Augment Result Notes
         if final_result.notes is None:
