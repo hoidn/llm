@@ -483,6 +483,68 @@ if __name__ == "__main__":
     asyncio.run(run_chatbot())
 ```
 
+## Managing Server Configurations (Claude Code `.mcp.json` Compatibility)
+
+Applications using the `mcp.py` client library often need to manage connection details for multiple MCP servers. While the library handles the connection given the parameters, storing and retrieving these parameters is an application-level concern.
+
+One common approach, used by tools like Anthropic's Claude Code, is to utilize a project-specific JSON configuration file, typically named `.mcp.json`, located at the project root. This file allows server configurations, particularly for locally executed tools via STDIO, to be shared among team members via version control.
+
+### `.mcp.json` Format (STDIO Servers)
+
+To maintain compatibility with the format used by Claude Code for project-scoped servers, your application should expect and potentially generate `.mcp.json` files with the following structure *specifically for STDIO servers*:
+
+```json
+{
+  "mcpServers": {
+    "<server_id_1>": {
+      "command": "executable_path_or_command",
+      "args": ["list", "of", "string", "arguments"],
+      "env": {
+        "ENV_VAR_NAME": "string_value",
+        "ANOTHER_VAR": "another_value"
+      }
+    },
+    "<server_id_2>": {
+      "command": "another_command",
+      "args": [],
+      "env": {}
+    }
+    // ... more STDIO server definitions
+  }
+}
+```
+
+**Fields Explained:**
+
+*   **`mcpServers` (object)**: The required top-level key.
+*   **`<server_id>` (string key)**: A unique identifier for the server within the project (e.g., `"shared-coder"`, `"local-linter"`). This is the name used to reference the server.
+*   **`command` (string)**: The command or path to the executable for the MCP server.
+*   **`args` (list<string>)**: A list of command-line arguments to pass to the executable.
+*   **`env` (object)**: An object mapping environment variable names (strings) to their string values, to be set for the server process.
+
+**Important Considerations for Compatibility:**
+
+*   **STDIO Focus:** The documented `.mcp.json` format in Claude Code examples explicitly shows the structure for `stdio` transport servers. It does **not** specify how `websocket` or `sse` transports would be represented within this file.
+*   **No Metadata:** This format does not include fields for `display_name`, `description`, `enabled` status, or explicit `transport` type within the `.mcp.json` structure itself. Applications needing such metadata might need to manage it separately or infer it.
+*   **Loading Logic:** Your application's configuration loader should parse this structure. When connecting to a server specified in `.mcp.json`, it would extract the `command`, `args`, and `env` to instantiate `StdioServerParameters` and then use `stdio_client`.
+*   **Other Transports:** If your application needs to support WebSocket or SSE servers configured similarly across a team, you might need to:
+    *   Extend the `.mcp.json` format with additional fields (e.g., `url`, `transport`), acknowledging this deviates from the documented Claude Code structure for STDIO.
+    *   Use separate configuration files or mechanisms (like user-scoped config) for non-STDIO servers, similar to how `claude mcp add --transport ...` might store them outside `.mcp.json`.
+*   **Security:** As recommended by Claude Code, applications loading configurations from a project `.mcp.json` should consider security implications, potentially prompting users before connecting to execute local commands defined therein.
+
+### Runtime Usage Pattern (Loading `.mcp.json`)
+
+An application component responsible for managing MCP connections would:
+
+1.  **Locate & Load:** Find and parse the `.mcp.json` file from the project root.
+2.  **Lookup Server:** Access the `mcpServers` object and find the entry matching the desired `<server_id>`.
+3.  **Extract Parameters:** Retrieve the `command`, `args`, and `env` values.
+4.  **Instantiate `StdioServerParameters`:** Create the parameters object required by `stdio_client`.
+5.  **Connect:** Use `async with stdio_client(server_params) as (read, write): ...` to establish the connection.
+6.  **Create & Use Session:** Proceed to create and use the `ClientSession`.
+
+By adhering to this structure for STDIO servers defined in `.mcp.json`, you can achieve compatibility with the pattern used by Claude Code for sharing project-specific local MCP server configurations. Remember to handle other transport types and additional metadata through potentially different configuration mechanisms if needed.
+
 ## Conclusion
 
 The MCP client library provides a powerful framework for creating clients that can communicate with MCP-compliant servers. By following the patterns and practices outlined in this guide, you can build robust, scalable applications that leverage the full capabilities of the protocol.
