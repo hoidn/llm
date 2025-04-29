@@ -54,19 +54,20 @@ module src.sexp_evaluator.sexp_evaluator {
         //   - Symbols: Look up the symbol in the `env`. Raise error if unbound.
         //   - Lists: Treat as function/primitive call:
         //     - Identify the operator (first element).
-        //     - If operator is a special form/primitive (`let`, `if`, `map`, `list`, `get_context`): Execute specific primitive logic.
+        //     - If operator is a special form/primitive (`let`, `if`, `map`, `list`, `quote`, `get_context`): Execute specific primitive logic.
         //       - `(let ((sym expr)...) body...)` / `(bind sym expr)`: Evaluate expr, bind to sym in new/current scope, evaluate body.
         //       - `(if cond then else)`: Evaluate cond, then evaluate/return then or else branch.
         //       - `(map task_expr list_expr)`: Evaluate list_expr, iterate, bind item, evaluate task_expr in nested scope, collect results.
         //       - `(list item...)`: Evaluate items, return list.
-        //       - `(get_context option...)`: Evaluate option values, call MemorySystem.get_relevant_context_for, return file paths.
+        //       - `(quote expression)`: Prevents evaluation of `expression`. Returns `expression` itself, literally. This is the standard way to include literal data (symbols, lists, etc.) in code. Example: `(quote (a b c))` returns the literal list containing the symbols a, b, and c, not the result of calling a function 'a'.
+        //       - `(get_context option...)`: Evaluate option values, call MemorySystem.get_relevant_context_for, return file paths. Note: Arguments like `inputs` might receive literal data structures constructed via `(list ...)` or `(quote ...)`.
         //     - Otherwise (general invocation `(<identifier> <arg>*)`):
         //       1. Evaluate identifier symbol to get `target_id`.
         //       2. Initialize empty dictionary `resolved_named_args = {}`.
         //       3. Initialize `resolved_files = None`, `resolved_context_settings = None`.
         //       4. Iterate through remaining list elements (`<arg>*`) after the identifier:
         //          a. If element is a list `(key value_expression)` and `key` is a symbol:
-        //             i.   Evaluate `value_expression` recursively using `eval(value_expression, env)`. Let the result be `evaluated_value`.
+        //             i.   Evaluate `value_expression` recursively using `eval(value_expression, env)`. Let the result be `evaluated_value`. Note: If `value_expression` is intended to produce a literal data structure (e.g., a list of strings, a list of pairs), it should typically be constructed using `(list ...)` or wrapped in `(quote ...)` to prevent unintended evaluation.
         //             ii.  Get the string name of the `key` symbol (e.g., "arg1"). Let this be `arg_name`.
         //             iii. If `arg_name` is "files": Set `resolved_files = evaluated_value` (ensure it's a list of strings).
         //             iv.  Else if `arg_name` is "context": Set `resolved_context_settings = evaluated_value` (ensure it's a dictionary matching context settings).

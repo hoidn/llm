@@ -33,6 +33,7 @@ module src.dispatcher {
         // - Checks if the `identifier` string starts with `'(`. If so, assumes it's an S-expression workflow:
         //   - Instantiates or accesses the S-expression evaluator component (`SexpEvaluator`).
         //   - Calls `sexp_evaluator.evaluate_string(identifier, initial_environment)` where `identifier` contains the full S-expression string and `initial_environment` might contain bindings for `params`.
+        //   - The S-expression string itself should follow the standard evaluation rules, including the use of `(quote ...)` to represent literal data arguments within the workflow.
         //   - Takes the raw result from `evaluate_string`. If it's not already a TaskResult dictionary, formats it into one (e.g., placing the result in `content`, setting `status` to `COMPLETE`). Handles potential exceptions from `evaluate_string` by creating a `FAILED` TaskResult.
         //   - Returns the formatted TaskResult.
         //   - Skips the subsequent template/tool lookup steps.
