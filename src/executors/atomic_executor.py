@@ -173,4 +173,3 @@ class AtomicTaskExecutor:
 
             error_details = TaskError(type=error_type, reason=error_reason, message=f"Execution failed: {e}")
             return TaskResult(content=f"Execution failed: {e}", status="FAILED", notes={"error": error_details}).model_dump(exclude_none=True)
-```
