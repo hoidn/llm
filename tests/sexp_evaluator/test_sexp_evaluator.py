@@ -28,7 +28,7 @@ def mock_task_system(mocker):
     # Default: successful atomic task execution
     mock.execute_atomic_template.return_value = TaskResult(
         status="COMPLETE", content="Atomic Task Result", notes={}
-    ).model_dump(exclude_none=True) # Return dict as per TaskSystem IDL
+    )
     return mock
 
 @pytest.fixture
@@ -39,7 +39,7 @@ def mock_handler(mocker):
     # Default: successful tool execution
     mock._execute_tool.return_value = TaskResult(
         status="COMPLETE", content="Direct Tool Result", notes={}
-    ).model_dump(exclude_none=True) # Return dict as per BaseHandler IDL
+    )
     return mock
 
 @pytest.fixture
