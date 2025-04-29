@@ -46,7 +46,7 @@ except ImportError:
 
 
 # Now import the class under test *after* potential patches
-from src.memory.indexers.git_repository_indexer import GitRepositoryIndexer, DEFAULT_INCLUDE_PATTERNS, DEFAULT_MAX_FILE_SIZE
+from src.memory.indexers.git_repository_indexer import GitRepositoryIndexer, DEFAULT_INCLUDE_PATTERNS, DEFAULT_MAX_FILE_SIZE, BINARY_EXTENSIONS
 # Import MemorySystem for integration tests
 from src.memory.memory_system import MemorySystem
 
@@ -138,41 +138,40 @@ def test_indexer_init(tmp_path):
     assert indexer_instance.max_file_size == DEFAULT_MAX_FILE_SIZE
 
 
-@pytest.mark.parametrize("file_path, file_content, expected", [
-    ("test.py", b"print('hello')", True),
-    ("test.txt", b"Simple text", True),
-    ("archive.zip", b"PK\x03\x04", False), # Known binary signature
-    ("image.jpg", b"\xFF\xD8\xFF", False), # Known binary signature
-    ("unknown.bin", b"\x00\x01\x02\x00", False), # Null bytes
-    ("no_extension", b"Just text", True),
-    ("script.sh", b"#!/bin/bash\necho hello", True),
-    ("utf16_file.txt", b'\xff\xfeh\x00e\x00l\x00l\x00o\x00', False), # UTF-16 BOM, fails utf-8/latin-1 decode
-    ("empty_file.txt", b"", True), # Empty file is considered text
+# Add 'ext' parameter to parametrize to avoid calling real splitext in test
+@pytest.mark.parametrize("file_path, ext, file_content, expected", [
+    ("test.py", ".py", b"print('hello')", True),
+    ("test.txt", ".txt", b"Simple text", True),
+    ("archive.zip", ".zip", b"PK\x03\x04", False), # Known binary signature, also binary extension
+    ("image.jpg", ".jpg", b"\xFF\xD8\xFF", False), # Known binary signature, also binary extension
+    ("unknown.bin", ".bin", b"\x00\x01\x02\x00", False), # Null bytes, also binary extension
+    ("no_extension", "", b"Just text", True), # No extension, relies on content check
+    ("script.sh", ".sh", b"#!/bin/bash\necho hello", True), # Text content, not in BINARY_EXTENSIONS
+    ("utf16_file.txt", ".txt", b'\xff\xfeh\x00e\x00l\x00l\x00o\x00', False), # UTF-16 BOM, fails utf-8/latin-1 decode
+    ("empty_file.txt", ".txt", b"", True), # Empty file is considered text
 ])
 @patch('builtins.open', new_callable=mock_open)
-# Patch where splitext is looked up by the code under test
+# Patch where splitext is looked up by the code under test (git_repository_indexer module)
 @patch('src.memory.indexers.git_repository_indexer.os.path.splitext')
-def test_is_text_file(mock_splitext, mock_open_file, unit_test_indexer, file_path, file_content, expected):
+def test_is_text_file(mock_splitext, mock_open_file, unit_test_indexer, file_path, ext, file_content, expected):
     """Unit Test: text file detection logic."""
-    # Configure mocks
-    # FIX: Don't call the real splitext here as the patch is active.
-    # Determine the expected return value based on the input file_path.
-    # The real os.path.splitext returns a tuple: (root, ext)
-    # Calculate the expected tuple *outside* the patch scope conceptually
-    # This calculation happens *before* the mock is configured below.
-    expected_root, expected_ext = os.path.splitext(file_path)
-    expected_splitext_output = (expected_root, expected_ext)
-    # Configure the mock passed into the test function to return the pre-calculated tuple
-    mock_splitext.return_value = expected_splitext_output
-    # --- End FIX ---
+    # --- Mock Configuration ---
+    # Configure the mock for os.path.splitext directly.
+    # We provide the expected extension 'ext' via parametrize to avoid calling the
+    # real os.path.splitext function while the patch is active, which caused the original error.
+    # See docs/implementation_rules.md Guideline 2: Patch Where It's Looked Up.
+    # We also directly configure the return value instead of calling the real function.
+    filename_without_ext = file_path[:-len(ext)] if ext else file_path
+    mock_splitext.return_value = (filename_without_ext, ext)
 
+    # Configure the mock file handle returned by mock_open
     mock_file_handle = mock_open_file.return_value # Get the mock file handle
     mock_file_handle.read.return_value = file_content # Make mock file return bytes
 
-    # Act
+    # --- Act ---
     result = unit_test_indexer.is_text_file(file_path)
 
-    # Assert
+    # --- Assert ---
     assert result == expected
     # Check open was called correctly
     mock_open_file.assert_called_once_with(file_path, 'rb') # Check opened in binary mode
