@@ -11,46 +11,6 @@ from sexpdata import load, Symbol, ExpectNothing, ExpectClosingBracket # Add spe
 # Import the custom error type
 from src.system.errors import SexpSyntaxError # This is our custom error
 
-# Helper function to recursively post-process parsed data
-def _post_process_parsed_data(item: Any) -> Any:
-    """
-    Recursively traverses the parsed AST and performs post-processing:
-    1. Converts empty lists [] to Python None (to handle 'nil' -> [] default).
-    2. Converts specific symbols ('true', 'false') if not handled by parser args.
-
-    Args:
-        item: The current item in the AST.
-
-    Returns:
-        The processed item.
-    """
-    # 1. Handle 'nil' -> [] conversion AFTER parsing
-    if isinstance(item, list) and not item: # Check for empty list
-        logging.debug("Post-process: Converting [] to None")
-        return None
-    elif isinstance(item, list):
-        # Recursively process elements within non-empty lists
-        processed_list = [_post_process_parsed_data(sub_item) for sub_item in item]
-        logging.debug(f"Post-process: Returning processed list: {processed_list}")
-        return processed_list
-    elif isinstance(item, Symbol):
-        # 2. Handle true/false symbols (optional, parser args should handle literals)
-        val = item.value()
-        logging.debug(f"Post-process Symbol: Item={item}, Value={val}")
-        if val == 'true':
-            logging.debug("  Symbol 'true' -> True")
-            return True
-        elif val == 'false':
-            logging.debug("  Symbol 'false' -> False")
-            return False
-        else:
-            logging.debug(f"  Keeping symbol: {item}")
-            return item # Keep other symbols
-    else:
-        # Return atoms (numbers, strings, etc.) and other types unchanged
-        logging.debug(f"Post-process: Keeping atom: {item}")
-        return item
-
 
 class SexpParser:
     """
@@ -101,11 +61,8 @@ class SexpParser:
                 # Raise SexpSyntaxError directly for clarity and consistency
                 raise SexpSyntaxError("Unexpected content after the main expression.", sexp_string, error_details=f"Trailing content: '{remainder}'")
 
-            # Post-process the parsed data (convert [] to None, etc.)
-            processed_ast = _post_process_parsed_data(parsed_expression)
-
-            logging.debug(f"Successfully parsed and post-processed AST: {processed_ast}")
-            return processed_ast
+            logging.debug(f"Successfully parsed AST: {parsed_expression}")
+            return parsed_expression
 
         except StopIteration: # Raised by sexpdata.load if the stream is empty after stripping
              logging.error("S-expression parsing failed: Input string is empty or contains only whitespace.")

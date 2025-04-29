@@ -166,3 +166,71 @@ def test_parse_non_string_input(parser):
         parser.parse_string(None)
     with pytest.raises(TypeError):
         parser.parse_string(["list", "is", "not", "string"])
+"""
+Unit tests for the SexpParser.
+"""
+
+import pytest
+from src.sexp_parser.sexp_parser import SexpParser
+from src.system.errors import SexpSyntaxError
+from sexpdata import Symbol
+
+@pytest.fixture
+def parser():
+    """Fixture providing a SexpParser instance."""
+    return SexpParser()
+
+def test_parse_empty_list(parser):
+    """Test parsing an empty list '()'."""
+    sexp_string = "()"
+    expected_ast = [] # Empty list is returned as []
+    assert parser.parse_string(sexp_string) == expected_ast
+
+def test_parse_nil_symbol(parser):
+    """Test parsing the 'nil' symbol."""
+    sexp_string = "nil"
+    expected_ast = [] # 'nil' is parsed as []
+    assert parser.parse_string(sexp_string) == expected_ast
+
+def test_parse_list_with_only_nil(parser):
+    """Test parsing a list containing only 'nil'."""
+    sexp_string = "(nil)"
+    expected_ast = [[]] # List containing 'nil' is parsed as [[]]
+    assert parser.parse_string(sexp_string) == expected_ast
+
+def test_parse_different_atom_types(parser):
+    """Test parsing different atom types."""
+    sexp_string = "(list 1 \"hello\" true nil 3.14)"
+    expected_ast = [Symbol('list'), 1, "hello", True, [], 3.14]
+    assert parser.parse_string(sexp_string) == expected_ast
+
+def test_parse_nested_lists(parser):
+    """Test parsing nested lists."""
+    sexp_string = "(outer (inner1 a b) (inner2 c d))"
+    expected_ast = [Symbol('outer'), 
+                    [Symbol('inner1'), Symbol('a'), Symbol('b')], 
+                    [Symbol('inner2'), Symbol('c'), Symbol('d')]]
+    assert parser.parse_string(sexp_string) == expected_ast
+
+def test_parse_trailing_content_error(parser):
+    """Test that trailing content raises an error."""
+    sexp_string = "(expr1) (expr2)"
+    with pytest.raises(SexpSyntaxError, match="Unexpected content after the main expression"):
+        parser.parse_string(sexp_string)
+
+def test_parse_unbalanced_parentheses_error(parser):
+    """Test that unbalanced parentheses raise an error."""
+    sexp_string = "(missing paren"
+    with pytest.raises(SexpSyntaxError, match="Unbalanced parentheses"):
+        parser.parse_string(sexp_string)
+
+def test_parse_empty_string_error(parser):
+    """Test that an empty string raises an error."""
+    sexp_string = "   "
+    with pytest.raises(SexpSyntaxError, match="Input string is empty or contains only whitespace"):
+        parser.parse_string(sexp_string)
+
+def test_parse_non_string_input_error(parser):
+    """Test that non-string input raises a TypeError."""
+    with pytest.raises(TypeError, match="Input must be a string"):
+        parser.parse_string(123)
