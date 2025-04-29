@@ -49,30 +49,25 @@ module src.sexp_evaluator.sexp_evaluator {
         // Postconditions:
         // - Returns the evaluated value of the node.
         // Behavior:
+        // - This function's primary goal is to determine the value represented by the AST node.
         // - Handles different node types:
-        //   - Literals (string, number, bool, null): Return the value directly.
+        //   - Literals (string, number, bool, null, empty list): Return the value directly.
         //   - Symbols: Look up the symbol in the `env`. Raise error if unbound.
-        //   - Lists: Treat as function/primitive call:
-        //     - Identify the operator (first element).
-        //     - If operator is a special form/primitive (`let`, `if`, `map`, `list`, `quote`, `get_context`): Execute specific primitive logic.
-        //       - `(let ((sym expr)...) body...)` / `(bind sym expr)`: Evaluate expr, bind to sym in new/current scope, evaluate body.
-        //       - `(if cond then else)`: Evaluate cond, then evaluate/return then or else branch.
-        //       - `(map task_expr list_expr)`: Evaluate list_expr, iterate, bind item, evaluate task_expr in nested scope, collect results.
-        //       - `(list item...)`: Evaluate items, return list.
-        //       - `(quote expression)`: Prevents evaluation of `expression`. Returns `expression` itself, literally. This is the standard way to include literal data (symbols, lists, etc.) in code. Example: `(quote (a b c))` returns the literal list containing the symbols a, b, and c, not the result of calling a function 'a'.
-        //       - `(get_context option...)`: Evaluate option values, call MemorySystem.get_relevant_context_for, return file paths. Note: Arguments like `inputs` might receive literal data structures constructed via `(list ...)` or `(quote ...)`.
-        //     - Otherwise (general invocation `(<identifier> <arg>*)`):
-        //       1. Evaluate identifier symbol to get `target_id`.
-        //       2. Initialize empty dictionary `resolved_named_args = {}`.
-        //       3. Initialize `resolved_files = None`, `resolved_context_settings = None`.
-        //       4. Iterate through remaining list elements (`<arg>*`) after the identifier:
-        //          a. If element is a list `(key value_expression)` and `key` is a symbol:
-        //             i.   Evaluate `value_expression` recursively using `eval(value_expression, env)`. Let the result be `evaluated_value`. Note: If `value_expression` is intended to produce a literal data structure (e.g., a list of strings, a list of pairs), it should typically be constructed using `(list ...)` or wrapped in `(quote ...)` to prevent unintended evaluation.
-        //             ii.  Get the string name of the `key` symbol (e.g., "arg1"). Let this be `arg_name`.
-        //             iii. If `arg_name` is "files": Set `resolved_files = evaluated_value` (ensure it's a list of strings).
-        //             iv.  Else if `arg_name` is "context": Set `resolved_context_settings = evaluated_value` (ensure it's a dictionary matching context settings).
-        //             v.   Else (regular named argument): Store `resolved_named_args[arg_name] = evaluated_value`.
-        //          b. Else (treat as positional argument - **Note: Discouraged for task/tool calls**): Evaluate the element and add to a temporary list (handle with care or disallow for task/tool calls).
+        //   - Lists: Delegates processing to `_eval_list` to determine if it's a special form, primitive call, function/task/tool invocation, or invalid.
+        // - **Guideline:** Focuses on returning the value; the *application* of functions/operators happens within the logic called by `_eval_list`.
+        //     - **Dispatch Order & Explicitness:** Follows a strict dispatch order:
+        //   1. Check if operator is a symbol matching a **Special Form** (`if`, `let`, `bind`, `progn`, `quote`). If yes, execute special form logic (which handles its own argument evaluation).
+        //   2. Else, check if operator is a symbol matching a **Primitive** (`list`, `get_context`). If yes, execute primitive logic (which evaluates necessary arguments internally).
+        //   3. Else, check if operator is a symbol matching a **known Task/Tool name** (via TaskSystem/Handler lookup). If yes, delegate to `_handle_invocation` (passing the *name* and *unevaluated* args).
+        //   4. Else, if operator is a symbol but **not recognized** as executable (special form, primitive, task, tool), raise an "Undefined function or task" error. **Guideline:** Do not implicitly treat unrecognized symbols as data constructors.
+        //   5. Else (operator is not a symbol, e.g., another list): Evaluate the operator expression itself using `_eval`. If the result is a callable object (e.g., a lambda/closure), delegate to `_handle_invocation` (passing the *callable* and *unevaluated* args). If the result is not callable, raise a "Cannot apply non-callable operator" error.
+        // - Parses the `args` list, expecting `(key_symbol value_expression)` pairs. **Note: `args` contains *unevaluated* argument expressions.**
+        // - **Crucially, evaluates each `value_expression` using `_eval` within this handler** to get the actual argument values.
+        // - Handles conversion of quoted list-of-pairs for `context` or `inputs` arguments after evaluation.
+        // - **Guideline (Defensive Check):** Although primary validation relies on correct dispatch from `_eval_list`, this function should ideally perform basic structural checks on the format of `args` before proceeding.
+        // - If `operator_target` is a string, looks up and calls the corresponding TaskSystem task or Handler tool.
+        // - If `operator_target` is a callable, invokes it (handling function application scope if closures are implemented).
+        // - Returns the result, ensuring TaskResult format for task/tool calls.
         //       5. Look up `target_id` first in `Handler.tool_executors`, then in `TaskSystem.find_template` (for **atomic** templates **only**).
         //       6. If Direct Tool: Call executor function, passing `resolved_named_args` (potentially merging with positional args based on tool signature - requires convention).
         //       7. If Atomic Template:

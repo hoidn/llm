@@ -224,3 +224,27 @@ This document outlines the standard conventions, patterns, and rules for impleme
 *   **Security Considerations:** Handling sensitive data (API keys), input sanitization (especially for script execution).
 
 These "Missing Items" can be added as the project evolves and these needs become clearer. The current set provides a strong foundation.
+
+**11. DSL / Interpreter Implementation Guidelines**
+
+When implementing components that parse and evaluate Domain-Specific Languages or complex recursive structures (e.g., `SexpEvaluator`), adhere to the following principles to enhance clarity, robustness, and debuggability:
+
+*   **11.1. Principle of Explicit Intent:**
+    *   Ensure the DSL syntax provides unambiguous ways to express core concepts, particularly the distinction between executable code and literal data.
+    *   Avoid relying on implicit evaluator heuristics where explicit syntax (e.g., a `quote` mechanism for literal data) can provide clarity. Use `quote` or specific data constructors (like `list`) for literal data.
+
+*   **11.2. Separate Evaluation from Application:**
+    *   Design the core evaluation function (e.g., `_eval`) with the primary responsibility of determining the *value* of a given expression/node in the current context/environment.
+    *   Isolate the logic that *applies* a function, operator, or procedure to its arguments. This application logic should operate on *already evaluated* arguments.
+    *   Be cautious that the process of evaluating arguments does not itself incorrectly trigger function application or execution side-effects on the intermediate results.
+
+*   **11.3. Implement Robust and Explicit Dispatch Logic:**
+    *   For functions that handle different types of language constructs (e.g., `_eval_list` handling special forms, primitives, invocations), ensure the dispatching rules are clear, explicit, and cover all expected cases.
+    *   Define specific behavior for unrecognized or invalid constructs (e.g., encountering an undefined function name or an invalid list structure). Prefer raising clear, specific errors over implicit fall-throughs or attempting to interpret ambiguous structures (e.g., raise "Undefined function 'foo'" instead of trying to treat `(foo ...)` as data).
+
+*   **11.4. Validate Inputs at Key Boundaries (Defensive Programming):**
+    *   Functions designed to handle specific structural inputs passed from the evaluator (e.g., an invocation handler expecting `(key value_expr)` arguments) should perform basic validation on those inputs. While correct dispatch logic is the primary goal, these checks can prevent cryptic errors if the function is inadvertently called with malformed data during development or due to complex evaluation paths.
+
+*   **11.5. Ensure Contextual Error Reporting:**
+    *   Design error handling (`raise` statements, exception messages) to pinpoint the semantic source of the error as accurately as possible (e.g., "Undefined function 'foo' in expression (foo 1)" is better than "Type error processing arguments").
+    *   Include relevant context in error messages, such as the specific expression or node being processed when the error occurred.
