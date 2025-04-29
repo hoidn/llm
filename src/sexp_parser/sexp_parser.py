@@ -6,7 +6,7 @@ Parses S-expression strings into Python Abstract Syntax Trees (ASTs).
 import logging
 from typing import Any
 from io import StringIO
-from sexpdata import load, Symbol, ExpectNothing, ParseError # Import ParseError instead
+from sexpdata import load, Symbol, ExpectNothing # Remove ParseError import
 
 # Import the custom error type
 from src.system.errors import SexpSyntaxError # This is our custom error
@@ -109,7 +109,7 @@ class SexpParser:
                  sexp_string,
                  error_details=str(e)
              ) from e
-        except ParseError as e: # Catch the actual sexpdata ParseError
+        except ValueError as e: # Catch ValueError, often raised for parse issues
              # Catch specific syntax errors from sexpdata (e.g., unbalanced parens)
              logging.error(f"S-expression syntax error: {e}")
              # Make the message more specific based on common sexpdata errors if possible
