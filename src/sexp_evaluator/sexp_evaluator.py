@@ -22,7 +22,7 @@ from src.system.models import (
     TaskFailureError, TaskFailureReason, AssociativeMatchResult, MatchTuple,
     TaskError as TaskErrorModel  # Import the model with an alias for type hints
 )
-from src.system.errors import SexpSyntaxError, SexpEvaluationError, NameError
+from src.system.errors import SexpSyntaxError, SexpEvaluationError # Removed NameError import
 
 # Type for Sexp AST nodes (adjust based on SexpParser output)
 # Assuming sexpdata-like output: lists, tuples, strings, numbers, bools, None, Symbol objects
