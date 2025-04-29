@@ -208,10 +208,12 @@ def test_scan_repository(mock_isfile, mock_glob, indexer, tmp_path):
 def test_is_text_file(mock_splitext, mock_open_file, indexer, file_path, file_content, expected):
     """Test text file detection logic."""
     # Configure mocks
-    # Manually create the return tuple for the mock, DO NOT call the real os.path.splitext here
-    # as it might already be patched depending on execution order.
-    root, ext = os.path.splitext(file_path) # Call the real one *before* the test runs if needed for setup
-    mock_splitext.return_value = (root, ext) # Set the mock's return value directly
+    # --- FIX: Calculate the expected tuple *before* assigning to the mock ---
+    # Call the *real* os.path.splitext to get the expected output for this file_path
+    expected_splitext_output = os.path.splitext(file_path)
+    # Configure the mock to return this pre-calculated tuple
+    mock_splitext.return_value = expected_splitext_output
+    # --- End FIX ---
 
     mock_file_handle = mock_open_file.return_value # Get the mock file handle
     mock_file_handle.read.return_value = file_content # Make mock file return bytes
