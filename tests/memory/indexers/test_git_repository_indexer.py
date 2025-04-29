@@ -4,7 +4,7 @@ Unit tests for the GitRepositoryIndexer.
 import pytest
 import os
 import logging # Import logging
-from unittest.mock import MagicMock, patch, mock_open, call
+from unittest.mock import MagicMock, patch, mock_open, call, _is_instance_mock # Import _is_instance_mock for check
 from datetime import datetime # Import datetime for mocking
 
 # Assuming GitPython types are available for spec/isinstance checks
@@ -21,13 +21,13 @@ try:
     git_repository_indexer.text_extraction = MagicMock()
     git_repository_indexer.text_extraction.extract_document_summary = MagicMock(return_value="Mocked Summary")
     git_repository_indexer.text_extraction.extract_identifiers_by_language = MagicMock(return_value=["mock_id"])
-
+    GIT_PYTHON_AVAILABLE = True
 except ImportError:
     # Define dummy git type if GitPython not installed in test env
     class Repo: pass
     class Commit: pass
     git = MagicMock()
-    git.Repo = Repo
+    git.Repo = Repo # Assign the dummy class to the mock attribute
     git.Commit = Commit
     # Define dummy text_extraction if needed
     text_extraction = MagicMock()
@@ -38,6 +38,7 @@ except ImportError:
     # If GitPython is missing, we also need to patch the import within the indexer module
     patch('src.memory.indexers.git_repository_indexer.git', git).start() # Patch git import
     patch('src.memory.indexers.git_repository_indexer.text_extraction', text_extraction).start() # Patch text_extraction import
+    GIT_PYTHON_AVAILABLE = False
 
 
 # Now import the class under test *after* potential patches
@@ -50,18 +51,25 @@ from src.memory.indexers.git_repository_indexer import GitRepositoryIndexer
 @pytest.fixture
 def mock_repo(mocker):
     """Fixture for a mocked git.Repo object."""
-    mock = MagicMock(spec=git.Repo)
+    # Use the actual git.Repo class for spec if available, otherwise None
+    spec_target = git.Repo if GIT_PYTHON_AVAILABLE and not _is_instance_mock(git.Repo) else None
+    mock = MagicMock(spec=spec_target)
+
     # Mock commit object
-    mock_commit = MagicMock(spec=git.Commit)
+    spec_commit = git.Commit if GIT_PYTHON_AVAILABLE and not _is_instance_mock(git.Commit) else None
+    mock_commit = MagicMock(spec=spec_commit)
     mock_commit.hexsha = "abcdef123456"
+
     # Mock the author object within the commit
     mock_author = MagicMock()
     mock_author.name = "Test Author"
     mock_commit.author = mock_author # Assign the mock author
+
     # Mock the datetime object within the commit object
     # Use a real datetime object for realistic behavior
     mock_dt = datetime.fromisoformat("2024-01-01T12:00:00+00:00")
     mock_commit.authored_datetime = mock_dt # Assign the real datetime
+
     # Mock iter_commits to return the mock commit
     mock.iter_commits.return_value = iter([mock_commit])
     return mock
@@ -80,20 +88,24 @@ def indexer(tmp_path):
     git_dir = tmp_path / ".git"
     if not git_dir.exists(): # Ensure it doesn't already exist
          git_dir.mkdir()
-    # Patch git.Repo call within the fixture's scope if GitPython is available
-    if git:
-        with patch('src.memory.indexers.git_repository_indexer.git.Repo') as mock_git_repo_constructor:
-             mock_git_repo_constructor.return_value = MagicMock(spec=git.Repo) # Return a basic mock
-             indexer_instance = GitRepositoryIndexer(repo_path=str(tmp_path))
-    else:
-        # If GitPython is not installed, git.Repo is already mocked globally
+
+    # Patch git.Repo call within the fixture's scope
+    with patch('src.memory.indexers.git_repository_indexer.git.Repo') as mock_git_repo_constructor:
+        # Determine the correct spec target based on whether git.Repo is real or mocked
+        spec_target = git.Repo if GIT_PYTHON_AVAILABLE and not _is_instance_mock(git.Repo) else None
+        # Create the mock return value *with the correct spec*
+        mock_repo_instance = MagicMock(spec=spec_target)
+        mock_git_repo_constructor.return_value = mock_repo_instance
+        # Instantiate the indexer, which will call the patched constructor
         indexer_instance = GitRepositoryIndexer(repo_path=str(tmp_path))
 
     # Reset mocks for text_extraction for clean state per test
-    git_repository_indexer.text_extraction.extract_document_summary.reset_mock()
-    git_repository_indexer.text_extraction.extract_identifiers_by_language.reset_mock()
-    git_repository_indexer.text_extraction.extract_document_summary.return_value="Mocked Summary"
-    git_repository_indexer.text_extraction.extract_identifiers_by_language.return_value=["mock_id"]
+    # Access the potentially mocked text_extraction via the imported module object
+    if hasattr(git_repository_indexer, 'text_extraction'): # Check if module exists (might not in ImportError case)
+        git_repository_indexer.text_extraction.extract_document_summary.reset_mock()
+        git_repository_indexer.text_extraction.extract_identifiers_by_language.reset_mock()
+        git_repository_indexer.text_extraction.extract_document_summary.return_value="Mocked Summary"
+        git_repository_indexer.text_extraction.extract_identifiers_by_language.return_value=["mock_id"]
 
     return indexer_instance
 
@@ -109,12 +121,11 @@ def test_indexer_init(tmp_path):
          git_dir.mkdir()
 
     # Patch git.Repo for this specific test's instantiation
-    if git:
-         with patch('src.memory.indexers.git_repository_indexer.git.Repo') as mock_git_repo_constructor:
-            mock_git_repo_constructor.return_value = MagicMock(spec=git.Repo)
-            indexer_instance = GitRepositoryIndexer(repo_path=repo_path_str)
-    else:
-         indexer_instance = GitRepositoryIndexer(repo_path=repo_path_str)
+    with patch('src.memory.indexers.git_repository_indexer.git.Repo') as mock_git_repo_constructor:
+        # Determine the correct spec target
+        spec_target = git.Repo if GIT_PYTHON_AVAILABLE and not _is_instance_mock(git.Repo) else None
+        mock_git_repo_constructor.return_value = MagicMock(spec=spec_target)
+        indexer_instance = GitRepositoryIndexer(repo_path=repo_path_str)
 
     assert indexer_instance.repo_path == os.path.abspath(repo_path_str) # Should store absolute path
     # Assert default patterns/size if needed
@@ -139,9 +150,16 @@ def test_scan_repository(mock_isfile, mock_glob, indexer, tmp_path):
 
     # Configure os.path.isfile and os.path.isdir
     def isfile_side_effect(p):
-        return p.endswith('.py') or p.endswith('.txt')
+        # Make paths absolute for reliable comparison if needed
+        abs_p = os.path.abspath(p)
+        return abs_p.endswith('.py') or abs_p.endswith('.txt') or abs_p.endswith('e.txt')
+
     def isdir_side_effect(p):
-        return 'subdir' in p or 'excluded_dir' in p # Mark subdir and excluded_dir as directories
+        abs_p = os.path.abspath(p)
+        # Check against absolute paths of expected directories
+        return abs_p == os.path.abspath(str(tmp_path / 'subdir')) or \
+               abs_p == os.path.abspath(str(tmp_path / 'subdir' / 'other_dir')) or \
+               abs_p == os.path.abspath(str(tmp_path / 'excluded_dir'))
 
     mock_isfile.side_effect = isfile_side_effect
     # We also need to mock os.path.isdir for the exclusion logic
@@ -149,8 +167,10 @@ def test_scan_repository(mock_isfile, mock_glob, indexer, tmp_path):
         # And os.walk for directory exclusion
         with patch('os.walk') as mock_walk:
             # Simulate os.walk finding e.txt inside excluded_dir
+            # Ensure walk yields absolute paths if the code expects them
+            excluded_dir_abs = os.path.abspath(str(tmp_path / 'excluded_dir'))
             mock_walk.return_value = iter([
-                 (str(tmp_path / 'excluded_dir'), [], ['e.txt'])
+                 (excluded_dir_abs, [], ['e.txt'])
             ])
 
             indexer.include_patterns = ["**/*.py", "**/*.txt"] # Example include
@@ -184,11 +204,15 @@ def test_scan_repository(mock_isfile, mock_glob, indexer, tmp_path):
     ("empty_file.txt", b"", True), # Empty file is considered text
 ])
 @patch('builtins.open', new_callable=mock_open)
-@patch('os.path.splitext')
+@patch('os.path.splitext') # Patch where splitext is looked up by the code under test
 def test_is_text_file(mock_splitext, mock_open_file, indexer, file_path, file_content, expected):
     """Test text file detection logic."""
     # Configure mocks
-    mock_splitext.return_value = os.path.splitext(file_path) # Simulate splitext
+    # Manually create the return tuple for the mock, DO NOT call the real os.path.splitext here
+    # as it might already be patched depending on execution order.
+    root, ext = os.path.splitext(file_path) # Call the real one *before* the test runs if needed for setup
+    mock_splitext.return_value = (root, ext) # Set the mock's return value directly
+
     mock_file_handle = mock_open_file.return_value # Get the mock file handle
     mock_file_handle.read.return_value = file_content # Make mock file return bytes
 
@@ -198,15 +222,16 @@ def test_is_text_file(mock_splitext, mock_open_file, indexer, file_path, file_co
     # Assert
     assert result == expected
     mock_open_file.assert_called_once_with(file_path, 'rb') # Check opened in binary mode
+    mock_splitext.assert_called_once_with(file_path) # Verify mock was called
 
 
 @patch('os.path.getsize')
-# Patch where Repo is looked up by create_metadata
-@patch('src.memory.indexers.git_repository_indexer.git.Repo')
+# Patch where Repo is looked up by create_metadata - NOT NEEDED if _git_repo is set directly
+# @patch('src.memory.indexers.git_repository_indexer.git.Repo')
 # Patch the specific functions within the module where create_metadata will look for them
 @patch('src.memory.indexers.git_repository_indexer.text_extraction.extract_document_summary')
 @patch('src.memory.indexers.git_repository_indexer.text_extraction.extract_identifiers_by_language')
-def test_create_metadata(mock_extract_ids, mock_extract_summary, mock_GitRepo, mock_getsize, indexer, mock_repo, tmp_path):
+def test_create_metadata(mock_extract_ids, mock_extract_summary, mock_getsize, indexer, mock_repo, tmp_path):
     """Test metadata string creation."""
     # Configure mocks
     repo_path_str = str(tmp_path)
@@ -235,8 +260,8 @@ def test_create_metadata(mock_extract_ids, mock_extract_summary, mock_GitRepo, m
     assert "Date: 2024-01-01T12:00:00+00:00" in metadata
 
     # Check dependencies were called
-    # mock_GitRepo should NOT be called here because we manually set indexer._git_repo
-    mock_GitRepo.assert_not_called()
+    # git.Repo constructor should NOT be called here because we manually set indexer._git_repo
+    # mock_GitRepo.assert_not_called() # No longer patching the constructor directly here
     mock_repo.iter_commits.assert_called_once_with(paths=file_path, max_count=1)
     mock_extract_summary.assert_called_once_with(content)
     mock_extract_ids.assert_called_once_with(content, lang='py') # Check lang derived from extension
@@ -286,7 +311,8 @@ def test_index_repository_success(mock_getsize, mock_open_file, mock_create_meta
 @patch.object(GitRepositoryIndexer, 'scan_repository')
 @patch.object(GitRepositoryIndexer, 'is_text_file')
 @patch('os.path.getsize')
-def test_index_repository_skips_large_files(mock_getsize, mock_is_text_file, mock_scan_repo, indexer, mock_memory_system, tmp_path):
+@patch('builtins.open', new_callable=mock_open, read_data="content") # ADDED: Mock open to prevent read error
+def test_index_repository_skips_large_files(mock_open_file, mock_getsize, mock_is_text_file, mock_scan_repo, indexer, mock_memory_system, tmp_path):
     """Test that large files are skipped."""
     file_small_path = os.path.abspath(str(tmp_path / 'small.py'))
     file_large_path = os.path.abspath(str(tmp_path / 'large.py'))
@@ -303,6 +329,9 @@ def test_index_repository_skips_large_files(mock_getsize, mock_is_text_file, moc
     update_arg = mock_memory_system.update_global_index.call_args[0][0]
     assert file_small_path in update_arg
     assert file_large_path not in update_arg
+    # Assert open was called for the small file but not the large one (due to size check)
+    mock_open_file.assert_called_once_with(file_small_path, 'r', encoding='utf-8', errors='ignore')
+
 
 # Add more tests for error handling (e.g., git command errors in create_metadata,
 # file read errors in index_repository)
@@ -310,7 +339,7 @@ def test_index_repository_skips_large_files(mock_getsize, mock_is_text_file, moc
 @patch.object(GitRepositoryIndexer, 'scan_repository')
 @patch.object(GitRepositoryIndexer, 'is_text_file', return_value=True) # Assume text
 @patch('os.path.getsize', return_value=100) # Assume valid size
-@patch('builtins.open', new_callable=mock_open, read_data="content") # Mock open
+@patch('builtins.open', new_callable=mock_open, read_data="content") # ADDED: Mock open
 @patch.object(GitRepositoryIndexer, 'create_metadata') # Mock create_metadata
 def test_index_repository_handles_create_metadata_error(mock_create_meta, mock_open_ctx, mock_getsize, mock_is_text, mock_scan, indexer, mock_memory_system, tmp_path, caplog):
     """Test that errors during create_metadata are handled and logged."""
@@ -335,6 +364,8 @@ def test_index_repository_handles_create_metadata_error(mock_create_meta, mock_o
     }
     mock_memory_system.update_global_index.assert_called_once_with(expected_update)
     assert result_index == expected_update
+    # Check open was called for all files (before create_metadata error)
+    assert mock_open_ctx.call_count == 3
 
 
 @patch.object(GitRepositoryIndexer, 'scan_repository')
