@@ -10,7 +10,7 @@ from typing import Any, Dict, Optional
 
 # Assuming BaseHandler and TaskResult types are available for hinting
 # from src.handler.base_handler import BaseHandler # Import actual when available
-from src.system.models import TaskResult, TaskError, TaskFailureReason
+from src.system.models import TaskResult, TaskError, TaskFailureReason, TaskFailureError # Added TaskFailureError
 from pydantic import ValidationError
 
 # Regex to find {{parameter_name}} placeholders
@@ -127,7 +127,12 @@ class AtomicTaskExecutor:
             if isinstance(handler_result_obj, TaskResult):
                  task_result_dict = handler_result_obj.model_dump(exclude_none=True)
             elif isinstance(handler_result_obj, dict):
-                 task_result_dict = handler_result_obj # Assume it's already correct structure
+                 # Attempt validation if it's a dict, in case handler didn't return TaskResult obj
+                 try:
+                     task_result_dict = TaskResult.model_validate(handler_result_obj).model_dump(exclude_none=True)
+                 except ValidationError as val_err:
+                     logging.error(f"Handler returned dict that failed TaskResult validation: {val_err}")
+                     raise TypeError(f"Handler call returned invalid dict structure: {handler_result_obj}")
             else:
                  # Handle unexpected return type from handler
                  logging.error(f"Handler returned unexpected type: {type(handler_result_obj)}")
@@ -160,7 +165,9 @@ class AtomicTaskExecutor:
 
         except ParameterMismatchError as e:
             logging.error(f"Parameter mismatch during execution of task '{task_name}': {e}")
-            error_details = TaskError(type="TASK_FAILURE", reason="input_validation_failure", message=str(e))
+            # Correctly create the error detail object
+            error_details = TaskFailureError(type="TASK_FAILURE", reason="input_validation_failure", message=str(e))
+            # Return the failed result dictionary directly
             return TaskResult(content=str(e), status="FAILED", notes={"error": error_details}).model_dump(exclude_none=True)
         except Exception as e:
             # Catch potential errors from handler call or other unexpected issues
@@ -171,5 +178,6 @@ class AtomicTaskExecutor:
             # Check if it's a known error type from the handler (if handler raises specific exceptions)
             # Example: if isinstance(e, HandlerLLMError): error_reason = "llm_error"
 
-            error_details = TaskError(type=error_type, reason=error_reason, message=f"Execution failed: {e}")
+            # Use TaskFailureError for consistency
+            error_details = TaskFailureError(type=error_type, reason=error_reason, message=f"Execution failed: {e}")
             return TaskResult(content=f"Execution failed: {e}", status="FAILED", notes={"error": error_details}).model_dump(exclude_none=True)

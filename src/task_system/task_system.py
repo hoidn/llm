@@ -18,7 +18,7 @@ from src.executors.atomic_executor import AtomicTaskExecutor, ParameterMismatchE
 from difflib import SequenceMatcher
 
 # Constants for find_matching_tasks
-MATCH_THRESHOLD = 0.1 # Lowered threshold based on test failures
+MATCH_THRESHOLD = 0.2 # Adjusted threshold based on test failures
 
 class TaskSystem:
     """
@@ -206,6 +206,7 @@ class TaskSystem:
         # 6. Execute Atomic Task Body
         try:
             # Execute using the instantiated executor
+            # This call now returns a dictionary directly
             result_dict = self._atomic_executor.execute_body(
                 atomic_task_def=template_def,
                 params=request.inputs,
@@ -216,14 +217,12 @@ class TaskSystem:
             # Validate the dictionary against TaskResult model before returning
             final_result = TaskResult.model_validate(result_dict)
 
-        except ParameterMismatchError as e:
-             logging.error(f"Parameter mismatch executing template '{request.name}': {e}")
-             error = TaskFailureError(type="TASK_FAILURE", reason="input_validation_failure", message=str(e))
-             final_result = TaskResult(content=str(e), status="FAILED", notes={"error": error})
+        # Note: ParameterMismatchError is now handled inside execute_body and returns a dict
+        # So, we only need to catch other potential exceptions from execute_body here.
         except Exception as e:
             logging.exception(f"Unexpected error executing template body for '{request.name}': {e}")
-            error = TaskFailureError(type="TASK_FAILURE", reason="unexpected_error", message=f"Executor/Handler exception: {e}")
-            final_result = TaskResult(content=f"Executor failed: {e}", status="FAILED", notes={"error": error})
+            error = TaskFailureError(type="TASK_FAILURE", reason="unexpected_error", message=f"Execution failed: {e}")
+            final_result = TaskResult(content=f"Execution failed: {e}", status="FAILED", notes={"error": error})
 
         # 7. Augment Result Notes
         if final_result.notes is None:
@@ -457,23 +456,23 @@ class TaskSystem:
         # Process the result
         if task_result.status == "FAILED":
             # --- Start Change: Correct error message extraction ---
-            error_message = "Associative matching task failed." # Default
+            error_message_str = "Internal matching task failed." # Default message
             error_obj = task_result.notes.get("error")
-            if error_obj and hasattr(error_obj, 'message'):
-                # Use message attribute if error_obj is a TaskError model
-                error_message = f"Associative matching task failed: {error_obj.message}"
-            elif isinstance(error_obj, str):
-                 error_message = f"Associative matching task failed: {error_obj}"
-            elif error_obj:
-                 # Fallback if it's some other object
-                 error_message = f"Associative matching task failed: {str(error_obj)}"
-            else:
-                 # Use content if no error object found in notes
-                 error_message = f"Associative matching task failed: {task_result.content}"
 
-            logging.error(error_message)
-            # Pass the original error object (or message) to the result if available
-            return AssociativeMatchResult(context_summary="", matches=[], error=str(error_obj or error_message))
+            # Extract message from TaskError object or fallback
+            if error_obj and hasattr(error_obj, 'message'):
+                error_message_str = error_obj.message
+            elif isinstance(error_obj, str): # Handle case where error is just a string
+                error_message_str = error_obj
+            elif isinstance(error_obj, dict) and 'message' in error_obj: # Handle case where error is dict
+                 error_message_str = error_obj['message']
+            elif task_result.content: # Fallback to content if no structured error message
+                 error_message_str = task_result.content
+
+            logging.error(f"Internal context generation task failed: {error_message_str}")
+            # Construct the final error string for the result object
+            final_error_string = f"Associative matching task failed: {error_message_str}"
+            return AssociativeMatchResult(context_summary=f"Error: {error_message_str}", matches=[], error=final_error_string)
             # --- End Change ---
 
         # Parse the result content (expected to be JSON of AssociativeMatchResult)
