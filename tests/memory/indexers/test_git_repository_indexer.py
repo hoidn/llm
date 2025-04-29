@@ -208,11 +208,9 @@ def test_scan_repository(mock_isfile, mock_glob, indexer, tmp_path):
 def test_is_text_file(mock_splitext, mock_open_file, indexer, file_path, file_content, expected):
     """Test text file detection logic."""
     # Configure mocks
-    # --- FIX: Calculate the expected tuple *before* assigning to the mock ---
-    # Call the *real* os.path.splitext to get the expected output for this file_path
-    expected_splitext_output = os.path.splitext(file_path)
-    # Configure the mock to return this pre-calculated tuple
-    mock_splitext.return_value = expected_splitext_output
+    # Explicitly set the return value as a proper tuple
+    filename, ext = os.path.splitext(file_path)
+    mock_splitext.return_value = (filename, ext)
     # --- End FIX ---
 
     mock_file_handle = mock_open_file.return_value # Get the mock file handle
@@ -352,11 +350,12 @@ def test_index_repository_handles_create_metadata_error(mock_create_meta, mock_o
     # Make create_metadata raise error for file2
     mock_create_meta.side_effect = lambda p, c: f"meta_{os.path.basename(p)}" if p != file2 else Exception("Git history missing")
 
-    with caplog.at_level(logging.ERROR):
-        result_index = indexer.index_repository(mock_memory_system)
+    # Set log level before the test
+    caplog.set_level(logging.ERROR)
+    result_index = indexer.index_repository(mock_memory_system)
 
-    # Assert file2 caused an error log
-    assert "Error processing file" in caplog.text
+    # Assert file2 caused an error log - check records directly
+    assert any("Error processing file" in record.message for record in caplog.records)
     assert file2 in caplog.text
     assert "Git history missing" in caplog.text
     # Assert memory system only updated with file1 and file3
