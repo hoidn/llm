@@ -182,7 +182,7 @@ class SexpEvaluator:
             logging.debug(f"  _eval_list: Operator is Symbol: '{operator_target_name}'")
             
             # 2. Check if the operator name is a Special Form
-            special_forms = {"if", "let", "bind", "progn"}
+            special_forms = {"if", "let", "bind", "progn", "quote"}
             if operator_target_name in special_forms:
                 logging.debug(f"  _eval_list: Dispatching to Special Form: {operator_target_name}")
                 # Special forms handle their own *unevaluated* args
@@ -276,6 +276,14 @@ class SexpEvaluator:
                 result = self._eval(expr, env) # Eval each expression sequentially
             logging.debug(f"Eval 'progn' END: -> {result}")
             return result # Return result of last expression
+            
+        elif op_str == "quote":
+            if len(args) != 1:
+                raise SexpEvaluationError("'quote' requires exactly one argument: (quote expression)", node_repr)
+            # Return the argument node *without* evaluating it
+            quoted_expression = args[0]
+            logging.debug(f"Eval 'quote' END: -> {quoted_expression} (unevaluated)")
+            return quoted_expression
 
         else:
              # Should not be reached if called from _eval_list correctly
@@ -322,11 +330,25 @@ class SexpEvaluator:
             try:
                 # Convert 'inputs' if it's a list of pairs to a dictionary
                 if "inputs" in context_input_args and isinstance(context_input_args["inputs"], list):
-                    try: 
-                        context_input_args["inputs"] = {str(k):v for k,v in context_input_args["inputs"]}
-                        logging.debug(f"  Converted inputs list to dict: {context_input_args['inputs']}")
+                    try:
+                        inputs_dict = {}
+                        # Handle Symbols in quoted list keys
+                        for pair in context_input_args["inputs"]:
+                            # Ensure it's a list pair first
+                            if isinstance(pair, list) and len(pair) == 2:
+                                key_node = pair[0] # Key might be Symbol or string
+                                val = pair[1]
+                                # Convert symbol key to string if necessary
+                                key_str = key_node.value() if isinstance(key_node, Symbol) else str(key_node)
+                                inputs_dict[key_str] = val
+                            else:
+                                # Raise error if the structure isn't a list of pairs
+                                raise ValueError(f"Invalid pair format in inputs list: {pair}")
+                        context_input_args["inputs"] = inputs_dict
+                        logging.debug(f"  Converted inputs list-of-pairs to dict: {context_input_args['inputs']}")
                     except (ValueError, TypeError) as conv_err:
-                        raise SexpEvaluationError(f"Failed converting 'inputs' list to dict: {conv_err}", node_repr)
+                        # Add more context to the error
+                        raise SexpEvaluationError(f"Failed converting 'inputs' list {context_input_args['inputs']!r} to dict: {conv_err}", node_repr)
 
                 context_input = ContextGenerationInput(**context_input_args)
             except Exception as e:
@@ -388,27 +410,30 @@ class SexpEvaluator:
                         raise SexpEvaluationError(f"'files' arg must evaluate to a list of strings, got {type(value)}: {value!r}", node_str)
                     parsed_args["files"] = value
                 elif key_str == "context":
-                    # <<< FIX: Convert list of pairs *after* evaluation >>>
-                    # If the evaluated value is a list of pairs, convert to dict
-                    if isinstance(value, list) and all(isinstance(p, list) and len(p)==2 for p in value):
+                    # Value is the *evaluated* result of value_expr
+                    evaluated_context_value = value # Rename for clarity
+
+                    # If the evaluated value is a list of pairs (potentially from quote), convert to dict
+                    if isinstance(evaluated_context_value, list) and all(isinstance(p, list) and len(p)==2 for p in evaluated_context_value):
                         try:
                             context_dict = {}
-                            for pair in value:
-                                # Keys in the pairs could be symbols or strings from evaluation
-                                key = pair[0]
+                            # Handle Symbols in quoted list keys
+                            for pair in evaluated_context_value:
+                                key_node = pair[0] # Key might be Symbol or string
                                 val = pair[1]
-                                key_str_inner = key.value() if isinstance(key, Symbol) else str(key)
+                                # Convert symbol key to string if necessary
+                                key_str_inner = key_node.value() if isinstance(key_node, Symbol) else str(key_node)
                                 context_dict[key_str_inner] = val
-                            value = context_dict # Replace list with converted dict
-                            logging.debug(f"  Converted evaluated context list of pairs to dict: {value}")
+                            evaluated_context_value = context_dict # Replace list with converted dict
+                            logging.debug(f"  Converted evaluated context list of pairs to dict: {evaluated_context_value}")
                         except (ValueError, TypeError) as conv_err:
-                            raise SexpEvaluationError(f"Failed converting evaluated 'context' list of pairs to dict: {conv_err}", node_str)
+                            raise SexpEvaluationError(f"Failed converting evaluated 'context' list {evaluated_context_value!r} to dict: {conv_err}", node_str)
 
                     # Value must now be a dictionary (either originally or after conversion)
-                    if not isinstance(value, dict):
+                    if not isinstance(evaluated_context_value, dict):
                          # Add the problematic value to the error message
-                        raise SexpEvaluationError(f"'context' arg must evaluate to a dict or list of pairs, got {type(value)}: {value!r}", node_str)
-                    parsed_args["context"] = value
+                        raise SexpEvaluationError(f"'context' arg must evaluate to a dict or list of pairs, got {type(evaluated_context_value)}: {evaluated_context_value!r}", node_str)
+                    parsed_args["context"] = evaluated_context_value
                 else:
                     # Regular named argument - store the evaluated value
                     parsed_args["named"][key_str] = value

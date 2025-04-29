@@ -176,25 +176,30 @@ def test_eval_primitive_get_context(evaluator, mock_parser, mock_memory_system):
     query_sym = Symbol("query") if Symbol != str else "query"
     inputs_sym = Symbol("inputs") if Symbol != str else "inputs"
     file_sym = Symbol("file") if Symbol != str else "file"
-    # Sexp: (get_context (query "find stuff") (inputs (("file" "/a.py"))))
+    # Add quote symbol
+    quote_sym = Symbol("quote") if Symbol != str else "quote"
+
+    # Sexp: (get_context (query "find stuff") (inputs (quote ((file "/a.py")))))
     mock_parser.parse_string.return_value = [
         get_context_sym,
         [query_sym, "find stuff"],
-        [inputs_sym, [[file_sym, "/a.py"]]] # Assuming inputs are passed as nested lists
+        # Use quote around the literal list structure
+        [inputs_sym, [quote_sym, [[file_sym, "/a.py"]]]]
     ]
-    result = evaluator.evaluate_string('(get_context (query "find stuff") (inputs (("file" "/a.py"))))')
+    # Expected input to memory system after evaluation and conversion
+    expected_context_input = ContextGenerationInput(
+        query="find stuff",
+        inputs={"file": "/a.py"} # Expect inputs as a dict
+    )
+    mock_memory_system.get_relevant_context_for.return_value = AssociativeMatchResult(
+        context_summary="Mocked context", matches=[MatchTuple(path="/mock/file.py", relevance=1.0)]
+    )
+
+    # Test string can reflect quote, though mock overrides parsing
+    result = evaluator.evaluate_string('(get_context (query "find stuff") (inputs (quote ((file "/a.py")))))')
 
     # Assert MemorySystem was called correctly
-    mock_memory_system.get_relevant_context_for.assert_called_once()
-    # Check the argument passed to the mock
-    call_args, call_kwargs = mock_memory_system.get_relevant_context_for.call_args
-    assert len(call_args) == 1
-    context_input_arg = call_args[0]
-    assert isinstance(context_input_arg, ContextGenerationInput)
-    assert context_input_arg.query == "find stuff"
-    # The evaluated value for 'inputs' will be [['file', '/a.py']]
-    # ContextGenerationInput model validation should handle converting this list of pairs
-    assert context_input_arg.inputs == {'file': '/a.py'} # Pydantic should convert [['file', '/a.py']]
+    mock_memory_system.get_relevant_context_for.assert_called_once_with(expected_context_input)
 
     # Assert result is the list of paths from the mock
     assert result == ["/mock/file.py"]
@@ -255,30 +260,42 @@ def test_eval_invoke_atomic_task_with_files_and_context(evaluator, mock_parser, 
     task_sym = Symbol(task_name) if Symbol != str else task_name
     files_sym = Symbol("files") if Symbol != str else "files"
     context_sym = Symbol("context") if Symbol != str else "context"
-    list_sym = Symbol("list") if Symbol != str else "list" # For literal list
+    list_sym = Symbol("list") if Symbol != str else "list"
+    # Add quote symbol
+    quote_sym = Symbol("quote") if Symbol != str else "quote"
 
     mock_task_system.find_template.return_value = {"name": task_name, "type": "atomic"}
-    context_settings = {"inheritContext": "none", "freshContext": "disabled"}
 
-    # Sexp: (task_with_context (files (list "/a.txt" "/b.txt")) (context (list ('inheritContext "none") ('freshContext "disabled"))))
-    # Mock parser needs to handle the nested structure
+    # Sexp: (task_with_context (files (list "/a.txt" "/b.txt")) (context (quote ((inheritContext "none") (freshContext "disabled")))))
     mock_parser.parse_string.return_value = [
         task_sym,
         [files_sym, [list_sym, "/a.txt", "/b.txt"]],
-        [context_sym, [list_sym, [Symbol('inheritContext'), "none"], [Symbol('freshContext'), "disabled"]]] # Assume parser gives symbols for keys
+        # Use quote around the literal list of pairs structure
+        [context_sym, [quote_sym,
+                       [[Symbol('inheritContext'), "none"],
+                        [Symbol('freshContext'), "disabled"]]]]
     ]
+    # Mock the result from execute_atomic_template
+    mock_task_system.execute_atomic_template.return_value = TaskResult(status="COMPLETE", content="Context task done")
 
-    result = evaluator.evaluate_string('(task_with_context ...)') # String doesn't matter much here
+    result = evaluator.evaluate_string('(task_with_context ...)') # Test string content doesn't matter
 
+    assert isinstance(result, TaskResult)
+    assert result.status == "COMPLETE"
+    # Assert mock call with correct SubtaskRequest structure
     mock_task_system.execute_atomic_template.assert_called_once()
-    request_arg = mock_task_system.execute_atomic_template.call_args[0][0]
-    assert isinstance(request_arg, SubtaskRequest)
-    assert request_arg.name == task_name
-    assert request_arg.inputs == {} # No regular inputs in this example
-    assert request_arg.file_paths == ["/a.txt", "/b.txt"]
-    assert isinstance(request_arg.context_management, ContextManagement)
-    assert request_arg.context_management.inheritContext == "none"
-    assert request_arg.context_management.freshContext == "disabled"
+    call_args, call_kwargs = mock_task_system.execute_atomic_template.call_args
+    assert len(call_args) == 1
+    request = call_args[0]
+    assert isinstance(request, SubtaskRequest)
+    assert request.name == task_name
+    assert request.inputs == {}
+    assert request.file_paths == ["/a.txt", "/b.txt"]
+    assert request.context_management is not None
+    # Check that the evaluated+converted dict was used to create the ContextManagement object
+    assert isinstance(request.context_management, ContextManagement)
+    assert request.context_management.inheritContext == "none"
+    assert request.context_management.freshContext == "disabled"
 
 # Invocation: Direct Tool
 def test_eval_invoke_direct_tool(evaluator, mock_parser, mock_handler):
@@ -315,6 +332,86 @@ def test_eval_invoke_not_found(evaluator, mock_parser, mock_task_system, mock_ha
     # Match the expected error message for unknown task/tool
     with pytest.raises(SexpEvaluationError, match=f"Cannot invoke '{unknown_id}': Not a recognized tool or atomic task."):
         evaluator.evaluate_string(f"({unknown_id})")
+
+def test_eval_special_form_quote_atom(evaluator, mock_parser):
+    """Test quoting atomic values."""
+    quote_sym = Symbol("quote") if Symbol != str else "quote"
+    foo_sym = Symbol("foo") if Symbol != str else "foo"
+
+    # Test quoting a symbol
+    mock_parser.parse_string.return_value = [quote_sym, foo_sym]
+    result = evaluator.evaluate_string("(quote foo)")
+    # Should return the symbol itself, not its value
+    assert isinstance(result, Symbol if 'Symbol' in locals() else str)
+    assert (result.value() if isinstance(result, Symbol) else result) == "foo"
+
+    # Test quoting a string
+    mock_parser.parse_string.return_value = [quote_sym, "hello"]
+    result = evaluator.evaluate_string('(quote "hello")')
+    assert result == "hello"
+
+    # Test quoting a number
+    mock_parser.parse_string.return_value = [quote_sym, 123]
+    result = evaluator.evaluate_string('(quote 123)')
+    assert result == 123
+
+def test_eval_special_form_quote_list(evaluator, mock_parser):
+    """Test quoting lists."""
+    quote_sym = Symbol("quote") if Symbol != str else "quote"
+    a_sym = Symbol("a") if Symbol != str else "a"
+    b_sym = Symbol("b") if Symbol != str else "b"
+    c_sym = Symbol("c") if Symbol != str else "c"
+    list_sym = Symbol("list") if Symbol != str else "list" # Example symbol within list
+
+    # Test quoting a simple list of symbols
+    mock_parser.parse_string.return_value = [quote_sym, [a_sym, b_sym, c_sym]]
+    result = evaluator.evaluate_string("(quote (a b c))")
+    assert isinstance(result, list)
+    assert len(result) == 3
+    # Check elements are symbols (or strings if Symbol not used)
+    assert (result[0].value() if isinstance(result[0], Symbol) else result[0]) == "a"
+    assert (result[1].value() if isinstance(result[1], Symbol) else result[1]) == "b"
+    assert (result[2].value() if isinstance(result[2], Symbol) else result[2]) == "c"
+
+    # Test quoting a nested list
+    mock_parser.parse_string.return_value = [quote_sym, [a_sym, [list_sym, b_sym], c_sym]]
+    result = evaluator.evaluate_string("(quote (a (list b) c))")
+    assert isinstance(result, list)
+    assert len(result) == 3
+    assert (result[0].value() if isinstance(result[0], Symbol) else result[0]) == "a"
+    assert isinstance(result[1], list)
+    assert (result[1][0].value() if isinstance(result[1][0], Symbol) else result[1][0]) == "list"
+    assert (result[1][1].value() if isinstance(result[1][1], Symbol) else result[1][1]) == "b"
+    assert (result[2].value() if isinstance(result[2], Symbol) else result[2]) == "c"
+
+def test_eval_special_form_quote_prevents_evaluation(evaluator, mock_parser):
+    """Test that quote prevents evaluation of symbols inside it."""
+    quote_sym = Symbol("quote") if Symbol != str else "quote"
+    let_sym = Symbol("let") if Symbol != str else "let"
+    x_sym = Symbol("x") if Symbol != str else "x"
+
+    # Sexp: (let ((x 10)) (quote x))
+    mock_parser.parse_string.return_value = [let_sym, [[x_sym, 10]], [quote_sym, x_sym]]
+    result = evaluator.evaluate_string("(let ((x 10)) (quote x))")
+    # Should return the symbol 'x', not the value 10
+    assert isinstance(result, Symbol if 'Symbol' in locals() else str)
+    assert (result.value() if isinstance(result, Symbol) else result) == "x"
+
+def test_eval_special_form_quote_errors(evaluator, mock_parser):
+    """Test errors for quote."""
+    quote_sym = Symbol("quote") if Symbol != str else "quote"
+    a_sym = Symbol("a") if Symbol != str else "a"
+    b_sym = Symbol("b") if Symbol != str else "b"
+
+    # No arguments
+    mock_parser.parse_string.return_value = [quote_sym]
+    with pytest.raises(SexpEvaluationError, match="'quote' requires exactly one argument"):
+        evaluator.evaluate_string("(quote)")
+
+    # Too many arguments
+    mock_parser.parse_string.return_value = [quote_sym, a_sym, b_sym]
+    with pytest.raises(SexpEvaluationError, match="'quote' requires exactly one argument"):
+        evaluator.evaluate_string("(quote a b)")
 
 # Error Handling
 def test_evaluate_string_syntax_error(evaluator, mock_parser):
