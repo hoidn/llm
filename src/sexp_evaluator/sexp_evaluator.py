@@ -96,22 +96,17 @@ class SexpEvaluator:
             logging.debug(f"Using environment: {env}")
 
             # 3. Evaluate the AST
-            # Handle single expression vs. list of expressions (implicit progn)
-            if isinstance(parsed_nodes, list) and not (parsed_nodes and isinstance(parsed_nodes[0], (Symbol, str, list))):
-                 # Likely a sequence of top-level forms, evaluate them sequentially
-                 # (Could also be a literal list if parser returns that way)
-                 # Assuming implicit progn for top-level sequences
-                 logging.debug("Evaluating sequence of top-level expressions.")
-                 result = None
-                 for node in parsed_nodes:
-                     result = self._eval(node, env)
-                 logging.info(f"Finished evaluating S-expression sequence. Final result type: {type(result)}")
-                 return result
-            else:
-                 # Single top-level expression or a list representing a call/literal list
-                 result = self._eval(parsed_nodes, env)
-                 logging.info(f"Finished evaluating single S-expression. Result type: {type(result)}")
-                 return result
+            # SexpParser should return a single AST node (which might be a list)
+            # If the parser *could* return a Python list representing multiple top-level S-expressions,
+            # the parser interface/implementation needs clarification.
+            # Assuming parser returns ONE top-level node as per sexpdata.load standard behavior:
+            # Remove the implicit progn check for now, assume single top-level expression.
+            # If multiple expressions need to be supported, they should be wrapped in (progn ...)
+            # or the parser needs to handle it explicitly.
+            # Evaluate the single top-level expression returned by the parser
+            result = self._eval(parsed_nodes, env)
+            logging.info(f"Finished evaluating S-expression. Result type: {type(result)}")
+            return result
 
         except SexpSyntaxError as e:
             logging.error(f"S-expression syntax error: {e}")

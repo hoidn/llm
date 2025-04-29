@@ -40,6 +40,8 @@ def passthrough_handler(mock_task_system, mock_memory_system, mocker):
     mock_llm_manager.execute_call.return_value = TaskResult(
         status="COMPLETE", content="Passthrough Response", notes={}
     )
+    # Add the 'agent' attribute to the mock manager BEFORE patching/instantiation
+    mock_llm_manager.agent = None # Or MagicMock() if needed elsewhere
 
     # --- Patch Manager Instantiation in BaseHandler ---
     # Patch the __init__ methods of the managers where BaseHandler creates them

@@ -108,7 +108,8 @@ class BaseHandler:
         # --- Deferred/Complex Part: Registering with the live pydantic-ai Agent ---
         # This remains complex. Tools might need to be passed per-call via _execute_llm_call
         # using the stored specs/executors, or the agent might need re-initialization.
-        if self.llm_manager and self.llm_manager.agent:
+        # Check more safely if llm_manager and its agent attribute exist
+        if hasattr(self, 'llm_manager') and self.llm_manager and hasattr(self.llm_manager, 'agent') and self.llm_manager.agent:
             logging.warning(
                 f"Tool '{tool_name}' spec/executor stored. Dynamic registration with the live "
                 "pydantic-ai Agent is complex. Tools may need to be passed explicitly during LLM calls."

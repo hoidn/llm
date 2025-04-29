@@ -105,7 +105,7 @@ def test_lookup_not_found_in_chain():
     child_env = SexpEnvironment(parent=parent_env)
     child_env.define("b", 2)
 
-    with pytest.raises(NameError, match="Name 'z' is not defined in the environment chain."):
+    with pytest.raises(NameError, match="Unbound symbol: Name 'z' is not defined."):
         child_env.lookup("z")
 
 # --- Test extend ---

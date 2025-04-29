@@ -124,7 +124,8 @@ def test_parse_unbalanced_parentheses_missing_close(parser):
     sexp_string = "(add 1 2"
     with pytest.raises(SexpSyntaxError) as excinfo:
         parser.parse_string(sexp_string)
-    assert "Unbalanced parentheses" in str(excinfo.value)
+    # Match the corrected error message from SexpParser
+    assert "S-expression syntax error: Unbalanced parentheses or brackets." in str(excinfo.value)
     assert sexp_string in str(excinfo.value) # Ensure original string is in error
 
 def test_parse_unbalanced_parentheses_extra_close(parser):
@@ -144,7 +145,7 @@ def test_parse_invalid_token_unmatched_paren(parser):
         parser.parse_string(sexp_string)
     # Check that it's the correct error type and contains the input
     assert isinstance(excinfo.value, SexpSyntaxError)
-    assert "Unbalanced parentheses" in str(excinfo.value) # Check specific message
+    assert "Unbalanced parentheses or brackets." in str(excinfo.value) # Check specific message
     assert sexp_string in str(excinfo.value)
 
 
@@ -153,8 +154,8 @@ def test_parse_multiple_expressions_without_list(parser):
     sexp_string = "(expr1) (expr2)"
     with pytest.raises(SexpSyntaxError) as excinfo:
         parser.parse_string(sexp_string)
-    # sexpdata raises ExpectNothing after parsing the first expression
-    assert "Unexpected content after the main expression" in str(excinfo.value)
+    # Check the specific message raised now for multiple expressions
+    assert "Multiple top-level S-expressions found" in str(excinfo.value)
     assert sexp_string in str(excinfo.value)
 
 def test_parse_non_string_input(parser):

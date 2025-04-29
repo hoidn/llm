@@ -311,10 +311,12 @@ def test_execute_atomic_template_executor_param_mismatch(
     # Assert
     assert result.status == "FAILED"
     assert result.notes and result.notes.get("error")
-    assert result.notes["error"]["type"] == "TASK_FAILURE"
-    assert result.notes["error"]["reason"] == "input_validation_failure"
-    assert mismatch_error_msg in result.notes["error"]["message"]
-    assert mismatch_error_msg in result.content
+    error_details = TaskFailureError.model_validate(result.notes["error"]) # Validate error structure
+    assert error_details.type == "TASK_FAILURE"
+    assert error_details.reason == "input_validation_failure"
+    # Check if the *new* error message format is present
+    assert "Missing parameter(s) for substitution: input1" in error_details.message
+    assert "Missing parameter(s) for substitution: input1" in result.content
 
 
 # --- Tests for generate_context_for_memory_system (Phase 2c) ---

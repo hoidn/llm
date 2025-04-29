@@ -31,7 +31,7 @@ def _convert_common_symbols(item: Any) -> Any:
             return False
         elif val == 'nil':
             # Convert the symbol 'nil' to Python's None
-            return None
+            return None # Correct: Map Symbol('nil') to None
         else:
             # Keep other symbols as Symbol objects
             return item
@@ -86,9 +86,8 @@ class SexpParser:
             remainder = sio.read().strip()
             if remainder:
                 logging.error(f"Unexpected content after main expression: '{remainder}'")
-                # Raise specific error if trailing content exists
-                # Use a message consistent with the test expectation
-                raise ExpectNothing(f"Unexpected content found after the first expression: {remainder}")
+                # Raise SexpSyntaxError directly for clarity and consistency
+                raise SexpSyntaxError("Unexpected content after the main expression.", sexp_string, error_details=f"Trailing content: '{remainder}'")
 
             # Apply symbol conversion after successful parsing of a single expression
             converted_ast = _convert_common_symbols(parsed_expression)
