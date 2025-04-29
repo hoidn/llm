@@ -22,3 +22,28 @@ class SexpSyntaxError(ValueError):
         super().__init__(full_message)
         self.sexp_string = sexp_string
         self.error_details = error_details
+
+
+class SexpEvaluationError(Exception):
+    """
+    Custom exception raised during the evaluation phase of S-expressions.
+    Indicates runtime errors like unbound symbols, invalid arguments, type mismatches,
+    or errors propagated from invoked tasks/tools.
+    """
+    def __init__(self, message: str, expression: str = "", error_details: str = ""):
+        """
+        Initializes the SexpEvaluationError.
+
+        Args:
+            message: A high-level error message describing the evaluation failure.
+            expression: The S-expression string or node being evaluated when the error occurred.
+            error_details: Specific details about the error (e.g., from underlying exceptions).
+        """
+        full_message = f"{message}"
+        if expression:
+            full_message += f"\nExpression: '{expression}'"
+        if error_details:
+            full_message += f"\nDetails: {error_details}"
+        super().__init__(full_message)
+        self.expression = expression
+        self.error_details = error_details
