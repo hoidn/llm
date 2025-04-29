@@ -28,7 +28,138 @@ Consider refactoring when you encounter:
 *   **Improve Structure:** Focus on enhancing clarity, reducing complexity, and improving modularity (e.g., better adherence to SRP).
 *   **Use Version Control:** Commit frequently with clear messages describing each refactoring step.
 
-**4. Recommended Refactoring Workflow**
+**4. Formalized Refactoring Decision Workflow**
+
+This section outlines a structured approach for identifying refactoring needs, analyzing candidates, choosing a strategy, and verifying the results. It complements the execution steps described in the next section.
+
+**Phase 1: Identification & Initial Assessment**
+
+*Input:*
+* Code base or component under review
+* Project quality metrics (if available)
+* Developer observations/pain points
+
+*Actions:*
+* Scan for code smells (duplicated code, long methods, complex conditionals, etc.)
+* Review module length against guidelines in `docs/project_rules.md`
+* Identify components with high change frequency or bug density
+* Note areas where developers frequently express confusion or frustration
+* Check for violations of project architecture or implementation rules
+
+*Output:*
+* List of refactoring candidates with brief descriptions of issues
+* Initial severity assessment (High/Medium/Low) based on:
+  * Impact on development velocity
+  * Risk of introducing bugs
+  * Maintenance burden
+  * Violation of core architectural principles
+
+**Phase 2: Detailed Analysis**
+
+*Input:*
+* Refactoring candidates from Phase 1
+* Relevant documentation (IDL files, architecture diagrams)
+* Test coverage reports
+
+*Actions:*
+* For each high-priority candidate:
+  * Analyze dependencies (what components depend on this code?)
+  * Assess test coverage (is behavior well-tested?)
+  * Identify specific design problems (SRP violations, tight coupling, etc.)
+  * Determine root causes (why did the code evolve this way?)
+  * Estimate effort required to refactor
+  * Evaluate risks (complexity, potential for regression)
+
+*Output:*
+* Detailed analysis document for each candidate, including:
+  * Specific problems identified
+  * Dependencies and potential impact areas
+  * Test coverage assessment
+  * Effort estimate (story points or time)
+  * Risk assessment
+
+**Phase 3: Strategy Selection**
+
+*Input:*
+* Detailed analysis from Phase 2
+* Project priorities and constraints
+* Available developer resources
+
+*Actions:*
+* For each refactoring candidate, select an appropriate strategy:
+  * **Extract Method/Class:** For cohesive chunks of functionality that can be isolated
+  * **Move Method/Field:** For functionality in the wrong place
+  * **Replace Conditional with Polymorphism:** For complex conditional logic
+  * **Introduce Parameter Object:** For methods with too many parameters
+  * **Replace Temp with Query:** For complex calculations with intermediate variables
+  * **Decompose Conditional:** For complex conditional expressions
+  * **Extract Interface:** For clients that use only a subset of a class's methods
+  * **Introduce Dependency Injection:** For tight coupling to concrete implementations
+  * **Rename:** For unclear or misleading names
+  * **Inline Method/Class:** For unnecessary indirection
+  * **Consolidate Duplicate Conditional Fragments:** For repeated code in conditionals
+  * **Replace Magic Number with Symbolic Constant:** For unexplained literals
+  * **Encapsulate Field:** For direct field access that should be controlled
+  * **Replace Exception with Test:** For using exceptions for control flow
+  * **Introduce Assertion:** For assumptions that should be explicit
+
+*Output:*
+* Refactoring plan for each candidate, including:
+  * Selected strategy or combination of strategies
+  * Specific steps to implement the strategy
+  * Acceptance criteria for the refactored code
+  * Prioritization relative to other refactoring tasks
+
+**Phase 4: Planning & Preparation**
+
+*Input:*
+* Refactoring plans from Phase 3
+* Project schedule and priorities
+* Test infrastructure status
+
+*Actions:*
+* Break down large refactorings into smaller, incremental steps
+* Identify or create tests that verify the current behavior
+* Ensure test coverage is adequate before starting
+* Schedule refactoring work, considering:
+  * Project deadlines and priorities
+  * Developer availability and expertise
+  * Dependencies between refactoring tasks
+  * Risk level (higher risk = more careful planning)
+* Update `docs/memory.md` with the refactoring task
+
+*Output:*
+* Detailed, step-by-step refactoring plan with:
+  * Specific files and code sections to modify
+  * Order of operations to minimize merge conflicts
+  * Test strategy for each step
+  * Rollback plan if problems arise
+  * Documentation updates needed
+
+**Phase 5: Verification & Cleanup**
+
+*Input:*
+* Completed refactoring changes
+* Test results
+* Code review feedback
+
+*Actions:*
+* Verify all tests pass (existing and new)
+* Conduct code review to ensure the refactoring meets quality standards
+* Check for any unintended side effects or regressions
+* Update documentation to reflect the new structure
+* Remove any dead code or unused imports
+* Run linters and formatters
+* Update `docs/memory.md` with the completed refactoring
+
+*Output:*
+* Verified, clean, refactored code
+* Updated documentation
+* Lessons learned for future refactorings
+
+Once a refactoring strategy is chosen (Phase 3) and planned (Phase 4), the execution steps often follow the patterns described in the next section.
+
+**5. Recommended Refactoring Workflow**
 
 This workflow is based on successful refactoring patterns observed in this project:
 
