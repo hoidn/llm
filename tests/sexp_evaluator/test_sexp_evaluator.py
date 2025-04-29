@@ -213,8 +213,9 @@ def test_eval_primitive_get_context_failure(evaluator, mock_parser, mock_memory_
     with pytest.raises(SexpEvaluationError) as excinfo:
         evaluator.evaluate_string('(get_context (query "find stuff"))')
 
-    # Optionally check the details if needed
+    # Check the wrapper exception message
     assert "Context retrieval failed" in str(excinfo.value)
+    assert "Database connection failed" in str(excinfo.value) # Check detail propagation
 
 # Invocation: Atomic Task
 def test_eval_invoke_atomic_task(evaluator, mock_parser, mock_task_system):

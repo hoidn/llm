@@ -149,44 +149,39 @@ class SexpEvaluator:
             NameError: For unbound symbols (caught by evaluate_string).
             TaskError: Propagated from underlying calls.
         """
-        logging.debug(f"Evaluating node: {node} in env {id(env)}")
+        logging.debug(f"Evaluating node: {node} (type: {type(node)}) in env {id(env)}")
 
         # --- Handle Node Types ---
 
-        # 0. Symbol Lookup (Do this FIRST)
-        # Check if it's a symbol (string or Symbol object) but NOT a list
-        # This ensures we look up symbols unless they are the operator in a list being processed below.
-        if isinstance(node, (Symbol, str)) and not isinstance(node, list):
-            symbol_name = str(node) # Ensure string representation for lookup
-            logging.debug(f"Node is symbol: '{symbol_name}', looking up in env.")
-            try:
-                # Let NameError propagate up if lookup fails
-                value = env.lookup(symbol_name)
-                logging.debug(f"Symbol '{symbol_name}' resolved to: {type(value)}")
-                return value
-            except NameError:
-                # If lookup fails here, it's definitely an unbound symbol error during evaluation
-                raise SexpEvaluationError(f"Unbound symbol: {symbol_name}", expression=str(node)) from None
-
-        # 1. Literals (Self-evaluating)
-        if isinstance(node, (int, float, bool)) or node is None: # Removed str check here, handled above
-            logging.debug(f"Node is literal: {node} ({type(node)})")
+        # 1. Literals (Non-Symbol, Non-List)
+        if not isinstance(node, (Symbol, str, list)):
+            # Catches int, float, bool, None, etc.
+            logging.debug(f"Node is non-symbol/non-list literal: {node}")
             return node
-        # Handle string literals separately if parser doesn't quote them distinctly
-        # If your parser returns strings for both symbols and string literals,
-        # you might need a more sophisticated check, but sexpdata usually distinguishes.
-        # Assuming strings that aren't symbols were handled by the literal check if parser returns them directly.
-        if isinstance(node, str): # Catch string literals specifically if needed
+
+        # 2. Symbol Lookup (if node is a Symbol or string *not* being treated as operator)
+        # We defer actual lookup until needed, but handle the type check here if parser distinguishes
+        if isinstance(node, Symbol):
+             symbol_name = node.value()
+             logging.debug(f"Node is Symbol: '{symbol_name}'. Deferring lookup until usage.")
+             # Fall through to list processing if it's the operator,
+             # otherwise lookup happens when used as value/variable.
+             # If a Symbol is encountered standalone, lookup should happen in evaluate_string or caller.
+             # This path primarily identifies the type.
+
+        # 3. String Literals (If parser returns plain strings for them)
+        # This check depends heavily on how SexpParser returns quoted strings vs symbols.
+        # If SexpParser returns strings for both symbols and string literals, this needs adjustment.
+        # Assuming SexpParser returns Symbol objects for symbols and strings for literals:
+        if isinstance(node, str):
             logging.debug(f"Node is string literal: {node}")
-            return node
+            return node # String literals evaluate to themselves
 
-        # 3. Lists (Function Calls / Special Forms)
+        # 4. Lists (Function Calls / Special Forms / Literal Data)
         if isinstance(node, list):
             if not node:
-                # Empty list evaluates to empty list or raises error? IDL implies list primitive.
-                # Let's treat empty list as an error for now unless it's a literal.
-                # If parser guarantees non-empty list for calls, this check might be redundant.
-                raise SexpEvaluationError("Cannot evaluate empty list.", expression=str(node))
+                logging.debug("Node is empty list, returning empty list.")
+                return [] # Empty list evaluates to itself
 
             operator_node = node[0]
             args = node[1:]

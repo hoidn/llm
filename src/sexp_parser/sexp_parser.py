@@ -6,7 +6,7 @@ Parses S-expression strings into Python Abstract Syntax Trees (ASTs).
 import logging
 from typing import Any
 from io import StringIO
-from sexpdata import load, Symbol, ExpectNothing # Remove ParseError import
+from sexpdata import load, Symbol, ExpectNothing, ExpectClosingBracket # Add specific sexpdata exceptions
 
 # Import the custom error type
 from src.system.errors import SexpSyntaxError # This is our custom error
