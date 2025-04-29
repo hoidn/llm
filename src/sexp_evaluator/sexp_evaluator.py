@@ -216,11 +216,17 @@ class SexpEvaluator:
             if op_str == "get_context":
                  logging.debug("Eval Primitive: 'get_context'")
                  context_input_args: Dict[str, Any] = {}
-                 for option_pair in args:
-                      # Evaluate the pair itself, expecting (key value)
-                      evaluated_pair = self._eval(option_pair, env)
+                 for option_pair_expr in args: # Evaluate each option pair expression
+                      # Fix 1 START: Evaluate the option pair expression *itself*
+                      # The result should be the evaluated pair, e.g., ['query', 'find stuff']
+                      evaluated_pair = self._eval(option_pair_expr, env)
+                      # Fix 1 END
+
+                      # Now validate the *result* of the evaluation
                       if not (isinstance(evaluated_pair, list) and len(evaluated_pair) == 2 and isinstance(evaluated_pair[0], (Symbol, str))):
-                           raise SexpEvaluationError("Invalid 'get_context' option format after evaluation. Expected evaluated (key value) pair.", str(option_pair))
+                           # If the evaluated result isn't a (key value) list, it's an error
+                           raise SexpEvaluationError("Invalid 'get_context' option format after evaluation. Expected evaluated (key value) pair.", str(option_pair_expr))
+
                       option_name, evaluated_value = str(evaluated_pair[0]), evaluated_pair[1]
                       # Map Sexp option names to ContextGenerationInput fields
                       field_map = { "query": "query", "templateDescription": "templateDescription", "templateType": "templateType", "templateSubtype": "templateSubtype", "inputs": "inputs", "inheritedContext": "inheritedContext", "previousOutputs": "previousOutputs" }
@@ -246,43 +252,58 @@ class SexpEvaluator:
                 logging.debug(f"Eval Data List (non-symbol op) END: -> {evaluated_list}")
                 return evaluated_list
 
-            # Operator IS a symbol/string, check if it names a callable
-            target_id = str(operator_node) # Use the raw name first
-            logging.debug(f"Checking if operator name '{target_id}' is callable...")
+            # --- General Call or Data List ---
+            # Evaluate the operator node itself to see what it resolves to
+            try:
+                # Use a temporary variable to avoid modifying operator_node in case it's needed later
+                evaluated_op = self._eval(operator_node, env)
+                is_op_callable_ref = callable(evaluated_op) # Check if the *evaluated* operator is callable
+                logging.debug(f"Operator node '{operator_node}' evaluated to type {type(evaluated_op)}. Callable: {is_op_callable_ref}")
+            except NameError:
+                 # If the operator symbol is unbound, it cannot be a callable defined in the env
+                 is_op_callable_ref = False
+                 logging.debug(f"Operator node '{operator_node}' is an unbound symbol.")
+                 # Fall through to check if it's a known tool/task name
+
+            # Check if the *original* operator string names a known tool or task
+            target_id = str(operator_node) # Use the original string name for lookup
             is_tool = target_id in self.handler.tool_executors
             template_def = self.task_system.find_template(target_id)
             is_atomic_task = bool(template_def and template_def.get("type") == "atomic")
-            is_callable = is_tool or is_atomic_task
+            is_known_callable_name = is_tool or is_atomic_task
 
-            # If it IS a known callable name -> Evaluate args & Execute
-            if is_callable:
-                logging.debug(f"Operator '{target_id}' IS callable.")
+            # Decide if it's a function call or a data list
+            # It's a function call if the operator *name* refers to a tool/task
+            # OR if the operator node *evaluates* to a callable function (less common for this DSL)
+            is_function_call = is_known_callable_name or is_op_callable_ref
+
+            if is_function_call:
+                logging.debug(f"List interpreted as CALL. Operator='{target_id}'")
                 resolved_named_args: Dict[str, Any] = {}
                 resolved_files: Optional[List[str]] = None
                 resolved_context_settings: Optional[Dict[str, Any]] = None
-                for arg_pair in args:
-                    # Evaluate the pair itself, expecting (key value) structure
-                    evaluated_pair = self._eval(arg_pair, env)
+                for arg_pair_expr in args:
+                    # Fix 1 START: Evaluate the argument pair expression *itself*
+                    # The result should be the evaluated pair, e.g., ['arg1', 'value1']
+                    evaluated_pair = self._eval(arg_pair_expr, env)
+                    # Fix 1 END
+
+                    # Validate the *result* of the evaluation
                     if not (isinstance(evaluated_pair, list) and len(evaluated_pair) == 2 and isinstance(evaluated_pair[0], (Symbol, str))):
-                        # If the evaluated argument isn't a (key value) pair, raise error
-                        raise SexpEvaluationError(f"Invalid arg format for callable '{target_id}'. Expected evaluated (key value). Got: {evaluated_pair}", str(arg_pair))
+                        raise SexpEvaluationError(f"Invalid arg format for callable '{target_id}'. Expected evaluated (key value). Got: {evaluated_pair}", str(arg_pair_expr))
+
                     arg_name, evaluated_value = str(evaluated_pair[0]), evaluated_pair[1]
 
                     # Handle special args or regular args
                     if arg_name == "files":
-                        if not (isinstance(evaluated_value, list) and all(isinstance(i, str) for i in evaluated_value)): raise SexpEvaluationError(f"'files' arg must be list of strings", str(arg_pair))
+                        if not (isinstance(evaluated_value, list) and all(isinstance(i, str) for i in evaluated_value)): raise SexpEvaluationError(f"'files' arg must be list of strings", str(arg_pair_expr))
                         resolved_files = evaluated_value
                     elif arg_name == "context":
-                        # Ensure the evaluated value for context is a dictionary
                         if not isinstance(evaluated_value, dict):
-                             # Try to convert if it's a list of pairs (common Sexp pattern)
                              if isinstance(evaluated_value, list) and all(isinstance(p, list) and len(p) == 2 for p in evaluated_value):
-                                 try:
-                                     evaluated_value = dict(evaluated_value)
-                                 except (TypeError, ValueError) as conv_err:
-                                     raise SexpEvaluationError(f"'context' arg evaluated to list of pairs, but failed dict conversion: {conv_err}", str(arg_pair)) from conv_err
-                             else:
-                                 raise SexpEvaluationError(f"'context' arg must evaluate to a dictionary or list of pairs. Got: {type(evaluated_value)}", str(arg_pair))
+                                 try: evaluated_value = dict(evaluated_value)
+                                 except (TypeError, ValueError) as conv_err: raise SexpEvaluationError(f"'context' arg evaluated to list of pairs, but failed dict conversion: {conv_err}", str(arg_pair_expr)) from conv_err
+                             else: raise SexpEvaluationError(f"'context' arg must evaluate to a dictionary or list of pairs. Got: {type(evaluated_value)}", str(arg_pair_expr))
                         resolved_context_settings = evaluated_value
                     else:
                         resolved_named_args[arg_name] = evaluated_value
@@ -291,16 +312,11 @@ class SexpEvaluator:
                 try:
                     if is_tool:
                         logging.info(f"Invoking direct tool: '{target_id}'")
-                        tool_result = self.handler._execute_tool(target_id, resolved_named_args)
-                        # _execute_tool now returns TaskResult object
-                        if isinstance(tool_result, TaskResult):
-                             result = tool_result
-                        else: # Should not happen based on _execute_tool contract, but handle defensively
-                             logging.warning(f"Tool '{target_id}' _execute_tool returned unexpected type: {type(tool_result)}. Wrapping.")
-                             result = TaskResult(status="FAILED", content=f"Tool returned invalid type: {type(tool_result)}")
-                        logging.debug(f"Eval Tool Call END: '{target_id}' -> {result.status}")
-                        return result
-                    else: # is_atomic_task
+                        # _execute_tool returns TaskResult object
+                        tool_result: TaskResult = self.handler._execute_tool(target_id, resolved_named_args)
+                        logging.debug(f"Eval Tool Call END: '{target_id}' -> {tool_result.status}")
+                        return tool_result # Return TaskResult object
+                    elif is_atomic_task: # Must be atomic task if not tool
                         logging.info(f"Invoking atomic task: '{target_id}'")
                         context_management_obj: Optional[ContextManagement] = None
                         if resolved_context_settings:
@@ -312,21 +328,38 @@ class SexpEvaluator:
                             context_management=context_management_obj
                         )
                         # TaskSystem returns TaskResult object
-                        task_result = self.task_system.execute_atomic_template(request)
-                        logging.debug(f"Eval Atomic Task Call END: '{target_id}' -> {task_result.status}")
-                        return task_result # Return the TaskResult object directly
+                        task_result_obj = self.task_system.execute_atomic_template(request)
+
+                        # Fix 2 START: Ensure we have a TaskResult object
+                        if isinstance(task_result_obj, dict):
+                             # Attempt conversion if TaskSystem returned dict (e.g., from mock)
+                             logging.warning("TaskSystem returned dict, attempting TaskResult validation.")
+                             try:
+                                 task_result_obj = TaskResult.model_validate(task_result_obj)
+                             except Exception as model_val_err:
+                                 raise SexpEvaluationError(f"Failed to validate TaskSystem result as TaskResult: {model_val_err}", str(node), error_details=str(task_result_obj)) from model_val_err
+                        elif not isinstance(task_result_obj, TaskResult):
+                             # Raise error if it's neither dict nor TaskResult
+                             raise SexpEvaluationError("TaskSystem returned unexpected type", str(node), error_details=f"Type: {type(task_result_obj)}")
+                        # Fix 2 END
+
+                        logging.debug(f"Eval Atomic Task Call END: '{target_id}' -> {task_result_obj.status}")
+                        return task_result_obj # Return TaskResult object
+                    else:
+                         # This case should theoretically not be reached if is_function_call is true
+                         raise SexpEvaluationError(f"Internal Error: Operator '{target_id}' determined as callable but neither tool nor atomic task.", str(node))
+
                 except Exception as e:
                     # Catch errors from _execute_tool or execute_atomic_template
                     logging.exception(f"Error during execution of callable '{target_id}': {e}")
-                    # Wrap underlying error (could be TaskFailureError or other)
+                    # Wrap underlying error
                     raise SexpEvaluationError(f"Execution of '{target_id}' failed: {e}", str(node), error_details=str(e)) from e
 
-            # --- If NOT a special form, primitive, or known callable name -> Treat as Data List ---
-            else: # Operator was symbol/string but not callable
-                 logging.debug(f"Operator '{target_id}' not special/primitive/callable. Treating list as data.")
+            else: # List is not a function call -> Treat as Data List
+                 logging.debug(f"List interpreted as DATA. Operator='{operator_node}'")
                  # Evaluate ALL elements recursively, including the operator node itself
                  evaluated_list = [self._eval(item, env) for item in node]
-                 logging.debug(f"Eval Data List (unknown symbol op) END: -> {evaluated_list}")
+                 logging.debug(f"Eval Data List END: -> {evaluated_list}")
                  return evaluated_list
 
         # Fallback for unhandled node type (should not happen with current checks)
