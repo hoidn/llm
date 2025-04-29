@@ -32,27 +32,32 @@
     - Updated `BaseHandler` to instantiate and delegate calls to `FileContextManager`.
     - Updated `tests.handler.test_base_handler` fixture and tests to mock `FileContextManager` and verify delegation instead of checking for `NotImplementedError`. Fixed related import issues.
     - **Commit:** `03e2338` (fix: Import FileContextManager in test_base_handler.py)
-    - **Note:** Line count reduction in `BaseHandler` was modest (456 -> 435) as the removed lines were primarily placeholder comments, not extensive code. The new `FileContextManager` contains the extracted logic (132 lines).
+    - **Note:** Line count reduction in `BaseHandler` was modest (456 -> 435) as removed lines were primarily placeholder comments. `FileContextManager` has 132 lines.
+- **Refactoring `BaseHandler` (Part 2):**
+    - Extracted LLM interaction logic (`_initialize_pydantic_ai_agent`, `_execute_llm_call`) into a new `src.handler.llm_interaction_manager.LLMInteractionManager` class.
+    - Updated `BaseHandler` to instantiate and delegate calls (`_execute_llm_call`, `set_debug_mode`) to `LLMInteractionManager`. Removed direct agent handling (`self.agent`, `_initialize_pydantic_ai_agent`).
+    - Updated `tests.handler.test_base_handler` fixture and tests to mock `LLMInteractionManager` and verify delegation/initialization. Removed tests specific to agent initialization within `BaseHandler`. Added tests for `_execute_llm_call` delegation.
+    - **Commit:** (Will be the hash of this change)
+    - **Note:** `BaseHandler` line count reduced further (435 -> ~300 lines - check exact count after applying). `LLMInteractionManager` now contains the LLM logic (~150 lines - check exact count).
 
 ## Next Steps
 
-1.  **Refactor `BaseHandler` (Part 2):**
-    *   Extract LLM interaction logic (`_initialize_pydantic_ai_agent`, `_execute_llm_call`) from `BaseHandler` into a new `LLMInteractionManager` class (or similar).
-    *   Update `BaseHandler` to use this new manager.
-    *   Update relevant tests in `test_base_handler.py`.
-2.  Implement the remaining deferred methods in Phase 2:
+1.  Implement the remaining deferred methods in Phase 2:
+    *   `LLMInteractionManager`: `execute_call` (implement actual agent call, result processing, error handling).
     *   `MemorySystem`: `get_relevant_context_with_description`, `get_relevant_context_for`, `index_git_repository`
     *   `TaskSystem`: `execute_atomic_template`, `find_matching_tasks`, `generate_context_for_memory_system`, `resolve_file_paths`
-    *   `BaseHandler`: `_build_system_prompt`, `_execute_tool` (Note: `_get_relevant_files`, `_create_file_context`, `_execute_llm_call` are being handled by refactoring/delegation).
-3.  Implement tests for the deferred methods once they are implemented/refactored.
+    *   `BaseHandler`: `_build_system_prompt`, `_execute_tool` (Note: `_get_relevant_files`, `_create_file_context`, `_execute_llm_call` are now delegated). Also need to implement conversation history update after `_execute_llm_call`.
+2.  Implement tests for the deferred methods once they are implemented/refactored (including tests for `LLMInteractionManager.execute_call`).
+3.  Review tool registration logic (`BaseHandler.register_tool`) and how it should interact with `LLMInteractionManager`.
 4.  Update documentation (IDLs, rules) if refactoring changes public contracts or introduces new patterns.
 
 ## Notes & Context
 
 - Refactoring `BaseHandler` aims to improve modularity and adhere to project guidelines (module length).
-- `FileContextManager` now encapsulates file context logic.
+- `FileContextManager` encapsulates file context logic.
+- `LLMInteractionManager` now encapsulates pydantic-ai agent interaction.
 - Tests for `BaseHandler` were updated to reflect the delegation pattern.
-- The core components (`BaseHandler`, `TaskSystem`, `MemorySystem`) continue to rely on dependency injection.
+- Core components continue to rely on dependency injection.
 </file>
 ```
 

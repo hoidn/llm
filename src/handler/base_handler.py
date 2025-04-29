@@ -5,27 +5,8 @@ from typing import Any, Dict, List, Optional, Callable
 # Import Phase 0 components
 from src.handler.file_access import FileAccessManager
 from src.handler import command_executor
-from src.handler.file_context_manager import FileContextManager # Added import
-
-# Import pydantic-ai (assuming it's installed)
-try:
-    from pydantic_ai import Agent
-    from pydantic_ai.models import (
-        OpenAIModel,
-        AnthropicModel,
-    )  # Add other models as needed
-
-    # Add other potential model providers here if supported by pydantic-ai
-    PYDANTIC_AI_AVAILABLE = True
-except ImportError:
-    # Define dummy types if import fails to satisfy type hints without crashing
-    Agent = type("Agent", (object,), {})
-    OpenAIModel = type("OpenAIModel", (object,), {})
-    AnthropicModel = type("AnthropicModel", (object,), {})
-    PYDANTIC_AI_AVAILABLE = False
-    logging.warning(
-        "pydantic-ai library not found. BaseHandler LLM features will be unavailable."
-    )
+from src.handler.file_context_manager import FileContextManager
+from src.handler.llm_interaction_manager import LLMInteractionManager # Added import
 
 
 # Forward declarations for type hinting cycles
@@ -85,78 +66,13 @@ class BaseHandler:
             "base_system_prompt", "You are a helpful assistant."
         )
 
-        # Initialize pydantic-ai Agent
-        self.agent: Optional[Agent] = None
-        if PYDANTIC_AI_AVAILABLE and self.default_model_identifier:
-            try:
-                self.agent = self._initialize_pydantic_ai_agent()
-                logging.info(
-                    f"pydantic-ai Agent initialized with model: {self.default_model_identifier}"
-                )
-            except Exception as e:
-                logging.error(
-                    f"Failed to initialize pydantic-ai Agent: {e}", exc_info=True
-                )
-                # Proceed without agent, core functionalities might still work
-        elif not PYDANTIC_AI_AVAILABLE:
-            logging.warning(
-                "Cannot initialize pydantic-ai Agent: Library not installed."
-            )
-        elif not self.default_model_identifier:
-            logging.warning(
-                "Cannot initialize pydantic-ai Agent: No default_model_identifier provided."
-            )
+        # Initialize LLMInteractionManager
+        self.llm_manager = LLMInteractionManager(
+            default_model_identifier=self.default_model_identifier,
+            config=self.config,
+        )
 
         logging.info("BaseHandler initialized.")
-
-    def _initialize_pydantic_ai_agent(self) -> Optional[Agent]:
-        """Helper to instantiate the pydantic-ai agent based on config."""
-        if not PYDANTIC_AI_AVAILABLE or not self.default_model_identifier:
-            return None
-
-        model_provider, model_name = self.default_model_identifier.split(":", 1)
-        api_key = None
-        model_instance = None
-
-        # Extract API keys from config or environment variables
-        # Example: Prefers config['openai_api_key'] over OPENAI_API_KEY env var
-        if model_provider == "openai":
-            api_key = self.config.get(
-                "openai_api_key", os.environ.get("OPENAI_API_KEY")
-            )
-            if not api_key:
-                raise ValueError(
-                    "OpenAI API key not found in config or environment variables."
-                )
-            if OpenAIModel:
-                model_instance = OpenAIModel(api_key=api_key, model=model_name)
-        elif model_provider == "anthropic":
-            api_key = self.config.get(
-                "anthropic_api_key", os.environ.get("ANTHROPIC_API_KEY")
-            )
-            if not api_key:
-                raise ValueError(
-                    "Anthropic API key not found in config or environment variables."
-                )
-            if AnthropicModel:
-                model_instance = AnthropicModel(api_key=api_key, model=model_name)
-        # Add other providers here (e.g., 'google', 'azure', etc.)
-        else:
-            raise ValueError(
-                f"Unsupported pydantic-ai model provider: {model_provider}"
-            )
-
-        if not model_instance:
-            raise ValueError(
-                f"Could not create model instance for {self.default_model_identifier}. Check provider support and pydantic-ai installation."
-            )
-
-        # Instantiate Agent - tools will be added via register_tool later if needed dynamically,
-        # or potentially the agent needs re-initialization if tools change.
-        # For now, initialize without tools.
-        # TODO: Clarify how tools are best managed with pydantic-ai Agent lifecycle.
-        agent = Agent(model=model_instance, system_prompt=self.base_system_prompt)
-        return agent
 
     def register_tool(self, tool_spec: Dict[str, Any], executor_func: Callable) -> bool:
         """
@@ -191,26 +107,17 @@ class BaseHandler:
         # can be complex. The typical pattern is to define tools with decorators
         # *before* Agent instantiation, or pass a list of tools during init.
         # For now, we log a warning and acknowledge this step is needed but complex.
-        if self.agent:
+        # TODO: Determine how tool registration interacts with LLMInteractionManager.
+        # Does the manager need to be re-initialized or have a registration method?
+        if self.llm_manager and self.llm_manager.agent:
             logging.warning(
                 f"Tool '{tool_name}' spec/executor stored, but dynamic registration with the "
-                "live pydantic-ai Agent instance is complex and currently NOT implemented. "
-                "Agent may need re-initialization with all tools, or a dynamic registration "
-                "mechanism needs to be developed."
+                "LLMInteractionManager's agent instance is complex and currently NOT implemented. "
+                "Manager/Agent may need re-initialization or a dynamic registration mechanism."
             )
-            # Placeholder: If pydantic-ai adds a dynamic registration method, call it here.
-            # try:
-            #     # Hypothetical future method:
-            #     # adapted_tool = self._adapt_tool_for_pydantic_ai(tool_spec, executor_func)
-            #     # self.agent.register_dynamic_tool(adapted_tool)
-            #     # logging.info(f"Successfully registered '{tool_name}' with pydantic-ai agent (hypothetical).")
-            #     pass # No actual registration call for now
-            # except Exception as e:
-            #     logging.error(f"Failed to dynamically register tool '{tool_name}' with pydantic-ai agent: {e}")
-            #     # Decide if failure here should return False overall
         else:
             logging.warning(
-                f"Tool '{tool_name}' spec/executor stored, but pydantic-ai agent is not available for registration."
+                f"Tool '{tool_name}' spec/executor stored, but LLMInteractionManager or its agent is not available for registration."
             )
 
         return True  # Return True as we stored the spec/executor successfully
@@ -261,14 +168,8 @@ class BaseHandler:
         """
         self.conversation_history = []
         logging.info("Conversation history reset.")
-        # TODO: Check if the specific pydantic-ai Agent implementation requires explicit state reset.
-        # Some agents might be stateless per call, others might maintain internal state.
-        if self.agent:
-            # Example: if self.agent has a reset method
-            # self.agent.reset()
-            logging.info(
-                "pydantic-ai agent state reset (if applicable) needs verification."
-            )
+        # LLMInteractionManager currently appears stateless per call, no reset needed there.
+        # If manager becomes stateful, add: self.llm_manager.reset_state()
 
     def log_debug(self, message: str) -> None:
         """
@@ -296,28 +197,9 @@ class BaseHandler:
             "Debug logging is now active."
         )  # Log a message using the new state
 
-        # TODO: Configure pydantic-ai agent instrumentation if debug mode is enabled
-        if self.agent and PYDANTIC_AI_AVAILABLE:
-            try:
-                # Example: Check if agent has instrumentation methods
-                if enabled:
-                    # self.agent.instrument() # Hypothetical method
-                    logging.debug(
-                        "pydantic-ai agent instrumentation enabled (if applicable)."
-                    )
-                else:
-                    # self.agent.remove_instrumentation() # Hypothetical method
-                    logging.debug(
-                        "pydantic-ai agent instrumentation disabled (if applicable)."
-                    )
-            except AttributeError:
-                logging.warning(
-                    "pydantic-ai agent does not support instrumentation methods."
-                )
-            except Exception as e:
-                logging.error(
-                    f"Error configuring pydantic-ai agent instrumentation: {e}"
-                )
+        # Pass debug state to LLMInteractionManager
+        if self.llm_manager:
+            self.llm_manager.set_debug_mode(enabled)
 
     # --- Start Phase 2, Set A: Behavior Structure ---
     # Placeholder for the core LLM interaction logic using the pydantic-ai agent
@@ -329,46 +211,46 @@ class BaseHandler:
         output_type_override: Optional[type] = None,
     ) -> Any: # Should return TaskResult or similar structure
         """
-        Internal method to execute a call to the configured pydantic-ai agent.
-        (Implementation deferred to Phase 2, Set B)
+        Internal method to execute a call via the LLMInteractionManager.
+        (Implementation deferred to Phase 2, Set B - Now Delegated)
         """
-        logging.warning("_execute_llm_call called, but implementation is deferred.")
-        # 1. Check if self.agent is available. If not, return error TaskResult.
-        # 2. Prepare message history:
-        #    - Get relevant messages from self.conversation_history.
-        #    - Add the current `prompt` as the latest user message.
-        # 3. Determine System Prompt:
-        #    - Use `system_prompt_override` if provided, else use `self.base_system_prompt`.
-        # 4. Determine Tools:
-        #    - Use `tools_override` if provided.
-        #    - Else, potentially adapt tools from `self.registered_tools` (complex part, see register_tool warning).
-        # 5. Determine Output Type:
-        #    - Use `output_type_override` if provided.
-        #    - Else, default might be plain text or based on agent config.
-        # 6. Build arguments for agent call:
-        #    - `messages = prepared_message_history`
-        #    - `system_prompt = determined_system_prompt`
-        #    - `tools = determined_tools` (if any)
-        #    - `output_type = determined_output_type` (if not default)
-        # 7. Execute Agent Call:
-        #    - Try:
-        #        - `pydantic_ai_result = self.agent.run_sync(messages=messages, system_prompt=system_prompt, tools=tools, output_type=output_type)`
-        #        - (Or use `run` for async if BaseHandler becomes async)
-        #    - Catch exceptions from the agent (API errors, validation errors, etc.). Format into error TaskResult.
-        # 8. Process Result:
-        #    - Extract the main output (`pydantic_ai_result.output`).
-        #    - Extract tool calls and results if handled by the agent.
-        #    - Extract token usage, cost, etc. if provided by the result object.
-        # 9. Update Conversation History:
-        #    - Append the user prompt and the agent's final response (and potentially tool interactions) to `self.conversation_history`.
-        # 10. Format and Return Result:
-        #     - Create a TaskResult object.
-        #     - Set `status` (COMPLETE or FAILED).
-        #     - Set `content` to the agent's main output.
-        #     - Add relevant details (token usage, tool calls) to `notes`.
-        #     - Return the TaskResult.
-        raise NotImplementedError("_execute_llm_call implementation deferred to Phase 2")
-    # --- End Phase 2, Set A ---
+        logging.debug("Delegating LLM call to LLMInteractionManager.")
+        if not self.llm_manager:
+            logging.error("LLMInteractionManager not initialized, cannot execute LLM call.")
+            # Return error TaskResult
+            raise NotImplementedError("LLM Manager not available - error TaskResult return needed")
+
+        # Delegate the call, passing necessary context
+        # Note: The manager executes the call, but BaseHandler updates history
+        try:
+            result = self.llm_manager.execute_call(
+                prompt=prompt,
+                conversation_history=self.conversation_history, # Pass current history
+                system_prompt_override=system_prompt_override,
+                tools_override=tools_override,
+                output_type_override=output_type_override,
+            )
+
+            # TODO: Process the result from the manager (which should be TaskResult-like)
+            # TODO: Update self.conversation_history based on the interaction (prompt + result.content)
+            # Example (needs refinement based on actual result structure):
+            # if result and result.status == "COMPLETE": # Assuming TaskResult structure
+            #     self.conversation_history.append({"role": "user", "content": prompt})
+            #     self.conversation_history.append({"role": "assistant", "content": result.content})
+            #     logging.debug("Conversation history updated after successful LLM call.")
+
+            return result # Return the result from the manager
+
+        except NotImplementedError as nie:
+             # Re-raise deferred implementation errors from the manager for now
+             logging.error(f"LLM call execution deferred in LLMInteractionManager: {nie}")
+             raise nie
+        except Exception as e:
+            logging.error(f"Error executing LLM call via manager: {e}", exc_info=True)
+            # Return error TaskResult
+            raise NotImplementedError("LLM call error handling - error TaskResult return needed")
+
+    # --- End Phase 2, Set B ---
 
 
     # Placeholder for potential private methods identified in Phase 1 clarification
