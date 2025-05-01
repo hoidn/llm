@@ -20,6 +20,7 @@ This document provides an index of all Architecture Decision Records (ADRs) in t
 | ADR 14: Operator Context Configuration | Accepted | [14-operator-ctx-config.md](./14-operator-ctx-config.md) | ADR 7 | Task System |
 | ADR 15: Notes Field Standardization | Accepted | [15-notes-field-standardization.md](./15-notes-field-standardization.md) | ADR 9 | Task System, Evaluator |
 | ADR 16: Output Structure Simplification | Accepted | [16-output-structure-simplification.md](./16-output-structure-simplification.md) | ADR 15 | Task System, Evaluator |
+| ADR 19: Aider Integration via MCP and Tool Handling | Proposed | [ADR_019_Aider_MCP_Tool_Handling.md](./ADR_019_Aider_MCP_Tool_Handling.md) | ADR 17 | Handler, AiderBridge, Executors, LLMInteractionManager |
 
 ## ADR Status Definitions
 
