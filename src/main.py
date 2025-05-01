@@ -79,8 +79,9 @@ class Application:
             # Wire cross-dependencies
             self.memory_system.handler = self.passthrough_handler
             self.memory_system.task_system = self.task_system
-            # TaskSystem might need handler reference later?
-            # self.task_system.handler = self.passthrough_handler
+            # Inject the handler into TaskSystem
+            self.task_system.set_handler(self.passthrough_handler)
+            logging.info("Injected Handler into TaskSystem.")
 
             logger.info("Components instantiated.")
 

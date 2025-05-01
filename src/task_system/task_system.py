@@ -29,19 +29,18 @@ class TaskSystem:
     Complies with the contract defined in src/task_system/task_system_IDL.md.
     """
 
-    def __init__(self, memory_system: Optional[MemorySystem] = None):
+    def __init__(self, memory_system: Optional[MemorySystem] = None, handler: Optional[BaseHandler] = None):
         """
         Initializes the Task System.
 
         Args:
             memory_system: An optional instance of MemorySystem.
+            handler: An optional instance of BaseHandler.
         """
         self.memory_system = memory_system
         self._registry = TemplateRegistry()
         self._test_mode: bool = False
-        self._handler_cache: Dict[str, BaseHandler] = (
-            {}
-        )  # Cache for handler instances
+        self._handler: Optional[BaseHandler] = handler # Store injected handler
         self._atomic_executor = AtomicTaskExecutor() # Instantiate the executor
         logging.info("TaskSystem initialized.")
 
@@ -57,19 +56,19 @@ class TaskSystem:
         # Potentially clear handler cache if mode changes behavior
         self._handler_cache = {}
 
+    def set_handler(self, handler: BaseHandler):
+        """Allows injecting the handler after TaskSystem initialization."""
+        logging.debug(f"TaskSystem: Handler instance set: {handler}")
+        self._handler = handler
+        
     def _get_handler(self) -> BaseHandler:
-        """Placeholder to get a handler instance. Replace with actual logic."""
-        # In a real scenario, this might involve configuration or context
-        # to select/create the appropriate handler.
-        if "default_handler" not in self._handler_cache:
-            # This is a placeholder. In a real system, you'd instantiate
-            # BaseHandler (or a subclass) with its dependencies (TaskSystem, MemorySystem, config).
-            # For testing purposes, the fixture injects a mock handler here.
-            logging.warning("Creating a placeholder BaseHandler. Replace with actual handler instantiation.")
-            # Cannot instantiate BaseHandler directly without dependencies.
-            # Relying on test fixture injection for now.
-            raise RuntimeError("Handler not available. Ensure it's injected or configured.")
-        return self._handler_cache["default_handler"]
+        """Returns the configured handler instance."""
+        # Return the stored handler instance
+        if self._handler is None:
+            logging.error("Handler requested from TaskSystem but not set.")
+            # Raise error as handler is crucial for execution
+            raise RuntimeError("Handler not available in TaskSystem. Ensure it's injected via constructor or set_handler.")
+        return self._handler
 
     def _validate_and_merge_context_settings(
         self,
