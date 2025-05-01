@@ -224,12 +224,6 @@ class MemorySystem:
             logger.error(error_msg)
             return AssociativeMatchResult(context_summary="", matches=[], error=error_msg)
             
-        # Check FileAccessManager dependency EARLY
-        if not self.file_access_manager:
-            error_msg = "FileAccessManager dependency not available in MemorySystem."
-            logger.error(error_msg)
-            return AssociativeMatchResult(context_summary="", matches=[], error=error_msg)
-            
         logger.debug(f"get_relevant_context_for called with strategy: {input_data.matching_strategy}")
 
         # 1. Determine Strategy (Default to 'content')
@@ -247,8 +241,6 @@ class MemorySystem:
         # TODO: Implement actual pre-filtering based on query vs paths/metadata later if needed.
         candidate_paths = list(self.global_index.keys())
         logger.debug(f"Pre-filtering selected {len(candidate_paths)} candidate paths (currently uses all).")
-        if not candidate_paths:
-            return AssociativeMatchResult(context_summary="No files indexed to search.", matches=[])
         if not candidate_paths:
             return AssociativeMatchResult(context_summary="No files indexed to search.", matches=[])
 
@@ -319,45 +311,54 @@ class MemorySystem:
 
             # 9. Parse Result
             if task_result.status == "FAILED":
-                error_msg = f"Associative matching task '{llm_task_name}' failed."
+                # Extract error details from the FAILED TaskResult
+                error_msg = f"Associative matching task '{llm_task_name}' failed." # Use specific message prefix
                 error_details = task_result.notes.get("error")
+                reason_suffix = ""
                 if error_details:
-                    # If error details are structured, extract message
-                    if isinstance(error_details, dict) and 'message' in error_details:
-                        error_msg += f" Reason: {error_details['message']}"
-                    elif hasattr(error_details, 'message'):  # Handle TaskFailureError object
-                        error_msg += f" Reason: {error_details.message}"
-                    else:
-                        error_msg += f" Details: {error_details}"
-                else:
-                    error_msg += f" Reason: {task_result.content}"  # Fallback to content
-                logger.error(error_msg)
-                return AssociativeMatchResult(context_summary="", matches=[], error=error_msg)
+                    # Handle both dict and TaskFailureError object cases for the message
+                    detail_msg = error_details.get("message") if isinstance(error_details, dict) else getattr(error_details, 'message', None)
+                    if detail_msg:
+                        reason_suffix = f" Reason: {detail_msg}"
+                if not reason_suffix:
+                    reason_suffix = f" Reason: {task_result.content}" # Fallback to content
 
-            # Try parsing from parsedContent first (if executor uses pydantic-ai output_type)
-            # then fall back to content (if executor uses json.loads)
+                full_error_message = error_msg + reason_suffix
+                logger.error(full_error_message)
+                # Return AssociativeMatchResult indicating failure WITH the extracted message
+                return AssociativeMatchResult(context_summary="", matches=[], error=full_error_message)
+
+            # --- Successful Task Result - Attempt Parsing ---
             parsed_assoc_result = None
-            if task_result.parsedContent and isinstance(task_result.parsedContent, dict):
-                 try:
-                     parsed_assoc_result = AssociativeMatchResult.model_validate(task_result.parsedContent)
-                     logger.debug("Parsed AssociativeMatchResult from TaskResult.parsedContent")
-                 except Exception as e:
-                     logger.warning(f"Failed to validate parsedContent as AssociativeMatchResult: {e}")
 
+            # Try parsedContent first (Pydantic object)
+            if hasattr(task_result, 'parsedContent') and isinstance(task_result.parsedContent, AssociativeMatchResult):
+                parsed_assoc_result = task_result.parsedContent
+                logger.debug("Using AssociativeMatchResult directly from TaskResult.parsedContent")
+            elif task_result.parsedContent and isinstance(task_result.parsedContent, dict):
+                try:
+                    parsed_assoc_result = AssociativeMatchResult.model_validate(task_result.parsedContent)
+                    logger.debug("Validated dict from TaskResult.parsedContent as AssociativeMatchResult")
+                except Exception as e:
+                    logger.warning(f"Failed to validate parsedContent dict as AssociativeMatchResult: {e}. Will try parsing content string.")
+
+            # Fall back to content string (JSON) if parsedContent didn't work or wasn't present/correct type
             if parsed_assoc_result is None and isinstance(task_result.content, str):
                 try:
                     parsed_assoc_result = AssociativeMatchResult.model_validate_json(task_result.content)
                     logger.debug("Parsed AssociativeMatchResult from TaskResult.content JSON string")
                 except Exception as e:
-                    error_msg = f"Failed to parse AssociativeMatchResult JSON from task output: {e}"
-                    logger.error(f"{error_msg}\nContent was: {task_result.content}")
-                    # Return immediately with the specific parsing error
-                    return AssociativeMatchResult(context_summary="", matches=[], error=error_msg)
+                    # Specific error message for parsing failure - RETURN IMMEDIATELY
+                    parsing_error_message = f"Failed to parse AssociativeMatchResult JSON from task output: {e}"
+                    logger.error(f"{parsing_error_message}\nContent was: {task_result.content}")
+                    return AssociativeMatchResult(context_summary="", matches=[], error=parsing_error_message)
 
+            # Final check: Did we successfully parse the result?
             if parsed_assoc_result is None:
-                 error_msg = "Failed to obtain valid AssociativeMatchResult from task."
-                 logger.error(error_msg)
-                 return AssociativeMatchResult(context_summary="", matches=[], error=error_msg)
+                 # This means status was COMPLETE, but parsing failed from both sources, or parsedContent was wrong type
+                 final_error_msg = "Failed to obtain valid AssociativeMatchResult from successful task."
+                 logger.error(f"{final_error_msg} (Content Type: {type(task_result.content)}, ParsedContent Type: {type(task_result.parsedContent)})")
+                 return AssociativeMatchResult(context_summary="", matches=[], error=final_error_msg)
 
             logger.info(f"Successfully generated context via '{llm_task_name}'. Matches: {len(parsed_assoc_result.matches)}")
             return parsed_assoc_result
@@ -384,7 +385,6 @@ class MemorySystem:
         # Example placeholder logic:
         # self._sharded_index = [self.global_index] # Put everything in one shard for now if enabled
         logger.debug(f"Shards recalculated. Count: {len(self._sharded_index)}")
-        pass  # Actual sharding logic deferred
 
     def index_git_repository(
         self, repo_path: str, options: Optional[Dict[str, Any]] = None
