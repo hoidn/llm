@@ -389,5 +389,3 @@ if __name__ == "__main__":
 
     except Exception as main_e:
         logger.exception(f"Error in main execution block: {main_e}")
-
-```

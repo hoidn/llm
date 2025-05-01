@@ -404,5 +404,3 @@ def test_application_init_failure():
     with patch('src.main.MemorySystem', side_effect=Exception("Memory init failed")):
         with pytest.raises(Exception, match="Memory init failed"):
             Application() # Instantiation should fail and raise
-
-```
