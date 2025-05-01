@@ -65,12 +65,15 @@ class Application:
             self.task_system = TaskSystem(memory_system=self.memory_system)
             # Pass handler-specific config if available
             handler_config = self.config.get('handler_config', {})
+            # Ensure a default model identifier is provided if not in config
+            default_model = handler_config.get('default_model_identifier', "anthropic:claude-3-5-sonnet-latest")
+            
             self.passthrough_handler = PassthroughHandler(
                 task_system=self.task_system,
                 memory_system=self.memory_system,
                 config=handler_config,
-                # Pass default_model_identifier from config if present
-                default_model_identifier=handler_config.get('default_model_identifier')
+                # Pass the determined default model identifier
+                default_model_identifier=default_model
             )
 
             # Wire cross-dependencies
@@ -82,11 +85,49 @@ class Application:
             logger.info("Components instantiated.")
 
             # --- Core Template Registration ---
-            # Placeholder: Register core/built-in atomic task templates here
-            # Example:
-            # core_template = {"name": "core:echo", "type": "atomic", ...}
-            # self.task_system.register_template(core_template)
-            logger.info("Core templates registered (placeholder).")
+            logger.info("Registering core task templates...")
+            try:
+                assoc_matching_template = {
+                    "name": "internal:associative_matching", # Use a distinct name
+                    "type": "atomic",
+                    "subtype": "associative_matching", # Use the specific subtype
+                    "description": "Internal task to find relevant files based on query and index.",
+                    "parameters": {
+                        "context_input": {"description": "ContextGenerationInput object as dict"},
+                        "global_index": {"description": "Dictionary of file paths to metadata"}
+                    },
+                    # This is where the LLM instructions go.
+                    "instructions": """Analyze the user query and context provided in 'context_input'.
+Review the file metadata provided in 'global_index'.
+Identify the top 3-5 most relevant file paths from the index based on the query.
+Provide a brief 'context_summary' explaining the relevance.
+Output the result as a JSON object conforming to the AssociativeMatchResult structure:
+{
+"context_summary": "string",
+"matches": [ { "path": "string", "relevance": float (0.0-1.0), "excerpt": "optional string" } ],
+"error": null
+}
+Query Details: {{context_input.query}}
+Inherited Context Hints: {{context_input.inheritedContext}}
+Previous Output Hints: {{context_input.previousOutputs}}
+File Index Snippet (Example Format - Actual input is a dict):
+{% for path, meta in global_index.items() | slice(5) %}
+--- File: {{ path }} ---
+{{ meta | truncate(200) }}
+{% endfor %}
+Based only on the provided query and index metadata, determine the most relevant file paths and output the JSON.""",
+                    # Optional: Specify a model optimized for this kind of task
+                    # "model": "anthropic:claude-3-haiku-latest",
+                    "output_format": {"type": "json"} # Expecting JSON output
+                }
+                self.task_system.register_template(assoc_matching_template)
+                logger.info(f"Registered template: {assoc_matching_template['name']}")
+                # Add other core templates if needed here...
+            except Exception as e:
+                logger.exception(f"Failed to register core templates: {e}")
+                # Decide if this should be fatal for application startup
+            
+            logger.info("Core templates registration complete.")
 
             # Register system-level tools
             self._register_system_tools()
