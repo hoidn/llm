@@ -150,7 +150,8 @@ Query Details: {{context_input.query}}
 File Contents Snippet (Example Format - Actual input is the full dict):
 {{ file_contents | dict_slice(5) | format_dict_snippet(300) }}
 
-Select the best matching paths *from the provided file contents* and output the JSON.""", # Simplified template example
+Select the best matching paths *from the provided file contents*.
+**IMPORTANT:** Your response MUST contain ONLY the valid JSON object conforming to the AssociativeMatchResult structure specified above. Do NOT include any introductory text, explanations, apologies, or concluding remarks. Your entire output must be the JSON object itself, starting with `{` and ending with `}`.""",
                     "output_format": {"type": "json"}
                 }
                 self.task_system.register_template(assoc_matching_content_template)
