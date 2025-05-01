@@ -317,9 +317,6 @@ def test_execute_atomic_template_executor_param_mismatch(
     assert "Missing parameter(s) for substitution: input1" in result.content
 
 
-# --- Tests for generate_context_for_memory_system (DELETED) ---
-
-
 # --- Tests for resolve_file_paths (Phase 2c) ---
 
 @patch('src.task_system.task_system.resolve_paths_from_template')
