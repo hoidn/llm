@@ -262,6 +262,9 @@ class MemorySystem:
                 except Exception as e:
                     logger.warning(f"Could not read content for candidate path: {path}: {e}")
                     continue
+                if content is None:
+                    logger.warning(f"Content read is None for candidate path: {path}")
+                    continue
                 tagged = f'<file path="{path}">{content}</file>'
                 tagged_blocks.append(tagged)
             merged = "\n\n".join(tagged_blocks)

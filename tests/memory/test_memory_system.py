@@ -346,7 +346,8 @@ def test_get_relevant_context_for_content_strategy_flow(memory_system_instance, 
     request_arg = mock_task_system.execute_atomic_template.call_args[0][0]
     assert request_arg.name == "internal:associative_matching_content"
     assert "file_contents" in request_arg.inputs
-    assert request_arg.inputs["file_contents"] == {"/path/a.py": "Content of /path/a.py", "/path/b.py": "Content of /path/b.py"}
+    expected = '<file path="/path/a.py">Content of /path/a.py</file>\n\n<file path="/path/b.py">Content of /path/b.py</file>'
+    assert request_arg.inputs["file_contents"] == expected
     assert request_arg.context_management.freshContext == "disabled" # Check override
 
     # Assert final result
@@ -404,7 +405,9 @@ def test_get_relevant_context_for_content_strategy_read_error(memory_system_inst
     # Assert TaskSystem called with only the successful read
     mock_task_system.execute_atomic_template.assert_called_once()
     request_arg = mock_task_system.execute_atomic_template.call_args[0][0]
-    assert request_arg.inputs["file_contents"] == {"/path/a.py": "Content of /path/a.py"}
+    contents = request_arg.inputs["file_contents"]
+    assert '<file path="/path/a.py">Content of /path/a.py</file>' in contents
+    assert '/path/error.py' not in contents
     # Assert final result
     assert result.matches == expected_matches
 
