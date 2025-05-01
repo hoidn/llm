@@ -112,9 +112,6 @@ def test_application_init_wiring(app_instance):
     # Assert Aider tools were NOT registered
     assert "aiderAutomatic" not in registered_tool_names
     assert "aiderInteractive" not in registered_tool_names
-        config=app_instance.config.get('handler_config'), # Check config passing
-        default_model_identifier=None # Assuming not in dummy config
-    )
 
     # Check cross-dependency wiring (done by __init__)
     assert app_instance.mock_memory.handler == app_instance.mock_handler
