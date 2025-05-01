@@ -295,6 +295,7 @@ class MemorySystem:
         # 7. Create SubtaskRequest
         try:
             # Prevent recursive context fetching within the matching task
+            logger.debug(f"[MemorySystem] building SubtaskRequest for LLM task '{llm_task_name}'")
             context_override = ContextManagement(freshContext='disabled', inheritContext='none')
             # Create a more unique task ID
             subtask_id = f"context-gen-{strategy}-{uuid.uuid4()}"
@@ -395,6 +396,7 @@ class MemorySystem:
                 return AssociativeMatchResult(context_summary="", matches=[], error=final_error_msg)
 
             logger.info(f"Successfully generated context via '{llm_task_name}'. Matches: {len(parsed_assoc_result.matches)}")
+            logger.debug(f"[MemorySystem] returning AssociativeMatchResult(matches={len(parsed_assoc_result.matches)})")
             return parsed_assoc_result
 
         except Exception as e:
