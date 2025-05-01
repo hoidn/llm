@@ -5,19 +5,20 @@ from typing import Any, Dict, List, Optional, Callable, Type, TYPE_CHECKING
 # Define module-level logger
 logger = logging.getLogger(__name__)
 
-# --- REVERT TO TOP-LEVEL IMPORT ---
+# --- Attempt Top-Level Import for Both Agent and AIResponse ---
 try:
-    from pydantic_ai import Agent
-    from pydantic_ai.models import AIResponse # Keep if AIResponse is used for hints/processing
+    # Try importing both from the top level
+    from pydantic_ai import Agent, AIResponse
     _PydanticAI_Import_Success = True
-    logging.debug("LLMInteractionManager: Top-level pydantic-ai import successful.")
+    logging.debug("LLMInteractionManager: Top-level pydantic-ai import successful (Agent, AIResponse).")
 except ImportError as e:
     # Log the specific import error details
     logging.error(f"LLMInteractionManager: Top-level import of pydantic-ai failed: {e}", exc_info=True)
+    # Set both to None if import fails
     Agent = None # type: ignore
     AIResponse = None # type: ignore
     _PydanticAI_Import_Success = False
-# --- END REVERT ---
+# --- End Import Attempt ---
 
 # Use TYPE_CHECKING for type hints without runtime imports
 if TYPE_CHECKING:
@@ -187,10 +188,9 @@ class LLMInteractionManager:
                 logger.debug(f"Calling agent.run_sync with prompt='{prompt[:100]}...' and kwargs={run_kwargs}")
 
             # Call the agent with prompt as positional arg, others as kwargs
-            # --- REVERT HINT ---
             # Hint using module-level AIResponse (make Optional if needed)
-            response: Optional[AIResponse] = self.agent.run_sync(prompt, **run_kwargs) # type: ignore
-            # --- END REVERT ---
+            # Remove # type: ignore if import is expected to succeed now
+            response: Optional[AIResponse] = self.agent.run_sync(prompt, **run_kwargs)
 
             if self.debug_mode:
                 logging.debug(f"Agent response received: {response}")
