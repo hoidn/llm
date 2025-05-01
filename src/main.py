@@ -62,48 +62,64 @@ class Application:
 
         logger.info("Initializing Application components...")
         try:
-            # Instantiate FileAccessManager first
-            # Assuming base_path comes from config or defaults to PROJECT_ROOT
-            # Ensure PROJECT_ROOT is defined correctly earlier in the file
-            # fm_base_path = self.config.get('file_manager_base_path', PROJECT_ROOT) # PROJECT_ROOT might not be defined here
-            fm_base_path = self.config.get('file_manager_base_path') # Get from config or None
-            self.file_access_manager = FileAccessManager(base_path=fm_base_path) # Pass None if not in config
+            # --- START MODIFICATION ---
+            # 1. Instantiate components with fewer dependencies first
+            # Define PROJECT_ROOT if not already defined globally in the file
+            # This assumes PROJECT_ROOT is needed for the default path
+            PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+            fm_base_path = self.config.get('file_manager_base_path', PROJECT_ROOT) # Use PROJECT_ROOT as default
+            self.file_access_manager = FileAccessManager(base_path=fm_base_path)
             logger.info(f"FileAccessManager initialized with base_path: {self.file_access_manager.base_path}") # Log actual base path
 
-            # Instantiate components needing FileAccessManager
-            self.memory_system = MemorySystem(
-                handler=None, # Will be injected later
-                task_system=None, # Will be injected later
-                file_access_manager=self.file_access_manager, # Pass instance
-                config=self.config.get('memory_config')
-            )
-            # TaskSystem now only needs memory_system initially
-            self.task_system = TaskSystem(memory_system=self.memory_system)
+            # TaskSystem only needs MemorySystem later (or not at all in init)
+            # We can instantiate it now, but MemorySystem needs TaskSystem.
+            # Let's create placeholders and fully init later, OR change TaskSystem init.
+            # Option A: Change TaskSystem init (Simpler if TaskSystem doesn't NEED memory_system during its own init)
+            # Assume TaskSystem init doesn't strictly need memory_system immediately
+            self.task_system = TaskSystem() # Instantiate with no args initially
+            logger.info("TaskSystem initialized (placeholder).")
 
+            # 2. Instantiate Handler (needs TaskSystem)
             handler_config = self.config.get('handler_config', {})
             default_model = handler_config.get('default_model_identifier', "anthropic:claude-3-5-sonnet-latest")
-            # BaseHandler/PassthroughHandler creates its *own* FileAccessManager internally
-            # based on its config, which is fine. MemorySystem needs its own instance passed in.
             self.passthrough_handler = PassthroughHandler(
-                task_system=self.task_system,
-                memory_system=self.memory_system,
+                task_system=self.task_system, # Pass TaskSystem instance
+                memory_system=None, # Pass None initially, set below
                 config=handler_config,
                 default_model_identifier=default_model
             )
+            logger.info("PassthroughHandler initialized.")
 
-            # Wire cross-dependencies (Inject handler into TaskSystem and MemorySystem)
-            self.memory_system.handler = self.passthrough_handler
-            self.memory_system.task_system = self.task_system
-            # Make sure set_handler exists in TaskSystem
+            # 3. Instantiate MemorySystem (needs Handler, TaskSystem, FileManager)
+            self.memory_system = MemorySystem(
+                handler=self.passthrough_handler, # Pass Handler instance
+                task_system=self.task_system, # Pass TaskSystem instance
+                file_access_manager=self.file_access_manager, # Pass FileManager instance
+                config=self.config.get('memory_config')
+            )
+            logger.info("MemorySystem initialized.")
+
+            # 4. Complete wiring dependencies
+            # Ensure TaskSystem has memory_system attribute or setter
+            if hasattr(self.task_system, 'memory_system'):
+                self.task_system.memory_system = self.memory_system # Set memory_system on TaskSystem
+            else:
+                logger.warning("TaskSystem instance does not have a 'memory_system' attribute to set.")
+            # Ensure TaskSystem has set_handler method
             if hasattr(self.task_system, 'set_handler'):
-                 self.task_system.set_handler(self.passthrough_handler)
-                 logging.info("Injected Handler into TaskSystem and MemorySystem.")
+                 self.task_system.set_handler(self.passthrough_handler) # Set handler on TaskSystem
             else:
                  logger.error("TaskSystem does not have set_handler method! Cannot inject handler.")
                  raise AttributeError("TaskSystem missing set_handler method")
+            # Ensure PassthroughHandler has memory_system attribute or setter
+            if hasattr(self.passthrough_handler, 'memory_system'):
+                self.passthrough_handler.memory_system = self.memory_system # Set memory_system on Handler
+            else:
+                logger.warning("PassthroughHandler instance does not have a 'memory_system' attribute to set.")
+            logger.info("Cross-dependencies wired.")
+            # --- END MODIFICATION ---
 
-
-            logger.info("Components instantiated.")
+            logger.info("Components instantiated and wired.")
 
             # --- Core Template Registration ---
             logger.info("Registering core task templates...")
