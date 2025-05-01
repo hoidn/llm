@@ -11,7 +11,10 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 logger = logging.getLogger(__name__)
 
 # Import necessary models
-from src.system.models import ContextGenerationInput, AssociativeMatchResult, MatchTuple, SubtaskRequest, ContextManagement
+from src.system.models import (
+    ContextGenerationInput, AssociativeMatchResult, MatchTuple, 
+    SubtaskRequest, ContextManagement, TaskResult
+)
 from src.handler.file_access import FileAccessManager
 
 # Import the indexer
@@ -329,7 +332,7 @@ class MemorySystem:
                     logger.debug("Parsed AssociativeMatchResult from TaskResult.content JSON string")
                 except Exception as e:
                     error_msg = f"Failed to parse AssociativeMatchResult JSON from task output: {e}"
-                    logger.error(f"{msg}\nContent was: {task_result.content}")
+                    logger.error(f"{error_msg}\nContent was: {task_result.content}")
                     return AssociativeMatchResult(context_summary="", matches=[], error=error_msg)
 
             if parsed_assoc_result is None:
