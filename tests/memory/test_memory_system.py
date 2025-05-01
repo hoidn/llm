@@ -15,6 +15,7 @@ from src.memory.memory_system import MemorySystem, DEFAULT_SHARDING_CONFIG
 from src.system.models import ContextGenerationInput, AssociativeMatchResult, MatchTuple, TaskResult, SubtaskRequest, ContextManagement, TaskFailureError # Added TaskResult, SubtaskRequest, ContextManagement, TaskFailureError
 from src.task_system.task_system import TaskSystem # Added for patching
 from src.handler.file_access import FileAccessManager # For mock spec
+from src.handler.file_access import FileAccessManager # For mock spec
 from src.handler.base_handler import BaseHandler # For mock spec
 
 
@@ -45,7 +46,8 @@ def mock_dependencies(mock_file_manager_ms): # Add mock_file_manager_ms fixture 
 @pytest.fixture # Update memory_system_instance to use new fixture
 def memory_system_instance(mock_dependencies, mock_file_manager_ms): # Add mock_file_manager_ms
     """Provides a MemorySystem instance with mock dependencies."""
-    handler_mock, task_system_mock = mock_dependencies # Unpack only handler and task_system
+    # Unpack 3 items from mock_dependencies, ignoring the 3rd (file manager mock)
+    handler_mock, task_system_mock, _ = mock_dependencies
     # Pass the new mock file manager
     return MemorySystem(
         handler=handler_mock,

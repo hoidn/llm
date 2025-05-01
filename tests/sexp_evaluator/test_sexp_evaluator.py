@@ -535,7 +535,6 @@ def test_eval_primitive_get_context_with_content_strategy(evaluator, mock_parser
         [strategy_sym, content_sym] # Pass strategy as symbol
     ]
     expected_context_input = ContextGenerationInput(query="q", matching_strategy='content')
-    # Mock memory system return with required context_summary field
     mock_memory_system.get_relevant_context_for.return_value = AssociativeMatchResult(
         context_summary="Mock context summary",
         matches=[]
