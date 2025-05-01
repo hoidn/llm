@@ -107,8 +107,14 @@ def run_demo():
             # return # Optional: exit if indexing fails
 
         # 4. Define S-expression Command
-        # --- START MODIFICATION: Change S-expression to return the list ---
-        # Use the updated SEARCH_KEYWORD
+        # --- START MODIFICATION: Keep original S-expression as comment ---
+        # Original S-expression that reads file content:
+        # sexp_command = f"""
+        # (let ((relevant_files (get_context (query "{SEARCH_KEYWORD}"))))
+        #   (system:read_files (file_paths relevant_files)))
+        # """
+
+        # Current S-expression returns the list of paths directly
         sexp_command = f"""
         (let ((relevant_files (get_context (query "{SEARCH_KEYWORD}"))))
           relevant_files) ; Return the list of paths directly
@@ -130,7 +136,7 @@ def run_demo():
         try:
             print(json.dumps(result_dict, indent=2))
 
-            # --- START MODIFICATION: Update interpretation ---
+            # --- Interpretation (matches current S-expression) ---
             if result_dict.get("status") == "COMPLETE":
                 print("\n--- Interpretation ---")
                 print(f"Workflow looked for files related to '{SEARCH_KEYWORD}' in the project repo (scoped by index patterns).")
@@ -140,7 +146,7 @@ def run_demo():
                     print(f"Number of relevant files found: {len(content)}")
                 else:
                     print(f"Content type is not a list: {type(content)}")
-            # --- END MODIFICATION ---
+            # --- END Interpretation ---
 
             else:
                 print("\n--- Workflow Execution Failed ---")
