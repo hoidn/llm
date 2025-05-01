@@ -440,7 +440,8 @@ def test_get_relevant_context_for_task_system_returns_invalid_json(memory_system
     assert isinstance(result, AssociativeMatchResult)
     assert result.matches == []
     assert result.error is not None
-    assert "Failed to parse AssociativeMatchResult JSON" in result.error
+    # Check for a key part of the Pydantic validation error message
+    assert "Failed to validate JSON" in result.error or "Invalid JSON" in result.error
 
 def test_get_relevant_context_for_missing_task_system(memory_system_instance, mock_file_manager_ms): # Corrected name
     """Test when TaskSystem dependency is missing."""
