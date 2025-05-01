@@ -165,6 +165,7 @@ class SexpEvaluator:
         logging.debug(f"Dispatching list evaluation for: {node}")
         # Pass the original node list to the list evaluation handler
         return self._eval_list(node, env)
+
     def _eval_list(self, node_list: list, env: SexpEnvironment) -> Any:
         """Handles the evaluation of a non-empty list."""
         node_str = str(node_list) # For error reporting
@@ -174,55 +175,59 @@ class SexpEvaluator:
         operator_node = node_list[0]
         args = node_list[1:] # Unevaluated args
 
-        # --- Refined Evaluation Flow ---
+        # --- Dispatch Logic ---
 
-        # 1. Check if operator is a Symbol
+        # 1. Check if operator is a Symbol (common case)
         if isinstance(operator_node, Symbol):
             operator_target_name = operator_node.value()
             logging.debug(f"  _eval_list: Operator is Symbol: '{operator_target_name}'")
-            
-            # 2. Check if the operator name is a Special Form
-            special_forms = {"if", "let", "bind", "progn", "quote"}
+
+            # 1a. Check if it's a Special Form
+            # =========================================================== #
+            # ===================== FIX AREA START ====================== #
+            # =========================================================== #
+            # Ensure this set is correctly defined and checked
+            special_forms = {"if", "let", "bind", "progn", "quote", "defatom"}
             if operator_target_name in special_forms:
                 logging.debug(f"  _eval_list: Dispatching to Special Form: {operator_target_name}")
                 # Special forms handle their own *unevaluated* args
                 return self._eval_special_form(operator_target_name, args, env)
+            # =========================================================== #
+            # ====================== FIX AREA END ======================= #
+            # =========================================================== #
 
-            # 3. Check if the operator name is a Primitive
+            # 1b. Check if it's a Primitive
             primitives = {"list", "get_context"}
             if operator_target_name in primitives:
                 logging.debug(f"  _eval_list: Dispatching to Primitive: {operator_target_name}")
                 # Primitives receive unevaluated args and handle evaluation internally
                 return self._eval_primitive(operator_target_name, args, env)
 
-            # 4. Not a special form or primitive, assume it's a task/tool name
+            # 1c. Not a special form or primitive -> Treat as standard invocation target name
             else:
                 logging.debug(f"  _eval_list: Dispatching to Invocation (Symbol): {operator_target_name}")
-                # <<< Log before calling _handle_invocation >>>
                 logging.debug(f"  >> Calling _handle_invocation for SYMBOL target='{operator_target_name}', args={args}")
                 return self._handle_invocation(operator_target_name, args, env, node_str)
-        
+
+        # 2. Operator is not a symbol (e.g., a list like ((lambda ...) arg))
         else:
-            # 5. Operator is a complex expression that should evaluate to a callable
             logging.debug(f"  _eval_list: Operator is Non-Symbol: {operator_node}")
             try:
-                # <<< Log before evaluating the operator >>>
                 logging.debug(f"  >> Evaluating Non-Symbol operator: {operator_node}")
-                operator_callable = self._eval(operator_node, env)
-                # <<< Log the result of evaluating the operator >>>
-                logging.debug(f"  >> Evaluated Non-Symbol operator to: {operator_callable} (Type: {type(operator_callable)})")
-                
-                if callable(operator_callable):
-                    logging.debug(f"  _eval_list: Dispatching to Invocation (Callable): {operator_callable}")
-                    # <<< Log before calling _handle_invocation >>>
-                    logging.debug(f"  >> Calling _handle_invocation for CALLABLE target={operator_callable}, args={args}")
-                    return self._handle_invocation(operator_callable, args, env, node_str)
+                evaluated_operator = self._eval(operator_node, env) # Evaluate the operator expression itself
+                logging.debug(f"  >> Evaluated Non-Symbol operator to: {evaluated_operator} (Type: {type(evaluated_operator)})")
+
+                # 2a. Check if evaluated operator is callable
+                if callable(evaluated_operator):
+                    logging.debug(f"  _eval_list: Dispatching to Invocation (Callable): {evaluated_operator}")
+                    logging.debug(f"  >> Calling _handle_invocation for CALLABLE target={evaluated_operator}, args={args}")
+                    return self._handle_invocation(evaluated_operator, args, env, node_str)
+                # 2b. Evaluated operator is not callable
                 else:
-                    # Log the failure point clearly
-                    logging.error(f"  _eval_list: Evaluated Non-Symbol operator '{operator_node}' to non-callable result '{operator_callable}'. Raising error.")
-                    raise SexpEvaluationError(f"Cannot apply non-callable operator: {operator_callable} (evaluated from: {operator_node})", node_str)
+                    logging.error(f"  _eval_list: Evaluated Non-Symbol operator '{operator_node}' to non-callable result '{evaluated_operator}'. Raising error.")
+                    raise SexpEvaluationError(f"Cannot apply non-callable operator: {evaluated_operator} (evaluated from: {operator_node})", node_str)
             except Exception as e:
-                if isinstance(e, SexpEvaluationError): 
+                if isinstance(e, SexpEvaluationError):
                     raise
                 raise SexpEvaluationError(f"Failed to evaluate operator expression: {operator_node}", node_str) from e
 
