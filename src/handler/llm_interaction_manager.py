@@ -143,32 +143,30 @@ class LLMInteractionManager:
             return {"success": False, "error": "LLM Agent not initialized."}
 
         try:
-            # Prepare messages for the agent
-            messages = conversation_history + [{"role": "user", "content": prompt}]
-
             # Determine the system prompt to use
             current_system_prompt = system_prompt_override if system_prompt_override is not None else self.base_system_prompt
 
-            # Prepare arguments for run_sync
-            agent_args = {
-                "messages": messages,
+            # Prepare keyword arguments separately
+            run_kwargs = {
+                "message_history": conversation_history, # Pass history here
                 "system_prompt": current_system_prompt,
             }
             if tools_override:
-                # Ensure tools_override format matches pydantic-ai expectations
-                # It might expect functions, Pydantic models, or specific tool objects
-                agent_args["tools"] = tools_override
+                run_kwargs["tools"] = tools_override
                 logging.debug(f"Executing agent call with {len(tools_override)} tools.")
             if output_type_override:
-                agent_args["output_type"] = output_type_override
+                run_kwargs["output_type"] = output_type_override
                 logging.debug(f"Executing agent call with output_type: {output_type_override.__name__}")
 
-            if self.debug_mode:
-                logging.debug(f"Calling agent.run_sync with args: {agent_args}")
+            # Log the arguments being passed
+            logger.debug(f"LLMInteractionManager: Calling agent.run_sync with prompt='{prompt[:100]}...' and kwargs={run_kwargs}")
 
-            # Call the agent (synchronously for now)
-            # Use duck typing instead of explicit type hint
-            response = self.agent.run_sync(**agent_args)
+            if self.debug_mode:
+                # Redundant logging now, keep or remove
+                logger.debug(f"Calling agent.run_sync with prompt='{prompt[:100]}...' and kwargs={run_kwargs}")
+
+            # Call the agent with prompt as positional arg, others as kwargs
+            response = self.agent.run_sync(prompt, **run_kwargs) # type: ignore
 
             if self.debug_mode:
                 logging.debug(f"Agent response received: {response}")
