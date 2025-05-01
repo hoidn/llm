@@ -270,67 +270,34 @@ class MemorySystem:
              return AssociativeMatchResult(context_summary="Empty search criteria.", matches=[])
 
 
-        # 4. Perform associative matching (Simple Substring Search for Phase 2a)
-        matches = []
-        index_to_search = {}
+        # 4. Delegate context generation to TaskSystem
+        logging.debug("Delegating context generation to TaskSystem.")
 
-        # Use global index regardless of sharding setting for Phase 2a
-        # Structure is in place for future sharding logic.
-        if self._config.get("sharding_enabled", False):
-            logging.debug("Sharding enabled, but using global index for Phase 2a matching.")
-            # In future: iterate through self._sharded_index
-            index_to_search = self.global_index
-        else:
-            logging.debug("Sharding disabled, using global index for matching.")
-            index_to_search = self.global_index
+        # 3. Check TaskSystem dependency
+        if not self.task_system:
+            error_msg = "TaskSystem dependency not available in MemorySystem for context generation."
+            logging.error(error_msg)
+            return AssociativeMatchResult(context_summary="", matches=[], error=error_msg)
 
-        # Create a set of unique words from all search strings
-        search_words = set()
-        for s in search_strings_lower:
-            # Basic word splitting, might need more sophisticated tokenization
-            search_words.update(s.split())
+        try:
+            # 4. Call TaskSystem's mediation method
+            # Pass the validated ContextGenerationInput object and the current global_index
+            result: AssociativeMatchResult = self.task_system.generate_context_for_memory_system(
+                context_input=input_data, # Pass the validated input object
+                global_index=self.global_index # Pass the full index
+            )
 
-        if not search_words: # Handle case where search strings were present but contained only whitespace
-             logging.warning("Search words set is empty after splitting.")
-             return AssociativeMatchResult(context_summary="Empty search criteria after splitting.", matches=[])
+            # 5. Return the result from TaskSystem directly
+            # TaskSystem is responsible for handling errors during its process
+            # and returning an appropriate AssociativeMatchResult (potentially with an error message)
+            logging.info(f"Received context from TaskSystem. Matches: {len(result.matches)}, Error: {result.error}")
+            return result
 
-        logging.debug(f"Searching index with {len(index_to_search)} entries using words: {search_words}")
-
-        # --- START ADDITION ---
-        logging.debug(f"MemorySystem: Index size being searched: {len(index_to_search)}")
-        # Log a few keys from the index for verification (optional, can be verbose)
-        if index_to_search:
-             logging.debug(f"MemorySystem: Sample index keys: {list(index_to_search.keys())[:5]}")
-        logging.debug(f"MemorySystem: Searching with words: {search_words}")
-        # --- END ADDITION ---
-
-        for file_path, metadata in index_to_search.items():
-            metadata_lower = metadata.lower()
-            metadata_words = set(metadata_lower.split()) # Split metadata into words
-
-            # Check if there's any intersection between search words and metadata words
-            if search_words.intersection(metadata_words):
-                # Create MatchTuple according to Pydantic model
-                # Using placeholder relevance 1.0 for direct match, no excerpt
-                matches.append(MatchTuple(path=file_path, relevance=1.0)) # Adhere to MatchTuple model
-                # --- START MODIFICATION ---
-                logging.debug(f"MemorySystem: Match FOUND for '{search_words}' in: {file_path}")
-                # --- END MODIFICATION ---
-
-        # --- START ADDITION ---
-        logging.debug(f"MemorySystem: Total matches found: {len(matches)}")
-        # --- END ADDITION ---
-
-        # 5. Format the results
-        context_summary = f"Found {len(matches)} potential matches based on keyword search."
-        logging.debug(f"Context matching complete. Found {len(matches)} matches for query derived from: {search_strings}")
-
-        # 7. Return the AssociativeMatchResult
-        return AssociativeMatchResult(
-            context_summary=context_summary,
-            matches=matches,
-            error=None
-        )
+        except Exception as e:
+            # Catch unexpected errors during the delegation call itself
+            error_msg = f"Unexpected error delegating context generation to TaskSystem: {e}"
+            logging.exception(error_msg) # Log full traceback
+            return AssociativeMatchResult(context_summary="", matches=[], error=error_msg)
         # --- End Phase 2a Implementation ---
 
     def _recalculate_shards(self) -> None:
