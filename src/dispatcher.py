@@ -257,20 +257,28 @@ def execute_programmatic_task(
                         if 'message' in original_error_dict: fail_msg = original_error_dict['message']
                         # Cannot reliably get details object if parsing failed
 
-                # Use the helper to reconstruct the FAILED result, preserving details
-                task_result_dict = _create_failed_result_dict(
+                # Use the helper to create the error structure with the ORIGINAL message
+                error_structure = _create_failed_result_dict(
                     reason=fail_reason,
-                    message=f"Tool Execution Error: {fail_msg}", # Add prefix for clarity
-                    details_obj=fail_details_obj # Pass the extracted details object
+                    message=fail_msg, # Pass the ORIGINAL fail_msg here
+                    details_obj=fail_details_obj
                 )
-                # Merge notes (Dispatcher notes first, then overwrite with tool notes)
-                final_notes = notes.copy()
+
+                # Create the final TaskResult dictionary
+                task_result_dict = {
+                    "status": "FAILED",
+                    # Set the top-level content with the PREFIXED message
+                    "content": f"Tool Execution Error: {fail_msg}",
+                    # Notes merging logic (ensure dispatcher notes are merged correctly)
+                    "notes": notes.copy() # Start with dispatcher notes
+                }
+
                 # Merge original notes from the tool result (excluding the 'error' key itself)
                 original_notes_without_error = {k: v for k, v in tool_result_obj.notes.items() if k != 'error'}
-                final_notes.update(original_notes_without_error)
-                # Add the newly formatted error structure back into notes
-                task_result_dict['notes'] = final_notes
-                task_result_dict['notes']['error'] = _create_failed_result_dict(fail_reason, f"Tool Execution Error: {fail_msg}", fail_details_obj)['notes']['error']
+                task_result_dict['notes'].update(original_notes_without_error)
+
+                # Add the correctly formatted error structure (from the helper) into notes
+                task_result_dict['notes']['error'] = error_structure['notes']['error'] # Extract the error dict from helper result
 
 
             elif tool_result_obj.status == "CONTINUATION":
