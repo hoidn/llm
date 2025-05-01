@@ -236,3 +236,17 @@ To ensure predictable component interactions and simplify error management, this
 5.  **Orchestrator Responsibility:** Caller components (Orchestrators like `Dispatcher`, `SexpEvaluator`) are responsible for handling both returned FAILED `TaskResult` objects and documented exceptions from the components they call, formatting them consistently before propagating further (See Implementation Rule 8.x).
 
 This approach promotes clearer contracts, centralizes error handling logic in callers, and makes component behavior more predictable.
+
+## Error Handling Philosophy
+
+To ensure predictable component interactions and simplify error management, this project adheres to the following error propagation strategy:
+
+1.  **Prefer Returning FAILED TaskResult:** Components (like `TaskSystem`, `BaseHandler`, Tool Executors) should primarily signal recoverable errors or expected failures by returning a `TaskResult` object (or dictionary conforming to its structure) with `status='FAILED'`.
+2.  **Structured Error in Notes:** When returning a FAILED `TaskResult`, the `notes` dictionary MUST contain an `error` key. The value associated with `error` SHOULD be a structured error object (like `TaskFailureError` or its variants, serialized to a dictionary if needed) containing at least `type`, `reason`, and `message` fields, and optionally `details`.
+3.  **Limit Raising Exceptions:** Raising exceptions (like `TaskError` subclasses or standard Python exceptions) across public component API boundaries should be reserved for:
+    *   Truly *exceptional* or *unrecoverable* system states (e.g., configuration errors during initialization, critical dependency failures).
+    *   Situations where immediate termination of the current control flow is required and cannot be reasonably handled by returning a FAILED status.
+4.  **Document Raised Exceptions:** Any exception that *can* be raised across a component's public boundary MUST be documented in its IDL using `@raises_error`.
+5.  **Orchestrator Responsibility:** Caller components (Orchestrators like `Dispatcher`, `SexpEvaluator`) are responsible for handling both returned FAILED `TaskResult` objects and documented exceptions from the components they call, formatting them consistently before propagating further (See Implementation Rule 8.x).
+
+This approach promotes clearer contracts, centralizes error handling logic in callers, and makes component behavior more predictable.

@@ -9,7 +9,7 @@
 
 The cornerstone of our development process is the use of **Interface Definition Language (IDL)** files (`*_IDL.md`).
 
-*   **IDL is the Contract:** Each IDL file defines a strict **contract** for a specific component (module or interface). It specifies *what* the component must do, its public interface, its expected behavior, its dependencies, and its error conditions.
+*   **IDL is the Contract:** Each IDL file defines a strict **contract** for a specific component (module or interface). It specifies *what* the component must do, its public interface, its expected behavior, its dependencies, and its error conditions. Implementations must not only match the public interface but also adhere to the behavioral descriptions, preconditions, postconditions, and specified data structures (like required dictionary keys) defined in the IDL.
 *   **Specification, Not Implementation:** The IDL focuses on the **behavioral specification** and separates it from the *how* (the Python implementation details).
 *   **Source of Truth:** When implementing a component, its corresponding `_IDL.md` file is the authoritative source for its requirements.
 *   **Bidirectional Goal:** We use IDL both to *specify* new components before coding (IDL-to-Code) and to *document* the essential contract of existing components by abstracting away implementation details (Code-to-IDL).
@@ -119,7 +119,7 @@ When assigned to implement or modify a component specified by an IDL (or tacklin
     *   **Reference:** See Section 5 in `docs/implementation_rules.md`.
 *   **Dependency Injection:**
     *   **Concept:** Components receive their dependencies (other components, resources) via their constructor (`__init__`). Avoid global state or direct instantiation of dependencies within methods.
-    *   **Practice:** Identify dependencies from IDL (`@depends_on`). Add corresponding parameters to your class `__init__` method with type hints. Store references as instance attributes (e.g., `self.memory_system = memory_system`).
+    *   **Practice:** Identify dependencies from IDL (`@depends_on`). Add corresponding parameters to your class `__init__` method with type hints. Store references as instance attributes (e.g., `self.memory_system = memory_system`). Ensure dependencies are instantiated in the correct order before being injected, and be mindful of potential circular dependencies during design (see `implementation_rules.md` for details).
 *   **Template & Workflow Separation:**
     *   **Concept:** XML files define **only atomic tasks** with explicit parameter declarations, while S-expressions handle **all workflow composition** (sequences, loops, conditionals).
     *   **Practice:** When implementing `AtomicTaskExecutor`, ensure template variables are substituted **only from explicitly passed parameters**. When implementing `SexpEvaluator`, ensure it handles all composition logic.
@@ -132,9 +132,9 @@ When assigned to implement or modify a component specified by an IDL (or tacklin
 **6. Testing Strategy**
 
 *   **Framework:** `pytest`.
-*   **Focus:** Prioritize **Integration and Functional/End-to-End tests** over isolated unit tests. Verify components work together correctly.
-*   **Mocking:** **Minimize mocking.** Mock only at external boundaries (LLM APIs, external services) or where strictly necessary for isolation/speed. Prefer using real instances or simple fakes/stubs configured for the test case.
-*   **Use Correct Mocking Techniques:** Apply mocking and patching correctly, especially when dealing with Dependency Injection. Refer to the detailed guidelines and examples in `docs/implementation_rules.md` (Section 7).
+*   **Focus:** Prioritize **Integration and Functional/End-to-End tests** over isolated unit tests. Verify components work together correctly according to their IDL contracts, testing realistic "vertical slices" of functionality.
+*   **Mocking:** **Minimize mocking.** Mock primarily at external boundaries (LLM APIs, external services) or where strictly necessary. Prefer using real instances of internal components in integration tests.
+*   **Error Path Testing:** Explicitly test error handling and propagation between components. Use robust assertion techniques for error conditions (checking type/reason over exact messages where possible).
 *   **Fixtures:** Use `pytest` fixtures (`tests/conftest.py`) for test setup (e.g., creating component instances with test configurations or mocked boundaries).
 *   **Structure:** Follow the `Arrange-Act-Assert` pattern. Mirror the `src` directory structure in `tests`.
 

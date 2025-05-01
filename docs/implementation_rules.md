@@ -95,11 +95,13 @@ This document outlines the standard conventions, patterns, and rules for impleme
         *   **Integration Complexity:** Dynamically registering tools with an already active `pydantic-ai` Agent can be complex. The current `register_tool` implementation stores the necessary information. Further work may be needed within `LLMInteractionManager` or `BaseHandler` to make these dynamically registered tools available to the `pydantic-ai` Agent during its execution run (e.g., potentially passing them as part of the `run_sync`/`run` call if supported, or requiring agent re-initialization). Consult `pydantic-ai` documentation for best practices.
     *   **Structured Output:** Leverage `pydantic-ai`'s `output_type` parameter in the agent's `run`/`run_sync` methods (passed via `LLMInteractionManager`) when structured output (defined by a Pydantic model) is required.
 *   **Reference:** Familiarize yourself with the `pydantic-ai` library documentation, potentially summarized or linked in `docs/librarydocs/pydanticai.md`.
+*   **Verify Library Usage:** When integrating *any* significant third-party library (like `pydantic-ai`), carefully verify API usage (e.g., function signatures, required arguments, expected data formats) against the library's official documentation and examples for the specific version being used. Do not rely solely on code examples from other sources or previous versions.
+*   **Test Wrapper Interactions:** Wrapper classes (like `LLMInteractionManager`) that directly interact with external libraries should have targeted integration tests. These tests should verify the interaction (mocking the external network endpoint if necessary) and ensure data is passed to the library and results are received/processed correctly according to the library's expected behavior.
 
 **7. Testing Conventions**
 
 *   **Framework:** Use `pytest`.
-*   **Emphasis on Integration/Functional Tests:** While unit tests are valuable for isolated logic, prioritize testing the interactions *between* components (integration tests) and testing complete workflows from input to output (functional/end-to-end tests). Verify components work together according to their IDL contracts.
+*   **Emphasis on Integration/Functional Tests:** Prioritize integration tests that verify the collaboration between real component instances according to their IDL contracts. While unit tests are useful for isolated logic, integration tests are crucial for detecting issues arising from component interactions, dependency injection, configuration, and error propagation. Verify components work together according to their IDL contracts.
 
 *   **Mocking and Patching Strategy:**
     *   **Guideline 1: Test Dependency Injection by Passing Mocks:**
@@ -184,6 +186,32 @@ This document outlines the standard conventions, patterns, and rules for impleme
 *   **Fixtures:** Use `pytest` fixtures extensively for setting up test environments, component instances (often with injected mocks as per Guideline 1), and test data. Define shared fixtures in `conftest.py`.
 *   **Markers:** Use `pytest.mark` to categorize tests (e.g., `@pytest.mark.integration`, `@pytest.mark.llm`).
 *   **End-to-End Tests:** Define key user workflows and implement them as integration tests, mocking only the outermost boundaries (LLM API, external services).
+*   **7.x Testing Error Conditions:** When writing tests (`pytest`) to verify error handling logic:
+    *   **Verify Status:** Always assert the overall status is `FAILED` (e.g., `assert result['status'] == 'FAILED'`).
+    *   **Prefer Asserting Type/Reason:** Instead of matching exact error message strings, prioritize asserting the `type` and `reason` fields within the structured error object found in `notes['error']`. This verifies the correct error *category* was identified.
+        ```python
+        assert result['notes']['error']['type'] == 'TASK_FAILURE'
+        assert result['notes']['error']['reason'] == 'template_not_found'
+        ```
+    *   **Check Key Details:** Assert the presence and validity of essential data within the error `details` object/dictionary if the test scenario requires specific details to be preserved.
+        ```python
+        assert 'details' in result['notes']['error']
+        assert result['notes']['error']['details']['failing_param'] == 'expected_value'
+        ```
+    *   **Use Message Checks Sparingly:** If checking the error message string is necessary:
+        *   Prefer checking for the presence of key *substrings* (`assert 'important part' in error_message`) over exact equality (`==`), as formatting might change slightly.
+        *   If exact equality is required, consider defining the expected error message format using shared constants or helpers used by both production code and tests to avoid drift.
+    *   **Test Exception Raising:** If testing code that *raises* an exception (as documented in IDL `@raises_error`), use `pytest.raises`:
+        ```python
+        import pytest
+        from src.system.errors import SpecificError # Replace with actual error type
+
+        with pytest.raises(SpecificError) as exc_info:
+            component.method_that_raises(invalid_input)
+        # Optionally assert specific attributes of the caught exception
+        assert "specific detail" in str(exc_info.value)
+        ```
+*   **Unit Test Complex Logic:** While integration tests are prioritized, complex internal algorithms or utility functions (e.g., parameter substitution, complex parsing, intricate validation logic) should have dedicated unit tests with broad coverage of inputs and edge cases.
 
 **Debugging Test Failures**
 
@@ -251,6 +279,26 @@ This document outlines the standard conventions, patterns, and rules for impleme
         # Now safely use 'details' if it's not None
         ```
     *   This practice prevents common `AttributeError` or `KeyError` exceptions during result processing and makes the code more resilient to variations in returned data.
+*   Adhere to the project's [Error Handling Philosophy](../system/architecture/overview.md#error-handling-philosophy) regarding returning FAILED `TaskResult` vs. raising exceptions.
+*   **8.x Consistent Error Formatting in Orchestrators:** Components responsible for calling other components and orchestrating workflows (e.g., `Dispatcher`, `SexpEvaluator`, `TaskSystem` when calling executors) MUST implement a consistent mechanism for handling both raised exceptions and returned FAILED `TaskResult` objects from their dependencies.
+    *   Use dedicated internal helper functions (like `_create_failed_result_dict` used in `Dispatcher`) to standardize the creation of FAILED `TaskResult` dictionaries.
+    *   Ensure these helpers correctly populate the `notes['error']` field with a structured error object/dictionary (e.g., based on `TaskFailureError`), preserving details from the original error where possible.
+    *   Apply this consistent formatting mechanism uniformly across all error paths within the orchestrator (e.g., in `try...except` blocks and when processing returned FAILED statuses) before returning the final `TaskResult` to the orchestrator's own caller. This ensures uniform error reporting structure regardless of how the error originated in a dependency.
+*   **8.y Defensive Handling of Returned Data Structures:** When receiving complex data structures (especially dictionaries or objects like `TaskResult` containing variant or optional fields like `notes['error']`) returned from other components or external sources (even after initial parsing/validation):
+    *   Perform defensive checks using `isinstance()` or `dict.get()` with defaults before accessing nested attributes or keys.
+    *   Do not assume the structure perfectly matches expectations, especially for fields that can hold different types (e.g., `notes['error']` might contain a `TaskFailureError` object or a dictionary representation) or optional fields that might be absent.
+    *   Example:
+        ```python
+        # Instead of directly accessing: details = result.notes['error']['details']
+        error_info = result.notes.get('error')
+        details = None
+        if isinstance(error_info, TaskFailureError):
+            details = error_info.details
+        elif isinstance(error_info, dict):
+            details = error_info.get('details')
+        # Now safely use 'details' if it's not None
+        ```
+    *   This practice prevents common `AttributeError` or `KeyError` exceptions during result processing and makes the code more resilient to variations in returned data.
 
 **9. IDL to Python Implementation**
 
@@ -271,6 +319,14 @@ This document outlines the standard conventions, patterns, and rules for impleme
 
 These "Missing Items" can be added as the project evolves and these needs become clearer. The current set provides a strong foundation.
 
+**11. Utility Scripts**
+
+Guidelines for helper, demo, or utility scripts located outside the main `src` or `tests` directories (e.g., in a `scripts/` directory):
+
+*   **Path Setup:** Scripts MUST include robust path setup logic (e.g., calculating the project root relative to the script's `__file__` location) to ensure they can reliably import project modules (`src.*`). Assume scripts might be run from different working directories; ideally, design them to be run from the project root.
+*   **Execution Location:** Document the intended execution location (e.g., "Run this script from the project root directory: `python scripts/my_script.py`") within the script's docstring or comments.
+*   **Environment Consistency:** Ensure scripts are run using the project's standard Python environment (e.g., the activated virtual environment) to guarantee access to the correct dependencies. Avoid relying on globally installed packages. Dependencies required only by a script should be documented.
+
 **11. DSL / Interpreter Implementation Guidelines**
 
 When implementing components that parse and evaluate Domain-Specific Languages or complex recursive structures (e.g., `SexpEvaluator`), adhere to the following principles to enhance clarity, robustness, and debuggability:
@@ -278,6 +334,24 @@ When implementing components that parse and evaluate Domain-Specific Languages o
 *   **11.1. Principle of Explicit Intent:**
     *   Ensure the DSL syntax provides unambiguous ways to express core concepts, particularly the distinction between executable code and literal data.
     *   Avoid relying on implicit evaluator heuristics where explicit syntax (e.g., a `quote` mechanism for literal data) can provide clarity. Use `quote` or specific data constructors (like `list`) for literal data.
+
+**12. Data Merging Conventions**
+
+When merging data from multiple sources (e.g., configuration layers, default values, runtime parameters, results from different components), the code MUST clearly implement the intended precedence rules.
+
+*   **Document Precedence:** Briefly document the merging logic and precedence rules in comments or docstrings where the merge occurs.
+*   **Establish Conventions:** For common merging scenarios, establish a project convention. For example:
+    *   **Status Notes Merging:** When an orchestrator (like `Dispatcher` or `TaskSystem`) receives a `TaskResult` from a called component, the notes from the *component's result* typically take precedence over any default or contextual notes generated by the orchestrator itself for that specific operation.
+*   **Implement Correctly:** Ensure the code implements the desired precedence. For dictionary merging where `component_data` should overwrite `orchestrator_defaults` on key collision:
+    ```python
+    # Correct precedence: component_data overwrites orchestrator_defaults
+    final_data = orchestrator_defaults.copy()
+    final_data.update(component_data)
+
+    # Incorrect precedence (defaults overwrite component data):
+    # final_data = component_data.copy()
+    # final_data.update(orchestrator_defaults) # Avoid this if component data is primary
+    ```
 
 *   **11.2. Separate Evaluation from Application:**
     *   Design the core evaluation function (e.g., `_eval`) with the primary responsibility of determining the *value* of a given expression/node in the current context/environment.

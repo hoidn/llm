@@ -27,6 +27,16 @@ the goal is a clear, language- and UI-agnostic **specification (SPEC)** that def
         *   `@depends_on`: Names must refer to other `module` or `interface` definitions within the IDL system.
         *   `@depends_on_resource`: `type` is an abstract category (e.g., "Database", "FileSystem", "ExternalAPI"), `purpose` is a brief description.
     *   **implication:** These declarations signal requirements for the implementation. `@depends_on` implies needing access to implementations of other IDL contracts. `@depends_on_resource` implies needing access to a specific *kind* of external system or resource, configured appropriately.
+
+### Implementation Conformance
+
+The IDL file serves as a **strict contract**. Implementations in Python (or other languages) MUST adhere precisely to all aspects defined in the IDL, including:
+
+*   **Interfaces and Signatures:** Class names, method names, parameter names, parameter order, type hints (mapping IDL types to language equivalents), and return types must match exactly.
+*   **Behavior:** The implemented logic must fulfill the functional description provided in the `Behavior:` block.
+*   **Preconditions/Postconditions:** The implementation must respect documented `Preconditions:` and guarantee `Postconditions:` upon successful execution.
+*   **Data Structures:** Implementations must correctly handle data structures as defined (e.g., via `Expected JSON format`, `struct` definitions, or linked type definitions), including required keys or fields. Internal validation logic within components must align with these IDL specifications.
+*   **Error Conditions:** Documented `@raises_error` conditions must be handled, either by raising the specified (or a corresponding mapped) exception or by returning a failure status as defined by the project's [Error Handling Philosophy](./system/architecture/overview.md#error-handling-philosophy).
 3.  **design patterns:** utilize (when creating idl) or identify (when reducing code) interfaces supporting established design patterns like factory, builder, and strategy where they clarify the design or improve flexibility. the idl defines the *contract* and potentially the *behavioral role* of these patterns.
 4.  **complex parameters (json):**
     *   **preference for structure:** if the idl syntax supports defining custom structures/records/data classes, prefer them for complex data transfer to maximize type safety at the interface level.
@@ -108,6 +118,7 @@ the goal is a clear, language- and UI-agnostic **specification (SPEC)** that def
     *   **syntax:** Use comment lines within the method's documentation block.
         `// @raises_error(condition="UniqueErrorCode", description="Explanation of when this error occurs.")`
     *   **purpose:** To standardize the reporting of specific failure modes beyond simple success/failure, making the contract more precise. `condition` should be a stable identifier.
+    Note: While `@raises_error` documents potential exceptions, the project's [Error Handling Philosophy](./system/architecture/overview.md#error-handling-philosophy) prefers returning FAILED `TaskResult` objects for recoverable errors where feasible.
     Note: While `@raises_error` documents potential exceptions, the project's [Error Handling Philosophy](./system/architecture/overview.md#error-handling-philosophy) prefers returning FAILED `TaskResult` objects for recoverable errors where feasible.
 
 **iii. code-to-idl reduction guidelines**
