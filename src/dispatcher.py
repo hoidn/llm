@@ -14,10 +14,19 @@ from src.handler.base_handler import BaseHandler # Assuming BaseHandler type hin
 from src.memory.memory_system import MemorySystem # Assuming MemorySystem type hint needed
 
 # Helper function to create a standard FAILED TaskResult dictionary
-def _create_failed_result_dict(reason: TaskFailureReason, message: str, details: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    """Creates a dictionary representing a FAILED TaskResult."""
+def _create_failed_result_dict(
+    reason: TaskFailureReason,
+    message: str,
+    details: Optional[Dict[str, Any]] = None,
+    existing_notes: Optional[Dict[str, Any]] = None # Add parameter for existing notes
+) -> Dict[str, Any]:
+    """
+    Creates a dictionary representing a FAILED TaskResult, merging existing notes.
+    """
     error_obj = TaskFailureError(type="TASK_FAILURE", reason=reason, message=message, details=details or {})
-    task_result = TaskResult(status="FAILED", content=message, notes={"error": error_obj})
+    # Start with existing notes, then add the error object
+    final_notes = {**(existing_notes or {}), "error": error_obj}
+    task_result = TaskResult(status="FAILED", content=message, notes=final_notes)
     # Use exclude_none=True to avoid sending null fields if not set
     return task_result.model_dump(exclude_none=True)
 
@@ -84,7 +93,9 @@ def execute_programmatic_task(
         except SexpEvaluationError as e:
             logging.warning(f"S-expression evaluation error for '{identifier}': {e}", exc_info=True)
             details = {"expression": e.expression, "error_details": e.error_details}
-            return _create_failed_result_dict("subtask_failure", f"S-expression Evaluation Error: {e.message}", details)
+            # Use args[0] for the primary message from the exception
+            error_message = e.args[0] if e.args else str(e)
+            return _create_failed_result_dict("subtask_failure", f"S-expression Evaluation Error: {error_message}", details)
         except Exception as e:
             logging.exception(f"Unexpected error evaluating S-expression '{identifier}': {e}")
             return _create_failed_result_dict("unexpected_error", f"Unexpected error during S-expression evaluation: {e}")
@@ -150,12 +161,21 @@ def execute_programmatic_task(
             )
 
             task_result_obj = task_system_instance.execute_atomic_template(request)
+
+            # If the task system already returned a FAILED result, return it directly
+            if task_result_obj.status == "FAILED":
+                task_result_dict = task_result_obj.model_dump(exclude_none=True)
+                # Merge dispatcher notes into the existing notes
+                task_result_dict['notes'] = {**notes, **task_result_dict.get('notes', {})}
+                return task_result_dict
+
+            # Otherwise, process the successful result
             task_result_dict = task_result_obj.model_dump(exclude_none=True)
             # Merge notes, prioritizing notes from the task execution
             task_result_dict['notes'] = {**notes, **task_result_dict.get('notes', {})}
             return task_result_dict
 
-        except TaskError as e: # Catch specific TaskErrors if TaskSystem raises them directly
+        except TaskError as e: # Catch specific TaskErrors if TaskSystem raises them directly (should be less common now)
              logging.warning(f"TaskError executing atomic template '{identifier}': {e}", exc_info=True)
              # Propagate the error details if available
              fail_reason = e.reason if hasattr(e, 'reason') else "subtask_failure"
@@ -176,14 +196,28 @@ def execute_programmatic_task(
             if task_result_obj.status == "CONTINUATION":
                  msg = "Direct tool calls cannot return CONTINUATION status."
                  logging.warning(f"{msg} Tool: {identifier}")
-                 return _create_failed_result_dict("tool_execution_error", msg)
+                 # Pass existing notes to the error helper
+                 return _create_failed_result_dict(
+                     "tool_execution_error",
+                     msg,
+                     details={"tool_identifier": identifier},
+                     existing_notes=notes # Pass the notes collected so far
+                 )
 
+            # If the tool already returned a FAILED result, return it directly
+            if task_result_obj.status == "FAILED":
+                task_result_dict = task_result_obj.model_dump(exclude_none=True)
+                # Merge dispatcher notes into the existing notes
+                task_result_dict['notes'] = {**notes, **task_result_dict.get('notes', {})}
+                return task_result_dict
+
+            # Otherwise, process the successful result
             task_result_dict = task_result_obj.model_dump(exclude_none=True)
             # Merge notes, prioritizing notes from the tool execution
             task_result_dict['notes'] = {**notes, **task_result_dict.get('notes', {})}
             return task_result_dict
 
-        except TaskError as e: # Catch specific TaskErrors if Handler raises them
+        except TaskError as e: # Catch specific TaskErrors if Handler raises them (should be less common now)
              logging.warning(f"TaskError executing direct tool '{identifier}': {e}", exc_info=True)
              fail_reason = e.reason if hasattr(e, 'reason') else "tool_execution_error"
              fail_msg = e.message if hasattr(e, 'message') else str(e)
@@ -195,4 +229,9 @@ def execute_programmatic_task(
 
     # 5. Not Found
     logging.warning(f"Identifier '{identifier}' not found as S-expression, atomic task, or direct tool.")
-    return _create_failed_result_dict("template_not_found", f"Task or tool identifier '{identifier}' not found.")
+    # Pass existing notes (like context_source) to the error helper
+    return _create_failed_result_dict(
+        "template_not_found",
+        f"Task or tool identifier '{identifier}' not found.",
+        existing_notes=notes
+    )
