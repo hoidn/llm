@@ -1,11 +1,13 @@
 import logging
 import json
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union, TYPE_CHECKING
 from pydantic import ValidationError as PydanticValidationError
 
-# Assuming MemorySystem and BaseHandler are available for type hinting
-from src.memory.memory_system import MemorySystem
-from src.handler.base_handler import BaseHandler
+# Use TYPE_CHECKING block for circular imports
+if TYPE_CHECKING:
+    from src.memory.memory_system import MemorySystem
+    from src.handler.base_handler import BaseHandler
+
 from .file_path_resolver import resolve_paths_from_template
 from .template_registry import TemplateRegistry
 from src.system.models import (
@@ -29,7 +31,7 @@ class TaskSystem:
     Complies with the contract defined in src/task_system/task_system_IDL.md.
     """
 
-    def __init__(self, memory_system: Optional[MemorySystem] = None, handler: Optional[BaseHandler] = None):
+    def __init__(self, memory_system: Optional['MemorySystem'] = None, handler: Optional['BaseHandler'] = None):
         """
         Initializes the Task System.
 
@@ -53,15 +55,13 @@ class TaskSystem:
         """
         self._test_mode = enabled
         logging.info(f"TaskSystem test mode set to: {enabled}")
-        # Potentially clear handler cache if mode changes behavior
-        self._handler_cache = {}
 
-    def set_handler(self, handler: BaseHandler):
+    def set_handler(self, handler: 'BaseHandler'):
         """Allows injecting the handler after TaskSystem initialization."""
         logging.debug(f"TaskSystem: Handler instance set: {handler}")
         self._handler = handler
         
-    def _get_handler(self) -> BaseHandler:
+    def _get_handler(self) -> 'BaseHandler':
         """Returns the configured handler instance."""
         # Return the stored handler instance
         if self._handler is None:
@@ -242,7 +242,7 @@ class TaskSystem:
 
 
     def find_matching_tasks(
-        self, input_text: str, memory_system: Optional[MemorySystem] # Keep optional for now
+        self, input_text: str, memory_system: Optional['MemorySystem'] # Keep optional for now
     ) -> List[Dict[str, Any]]:
         """
         Finds matching atomic task templates based on similarity to input text.
@@ -314,8 +314,8 @@ class TaskSystem:
     def resolve_file_paths(
         self,
         template: Dict[str, Any],
-        memory_system: Optional[MemorySystem],
-        handler: Optional[BaseHandler],
+        memory_system: Optional['MemorySystem'],
+        handler: Optional['BaseHandler'],
     ) -> Tuple[List[str], Optional[str]]:
         """
         Resolves the final list of file paths by delegating to the utility function.
