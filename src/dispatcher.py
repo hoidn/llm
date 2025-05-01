@@ -239,29 +239,41 @@ def execute_programmatic_task(
             if tool_result_obj.status == "FAILED":
                 logging.warning(f"Handler tool '{identifier}' returned FAILED status.")
                 # Extract original error details if present
-                original_error_dict = tool_result_obj.notes.get("error")
+                error_obj_or_dict = tool_result_obj.notes.get("error") # Could be object or dict
+
+                # --- START REVISED EXTRACTION ---
                 fail_reason: TaskFailureReason = "tool_execution_error" # Default reason
                 fail_msg = tool_result_obj.content # Use content as message fallback
-                fail_details_obj: Optional[TaskFailureDetails] = None
+                fail_details_obj: Optional[TaskFailureDetails] = None # Initialize details as None
 
-                if isinstance(original_error_dict, dict):
-                    # Try to reconstruct TaskFailureError to get details
-                    try:
-                        original_error_obj = TaskFailureError.model_validate(original_error_dict)
-                        fail_reason = original_error_obj.reason
-                        fail_msg = original_error_obj.message
-                        fail_details_obj = original_error_obj.details # Extract details object
-                    except Exception as parse_err:
-                        logging.warning(f"Could not parse original error dict from tool result: {parse_err}")
-                        if 'reason' in original_error_dict: fail_reason = original_error_dict['reason']
-                        if 'message' in original_error_dict: fail_msg = original_error_dict['message']
-                        # Cannot reliably get details object if parsing failed
+                if isinstance(error_obj_or_dict, TaskFailureError):
+                    # If it's the actual error object, extract attributes directly
+                    logging.debug("Extracting details from TaskFailureError object.")
+                    fail_reason = error_obj_or_dict.reason
+                    fail_msg = error_obj_or_dict.message
+                    fail_details_obj = error_obj_or_dict.details # Get the details object
 
-                # Use the helper to create the error structure with the ORIGINAL message
+                elif isinstance(error_obj_or_dict, dict):
+                    # If it's a dictionary (fallback or different serialization)
+                    logging.debug("Attempting to extract details from error dictionary.")
+                    fail_reason = error_obj_or_dict.get("reason", fail_reason)
+                    fail_msg = error_obj_or_dict.get("message", fail_msg)
+                    details_dict = error_obj_or_dict.get("details")
+                    if isinstance(details_dict, dict):
+                        # Try to validate the details dict into the TaskFailureDetails model
+                        try:
+                            fail_details_obj = TaskFailureDetails.model_validate(details_dict)
+                        except Exception as parse_err:
+                            logging.warning(f"Could not parse 'details' dict from tool error notes: {parse_err}")
+                    elif isinstance(details_dict, TaskFailureDetails): # Handle if details is already object
+                         fail_details_obj = details_dict
+
+
+                # Use the helper to create the error structure with the ORIGINAL message and extracted details
                 error_structure = _create_failed_result_dict(
                     reason=fail_reason,
                     message=fail_msg, # Pass the ORIGINAL fail_msg here
-                    details_obj=fail_details_obj
+                    details_obj=fail_details_obj # Pass the extracted details object
                 )
 
                 # Create the final TaskResult dictionary
@@ -269,7 +281,7 @@ def execute_programmatic_task(
                     "status": "FAILED",
                     # Set the top-level content with the PREFIXED message
                     "content": f"Tool Execution Error: {fail_msg}",
-                    # Notes merging logic (ensure dispatcher notes are merged correctly)
+                    # Notes merging logic
                     "notes": notes.copy() # Start with dispatcher notes
                 }
 
@@ -279,6 +291,7 @@ def execute_programmatic_task(
 
                 # Add the correctly formatted error structure (from the helper) into notes
                 task_result_dict['notes']['error'] = error_structure['notes']['error'] # Extract the error dict from helper result
+                # --- END REVISED EXTRACTION ---
 
 
             elif tool_result_obj.status == "CONTINUATION":
