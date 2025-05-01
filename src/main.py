@@ -21,23 +21,13 @@ from src.system.models import TaskResult, TaskFailureError, TaskFailureReason
 from src.executors.system_executors import SystemExecutorFunctions
 from src import dispatcher # Import the dispatcher module
 
-# Attempt to import Aider components safely
-try:
-    from src.aider_bridge.bridge import AiderBridge
-    from src.aider_bridge.tools import get_aider_automatic_tool_spec, get_aider_interactive_tool_spec
-    from src.aider_bridge.executors import AiderExecutorFunctions
-    AIDER_AVAILABLE = True
-except ImportError:
-    logging.warning("Aider components not found or import failed. Aider integration will be disabled.")
-    AiderBridge = None
-    get_aider_automatic_tool_spec = lambda: None
-    get_aider_interactive_tool_spec = lambda: None
-    AiderExecutorFunctions = None
-    AIDER_AVAILABLE = False
-
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+# Aider integration is deferred to Phase 8
+AIDER_AVAILABLE = False
+AiderBridge = None # Define as None for type hinting if needed elsewhere temporarily
 
 # Helper function to create a standard FAILED TaskResult dictionary
 def _create_failed_result_dict(reason: TaskFailureReason, message: str, details: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -102,9 +92,9 @@ class Application:
             self._register_system_tools()
             logger.info("System tools registered.")
 
-            # Initialize Aider integration (if available)
-            self.initialize_aider()
-            logger.info(f"Aider integration initialized (Available: {AIDER_AVAILABLE}).")
+            # Initialize Aider integration (if available) - DEFERRED to Phase 8
+            # self.initialize_aider()
+            # logger.info(f"Aider integration initialized (Available: {AIDER_AVAILABLE}).")
 
             logger.info("Application initialization complete.")
 
@@ -171,65 +161,22 @@ class Application:
         logger.info(f"Registered {registered_count}/{len(tools_to_register)} system tools.")
 
 
-    def initialize_aider(self):
-        """Initializes the Aider bridge and registers Aider tools if available."""
-        if not AIDER_AVAILABLE or not self.passthrough_handler:
-            logger.info("Skipping Aider initialization (Not available or Handler not ready).")
-            return
+    def initialize_aider(self) -> None:
+        """
+        Placeholder for AiderBridge initialization and tool registration.
+        Currently deferred as per project plan (Phase 8).
+        """
+        # Ensure AiderBridge type hint works if needed, even if None
+        # from typing import TYPE_CHECKING
+        # if TYPE_CHECKING:
+        #     try:
+        #         from src.aider_bridge.bridge import AiderBridge
+        #     except ImportError:
+        #         AiderBridge = None # type: ignore
 
-        if self.aider_bridge:
-            logger.info("Aider bridge already initialized.")
-            return
-
-        logger.info("Initializing Aider bridge...")
-        try:
-            # Instantiate the bridge, passing dependencies
-            self.aider_bridge = AiderBridge(
-                memory_system=self.memory_system,
-                file_manager=self.passthrough_handler.file_manager
-                # Pass other config/dependencies if needed
-            )
-
-            if not self.aider_bridge.aider_available:
-                logger.warning("AiderBridge initialized but reports Aider is unavailable.")
-                return # Don't register tools if bridge says it's not usable
-
-            logger.info("Aider bridge created. Registering Aider tools...")
-
-            # Define Aider tools and their executors
-            aider_tools = [
-                {
-                    "spec": get_aider_automatic_tool_spec(),
-                    "executor": lambda params: AiderExecutorFunctions.execute_aider_automatic(params, self.aider_bridge)
-                },
-                {
-                    "spec": get_aider_interactive_tool_spec(),
-                    "executor": lambda params: AiderExecutorFunctions.execute_aider_interactive(params, self.aider_bridge)
-                }
-            ]
-
-            registered_count = 0
-            for tool in aider_tools:
-                if not tool["spec"]: # Skip if spec function returned None
-                    continue
-                try:
-                    # Use lambda to ensure the correct aider_bridge instance is captured
-                    success = self.passthrough_handler.register_tool(tool["spec"], tool["executor"])
-                    if success:
-                        registered_count += 1
-                    else:
-                        logger.warning(f"Failed to register Aider tool: {tool['spec']['name']}")
-                except Exception as e:
-                    logger.exception(f"Error registering Aider tool {tool['spec']['name']}: {e}")
-            logger.info(f"Registered {registered_count}/{len([t for t in aider_tools if t['spec']])} Aider tools.")
-
-        except ImportError:
-             # This case should be caught by the top-level check, but handle defensively
-             logger.error("ImportError during Aider bridge initialization (should have been caught earlier).")
-             self.aider_bridge = None
-        except Exception as e:
-            logger.exception(f"Failed to initialize Aider bridge or register tools: {e}")
-            self.aider_bridge = None # Ensure bridge is None if init fails
+        logger.info("Aider initialization is deferred (Phase 8). Skipping.")
+        self.aider_bridge = None # Ensure it remains None
+        # Do not attempt to import Aider components or register Aider tools here in Phase 6
 
 
     def index_repository(self, repo_path: str, options: Optional[Dict[str, Any]] = None) -> bool:

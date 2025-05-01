@@ -17,14 +17,12 @@ from src.handler.passthrough_handler import PassthroughHandler
 from src.memory.indexers.git_repository_indexer import GitRepositoryIndexer
 # Import dispatcher for patching
 from src import dispatcher
-# Import Aider components for patching targets
-from src.aider_bridge import bridge as aider_bridge_module
-from src.aider_bridge import tools as aider_tools_module
-from src.aider_bridge import executors as aider_executors_module
+# Import SystemExecutorFunctions for patching target
 from src.executors import system_executors as system_executors_module
 
 
-# Define dummy tool specs used in Application init/aider init
+# Define dummy tool specs used in Application init
+# Aider specs removed as Aider integration is deferred
 DUMMY_AIDER_AUTO_SPEC = {"name": "aiderAutomatic", "description": "Aider Auto", "input_schema": {}}
 DUMMY_AIDER_INTERACTIVE_SPEC = {"name": "aiderInteractive", "description": "Aider Interactive", "input_schema": {}}
 DUMMY_SYS_GET_CONTEXT_SPEC = {"name": "system:get_context", "description": "Sys Get Context", "input_schema": {}}
@@ -36,15 +34,14 @@ DUMMY_SYS_READ_FILES_SPEC = {"name": "system:read_files", "description": "Sys Re
 def app_instance(tmp_path):
     """Provides a default Application instance with mocked dependencies."""
     # Patch constructors/functions where they are looked up (in src.main)
+    # Patch constructors/functions where they are looked up (in src.main)
+    # Remove patches related to Aider
     with patch('src.main.MemorySystem', MagicMock(spec=MemorySystem)) as MockMemory, \
          patch('src.main.TaskSystem', MagicMock(spec=TaskSystem)) as MockTask, \
          patch('src.main.PassthroughHandler', MagicMock(spec=PassthroughHandler)) as MockHandler, \
          patch('src.main.GitRepositoryIndexer', MagicMock(spec=GitRepositoryIndexer)) as MockIndexer, \
-         patch('src.main.AiderBridge', MagicMock(spec=aider_bridge_module.AiderBridge)) as MockAider, \
-         patch('src.main.SystemExecutorFunctions', MagicMock(spec=system_executors_module.SystemExecutorFunctions)) as MockSysExec, \
-         patch('src.main.AiderExecutorFunctions', MagicMock(spec=aider_executors_module.AiderExecutorFunctions)) as MockAiderExec, \
-         patch('src.main.get_aider_automatic_tool_spec', return_value=DUMMY_AIDER_AUTO_SPEC) as mock_get_auto_spec, \
-         patch('src.main.get_aider_interactive_tool_spec', return_value=DUMMY_AIDER_INTERACTIVE_SPEC) as mock_get_inter_spec:
+         patch('src.main.SystemExecutorFunctions', MagicMock(spec=system_executors_module.SystemExecutorFunctions)) as MockSysExec:
+         # Removed AiderBridge, AiderExecutorFunctions, get_aider_*_tool_spec patches
 
         # Configure mocks BEFORE Application instantiation
         mock_memory_instance = MockMemory.return_value
@@ -52,11 +49,10 @@ def app_instance(tmp_path):
         mock_handler_instance = MockHandler.return_value
         mock_handler_instance.file_manager = MagicMock(name="MockFileManager") # Handler needs this
         mock_handler_instance.register_tool.return_value = True
-        mock_aider_instance = MockAider.return_value
-        # Default: Assume Aider is available unless overridden in a test
-        mock_aider_instance.aider_available = True
+        # Removed Aider mock configuration
 
         # Instantiate Application - this will call __init__
+        # __init__ should no longer call initialize_aider()
         app = Application(config={"handler_config": {"some_key": "val"}}) # Pass some dummy config
 
         # Store mocks on the app instance for easy access in tests
@@ -64,12 +60,8 @@ def app_instance(tmp_path):
         app.mock_task = mock_task_instance
         app.mock_handler = mock_handler_instance
         app.mock_indexer_cls = MockIndexer # Store the class mock
-        app.mock_aider_cls = MockAider     # Store the class mock
-        app.mock_aider_bridge = mock_aider_instance # Store the instance mock
         app.mock_sys_exec = MockSysExec
-        app.mock_aider_exec = MockAiderExec
-        app.mock_get_auto_spec = mock_get_auto_spec
-        app.mock_get_inter_spec = mock_get_inter_spec
+        # Removed storing aider mocks on app instance
 
 
         yield app # Provide the configured app instance to the test
@@ -92,22 +84,23 @@ def test_application_init_wiring(app_instance):
     assert app_instance.mock_memory.handler == app_instance.mock_handler
     assert app_instance.mock_memory.task_system == app_instance.mock_task
 
-    # Check Aider initialization was called (via initialize_aider in __init__)
-    app_instance.mock_aider_cls.assert_called_once_with(
-        memory_system=app_instance.mock_memory,
-        file_manager=app_instance.mock_handler.file_manager
-    )
+    # Check Aider initialization was NOT called in __init__
+    # (Assuming initialize_aider is now commented out or removed from __init__)
+    # If initialize_aider is still present but empty, this check might need adjustment
+    # For now, we check that AiderBridge constructor wasn't called during app init.
+    # Note: The fixture patches AiderBridge, so we access the class mock via app_instance
+    # This assertion might fail if the fixture setup itself triggers the patch,
+    # so we rely on checking tool registration below.
 
-    # Check tool registration calls (system + aider)
-    # Note: Call count might vary slightly based on exact implementation details
-    # Check that specific tools were registered
+    # Check tool registration calls (System tools ONLY)
     call_args_list = app_instance.mock_handler.register_tool.call_args_list
     registered_tool_names = [c.args[0]['name'] for c in call_args_list]
 
     assert "system:get_context" in registered_tool_names
     assert "system:read_files" in registered_tool_names
-    assert "aiderAutomatic" in registered_tool_names
-    assert "aiderInteractive" in registered_tool_names
+    # Assert Aider tools were NOT registered
+    assert "aiderAutomatic" not in registered_tool_names
+    assert "aiderInteractive" not in registered_tool_names
 
     # Check core template registration (example - if implemented)
     # app_instance.mock_task.register_template.assert_any_call(EXPECTED_CORE_TEMPLATE_DICT)
