@@ -81,6 +81,13 @@ module src.sexp_evaluator.sexp_evaluator {
         
         // **Note on Closures:** A Closure is a runtime object representing a function created by `lambda` (or potentially `define` if added later). It bundles the function's code (parameter list and body AST) with a reference to the environment where it was defined, enabling lexical scoping. It is a first-class value that can be passed around, stored in variables, and invoked later.
         
+        // - `(get_context (key1 value_expr1) (key2 value_expr2) ...)`: **Primitive.**
+        //   - **Action:** Retrieves relevant context from the MemorySystem.
+        //   - **Argument Processing:** Parses `(key value_expr)` pairs. Evaluates each `value_expr`. Recognizes keys like `query`, `history`, `inputs`, `matching_strategy`, etc., corresponding to `ContextGenerationInput` v5.0 fields. Validates argument structure and types.
+        //   - **Behavior:** Constructs a `ContextGenerationInput` object from the evaluated arguments. Calls `MemorySystem.get_relevant_context_for` with this object.
+        //   - **Returns:** A list of relevant file path strings extracted from the `AssociativeMatchResult`.
+        //   - **Raises:** `SexpEvaluationError` if arguments are invalid, context retrieval fails, or `MemorySystem` returns an error.
+        
         // - Parses the `args` list, expecting `(key_symbol value_expression)` pairs. **Note: `args` contains *unevaluated* argument expressions.**
         // - **Crucially, evaluates each `value_expression` using `_eval` within this handler** to get the actual argument values.
         // - Handles conversion of quoted list-of-pairs for `context` or `inputs` arguments after evaluation.
