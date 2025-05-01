@@ -168,7 +168,13 @@ def run_demo():
         # 3. Index Repository
         logger.info(f"Indexing repository: {SAMPLE_REPO_PATH}")
         try:
-            success = app.index_repository(SAMPLE_REPO_PATH)
+            # Define options to include .py AND .md files
+            index_options = {
+                "include_patterns": ["**/*.py", "**/*.md"]
+                # Add exclude_patterns here if needed
+            }
+            # Pass options to the index_repository method
+            success = app.index_repository(SAMPLE_REPO_PATH, options=index_options)
             if not success:
                 logger.error("Failed to index repository. Context may be unavailable.")
                 # Decide whether to continue or abort
