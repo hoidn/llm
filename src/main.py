@@ -207,10 +207,26 @@ class Application:
                  logger.error(f"Invalid repository path (no .git directory found): {norm_path}")
                  return False
 
-            # Instantiate and run indexer
+            # Instantiate indexer
             indexer = GitRepositoryIndexer(repo_path=norm_path)
-            # TODO: Configure indexer using 'options' and/or 'self.config' if needed
-            # e.g., indexer.set_options(options or self.config.get('indexer_options'))
+            
+            # Configure the indexer based on options passed to this method
+            if options:
+                logger.debug(f"Applying indexer options: {options}")
+                if 'max_file_size' in options and isinstance(options['max_file_size'], int):
+                    # Use setter method if available, otherwise direct attribute access
+                    # Assuming direct attribute access for simplicity/matching indexer code
+                    indexer.max_file_size = options['max_file_size']
+                    logger.debug(f"  Set indexer max_file_size to: {indexer.max_file_size}")
+                if 'include_patterns' in options and isinstance(options['include_patterns'], list):
+                    indexer.include_patterns = options['include_patterns']
+                    logger.debug(f"  Set indexer include_patterns to: {indexer.include_patterns}")
+                if 'exclude_patterns' in options and isinstance(options['exclude_patterns'], list):
+                    indexer.exclude_patterns = options['exclude_patterns']
+                    logger.debug(f"  Set indexer exclude_patterns to: {indexer.exclude_patterns}")
+            else:
+                logger.debug("No specific indexer options provided, using indexer defaults.")
+            
             logger.info(f"Starting indexing for {norm_path}...")
             index_results = indexer.index_repository(memory_system=self.memory_system)
             logger.info(f"Indexing complete for {norm_path}. Indexed {len(index_results)} files.")
