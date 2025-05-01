@@ -237,8 +237,18 @@ def test_integration_index_basic_repo(git_repo):
     add_file("subdir/file2.txt", "some text content")
     commit("Initial commit")
 
-    # Use real components
-    memory_system = MemorySystem()
+    # Create mock dependencies for MemorySystem
+    mock_handler = MagicMock()
+    mock_task_system = MagicMock()
+    mock_file_manager = MagicMock()
+    
+    # Create a real memory system with mock dependencies
+    memory_system = MemorySystem(
+        handler=mock_handler,
+        task_system=mock_task_system,
+        file_access_manager=mock_file_manager
+    )
+    
     indexer = GitRepositoryIndexer(repo_path=repo_path)
     # Use default include patterns (just *.py)
     indexer.include_patterns = ["**/*.py", "**/*.txt"] # Include both for this test
@@ -266,7 +276,18 @@ def test_integration_index_skips_binary(git_repo):
     add_file("image.jpg", b"\xFF\xD8\xFF\xE0") # Add binary content
     commit("Add text and binary")
 
-    memory_system = MemorySystem()
+    # Create mock dependencies for MemorySystem
+    mock_handler = MagicMock()
+    mock_task_system = MagicMock()
+    mock_file_manager = MagicMock()
+    
+    # Create a real memory system with mock dependencies
+    memory_system = MemorySystem(
+        handler=mock_handler,
+        task_system=mock_task_system,
+        file_access_manager=mock_file_manager
+    )
+    
     indexer = GitRepositoryIndexer(repo_path=repo_path)
     indexer.include_patterns = ["**/*"] # Include all initially
 
@@ -289,7 +310,18 @@ def test_integration_index_skips_large_files(git_repo):
     add_file("large.txt", "This content is definitely larger than fifty bytes to test skipping.")
     commit("Add small and large files")
 
-    memory_system = MemorySystem()
+    # Create mock dependencies for MemorySystem
+    mock_handler = MagicMock()
+    mock_task_system = MagicMock()
+    mock_file_manager = MagicMock()
+    
+    # Create a real memory system with mock dependencies
+    memory_system = MemorySystem(
+        handler=mock_handler,
+        task_system=mock_task_system,
+        file_access_manager=mock_file_manager
+    )
+    
     indexer = GitRepositoryIndexer(repo_path=repo_path)
     indexer.include_patterns = ["**/*.txt"]
     indexer.max_file_size = max_size # Override default
@@ -315,7 +347,18 @@ def test_integration_index_respects_patterns(git_repo):
     add_file("build/output.log", "log content")
     commit("Add various files")
 
-    memory_system = MemorySystem()
+    # Create mock dependencies for MemorySystem
+    mock_handler = MagicMock()
+    mock_task_system = MagicMock()
+    mock_file_manager = MagicMock()
+    
+    # Create a real memory system with mock dependencies
+    memory_system = MemorySystem(
+        handler=mock_handler,
+        task_system=mock_task_system,
+        file_access_manager=mock_file_manager
+    )
+    
     indexer = GitRepositoryIndexer(repo_path=repo_path)
     # Configure patterns
     indexer.include_patterns = ["src/**/*.py", "docs/**/*.md"]
