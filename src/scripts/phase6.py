@@ -50,6 +50,10 @@ SEARCH_KEYWORD = "class"
 # --- Logging Setup ---
 logging.basicConfig(level=LOG_LEVEL,
                     format='%(asctime)s - %(levelname)s - %(name)s - %(message)s')
+
+# Force the root logger level AFTER basicConfig
+logging.getLogger().setLevel(LOG_LEVEL)
+
 logger = logging.getLogger("DemoScript")
 print(f"##### Root logger effective level: {logging.getLogger().getEffectiveLevel()} (DEBUG={logging.DEBUG}, INFO={logging.INFO}) #####") # Added diagnostic print
 
