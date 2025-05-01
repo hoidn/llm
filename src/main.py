@@ -81,6 +81,7 @@ class Application:
 
             # 2. Instantiate Handler (needs TaskSystem)
             handler_config = self.config.get('handler_config', {})
+            handler_config['file_manager_base_path'] = fm_base_path
             default_model = handler_config.get('default_model_identifier', "anthropic:claude-3-5-sonnet-latest")
             self.passthrough_handler = PassthroughHandler(
                 task_system=self.task_system, # Pass TaskSystem instance
