@@ -4,7 +4,7 @@ import os
 import sys
 import json
 import logging
-import shutil # For removing directory if needed
+# import shutil # No longer needed for cleanup
 
 # --- Setup Project Path ---
 # Calculate paths relative to the script's location (src/scripts/)
@@ -12,26 +12,21 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 # Project root is two levels up from the script's directory (src/scripts -> src -> PROJECT_ROOT)
 PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, '..', '..'))
 # Source directory is one level down from the project root
-SRC_PATH = os.path.join(PROJECT_ROOT, 'src')
+SRC_PATH = os.path.join(PROJECT_ROOT, 'src/task_system')
 
 # Add SRC_PATH to sys.path FIRST to prioritize imports from src
 if SRC_PATH not in sys.path:
     sys.path.insert(0, SRC_PATH)
     print(f"DEBUG: Added {SRC_PATH} to sys.path") # Optional debug print
 
-# Add PROJECT_ROOT to sys.path. This might be needed if some imports
-# within src are relative to the project root (e.g., from src.some_module import ...)
-# although absolute imports from src (from handler import ...) should work with just SRC_PATH.
-# Adding PROJECT_ROOT can sometimes help resolve complex import scenarios.
+# Add PROJECT_ROOT to sys.path.
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(1, PROJECT_ROOT) # Insert after SRC_PATH
     print(f"DEBUG: Added {PROJECT_ROOT} to sys.path") # Optional debug print
 
 # --- Import Application ---
-# Now the import should work correctly
 try:
     from main import Application
-    # Import specific models needed for type hints or checks if necessary
     from system.models import TaskResult
 except ImportError as e:
     print(f"Error importing project modules: {e}")
@@ -42,143 +37,70 @@ except ImportError as e:
     sys.exit(1)
 
 # --- Configuration ---
-LOG_LEVEL = logging.DEBUG # Change to logging.DEBUG for more verbose output
-SAMPLE_REPO_PATH = os.path.join(PROJECT_ROOT, "demo_sample_repo")
-# Keyword used in the S-expression query and placed in sample files
-SEARCH_KEYWORD = "class"
+LOG_LEVEL = logging.DEBUG # Keep DEBUG for detailed output during demo
+# --- START MODIFICATION ---
+# Point to the actual project root directory for indexing
+REPO_TO_INDEX = PROJECT_ROOT
+# Change search keyword to something likely in the project code
+SEARCH_KEYWORD = "TaskSystem"
+# --- END MODIFICATION ---
 
 # --- Logging Setup ---
 logging.basicConfig(level=LOG_LEVEL,
                     format='%(asctime)s - %(levelname)s - %(name)s - %(message)s')
-
 # Force the root logger level AFTER basicConfig
 logging.getLogger().setLevel(LOG_LEVEL)
-
 logger = logging.getLogger("DemoScript")
-print(f"##### Root logger effective level: {logging.getLogger().getEffectiveLevel()} (DEBUG={logging.DEBUG}, INFO={logging.INFO}) #####") # Added diagnostic print
+print(f"##### Root logger effective level: {logging.getLogger().getEffectiveLevel()} (DEBUG={logging.DEBUG}, INFO={logging.INFO}) #####")
 
-# --- Helper Functions ---
-def create_sample_repo(repo_path: str):
-    """Creates a dummy repo with sample files if it doesn't exist."""
-    logger.info(f"Checking/Creating sample repository at: {repo_path}")
-    git_dir = os.path.join(repo_path, ".git")
-
-    # Create base and .git directories
-    try:
-        os.makedirs(git_dir, exist_ok=True)
-    except OSError as e:
-        logger.error(f"Failed to create directory structure for {repo_path}: {e}")
-        return False
-
-    # Sample file content
-    file1_path = os.path.join(repo_path, "module_one.py")
-    file1_content = f"""
-# Module One
-
-def simple_function(a, b):
-    \"\"\"Adds two numbers.\"\"\"
-    return a + b
-
-class MyImportant{SEARCH_KEYWORD.capitalize()}:
-    \"\"\"A sample {SEARCH_KEYWORD} for demonstration.\"\"\"
-    def __init__(self, name):
-        self.name = name
-
-    def greet(self):
-        print(f"Hello from {{self.name}}")
-
-instance = MyImportant{SEARCH_KEYWORD.capitalize()}("Demo")
-"""
-
-    file2_path = os.path.join(repo_path, "docs.md")
-    file2_content = f"""
-# Documentation File
-
-This file describes the system.
-It mentions the concept of a {SEARCH_KEYWORD}.
-
-Another paragraph here.
-"""
-
-    file3_path = os.path.join(repo_path, "another_script.py")
-    file3_content = """
-# Another Script
-# This one does NOT contain the target keyword.
-
-def utility_func():
-    return "utility"
-"""
-
-    # Write files only if they don't exist to avoid overwriting
-    files_to_create = {
-        file1_path: file1_content,
-        file2_path: file2_content,
-        file3_path: file3_content,
-    }
-
-    files_created_count = 0
-    for f_path, f_content in files_to_create.items():
-        if not os.path.exists(f_path):
-            try:
-                with open(f_path, 'w', encoding='utf-8') as f:
-                    f.write(f_content.strip())
-                files_created_count += 1
-            except IOError as e:
-                logger.error(f"Failed to write sample file {f_path}: {e}")
-                # Continue trying to write other files
-        else:
-            logger.debug(f"Sample file already exists: {f_path}")
-
-    logger.info(f"Sample repository ready. {files_created_count} new file(s) created.")
-    # Note: We are not running `git init/add/commit` to avoid external dependency
-    # The indexer just needs the .git directory to exist. Git metadata extraction will fail silently.
-    return True
-
-def cleanup_sample_repo(repo_path: str):
-    """Removes the sample repository."""
-    if os.path.exists(repo_path):
-        try:
-            shutil.rmtree(repo_path)
-            logger.info(f"Cleaned up sample repository: {repo_path}")
-        except OSError as e:
-            logger.error(f"Failed to clean up sample repository {repo_path}: {e}")
+# --- Helper Functions (Removed create/cleanup sample repo) ---
 
 # --- Main Demo Logic ---
 def run_demo():
-    """Runs Demo 2: S-expression workflow with get_context and read_files."""
+    """Runs Demo 2: S-expression workflow using the actual project repo."""
 
-    app: Application | None = None # Type hint for clarity
+    app: Application | None = None
 
     try:
-        # 1. Create Sample Repo
-        if not create_sample_repo(SAMPLE_REPO_PATH):
-            logger.error("Failed to set up sample repository. Aborting demo.")
-            return
+        # --- START MODIFICATION ---
+        # 1. Remove Sample Repo Creation
+        logger.info(f"Target repository for indexing: {REPO_TO_INDEX}")
+        # --- END MODIFICATION ---
 
         # 2. Instantiate Application
         logger.info("Instantiating Application...")
         try:
-            # Pass config if needed, e.g., Application(config={"handler_config": {"log_level": "DEBUG"}})
             app = Application()
             logger.info("Application instantiated successfully.")
         except Exception as e:
             logger.exception("Failed to instantiate Application.")
-            return # Cannot proceed
+            return
 
         # 3. Index Repository
-        logger.info(f"Indexing repository: {SAMPLE_REPO_PATH}")
+        logger.info(f"Indexing repository: {REPO_TO_INDEX}")
         try:
-            # Define options to include .py AND .md files
+            # --- START MODIFICATION ---
+            # Define more realistic index options for the project repo
             index_options = {
-                "include_patterns": ["**/*.py", "**/*.md"]
-                # Add exclude_patterns here if needed
+                # Include Python files in src and Markdown files in docs
+                "include_patterns": ["src/**/*.py", "docs/**/*.md"],
+                # Exclude virtual environments, caches, git dir, specific files/dirs
+                "exclude_patterns": [
+                    "**/venv/**",
+                    "**/__pycache__/**",
+                    ".git/**",
+                    "**/node_modules/**",
+                    "*.pyc",
+                    "*.log",
+                    "demo_sample_repo/**", # Exclude the old sample repo if it exists
+                    "src/scripts/**" # Exclude this script itself
+                 ]
             }
-            # Pass options to the index_repository method
-            success = app.index_repository(SAMPLE_REPO_PATH, options=index_options)
+            # Pass the correct repo path and options
+            success = app.index_repository(REPO_TO_INDEX, options=index_options)
+            # --- END MODIFICATION ---
             if not success:
                 logger.error("Failed to index repository. Context may be unavailable.")
-                # Decide whether to continue or abort
-                # For this demo, context is crucial, so abort.
                 return
             logger.info("Repository indexing initiated successfully.")
         except Exception as e:
@@ -186,7 +108,7 @@ def run_demo():
             return
 
         # 4. Define S-expression Command
-        # This workflow finds files containing SEARCH_KEYWORD, then reads them.
+        # Use the updated SEARCH_KEYWORD
         sexp_command = f"""
         (let ((relevant_files (get_context (query "{SEARCH_KEYWORD}"))))
           (system:read_files (file_paths relevant_files)))
@@ -205,21 +127,28 @@ def run_demo():
         # 6. Print Result
         print("\n" + "="*20 + " Demo Result " + "="*20)
         try:
-            # Pretty print the JSON result
             print(json.dumps(result_dict, indent=2))
 
-            # Optionally, add specific checks/comments based on expected output
             if result_dict.get("status") == "COMPLETE":
                 print("\n--- Interpretation ---")
-                print(f"The workflow successfully found files related to '{SEARCH_KEYWORD}' and read their content.")
-                print(f"Files Read Count: {result_dict.get('notes', {}).get('files_read_count', 'N/A')}")
-                print(f"Skipped Files: {result_dict.get('notes', {}).get('skipped_files', 'N/A')}")
-                print("The 'content' field shows the concatenated text from the relevant files.")
-                # Check if content actually contains the keyword
+                # --- START MODIFICATION ---
+                print(f"Workflow looked for files related to '{SEARCH_KEYWORD}' in the project repo and attempted to read them.")
+                # --- END MODIFICATION ---
+                read_count = result_dict.get('notes', {}).get('files_read_count', 'N/A')
+                skipped_list = result_dict.get('notes', {}).get('skipped_files', [])
+                print(f"Files Found & Attempted: {len(skipped_list) + (read_count if isinstance(read_count, int) else 0)}") # Approx based on skipped + read
+                print(f"Files Successfully Read: {read_count}")
+                print(f"Files Skipped (Not Found/Access Denied): {len(skipped_list)}")
+                if skipped_list:
+                     print(f"  (Examples: {skipped_list[:3]}{'...' if len(skipped_list)>3 else ''})") # Show a few skipped
+                print("\nThe 'content' field shows the concatenated text from successfully read files (if any).")
+                # Check if content actually contains the keyword (less reliable now)
                 if SEARCH_KEYWORD in result_dict.get("content", ""):
-                    print(f"(Confirmed: Result content contains the keyword '{SEARCH_KEYWORD}')")
-                else:
-                     print(f"(Warning: Result content might not contain the keyword '{SEARCH_KEYWORD}', check MemorySystem matching)")
+                    print(f"(Note: Result content contains the keyword '{SEARCH_KEYWORD}')")
+                elif read_count == 0 and skipped_list:
+                     print(f"(Note: No files were read, likely because paths returned by LLM context task don't exactly match local paths)")
+                elif read_count > 0:
+                     print(f"(Note: Result content might not contain '{SEARCH_KEYWORD}' if it wasn't in the specific parts read)")
 
             else:
                 print("\n--- Workflow Execution Failed ---")
@@ -236,8 +165,10 @@ def run_demo():
         print("="*53)
 
     finally:
-        # Optional: Cleanup the sample repo after the demo
+        # --- START MODIFICATION ---
+        # Remove cleanup call
         # cleanup_sample_repo(SAMPLE_REPO_PATH)
+        # --- END MODIFICATION ---
         logger.info("Demo script finished.")
 
 
