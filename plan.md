@@ -53,6 +53,24 @@
     *   **Outcome:** System can execute atomic tasks and complex S-expression workflows; basic user interaction via PassthroughHandler is possible.
     *   **Readiness:** Levels 2, 3, 4: Execution & Basic UI Ready.
 
+*   **Phase 3b: Structured Output Implementation (Pydantic-AI)**
+    *   **Status:** PENDING
+    *   **Goal:** Implement reliable structured output (e.g., JSON parsed into Pydantic models) for atomic tasks using `pydantic-ai`'s capabilities, as per `ADR_pydantic_output.md`.
+    *   **Components & Tasks:**
+        1.  **Schema-to-Model Mapping:** Implement a mechanism (e.g., registry or convention-based import) within `AtomicTaskExecutor` (or an accessible helper) to resolve Pydantic model class names (strings like `"MyOutputModel"`) found in template `output_format.schema` fields into actual Python Pydantic model classes (e.g., `src.system.models.MyOutputModel`).
+        2.  **`AtomicTaskExecutor` Update:** Modify `AtomicTaskExecutor.execute_body` to:
+            *   Detect when `atomic_task_def.output_format` specifies `{"type": "json", "schema": "ModelName"}`.
+            *   Use the mapping mechanism (from step 1) to get the corresponding Pydantic model class.
+            *   Pass this resolved model class as the `output_type_override` argument when calling `handler._execute_llm_call`.
+            *   Receive the parsed Pydantic model instance back from the handler (if successful).
+            *   Place the received Pydantic instance directly into the `TaskResult.parsedContent` field.
+        3.  **`BaseHandler`/`LLMInteractionManager` Update:** Modify `BaseHandler._execute_llm_call` and `LLMInteractionManager.execute_call` to accept the `output_type_override` parameter and pass it down to the `pydantic-ai` `agent.run_sync()` call.
+        4.  **Result Handling Update:** Ensure `LLMInteractionManager` returns the parsed Pydantic instance received from `agent.run_sync()` when `output_type_override` is used successfully.
+    *   **Integration:** Requires changes in `AtomicTaskExecutor`, `BaseHandler`, `LLMInteractionManager`. Relies on Pydantic models defined (likely in `src.system.models`). May allow simplification in components that previously validated JSON results manually (e.g., `MemorySystem` for context tasks).
+    *   **Testing:** Add tests verifying that the `output_type_override` is passed correctly, that `pydantic-ai` performs parsing/validation, and that the resulting Pydantic object is placed in `TaskResult.parsedContent`. Test error handling for schema mapping failures or `pydantic-ai` validation errors.
+    *   **Outcome:** Atomic tasks requiring structured output leverage `pydantic-ai`'s robust mechanisms, increasing reliability and simplifying validation logic.
+    *   **Readiness:** Core Feature Enhancement (Builds on Phase 3).
+
 ---
 *   **Phase 4: Specialized Features (Indexers & System Tools)**
     *   **Status:** PENDING (NEXT)
