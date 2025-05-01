@@ -7,22 +7,38 @@ import logging
 import shutil # For removing directory if needed
 
 # --- Setup Project Path ---
-# Assume this script is run from the project root directory
-# Or adjust the path accordingly if run from elsewhere
-PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__)) # Or os.getcwd() if run from root
+# Calculate paths relative to the script's location (src/scripts/)
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+# Project root is two levels up from the script's directory (src/scripts -> src -> PROJECT_ROOT)
+PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, '..', '..'))
+# Source directory is one level down from the project root
 SRC_PATH = os.path.join(PROJECT_ROOT, 'src')
+
+# Add SRC_PATH to sys.path FIRST to prioritize imports from src
 if SRC_PATH not in sys.path:
     sys.path.insert(0, SRC_PATH)
+    print(f"DEBUG: Added {SRC_PATH} to sys.path") # Optional debug print
+
+# Add PROJECT_ROOT to sys.path. This might be needed if some imports
+# within src are relative to the project root (e.g., from src.some_module import ...)
+# although absolute imports from src (from handler import ...) should work with just SRC_PATH.
+# Adding PROJECT_ROOT can sometimes help resolve complex import scenarios.
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(1, PROJECT_ROOT) # Insert after SRC_PATH
+    print(f"DEBUG: Added {PROJECT_ROOT} to sys.path") # Optional debug print
 
 # --- Import Application ---
+# Now the import should work correctly
 try:
     from main import Application
     # Import specific models needed for type hints or checks if necessary
     from system.models import TaskResult
 except ImportError as e:
     print(f"Error importing project modules: {e}")
-    print("Please ensure this script is run from the project root directory")
-    print("or that the 'src' directory is in your PYTHONPATH.")
+    print(f"PROJECT_ROOT calculated as: {PROJECT_ROOT}")
+    print(f"SRC_PATH calculated as: {SRC_PATH}")
+    print(f"Current sys.path: {sys.path}")
+    print("Please ensure the project structure is correct and dependencies are installed.")
     sys.exit(1)
 
 # --- Configuration ---
