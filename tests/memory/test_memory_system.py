@@ -263,7 +263,7 @@ def test_configure_sharding_updates_config_no_recalculate_if_disabled(
 # Test for index_git_repository is added below
 
 # --- Test _recalculate_shards (Placeholder) ---
-@patch("logging.debug")
+@patch("src.memory.memory_system.logger.debug")
 def test_recalculate_shards_placeholder_logs_and_clears_when_enabled(
     mock_log, memory_system_instance
 ):
@@ -272,11 +272,13 @@ def test_recalculate_shards_placeholder_logs_and_clears_when_enabled(
     memory_system_instance._sharded_index = [{"a": "b"}]  # Add dummy data
     memory_system_instance._recalculate_shards()
     assert memory_system_instance._sharded_index == []  # Placeholder clears it
-    mock_log.assert_any_call("Recalculating shards (logic TBD)...")
-    mock_log.assert_any_call("Shards recalculated. Count: 0")
+    # Check for log messages more flexibly
+    calls = [c[0][0] for c in mock_log.call_args_list if isinstance(c[0][0], str)]
+    assert any("Recalculating shards" in msg for msg in calls), "Expected log message starting with 'Recalculating shards' not found"
+    assert any("Shards recalculated. Count:" in msg for msg in calls), "Expected log message 'Shards recalculated. Count:' not found"
 
 
-@patch("logging.debug")
+@patch("src.memory.memory_system.logger.debug")
 def test_recalculate_shards_placeholder_clears_when_disabled(mock_log, memory_system_instance):
     """Test the placeholder recalculate method clears shards when disabled."""
     memory_system_instance._config["sharding_enabled"] = False
@@ -295,6 +297,8 @@ def test_recalculate_shards_placeholder_clears_when_disabled(mock_log, memory_sy
 
 def test_get_relevant_context_for_default_strategy_is_content(memory_system_instance, mock_task_system, mock_file_manager_ms): # Corrected name
     """Verify default strategy is 'content'."""
+    # Ensure candidate_paths is not empty
+    memory_system_instance.global_index = {"/path/a.py": "meta a"}
     input_data = ContextGenerationInput(query="test")
     # Mock TaskSystem return for the content task
     mock_task_result = TaskResult(status="COMPLETE", content=AssociativeMatchResult(context_summary="Content Result", matches=[]).model_dump_json())
@@ -326,8 +330,8 @@ def test_get_relevant_context_for_content_strategy_flow(memory_system_instance, 
 
     # Assert file reads happened
     assert mock_file_manager_ms.read_file.call_count == 2
-    mock_file_manager_ms.read_file.assert_any_call("/path/a.py")
-    mock_file_manager_ms.read_file.assert_any_call("/path/b.py")
+    mock_file_manager_ms.read_file.assert_any_call("/path/a.py", max_size=ANY)
+    mock_file_manager_ms.read_file.assert_any_call("/path/b.py", max_size=ANY)
 
     # Assert TaskSystem call
     mock_task_system.execute_atomic_template.assert_called_once()

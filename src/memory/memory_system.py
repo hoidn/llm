@@ -5,6 +5,7 @@ Implements the contract defined in src/memory/memory_system_IDL.md.
 
 import os
 import logging
+import uuid
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 # Configure logger
@@ -292,21 +293,23 @@ class MemorySystem:
         try:
             # Prevent recursive context fetching within the matching task
             context_override = ContextManagement(freshContext='disabled', inheritContext='none')
+            # Create a more unique task ID
+            subtask_id = f"context-gen-{strategy}-{uuid.uuid4()}"
             request = SubtaskRequest(
-                task_id=f"context-gen-{strategy}-{input_data.query[:20]}", # Unique-ish ID
+                task_id=subtask_id, # Pass required task_id
                 type="atomic",
                 name=llm_task_name,
                 inputs=inputs_for_llm,
                 context_management=context_override
             )
         except Exception as e:
-             error_msg = f"Failed to create SubtaskRequest: {e}"
-             logger.exception(error_msg)
+             error_msg = f"Failed to create SubtaskRequest for '{llm_task_name}': {e}"
+             logger.exception(error_msg) # Log with traceback
              return AssociativeMatchResult(context_summary="", matches=[], error=error_msg)
 
         # 8. Call TaskSystem
         try:
-            logger.debug(f"Calling TaskSystem to execute: {llm_task_name}")
+            logger.debug(f"Calling TaskSystem to execute: {llm_task_name} with request ID: {request.task_id}")
             task_result: TaskResult = self.task_system.execute_atomic_template(request)
 
             # 9. Parse Result
