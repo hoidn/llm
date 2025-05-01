@@ -527,10 +527,19 @@ class SexpEvaluator:
 
             # Evaluate the value expression
             try:
-                value = self._eval(value_expr, env)
+                # Special handling for matching_strategy symbols
+                if key_str == "matching_strategy" and isinstance(value_expr, Symbol):
+                    # If it's the strategy key and the value is a Symbol,
+                    # use the symbol's name directly without evaluating it.
+                    value = value_expr.value()
+                    logging.debug(f"  _parse_get_context: Using strategy symbol name directly: '{value}'")
+                else:
+                    # Otherwise, evaluate the value expression normally.
+                    logging.debug(f"  _parse_get_context: Evaluating value for key '{key_str}'...")
+                    value = self._eval(value_expr, env)
+                
                 logging.debug(f"  _parse_get_context: Evaluated arg '{key_str}' to: {value} (Type: {type(value)})")
 
-                # --- START MODIFICATION ---
                 # Special handling and validation for matching_strategy
                 if key_str == "matching_strategy":
                     # The evaluated value should be the strategy name (string)
@@ -540,7 +549,6 @@ class SexpEvaluator:
                          # Raise error if the *evaluated value* is not 'content' or 'metadata'
                          raise SexpEvaluationError(f"Invalid value for 'matching_strategy'. Expected 'content' or 'metadata', got: {value!r}", node_repr)
                     context_input_args[key_str] = value
-                # --- END MODIFICATION ---
                 else:
                     # Store other evaluated args directly
                     context_input_args[key_str] = value

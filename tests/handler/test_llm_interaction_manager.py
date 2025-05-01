@@ -80,7 +80,7 @@ def test_llm_manager_init_no_model_id():
     assert manager.agent is None
     # Agent constructor should NOT have been called
 
-@patch('logging.error')
+@patch('src.handler.llm_interaction_manager.logging.error')
 def test_llm_manager_init_agent_exception(mock_log_error):
     """Test initialization failure when Agent instantiation raises an error."""
     test_exception = ValueError("Agent init failed")
