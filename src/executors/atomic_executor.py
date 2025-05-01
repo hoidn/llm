@@ -108,7 +108,11 @@ class AtomicTaskExecutor:
             main_prompt = substituted_instructions
             if not main_prompt:
                  logging.warning(f"Task '{task_name}' has empty instructions after substitution.")
-                 main_prompt = "" # Proceed with empty prompt
+                 # Raise error if prompt is empty, as Anthropic requires content
+                 raise ValueError("Substituted instructions resulted in an empty prompt.")
+            elif not isinstance(main_prompt, str):
+                 logging.error(f"Substituted instructions are not a string (type: {type(main_prompt)}). Value: {main_prompt!r}")
+                 raise TypeError("Substituted instructions must result in a string.")
 
             # Determine model override, if any (passed to handler's call)
             model_override = atomic_task_def.get("model") # TODO: Confirm handler._execute_llm_call supports this
@@ -125,6 +129,8 @@ class AtomicTaskExecutor:
 
             # --- 3. Invoke Handler ---
             logging.debug(f"Invoking handler._execute_llm_call for task: {task_name}")
+            # Add debug logging for prompt
+            logging.debug(f"Passing prompt to handler (type: {type(main_prompt)}, length: {len(main_prompt)}): '{main_prompt[:200]}...'")
             # Assuming _execute_llm_call returns a TaskResult object or raises errors
             # Pass necessary overrides.
             handler_result_obj: TaskResult = handler._execute_llm_call(
@@ -168,7 +174,7 @@ class AtomicTaskExecutor:
             logging.info(f"Atomic task execution finished for '{task_name}' with status: {task_result_dict.get('status')}")
             return task_result_dict
 
-        except ParameterMismatchError as e:
+        except (ParameterMismatchError, ValueError, TypeError) as e:
             logging.error(f"Parameter mismatch during execution of task '{task_name}': {e}")
             # Create FAILED TaskResult as per IDL/ADR
             error_details = TaskFailureError(type="TASK_FAILURE", reason="input_validation_failure", message=str(e))
