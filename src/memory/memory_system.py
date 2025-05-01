@@ -212,6 +212,12 @@ class MemorySystem:
             An AssociativeMatchResult object containing the context summary and a list of MatchTuple objects.
             Returns an error result if dependencies are unavailable, pre-filtering/reading fails, or the LLM task fails.
         """
+        # Check TaskSystem dependency EARLY
+        if not self.task_system:
+            error_msg = "TaskSystem dependency not available in MemorySystem."
+            logger.error(error_msg)
+            return AssociativeMatchResult(context_summary="", matches=[], error=error_msg)
+            
         logger.debug(f"get_relevant_context_for called with strategy: {input_data.matching_strategy}")
 
         # 1. Determine Strategy (Default to 'content')
@@ -274,11 +280,7 @@ class MemorySystem:
              # Should not happen if ContextGenerationInput validation works
              return AssociativeMatchResult(context_summary="Error: Invalid matching strategy.", matches=[], error=f"Invalid matching strategy: {strategy}")
 
-        # 6. Check TaskSystem dependency
-        if not self.task_system:
-            error_msg = "TaskSystem dependency not available in MemorySystem."
-            logger.error(error_msg)
-            return AssociativeMatchResult(context_summary="", matches=[], error=error_msg)
+        # 6. TaskSystem dependency already checked at the beginning of the method
 
         # 7. Create SubtaskRequest
         try:
@@ -306,13 +308,15 @@ class MemorySystem:
                 error_msg = f"Associative matching task '{llm_task_name}' failed."
                 error_details = task_result.notes.get("error")
                 if error_details:
-                     # If error details are structured, extract message
-                     if isinstance(error_details, dict) and 'message' in error_details:
-                         error_msg += f" Reason: {error_details['message']}"
-                     else:
-                          error_msg += f" Details: {error_details}"
+                    # If error details are structured, extract message
+                    if isinstance(error_details, dict) and 'message' in error_details:
+                        error_msg += f" Reason: {error_details['message']}"
+                    elif hasattr(error_details, 'message'):  # Handle TaskFailureError object
+                        error_msg += f" Reason: {error_details.message}"
+                    else:
+                        error_msg += f" Details: {error_details}"
                 else:
-                     error_msg += f" Reason: {task_result.content}" # Fallback to content
+                    error_msg += f" Reason: {task_result.content}"  # Fallback to content
                 logger.error(error_msg)
                 return AssociativeMatchResult(context_summary="", matches=[], error=error_msg)
 
@@ -333,6 +337,7 @@ class MemorySystem:
                 except Exception as e:
                     error_msg = f"Failed to parse AssociativeMatchResult JSON from task output: {e}"
                     logger.error(f"{error_msg}\nContent was: {task_result.content}")
+                    # Return immediately with the specific parsing error
                     return AssociativeMatchResult(context_summary="", matches=[], error=error_msg)
 
             if parsed_assoc_result is None:
