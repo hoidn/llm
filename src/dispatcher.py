@@ -195,10 +195,14 @@ def execute_programmatic_task(
                 # context_management=... # Use defaults from TaskSystem
             )
             task_result_obj = task_system_instance.execute_atomic_template(request)
-            # Merge dispatcher notes into the result notes
-            if task_result_obj.notes is None: task_result_obj.notes = {}
-            task_result_obj.notes.update(notes)
+            # Merge dispatcher notes into the result notes (reversed order)
+            # --- START MODIFICATION ---
+            final_notes = notes.copy() # Start with dispatcher notes
+            if task_result_obj.notes:
+                final_notes.update(task_result_obj.notes) # Update with task notes (task notes overwrite dispatcher notes on conflict)
+            task_result_obj.notes = final_notes # Assign merged notes back
             task_result_dict = task_result_obj.model_dump(exclude_none=True)
+            # --- END MODIFICATION ---
 
         except TaskError as e: # Should be less common if TaskSystem returns TaskResult on failure
              logging.warning(f"TaskSystem execution failed for '{identifier}': {e}")
@@ -229,25 +233,72 @@ def execute_programmatic_task(
         notes['execution_path'] = "direct_tool"
         try:
             # Pass original params (including file_context if tool needs it)
-            tool_result_obj = handler_instance._execute_tool(identifier, params)
+            tool_result_obj: TaskResult = handler_instance._execute_tool(identifier, params) # Ensure type hint
 
-            if tool_result_obj.status == "CONTINUATION":
+            # --- START MODIFICATION ---
+            if tool_result_obj.status == "FAILED":
+                logging.warning(f"Handler tool '{identifier}' returned FAILED status.")
+                # Extract original error details if present
+                original_error_dict = tool_result_obj.notes.get("error")
+                fail_reason: TaskFailureReason = "tool_execution_error" # Default reason
+                fail_msg = tool_result_obj.content # Use content as message fallback
+                fail_details_obj: Optional[TaskFailureDetails] = None
+
+                if isinstance(original_error_dict, dict):
+                    # Try to reconstruct TaskFailureError to get details
+                    try:
+                        original_error_obj = TaskFailureError.model_validate(original_error_dict)
+                        fail_reason = original_error_obj.reason
+                        fail_msg = original_error_obj.message
+                        fail_details_obj = original_error_obj.details # Extract details object
+                    except Exception as parse_err:
+                        logging.warning(f"Could not parse original error dict from tool result: {parse_err}")
+                        if 'reason' in original_error_dict: fail_reason = original_error_dict['reason']
+                        if 'message' in original_error_dict: fail_msg = original_error_dict['message']
+                        # Cannot reliably get details object if parsing failed
+
+                # Use the helper to reconstruct the FAILED result, preserving details
+                task_result_dict = _create_failed_result_dict(
+                    reason=fail_reason,
+                    message=f"Tool Execution Error: {fail_msg}", # Add prefix for clarity
+                    details_obj=fail_details_obj # Pass the extracted details object
+                )
+                # Merge notes (Dispatcher notes first, then overwrite with tool notes)
+                final_notes = notes.copy()
+                # Merge original notes from the tool result (excluding the 'error' key itself)
+                original_notes_without_error = {k: v for k, v in tool_result_obj.notes.items() if k != 'error'}
+                final_notes.update(original_notes_without_error)
+                # Add the newly formatted error structure back into notes
+                task_result_dict['notes'] = final_notes
+                task_result_dict['notes']['error'] = _create_failed_result_dict(fail_reason, f"Tool Execution Error: {fail_msg}", fail_details_obj)['notes']['error']
+
+
+            elif tool_result_obj.status == "CONTINUATION":
                 logging.error(f"Direct tool call '{identifier}' returned CONTINUATION status, which is not allowed.")
-                # Use CORRECTED helper signature
                 task_result_dict = _create_failed_result_dict("tool_execution_error", "Direct tool calls cannot return CONTINUATION status.")
                 # Merge notes
-                if 'notes' not in task_result_dict: task_result_dict['notes'] = {}
-                task_result_dict['notes'].update(notes)
+                final_notes = notes.copy() # Start with dispatcher notes
+                # If tool result had other notes, merge them (excluding error)
+                original_notes_without_error = {k: v for k, v in tool_result_obj.notes.items() if k != 'error'}
+                final_notes.update(original_notes_without_error)
+                task_result_dict['notes'] = final_notes
+                # Add the error structure back
+                task_result_dict['notes']['error'] = _create_failed_result_dict("tool_execution_error", "Direct tool calls cannot return CONTINUATION status.")['notes']['error']
 
-            else:
-                # Merge dispatcher notes into the result notes
-                if tool_result_obj.notes is None: tool_result_obj.notes = {}
-                tool_result_obj.notes.update(notes)
+
+            else: # COMPLETE status
+                # Merge dispatcher notes into the result notes (reversed order)
+                final_notes = notes.copy() # Start with dispatcher notes
+                if tool_result_obj.notes:
+                    final_notes.update(tool_result_obj.notes) # Update with tool notes (tool notes overwrite dispatcher notes on conflict)
+                tool_result_obj.notes = final_notes # Assign merged notes back
                 task_result_dict = tool_result_obj.model_dump(exclude_none=True)
+            # --- END MODIFICATION ---
 
         except TaskError as e: # Should be less common if Handler returns TaskResult on failure
              logging.warning(f"Handler tool execution failed for '{identifier}': {e}")
              # Create a FAILED TaskResult if Handler raised instead of returning one
+             # Extract details correctly from TaskError object
              fail_reason = e.reason if hasattr(e, 'reason') else "tool_execution_error"
              fail_msg = e.message if hasattr(e, 'message') else str(e)
              fail_details_obj = e.details if hasattr(e, 'details') else None
