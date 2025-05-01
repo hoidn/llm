@@ -310,6 +310,12 @@ class MemorySystem:
             task_result: TaskResult = self.task_system.execute_atomic_template(request)
 
             # 9. Parse Result
+            if not isinstance(task_result, TaskResult):
+                # Handle cases where the mock might return something unexpected, though it shouldn't
+                error_msg = f"TaskSystem returned unexpected type: {type(task_result)}"
+                logger.error(error_msg)
+                return AssociativeMatchResult(context_summary="", matches=[], error=error_msg)
+
             if task_result.status == "FAILED":
                 # Extract error details from the FAILED TaskResult
                 error_msg = f"Associative matching task '{llm_task_name}' failed." # Use specific message prefix
@@ -330,35 +336,43 @@ class MemorySystem:
 
             # --- Successful Task Result - Attempt Parsing ---
             parsed_assoc_result = None
+            parse_error_msg = None
 
-            # Try parsedContent first (Pydantic object)
-            if hasattr(task_result, 'parsedContent') and isinstance(task_result.parsedContent, AssociativeMatchResult):
-                parsed_assoc_result = task_result.parsedContent
-                logger.debug("Using AssociativeMatchResult directly from TaskResult.parsedContent")
-            elif task_result.parsedContent and isinstance(task_result.parsedContent, dict):
-                try:
-                    parsed_assoc_result = AssociativeMatchResult.model_validate(task_result.parsedContent)
-                    logger.debug("Validated dict from TaskResult.parsedContent as AssociativeMatchResult")
-                except Exception as e:
-                    logger.warning(f"Failed to validate parsedContent dict as AssociativeMatchResult: {e}. Will try parsing content string.")
+            # Try parsedContent first (might be the actual object)
+            if task_result.parsedContent:
+                if isinstance(task_result.parsedContent, AssociativeMatchResult):
+                    parsed_assoc_result = task_result.parsedContent
+                    logger.debug("Using AssociativeMatchResult object from TaskResult.parsedContent")
+                elif isinstance(task_result.parsedContent, dict):
+                    try:
+                        parsed_assoc_result = AssociativeMatchResult.model_validate(task_result.parsedContent)
+                        logger.debug("Parsed AssociativeMatchResult from dict in TaskResult.parsedContent")
+                    except Exception as e:
+                        parse_error_msg = f"Failed to validate parsedContent dict as AssociativeMatchResult: {e}"
+                        logger.warning(parse_error_msg)
+                else:
+                    # Handle case where parsedContent is neither the object nor a dict (e.g., string)
+                    logger.warning(f"TaskResult.parsedContent has unexpected type: {type(task_result.parsedContent)}. Trying TaskResult.content.")
 
             # Fall back to content string (JSON) if parsedContent didn't work or wasn't present/correct type
             if parsed_assoc_result is None and isinstance(task_result.content, str):
                 try:
+                    import json
                     parsed_assoc_result = AssociativeMatchResult.model_validate_json(task_result.content)
                     logger.debug("Parsed AssociativeMatchResult from TaskResult.content JSON string")
-                except Exception as e:
-                    # Specific error message for parsing failure - RETURN IMMEDIATELY
-                    parsing_error_message = f"Failed to parse AssociativeMatchResult JSON from task output: {e}"
-                    logger.error(f"{parsing_error_message}\nContent was: {task_result.content}")
-                    return AssociativeMatchResult(context_summary="", matches=[], error=parsing_error_message)
+                except json.JSONDecodeError as e:
+                    parse_error_msg = f"Failed to parse AssociativeMatchResult JSON from task output: {e}"
+                    logger.error(f"{parse_error_msg}\nContent was: {task_result.content}")
+                except Exception as e: # Catch potential Pydantic validation errors too
+                    parse_error_msg = f"Failed to validate JSON as AssociativeMatchResult: {e}"
+                    logger.error(f"{parse_error_msg}\nContent was: {task_result.content}")
 
             # Final check: Did we successfully parse the result?
             if parsed_assoc_result is None:
-                 # This means status was COMPLETE, but parsing failed from both sources, or parsedContent was wrong type
-                 final_error_msg = "Failed to obtain valid AssociativeMatchResult from successful task."
-                 logger.error(f"{final_error_msg} (Content Type: {type(task_result.content)}, ParsedContent Type: {type(task_result.parsedContent)})")
-                 return AssociativeMatchResult(context_summary="", matches=[], error=final_error_msg)
+                # Use the specific parsing error if available, otherwise a generic one
+                final_error_msg = parse_error_msg or "Failed to obtain valid AssociativeMatchResult from successful task."
+                logger.error(f"{final_error_msg} (Content Type: {type(task_result.content)}, ParsedContent Type: {type(task_result.parsedContent)})")
+                return AssociativeMatchResult(context_summary="", matches=[], error=final_error_msg)
 
             logger.info(f"Successfully generated context via '{llm_task_name}'. Matches: {len(parsed_assoc_result.matches)}")
             return parsed_assoc_result
