@@ -217,6 +217,12 @@ class MemorySystem:
             error_msg = "TaskSystem dependency not available in MemorySystem."
             logger.error(error_msg)
             return AssociativeMatchResult(context_summary="", matches=[], error=error_msg)
+        
+        # Check FileAccessManager dependency EARLY
+        if not self.file_access_manager:
+            error_msg = "FileAccessManager dependency not available in MemorySystem."
+            logger.error(error_msg)
+            return AssociativeMatchResult(context_summary="", matches=[], error=error_msg)
             
         logger.debug(f"get_relevant_context_for called with strategy: {input_data.matching_strategy}")
 
@@ -237,6 +243,8 @@ class MemorySystem:
         logger.debug(f"Pre-filtering selected {len(candidate_paths)} candidate paths (currently uses all).")
         if not candidate_paths:
             return AssociativeMatchResult(context_summary="No files indexed to search.", matches=[])
+        if not candidate_paths:
+            return AssociativeMatchResult(context_summary="No files indexed to search.", matches=[])
 
         inputs_for_llm: Dict[str, Any] = {"context_input": input_data.model_dump(exclude_none=True)}
         llm_task_name: str = ""
@@ -251,7 +259,7 @@ class MemorySystem:
             for path in candidate_paths:
                 try:
                     # Use file_access_manager - assuming it handles limits/errors internally
-                    content = self.file_access_manager.read_file(path) # Use default size limit for now? Or None? Check IDL/impl.
+                    content = self.file_access_manager.read_file(path, max_size=None)
                     if content is not None:
                         file_contents[path] = content
                     else:
