@@ -296,6 +296,14 @@ class MemorySystem:
 
         logging.debug(f"Searching index with {len(index_to_search)} entries using words: {search_words}")
 
+        # --- START ADDITION ---
+        logging.debug(f"MemorySystem: Index size being searched: {len(index_to_search)}")
+        # Log a few keys from the index for verification (optional, can be verbose)
+        if index_to_search:
+             logging.debug(f"MemorySystem: Sample index keys: {list(index_to_search.keys())[:5]}")
+        logging.debug(f"MemorySystem: Searching with words: {search_words}")
+        # --- END ADDITION ---
+
         for file_path, metadata in index_to_search.items():
             metadata_lower = metadata.lower()
             metadata_words = set(metadata_lower.split()) # Split metadata into words
@@ -305,7 +313,13 @@ class MemorySystem:
                 # Create MatchTuple according to Pydantic model
                 # Using placeholder relevance 1.0 for direct match, no excerpt
                 matches.append(MatchTuple(path=file_path, relevance=1.0)) # Adhere to MatchTuple model
-                logging.debug(f"Match found: {file_path}")
+                # --- START MODIFICATION ---
+                logging.debug(f"MemorySystem: Match FOUND for '{search_words}' in: {file_path}")
+                # --- END MODIFICATION ---
+
+        # --- START ADDITION ---
+        logging.debug(f"MemorySystem: Total matches found: {len(matches)}")
+        # --- END ADDITION ---
 
         # 5. Format the results
         context_summary = f"Found {len(matches)} potential matches based on keyword search."
