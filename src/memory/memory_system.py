@@ -8,7 +8,8 @@ import logging
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 # Import necessary models
-from src.system.models import ContextGenerationInput, AssociativeMatchResult, MatchTuple
+from src.system.models import ContextGenerationInput, AssociativeMatchResult, MatchTuple, SubtaskRequest, ContextManagement
+from src.handler.file_access import FileAccessManager
 
 # Import the indexer
 try:
@@ -27,10 +28,9 @@ DEFAULT_SHARDING_CONFIG = {
     "max_parallel_shards": 3,
 }
 
-# Forward declarations for type hinting cycles
-# from src.handler.base_handler import BaseHandler
-# from src.task_system.task_system import TaskSystem
-# from src.system.models import ContextGenerationInput, AssociativeMatchResult, MatchTuple
+# Forward declarations for type hinting cycles - Use actual imports now
+from src.handler.base_handler import BaseHandler
+from src.task_system.task_system import TaskSystem
 
 
 class MemorySystem:
@@ -40,20 +40,31 @@ class MemorySystem:
 
     def __init__(
         self,
-        handler: Optional[Any] = None,  # BaseHandler
-        task_system: Optional[Any] = None,  # TaskSystem
+        handler: BaseHandler, # Remove Optional
+        task_system: TaskSystem, # Remove Optional
+        file_access_manager: FileAccessManager, # Add required arg
         config: Optional[Dict[str, Any]] = None,
     ):
         """
         Initializes the Memory System.
 
         Args:
-            handler: Optional BaseHandler instance (required for context generation).
-            task_system: Optional TaskSystem instance (required for context generation mediation).
+            handler: BaseHandler instance.
+            task_system: TaskSystem instance.
+            file_access_manager: FileAccessManager instance.
             config: Optional dictionary for sharding parameters and other settings.
         """
+        # Add basic type checks for required dependencies
+        if not isinstance(handler, BaseHandler): # Replace BaseHandler with actual class if possible
+             raise TypeError("MemorySystem requires a valid BaseHandler instance.")
+        if not isinstance(task_system, TaskSystem): # Replace TaskSystem with actual class if possible
+             raise TypeError("MemorySystem requires a valid TaskSystem instance.")
+        if not isinstance(file_access_manager, FileAccessManager):
+             raise TypeError("MemorySystem requires a valid FileAccessManager instance.")
+
         self.handler = handler
         self.task_system = task_system
+        self.file_access_manager = file_access_manager
         self.global_index: Dict[str, str] = {}
         self._sharded_index: List[Dict[str, str]] = []
         self._config: Dict[str, Any] = DEFAULT_SHARDING_CONFIG.copy()
@@ -182,123 +193,137 @@ class MemorySystem:
         return self.get_relevant_context_for(input_data)
 
     def get_relevant_context_for(
-        self, input_data: Any  # Union[Dict[str, Any], ContextGenerationInput]
-    ) -> Any:  # AssociativeMatchResult
+        self, input_data: Any # Union[Dict[str, Any], ContextGenerationInput]
+    ) -> AssociativeMatchResult:
         """
-        Retrieves relevant context for a task, mediating through the TaskSystem.
+        Retrieves relevant context for a task, orchestrating content/metadata retrieval and LLM analysis.
+        This is the primary method for context retrieval.
 
         Args:
-            input_data: Either a legacy dictionary or a ContextGenerationInput object.
+            input_data: A valid ContextGenerationInput object (v5.0 or later).
 
         Returns:
-            An AssociativeMatchResult object.
+            An AssociativeMatchResult object containing the context summary and a list of MatchTuple objects.
+            Returns an error result if dependencies are unavailable, pre-filtering/reading fails, or the LLM task fails.
         """
-        # Implementation deferred to Phase 2
-        # logging.warning( # Changed to debug as it's expected to be called now
-        #     "get_relevant_context_for called, but implementation is deferred."
-        # )
-        # --- Start Phase 2, Set A: Behavior Structure ---
-        # 1. Parse/Validate input_data:
-        #    - If it's a legacy dict, convert it to ContextGenerationInput.
-        #    - If it's already ContextGenerationInput, validate it.
-        # 2. Determine the effective query string for matching:
-        #    - Prioritize input_data.query if present.
-        #    - Else, use input_data.templateDescription and relevant input_data.inputs.
-        # 3. Check if fresh context generation is effectively disabled:
-        #    - This might depend on flags within input_data or other context settings (logic might be complex and partially determined by the caller).
-        #    - If disabled, potentially return early with inherited context or an empty result (TBD based on exact requirements).
-        # 4. Perform associative matching:
-        #    - If sharding is enabled (self._config['sharding_enabled'] and len(self._sharded_index) > 0):
-        #        - Determine which shards to process (potentially all or a subset).
-        #        - Process shards in parallel (up to max_parallel_shards) using a helper like _process_single_shard.
-        #        - Aggregate results from shards (e.g., combine matches, potentially re-rank).
-        #    - If sharding is disabled or not applicable:
-        #        - Call a helper method like _get_relevant_context_with_mediator, passing the full global_index and input_data.
-        #        - This mediator method will likely:
-        #            - Check if TaskSystem is available.
-        #            - Call self.task_system.generate_context_for_memory_system(input_data, self.global_index).
-        # 5. Format the results:
-        #    - Construct an AssociativeMatchResult object from the matches and context summary obtained.
-        # 6. Handle errors:
-        #    - Catch exceptions during the process (e.g., TaskSystem unavailable, matching task failure).
-        #    - Return an AssociativeMatchResult with an appropriate error message.
-        # 7. Return the AssociativeMatchResult.
-        # --- End Phase 2, Set A ---
-
-        # --- Start Phase 2a Implementation ---
         logging.debug(f"get_relevant_context_for called with input: {input_data}")
-        # 1. Parse/Validate input_data (Assuming it's already ContextGenerationInput for now)
+
+        # 1. Validate input_data and dependencies
         if not isinstance(input_data, ContextGenerationInput):
-            # Basic handling if legacy dict is passed, might need refinement
             logging.warning("Received non-ContextGenerationInput, attempting conversion.")
             try:
                 input_data = ContextGenerationInput.model_validate(input_data)
             except Exception as e:
-                logging.error(f"Failed to parse input_data: {e}")
-                return AssociativeMatchResult(
-                    context_summary="Error: Invalid input data format.",
-                    matches=[],
-                    error=f"Invalid input data format: {e}"
-                )
+                msg = f"Invalid input data format: {e}"
+                logging.error(msg)
+                return AssociativeMatchResult(context_summary="Error", matches=[], error=msg)
 
-        # 2. Determine the effective query string(s) for matching
-        search_strings = []
-        if input_data.query:
-            search_strings.append(input_data.query)
-            logging.debug(f"Using explicit query for search: '{input_data.query}'")
-        elif input_data.templateDescription:
-            # Combine description and potentially key inputs for search
-            # Simple approach: use description directly
-            search_strings.append(input_data.templateDescription)
-            logging.debug(f"Using templateDescription for search: '{input_data.templateDescription}'")
-            # Future enhancement: could extract keywords from inputs dict
-            # if input_data.inputs:
-            #     search_strings.extend([str(v) for v in input_data.inputs.values()])
-        else:
-            # No query or description provided
-            logging.warning("No query or templateDescription in input_data for context matching.")
-            return AssociativeMatchResult(
-                context_summary="No search criteria provided.",
-                matches=[],
-                error="No query or templateDescription provided."
-            )
-
-        # Normalize search strings (e.g., lower case for case-insensitive matching)
-        search_strings_lower = [s.lower() for s in search_strings if s]
-        if not search_strings_lower:
-             logging.warning("Search criteria became empty after normalization.")
-             return AssociativeMatchResult(context_summary="Empty search criteria.", matches=[])
-
-
-        # 4. Delegate context generation to TaskSystem
-        logging.debug("Delegating context generation to TaskSystem.")
-
-        # 3. Check TaskSystem dependency
         if not self.task_system:
-            error_msg = "TaskSystem dependency not available in MemorySystem for context generation."
-            logging.error(error_msg)
-            return AssociativeMatchResult(context_summary="", matches=[], error=error_msg)
+            msg = "TaskSystem dependency not available."
+            logging.error(msg)
+            return AssociativeMatchResult(context_summary="Error", matches=[], error=msg)
+        if not self.file_access_manager:
+            msg = "FileAccessManager dependency not available."
+            logging.error(msg)
+            return AssociativeMatchResult(context_summary="Error", matches=[], error=msg)
+
+        # 2. Determine matching strategy and query
+        strategy = input_data.matching_strategy or 'content' # Default to 'content'
+        query = input_data.query or input_data.templateDescription or "" # Determine query source
+        if not query:
+            msg = "No query or templateDescription provided for context matching."
+            logging.warning(msg)
+            return AssociativeMatchResult(context_summary="No query", matches=[], error=msg)
+
+        logging.info(f"Using matching strategy: '{strategy}' for query: '{query[:50]}...'")
+
+        # 3. Pre-filter candidate paths (Placeholder - using all for now)
+        # TODO: Implement pre-filtering based on query/index structure
+        candidate_paths = list(self.global_index.keys())
+        logging.debug(f"Candidate paths for matching: {len(candidate_paths)}")
+        if not candidate_paths:
+            return AssociativeMatchResult(context_summary="No files indexed", matches=[])
+
+        # 4/5. Prepare inputs for the appropriate internal LLM task
+        inputs_for_llm: Dict[str, Any] = {"context_input": input_data.model_dump(exclude_none=True)}
+        task_name: str
+
+        if strategy == 'content':
+            task_name = "internal:associative_matching_content"
+            file_contents: Dict[str, str] = {}
+            for path in candidate_paths:
+                try:
+                    content = self.file_access_manager.read_file(path)
+                    if content is not None:
+                        file_contents[path] = content
+                    else:
+                        logging.warning(f"Could not read content for candidate file: {path}")
+                except Exception as e:
+                    logging.warning(f"Error reading file {path}: {e}")
+            if not file_contents:
+                 msg = "No content could be read for any candidate files."
+                 logging.warning(msg)
+                 return AssociativeMatchResult(context_summary="No content read", matches=[], error=msg)
+            inputs_for_llm["file_contents"] = file_contents
+            logging.debug(f"Prepared {len(file_contents)} file contents for LLM.")
+
+        elif strategy == 'metadata':
+            task_name = "internal:associative_matching_metadata"
+            metadata_snippet: Dict[str, str] = {path: self.global_index[path] for path in candidate_paths}
+            inputs_for_llm["metadata_snippet"] = metadata_snippet
+            logging.debug(f"Prepared {len(metadata_snippet)} metadata snippets for LLM.")
+
+        else:
+            # Should not happen if validation is correct, but handle defensively
+            msg = f"Invalid matching strategy: {strategy}"
+            logging.error(msg)
+            return AssociativeMatchResult(context_summary="Error", matches=[], error=msg)
+
+        # 6. Handle sharding (Placeholder - TBD)
+        # TODO: Implement sharding logic if needed
+
+        # 7. Create SubtaskRequest for the internal LLM task
+        # Ensure this task does not try to fetch more context itself
+        context_override = ContextManagement(freshContext="disabled", inheritContext="none")
+        subtask_request = SubtaskRequest(
+            task_id=f"context-gen-{strategy}-{hash(query)}", # Unique-ish ID
+            type="atomic",
+            name=task_name,
+            description=f"Internal context generation using {strategy}",
+            inputs=inputs_for_llm,
+            context_management=context_override
+        )
+
+        # 8. Call TaskSystem to execute the internal task
+        logging.debug(f"Executing internal task: {task_name}")
+        try:
+            task_result = self.task_system.execute_atomic_template(subtask_request)
+        except Exception as e:
+            msg = f"Unexpected error calling TaskSystem for internal task {task_name}: {e}"
+            logging.exception(msg)
+            return AssociativeMatchResult(context_summary="Error", matches=[], error=msg)
+
+        # 9. Parse the AssociativeMatchResult from the TaskResult
+        if task_result.status == "FAILED":
+            error_msg = task_result.notes.get("error", {}).get("message", task_result.content)
+            msg = f"Associative matching task '{task_name}' failed: {error_msg}"
+            logging.error(msg)
+            return AssociativeMatchResult(context_summary="Error", matches=[], error=msg)
+
+        if not isinstance(task_result.content, str):
+             msg = f"Internal task '{task_name}' returned non-string content: {type(task_result.content)}"
+             logging.error(msg)
+             return AssociativeMatchResult(context_summary="Error", matches=[], error=msg)
 
         try:
-            # 4. Call TaskSystem's mediation method
-            # Pass the validated ContextGenerationInput object and the current global_index
-            result: AssociativeMatchResult = self.task_system.generate_context_for_memory_system(
-                context_input=input_data, # Pass the validated input object
-                global_index=self.global_index # Pass the full index
-            )
-
-            # 5. Return the result from TaskSystem directly
-            # TaskSystem is responsible for handling errors during its process
-            # and returning an appropriate AssociativeMatchResult (potentially with an error message)
-            logging.info(f"Received context from TaskSystem. Matches: {len(result.matches)}, Error: {result.error}")
-            return result
-
+            # Use Pydantic validation for parsing
+            assoc_match_result = AssociativeMatchResult.model_validate_json(task_result.content)
+            logging.info(f"Successfully generated context via '{task_name}': {len(assoc_match_result.matches)} matches.")
+            return assoc_match_result
         except Exception as e:
-            # Catch unexpected errors during the delegation call itself
-            error_msg = f"Unexpected error delegating context generation to TaskSystem: {e}"
-            logging.exception(error_msg) # Log full traceback
-            return AssociativeMatchResult(context_summary="", matches=[], error=error_msg)
-        # --- End Phase 2a Implementation ---
+            msg = f"Failed to parse AssociativeMatchResult JSON from task '{task_name}': {e}"
+            logging.error(f"{msg}\nContent was: {task_result.content[:500]}...") # Log truncated content
+            return AssociativeMatchResult(context_summary="Error", matches=[], error=msg)
 
     def _recalculate_shards(self) -> None:
         """

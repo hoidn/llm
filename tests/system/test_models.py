@@ -290,6 +290,7 @@ def test_context_generation_input_valid():
     assert input_data.inputs == {"language": "python", "task": "sort list"}
     assert input_data.inheritedContext == "Previous context..."
     assert input_data.previousOutputs == "Step 1 output..."
+    assert input_data.matching_strategy is None # Check new field default
 
 def test_context_generation_input_minimal():
     # Test with only optional fields provided
@@ -303,4 +304,5 @@ def test_context_generation_input_empty():
     # Test completely empty input
     input_data = ContextGenerationInput()
     assert input_data.query is None
+    assert input_data.matching_strategy is None
     # ... check all fields are None ...

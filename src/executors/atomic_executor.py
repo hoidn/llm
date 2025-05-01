@@ -62,6 +62,10 @@ class AtomicTaskExecutor:
             try:
                 # Use helper to resolve dot notation
                 value = resolve_dot_notation(params, full_param_name)
+                # Inside replace_match function in _substitute_params, before return
+                value_type = type(value)
+                value_size = len(value) if hasattr(value, '__len__') else 'N/A'
+                logging.debug(f"Substituting '{full_param_name}': Type={value_type}, Size/Len={value_size}")
                 return str(value)  # Convert final value to string
             except (KeyError, AttributeError, TypeError) as e:  # Catch potential errors during access
                 logging.error(f"Parameter '{full_param_name}' not found or access error in provided params: {e}")

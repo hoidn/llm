@@ -4,7 +4,7 @@ Focuses on logic implemented in Phase 1, Set B.
 """
 
 import pytest
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch, call, ANY
 import os
 import logging # Ensure logging is imported
 from unittest.mock import patch # Added
@@ -12,8 +12,10 @@ from unittest.mock import patch # Added
 # Assuming MemorySystem is importable
 from src.memory.memory_system import MemorySystem, DEFAULT_SHARDING_CONFIG
 # Import necessary models for tests
-from src.system.models import ContextGenerationInput, AssociativeMatchResult, MatchTuple # Added
+from src.system.models import ContextGenerationInput, AssociativeMatchResult, MatchTuple, TaskResult, SubtaskRequest, ContextManagement, TaskFailureError # Added TaskResult, SubtaskRequest, ContextManagement, TaskFailureError
 from src.task_system.task_system import TaskSystem # Added for patching
+from src.handler.file_access import FileAccessManager # For mock spec
+from src.handler.base_handler import BaseHandler # For mock spec
 
 
 # Default config for tests
@@ -24,33 +26,51 @@ TEST_CONFIG = {
 }
 
 
+@pytest.fixture # Add this new fixture
+def mock_file_manager_ms(): # Use distinct name
+    fm = MagicMock(spec=FileAccessManager)
+    fm.read_file.return_value = "Mock file content" # Default success
+    return fm
+
 @pytest.fixture
-def mock_dependencies():
-    """Provides mock handler and task_system."""
-    return MagicMock(), MagicMock()  # Mock handler, Mock task_system
+def mock_dependencies(mock_file_manager_ms): # Add mock_file_manager_ms fixture dependency
+    """Provides mock handler, task_system, and file_manager."""
+    # Use spec for better mocking
+    handler_mock = MagicMock(spec=BaseHandler)
+    task_system_mock = MagicMock(spec=TaskSystem)
+    # Return all three mocks
+    return handler_mock, task_system_mock, mock_file_manager_ms
 
 
-@pytest.fixture
-def memory_system_instance(mock_dependencies): # Renamed fixture
+@pytest.fixture # Update memory_system_instance to use new fixture
+def memory_system_instance(mock_dependencies): # mock_dependencies now includes file_manager
     """Provides a MemorySystem instance with mock dependencies."""
-    handler_mock, task_system_mock = mock_dependencies
+    handler_mock, task_system_mock, file_manager_mock = mock_dependencies
     # Use TEST_CONFIG for a predictable starting state, overriding defaults
+    # Pass the new mock file manager
     return MemorySystem(
-        handler=handler_mock, task_system=task_system_mock, config=TEST_CONFIG.copy()
+        handler=handler_mock,
+        task_system=task_system_mock,
+        file_access_manager=file_manager_mock, # Pass mock FM
+        config=TEST_CONFIG.copy()
     )
 
 
 # --- Test __init__ ---
 
 
-def test_init_defaults(mock_dependencies):
+def test_init_defaults(mock_dependencies): # mock_dependencies now includes file_manager
     """Test initialization when no config is passed, uses defaults."""
-    handler_mock, task_system_mock = mock_dependencies
+    handler_mock, task_system_mock, file_manager_mock = mock_dependencies
+    # Need to pass all required args now
     ms = MemorySystem(
-        handler=handler_mock, task_system=task_system_mock
-    )  # No config passed
+        handler=handler_mock,
+        task_system=task_system_mock,
+        file_access_manager=file_manager_mock
+    )
     assert ms.handler == handler_mock
     assert ms.task_system == task_system_mock
+    assert ms.file_access_manager == file_manager_mock # Assert file manager stored
     assert ms.global_index == {}
     assert ms._sharded_index == []
     # Check against the imported defaults
@@ -61,17 +81,22 @@ def test_init_defaults(mock_dependencies):
     )
 
 
-def test_init_with_config(mock_dependencies):
+def test_init_with_config(mock_dependencies): # mock_dependencies now includes file_manager
     """Test initialization with custom config overrides defaults."""
-    handler_mock, task_system_mock = mock_dependencies
+    handler_mock, task_system_mock, file_manager_mock = mock_dependencies
     custom_config = {
         "sharding_enabled": True,
         "max_shards": 20,
         "custom_param": "value",
     }
+    # Pass all required args
     ms = MemorySystem(
-        handler=handler_mock, task_system=task_system_mock, config=custom_config
+        handler=handler_mock,
+        task_system=task_system_mock,
+        file_access_manager=file_manager_mock,
+        config=custom_config
     )
+    assert ms.file_access_manager == file_manager_mock # Assert file manager stored
     assert ms._config["sharding_enabled"] is True
     assert ms._config["max_shards"] == 20
     # Check that defaults not in custom_config are retained
@@ -261,244 +286,162 @@ def test_recalculate_shards_placeholder_clears_when_disabled(mock_log, memory_sy
     assert mock_log.call_count == 0
 
 
-# --- Tests for Phase 2a: Context Retrieval Logic ---
+# --- Tests for Phase 2a: Context Retrieval Logic (DELETED) ---
+# Delete all tests starting with test_get_relevant_context_for_*
+# Delete test_get_relevant_context_with_description_calls_correctly
 
-# Use the existing 'memory_system_instance' fixture
+# ---- New Tests for get_relevant_context_for ----
 
-@patch.object(TaskSystem, 'generate_context_for_memory_system')
-def test_get_relevant_context_for_no_matches(mock_generate_context, memory_system_instance):
-    """Verify behavior when delegation returns no matches."""
-    # Arrange
-    input_data = ContextGenerationInput(query="non_existent_keyword")
-    # Configure mock TaskSystem to return an empty result
-    expected_result_obj = AssociativeMatchResult(
-        context_summary="Mocked: No matches found", matches=[], error=None
-    )
-    mock_generate_context.return_value = expected_result_obj
+def test_g rcf_default_strategy_is_content(memory_system_instance, mock_task_system, mock_file_manager_ms):
+    """Verify default strategy is 'content'."""
+    input_data = ContextGenerationInput(query="test")
+    # Mock TaskSystem return for the content task
+    mock_task_result = TaskResult(status="COMPLETE", content=AssociativeMatchResult(context_summary="Content Result", matches=[]).model_dump_json())
+    mock_task_system.execute_atomic_template.return_value = mock_task_result
 
-    # Act
+    memory_system_instance.get_relevant_context_for(input_data)
+
+    mock_file_manager_ms.read_file.assert_called() # Content strategy reads files
+    mock_task_system.execute_atomic_template.assert_called_once()
+    request_arg = mock_task_system.execute_atomic_template.call_args[0][0]
+    assert isinstance(request_arg, SubtaskRequest)
+    assert request_arg.name == "internal:associative_matching_content"
+
+def test_g rcf_content_strategy_flow(memory_system_instance, mock_task_system, mock_file_manager_ms):
+    """Test the full flow for the 'content' strategy."""
+    input_data = ContextGenerationInput(query="test content", matching_strategy='content')
+    # Assume global index has paths
+    memory_system_instance.global_index = {"/path/a.py": "meta a", "/path/b.py": "meta b"}
+    # Mock file reads
+    mock_file_manager_ms.read_file.side_effect = lambda p, max_size=None: f"Content of {p}" if p in ["/path/a.py", "/path/b.py"] else None
+
+    # Mock TaskSystem return
+    expected_matches = [MatchTuple(path="/path/a.py", relevance=0.9)]
+    mock_assoc_result = AssociativeMatchResult(context_summary="Content Result", matches=expected_matches)
+    mock_task_result = TaskResult(status="COMPLETE", content=mock_assoc_result.model_dump_json())
+    mock_task_system.execute_atomic_template.return_value = mock_task_result
+
     result = memory_system_instance.get_relevant_context_for(input_data)
 
-    # Assert Call
-    mock_generate_context.assert_called_once_with(
-        context_input=input_data, global_index=memory_system_instance.global_index
-    )
-    # Assert Result
-    assert result == expected_result_obj
+    # Assert file reads happened
+    assert mock_file_manager_ms.read_file.call_count == 2
+    mock_file_manager_ms.read_file.assert_any_call("/path/a.py")
+    mock_file_manager_ms.read_file.assert_any_call("/path/b.py")
 
-@patch.object(TaskSystem, 'generate_context_for_memory_system')
-def test_get_relevant_context_for_query_match(mock_generate_context, memory_system_instance):
-    """Verify behavior when delegation returns a query match."""
-    # Arrange
-    input_data = ContextGenerationInput(query="feature_x")
-    path1 = os.path.abspath("/path/file1.py")
-    # Configure mock TaskSystem to return a result with one match
-    expected_match = MatchTuple(path=path1, relevance=1.0) # Placeholder relevance
-    expected_result_obj = AssociativeMatchResult(
-        context_summary="Mocked: Found 1 match", matches=[expected_match], error=None
-    )
-    mock_generate_context.return_value = expected_result_obj
+    # Assert TaskSystem call
+    mock_task_system.execute_atomic_template.assert_called_once()
+    request_arg = mock_task_system.execute_atomic_template.call_args[0][0]
+    assert request_arg.name == "internal:associative_matching_content"
+    assert "file_contents" in request_arg.inputs
+    assert request_arg.inputs["file_contents"] == {"/path/a.py": "Content of /path/a.py", "/path/b.py": "Content of /path/b.py"}
+    assert request_arg.context_management.freshContext == "disabled" # Check override
 
-    # Act
+    # Assert final result
+    assert isinstance(result, AssociativeMatchResult)
+    assert result.matches == expected_matches
+    assert result.error is None
+
+def test_g rcf_metadata_strategy_flow(memory_system_instance, mock_task_system, mock_file_manager_ms):
+    """Test the full flow for the 'metadata' strategy."""
+    input_data = ContextGenerationInput(query="test metadata", matching_strategy='metadata')
+    # Assume global index has paths
+    memory_system_instance.global_index = {"/path/a.py": "meta a", "/path/b.py": "meta b"}
+
+    # Mock TaskSystem return
+    expected_matches = [MatchTuple(path="/path/b.py", relevance=0.8)]
+    mock_assoc_result = AssociativeMatchResult(context_summary="Metadata Result", matches=expected_matches)
+    mock_task_result = TaskResult(status="COMPLETE", content=mock_assoc_result.model_dump_json())
+    mock_task_system.execute_atomic_template.return_value = mock_task_result
+
     result = memory_system_instance.get_relevant_context_for(input_data)
 
-    # Assert Call
-    mock_generate_context.assert_called_once_with(
-        context_input=input_data, global_index=memory_system_instance.global_index
-    )
-    # Assert Result
-    assert result == expected_result_obj
+    # Assert file reads did NOT happen
+    mock_file_manager_ms.read_file.assert_not_called()
 
-@patch.object(TaskSystem, 'generate_context_for_memory_system')
-def test_get_relevant_context_for_template_description_match(mock_generate_context, memory_system_instance):
-    """Verify behavior when delegation returns a template description match."""
-    # Arrange
-    input_data = ContextGenerationInput(
-        templateDescription="Handle user login and authentication flow",
-        inputs={"user_id": 123}
-    )
-    path1 = os.path.abspath("/path/template_match.py")
-    # Configure mock TaskSystem to return a result based on templateDescription
-    expected_match = MatchTuple(path=path1, relevance=1.0)
-    expected_result_obj = AssociativeMatchResult(
-        context_summary="Mocked: Found 1 template match", matches=[expected_match], error=None
-    )
-    mock_generate_context.return_value = expected_result_obj
+    # Assert TaskSystem call
+    mock_task_system.execute_atomic_template.assert_called_once()
+    request_arg = mock_task_system.execute_atomic_template.call_args[0][0]
+    assert request_arg.name == "internal:associative_matching_metadata"
+    assert "metadata_snippet" in request_arg.inputs
+    assert request_arg.inputs["metadata_snippet"] == {"/path/a.py": "meta a", "/path/b.py": "meta b"}
+    assert request_arg.context_management.freshContext == "disabled"
 
-    # Act
+    # Assert final result
+    assert isinstance(result, AssociativeMatchResult)
+    assert result.matches == expected_matches
+    assert result.error is None
+
+def test_g rcf_content_strategy_read_error(memory_system_instance, mock_task_system, mock_file_manager_ms):
+    """Test content strategy when some files cannot be read."""
+    input_data = ContextGenerationInput(query="test partial read", matching_strategy='content')
+    memory_system_instance.global_index = {"/path/a.py": "meta a", "/path/error.py": "meta err"}
+    # Simulate read error for one file
+    mock_file_manager_ms.read_file.side_effect = lambda p, max_size=None: "Content of /path/a.py" if p == "/path/a.py" else None
+
+    # Mock TaskSystem return (assuming it gets called with only the readable file)
+    expected_matches = [MatchTuple(path="/path/a.py", relevance=0.7)]
+    mock_assoc_result = AssociativeMatchResult(context_summary="Partial Content Result", matches=expected_matches)
+    mock_task_result = TaskResult(status="COMPLETE", content=mock_assoc_result.model_dump_json())
+    mock_task_system.execute_atomic_template.return_value = mock_task_result
+
     result = memory_system_instance.get_relevant_context_for(input_data)
 
-    # Assert Call
-    mock_generate_context.assert_called_once_with(
-        context_input=input_data, global_index=memory_system_instance.global_index
-    )
-    # Assert Result
-    assert result == expected_result_obj
+    # Assert reads attempted for both
+    assert mock_file_manager_ms.read_file.call_count == 2
+    # Assert TaskSystem called with only the successful read
+    mock_task_system.execute_atomic_template.assert_called_once()
+    request_arg = mock_task_system.execute_atomic_template.call_args[0][0]
+    assert request_arg.inputs["file_contents"] == {"/path/a.py": "Content of /path/a.py"}
+    # Assert final result
+    assert result.matches == expected_matches
 
-@patch.object(TaskSystem, 'generate_context_for_memory_system')
-def test_get_relevant_context_for_query_precedence(mock_generate_context, memory_system_instance):
-    """Verify delegation is called correctly when query and templateDescription are present."""
-    # Arrange
-    input_data = ContextGenerationInput(
-        query="javascript query",
-        templateDescription="Logic related to python templates"
-    )
-    path_query = os.path.abspath("/path/query_match.js")
-    # Configure mock TaskSystem to return a result based on query
-    expected_match = MatchTuple(path=path_query, relevance=1.0)
-    expected_result_obj = AssociativeMatchResult(
-        context_summary="Mocked: Found 1 query match (precedence)", matches=[expected_match], error=None
-    )
-    mock_generate_context.return_value = expected_result_obj
+def test_g rcf_task_system_call_fails(memory_system_instance, mock_task_system, mock_file_manager_ms):
+    """Test when the TaskSystem call returns a FAILED status."""
+    input_data = ContextGenerationInput(query="test failure", matching_strategy='content')
+    memory_system_instance.global_index = {"/path/a.py": "meta a"}
+    mock_file_manager_ms.read_file.return_value = "Content"
+    # Simulate TaskSystem failure
+    fail_error = TaskFailureError(type="TASK_FAILURE", reason="llm_error", message="LLM timed out")
+    mock_task_result = TaskResult(status="FAILED", content="LLM timed out", notes={"error": fail_error.model_dump()})
+    mock_task_system.execute_atomic_template.return_value = mock_task_result
 
-    # Act
     result = memory_system_instance.get_relevant_context_for(input_data)
 
-    # Assert Call
-    mock_generate_context.assert_called_once_with(
-        context_input=input_data, global_index=memory_system_instance.global_index
-    )
-    # Assert Result
-    assert result == expected_result_obj
+    assert isinstance(result, AssociativeMatchResult)
+    assert result.matches == []
+    assert result.error is not None
+    assert "Associative matching task" in result.error
+    assert "failed" in result.error
+    assert "LLM timed out" in result.error # Check original error message is included
 
-@patch.object(TaskSystem, 'generate_context_for_memory_system')
-def test_get_relevant_context_for_multiple_matches(mock_generate_context, memory_system_instance):
-    """Verify behavior when delegation returns multiple matches."""
-    # Arrange
-    input_data = ContextGenerationInput(query="common_feature")
-    path1 = os.path.abspath("/proj/common_feature.py")
-    path2 = os.path.abspath("/proj/specific/impl_common.txt")
-    # Configure mock TaskSystem to return multiple matches
-    expected_matches = [
-        MatchTuple(path=path1, relevance=0.9),
-        MatchTuple(path=path2, relevance=0.8)
-    ]
-    expected_result_obj = AssociativeMatchResult(
-        context_summary="Mocked: Found 2 matches", matches=expected_matches, error=None
-    )
-    mock_generate_context.return_value = expected_result_obj
+def test_g rcf_task_system_returns_invalid_json(memory_system_instance, mock_task_system, mock_file_manager_ms):
+    """Test when TaskSystem returns non-JSON content."""
+    input_data = ContextGenerationInput(query="test bad json", matching_strategy='metadata')
+    memory_system_instance.global_index = {"/path/a.py": "meta a"}
+    # Simulate TaskSystem returning bad content
+    mock_task_result = TaskResult(status="COMPLETE", content="This is not JSON", notes={})
+    mock_task_system.execute_atomic_template.return_value = mock_task_result
 
-    # Act
     result = memory_system_instance.get_relevant_context_for(input_data)
 
-    # Assert Call
-    mock_generate_context.assert_called_once_with(
-        context_input=input_data, global_index=memory_system_instance.global_index
-    )
-    # Assert Result
-    assert result == expected_result_obj
+    assert isinstance(result, AssociativeMatchResult)
+    assert result.matches == []
+    assert result.error is not None
+    assert "Failed to parse AssociativeMatchResult JSON" in result.error
 
-# Use patch.object on the class itself
-# Patch the underlying get_relevant_context_for method which is now simple
-@patch.object(MemorySystem, 'get_relevant_context_for')
-def test_get_relevant_context_with_description_calls_correctly(mock_get_relevant_context_for, memory_system_instance):
-    """Verify get_relevant_context_with_description constructs input and calls main method."""
-    # Arrange
-    query_text = "Main task query (should be ignored by this method)"
-    context_desc = "Specific description for context lookup" # This should become the query
-    expected_input_data = ContextGenerationInput(query=context_desc) # Expected input to the main method
+def test_g rcf_missing_task_system(memory_system_instance, mock_file_manager_ms):
+    """Test when TaskSystem dependency is missing."""
+    memory_system_instance.task_system = None # Remove dependency
+    input_data = ContextGenerationInput(query="test no ts")
 
-    # Setup mock return value for the underlying get_relevant_context_for
-    mock_return = AssociativeMatchResult(context_summary="Mocked Result from main method", matches=[], error=None)
-    mock_get_relevant_context_for.return_value = mock_return
-
-    # Act
-    result = memory_system_instance.get_relevant_context_with_description(query_text, context_desc)
-
-    # Assert Call
-    # Verify that the underlying get_relevant_context_for was called with the correctly constructed input
-    mock_get_relevant_context_for.assert_called_once_with(expected_input_data)
-
-    # Assert Result
-    # Verify that the result returned by the wrapper is the result from the underlying method
-    assert result == mock_return
-
-@patch.object(TaskSystem, 'generate_context_for_memory_system')
-def test_get_relevant_context_for_case_insensitive_match(mock_generate_context, memory_system_instance):
-    """Verify delegation occurs correctly for different case queries."""
-    # Arrange
-    path1 = os.path.abspath("/path/case_test.py")
-    # Configure mock TaskSystem to return a result
-    expected_match = MatchTuple(path=path1, relevance=1.0)
-    expected_result_obj = AssociativeMatchResult(
-        context_summary="Mocked: Case match", matches=[expected_match], error=None
-    )
-    mock_generate_context.return_value = expected_result_obj
-
-    # Test lowercase query
-    input_data_lower = ContextGenerationInput(query="mixedcasekeyword")
-    result_lower = memory_system_instance.get_relevant_context_for(input_data_lower)
-
-    # Assert Call (first call)
-    mock_generate_context.assert_called_once_with(
-        context_input=input_data_lower, global_index=memory_system_instance.global_index
-    )
-    # Assert Result
-    assert result_lower == expected_result_obj # Check first result matches mock
-
-    # Test uppercase query - should also delegate and return the same mock result
-    input_data_upper = ContextGenerationInput(query="MIXEDCASEKEYWORD")
-    # Reset mock for the second call if needed, or assume it's configured once
-    # mock_generate_context.reset_mock()
-    # mock_generate_context.return_value = expected_result_obj # Re-assign if reset
-
-    result_upper = memory_system_instance.get_relevant_context_for(input_data_upper)
-
-    # Assert Call (check second call)
-    # Note: assert_called_once_with fails on second call. Use call_args_list or check call_count.
-    assert mock_generate_context.call_count == 2
-    # Check the arguments of the second call
-    assert mock_generate_context.call_args_list[1] == call(
-        context_input=input_data_upper, global_index=memory_system_instance.global_index
-    )
-    # Assert Result
-    assert result_upper == expected_result_obj # Check result matches mock
-
-@patch.object(TaskSystem, 'generate_context_for_memory_system')
-def test_get_relevant_context_for_no_query_or_description(mock_generate_context, memory_system_instance):
-    """Verify behavior when delegation is called with no query/description."""
-    # Arrange
-    input_data = ContextGenerationInput(inputs={"some": "input"}) # Only inputs
-    # Configure mock TaskSystem to return an error result (as per current MemorySystem logic)
-    expected_result_obj = AssociativeMatchResult(
-        context_summary="Mocked: No search criteria", matches=[], error="No query or templateDescription provided"
-    )
-    mock_generate_context.return_value = expected_result_obj
-
-    # Act
     result = memory_system_instance.get_relevant_context_for(input_data)
 
-    # Assert Call
-    mock_generate_context.assert_called_once_with(
-        context_input=input_data, global_index=memory_system_instance.global_index
-    )
-    # Assert Result
-    assert result == expected_result_obj
+    assert isinstance(result, AssociativeMatchResult)
+    assert result.matches == []
+    assert result.error is not None
+    assert "TaskSystem dependency not available" in result.error
 
-# Test sharding path still delegates
-@patch.object(TaskSystem, 'generate_context_for_memory_system')
-def test_get_relevant_context_for_sharding_enabled_delegates(mock_generate_context, memory_system_instance):
-    """Verify delegation occurs even if sharding is enabled (Phase 2a)."""
-    # Arrange
-    memory_system_instance.enable_sharding(True) # Enable sharding
-    input_data = ContextGenerationInput(query="sharding test")
-    path1 = os.path.abspath("/path/shard_test.py")
-    # Configure mock TaskSystem to return a result
-    expected_match = MatchTuple(path=path1, relevance=1.0)
-    expected_result_obj = AssociativeMatchResult(
-        context_summary="Mocked: Sharding enabled match", matches=[expected_match], error=None
-    )
-    mock_generate_context.return_value = expected_result_obj
-
-    # Act
-    result = memory_system_instance.get_relevant_context_for(input_data)
-
-    # Assert Call
-    mock_generate_context.assert_called_once_with(
-        context_input=input_data, global_index=memory_system_instance.global_index
-    )
-    # Assert Result
-    assert result == expected_result_obj
+# Add more tests for edge cases: empty index, invalid strategy in input, etc.
 
 
 # --- Tests for index_git_repository ---

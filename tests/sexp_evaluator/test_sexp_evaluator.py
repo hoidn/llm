@@ -436,6 +436,81 @@ def test_evaluate_string_task_error_propagation(evaluator, mock_parser, mock_tas
     # Check the wrapped exception details
     assert "Simulated task timeout" in str(excinfo.value) # Check wrapped message
 
+def test_eval_primitive_get_context_with_content_strategy(evaluator, mock_parser, mock_memory_system):
+    """Test get_context with explicit content strategy."""
+    get_context_sym = Symbol("get_context")
+    query_sym = Symbol("query")
+    strategy_sym = Symbol("matching_strategy")
+    content_sym = Symbol("content") # Strategy value is a symbol in Sexp
+
+    # Sexp: (get_context (query "q") (matching_strategy 'content))
+    mock_parser.parse_string.return_value = [
+        get_context_sym,
+        [query_sym, "q"],
+        [strategy_sym, content_sym] # Pass strategy as symbol
+    ]
+    expected_context_input = ContextGenerationInput(query="q", matching_strategy='content')
+    # Mock memory system return
+    mock_memory_system.get_relevant_context_for.return_value = AssociativeMatchResult(matches=[])
+
+    evaluator.evaluate_string("(get_context (query \"q\") (matching_strategy 'content))")
+
+    mock_memory_system.get_relevant_context_for.assert_called_once_with(expected_context_input)
+
+def test_eval_primitive_get_context_with_metadata_strategy(evaluator, mock_parser, mock_memory_system):
+    """Test get_context with explicit metadata strategy."""
+    get_context_sym = Symbol("get_context")
+    query_sym = Symbol("query")
+    strategy_sym = Symbol("matching_strategy")
+    metadata_sym = Symbol("metadata") # Strategy value is a symbol
+
+    # Sexp: (get_context (query "q") (matching_strategy 'metadata))
+    mock_parser.parse_string.return_value = [
+        get_context_sym,
+        [query_sym, "q"],
+        [strategy_sym, metadata_sym] # Pass strategy as symbol
+    ]
+    expected_context_input = ContextGenerationInput(query="q", matching_strategy='metadata')
+    mock_memory_system.get_relevant_context_for.return_value = AssociativeMatchResult(matches=[])
+
+    evaluator.evaluate_string("(get_context (query \"q\") (matching_strategy 'metadata))")
+
+    mock_memory_system.get_relevant_context_for.assert_called_once_with(expected_context_input)
+
+def test_eval_primitive_get_context_invalid_strategy_value(evaluator, mock_parser):
+    """Test get_context with an invalid strategy value."""
+    get_context_sym = Symbol("get_context")
+    query_sym = Symbol("query")
+    strategy_sym = Symbol("matching_strategy")
+    invalid_sym = Symbol("invalid") # Invalid strategy value
+
+    # Sexp: (get_context (query "q") (matching_strategy 'invalid))
+    mock_parser.parse_string.return_value = [
+        get_context_sym,
+        [query_sym, "q"],
+        [strategy_sym, invalid_sym]
+    ]
+
+    with pytest.raises(SexpEvaluationError, match="Invalid value for 'matching_strategy'"):
+        evaluator.evaluate_string("(get_context (query \"q\") (matching_strategy 'invalid))")
+
+def test_eval_primitive_get_context_invalid_strategy_type(evaluator, mock_parser):
+    """Test get_context with an invalid strategy type (e.g., number)."""
+    get_context_sym = Symbol("get_context")
+    query_sym = Symbol("query")
+    strategy_sym = Symbol("matching_strategy")
+
+    # Sexp: (get_context (query "q") (matching_strategy 123))
+    mock_parser.parse_string.return_value = [
+        get_context_sym,
+        [query_sym, "q"],
+        [strategy_sym, 123] # Invalid type
+    ]
+
+    with pytest.raises(SexpEvaluationError, match="Invalid value type for 'matching_strategy'"):
+         evaluator.evaluate_string("(get_context (query \"q\") (matching_strategy 123))")
+
+
 # Implicit Progn (Sequence at top level)
 def test_evaluate_string_implicit_progn(evaluator, mock_parser):
     """Test evaluation of a sequence of top-level expressions (SHOULD FAIL PARSING)."""

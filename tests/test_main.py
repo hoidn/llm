@@ -14,6 +14,7 @@ from src.system.models import TaskResult, TaskFailureError
 from src.memory.memory_system import MemorySystem
 from src.task_system.task_system import TaskSystem
 from src.handler.passthrough_handler import PassthroughHandler
+from src.handler.file_access import FileAccessManager # Add import
 from src.memory.indexers.git_repository_indexer import GitRepositoryIndexer
 # Import dispatcher for patching
 from src import dispatcher
@@ -36,32 +37,32 @@ def app_instance(tmp_path):
     # Patch constructors/functions where they are looked up (in src.main)
     # Patch constructors/functions where they are looked up (in src.main)
     # Remove patches related to Aider
-    with patch('src.main.MemorySystem', MagicMock(spec=MemorySystem)) as MockMemory, \
+    with patch('src.main.FileAccessManager', MagicMock(spec=FileAccessManager)) as MockFM, \
+         patch('src.main.MemorySystem', MagicMock(spec=MemorySystem)) as MockMemory, \
          patch('src.main.TaskSystem', MagicMock(spec=TaskSystem)) as MockTask, \
          patch('src.main.PassthroughHandler', MagicMock(spec=PassthroughHandler)) as MockHandler, \
          patch('src.main.GitRepositoryIndexer', MagicMock(spec=GitRepositoryIndexer)) as MockIndexer, \
          patch('src.main.SystemExecutorFunctions', MagicMock(spec=system_executors_module.SystemExecutorFunctions)) as MockSysExec:
-         # Removed AiderBridge, AiderExecutorFunctions, get_aider_*_tool_spec patches
 
         # Configure mocks BEFORE Application instantiation
+        mock_fm_instance = MockFM.return_value # Get FM instance
         mock_memory_instance = MockMemory.return_value
         mock_task_instance = MockTask.return_value
         mock_handler_instance = MockHandler.return_value
-        mock_handler_instance.file_manager = MagicMock(name="MockFileManager") # Handler needs this
+        mock_handler_instance.file_manager = mock_fm_instance # Handler uses FM
         mock_handler_instance.register_tool.return_value = True
-        # Removed Aider mock configuration
 
         # Instantiate Application - this will call __init__
         # __init__ should no longer call initialize_aider()
         app = Application(config={"handler_config": {"some_key": "val"}}) # Pass some dummy config
 
         # Store mocks on the app instance for easy access in tests
+        app.mock_fm = mock_fm_instance # Store FM mock
         app.mock_memory = mock_memory_instance
         app.mock_task = mock_task_instance
         app.mock_handler = mock_handler_instance
         app.mock_indexer_cls = MockIndexer # Store the class mock
         app.mock_sys_exec = MockSysExec
-        # Removed storing aider mocks on app instance
 
 
         yield app # Provide the configured app instance to the test
@@ -81,19 +82,50 @@ def test_application_init_wiring(app_instance):
     assert isinstance(app_instance.passthrough_handler, MagicMock)
 
     # Check that the correct arguments were passed during instantiation
-    # Access the call args from the mocks stored on the app instance (which are the return_values of the class mocks)
-    # This relies on the fixture structure. A cleaner way might involve returning the class mocks from the fixture.
-    # Let's try asserting on the stored instance mocks' call history (this might be empty if assert_called_once_with was on the class)
-    # Alternative: Patch directly within the test if the fixture setup is confusing.
+    # Re-patching here for clarity on call assertions
+    with patch('src.main.FileAccessManager') as MockFM_test, \
+         patch('src.main.MemorySystem') as MockMemory_test, \
+         patch('src.main.TaskSystem') as MockTask_test, \
+         patch('src.main.PassthroughHandler') as MockHandler_test:
 
-    # Let's assume the fixture correctly patched the classes. We assert the wiring.
-    assert app_instance.memory_system == app_instance.mock_memory # Check instance stored is the mock
+        # Re-instantiate within this test's patch context
+        app_test = Application(config={"handler_config": {"some_key": "val"}})
+
+        # Assert FileAccessManager was called (assuming patch)
+        MockFM_test.assert_called_once_with() # Check FM instantiation
+        mock_fm_instance_test = MockFM_test.return_value
+
+        # Assert MemorySystem received FileAccessManager instance
+        MockMemory_test.assert_called_once()
+        mem_call_args, mem_call_kwargs = MockMemory_test.call_args
+        assert 'file_access_manager' in mem_call_kwargs
+        assert mem_call_kwargs['file_access_manager'] == mock_fm_instance_test # Check FM passed
+
+        # Assert TaskSystem received MemorySystem instance
+        MockTask_test.assert_called_once()
+        task_call_args, task_call_kwargs = MockTask_test.call_args
+        assert 'memory_system' in task_call_kwargs
+        assert task_call_kwargs['memory_system'] == MockMemory_test.return_value
+
+        # Assert Handler received TaskSystem and MemorySystem
+        MockHandler_test.assert_called_once()
+        handler_call_args, handler_call_kwargs = MockHandler_test.call_args
+        assert 'task_system' in handler_call_kwargs
+        assert handler_call_kwargs['task_system'] == MockTask_test.return_value
+        assert 'memory_system' in handler_call_kwargs
+        assert handler_call_kwargs['memory_system'] == MockMemory_test.return_value
+
+    # Check wiring using the fixture instance (already done in __init__)
+    assert app_instance.memory_system == app_instance.mock_memory
     assert app_instance.task_system == app_instance.mock_task
     assert app_instance.passthrough_handler == app_instance.mock_handler
+    assert app_instance.file_access_manager == app_instance.mock_fm # Check FM stored
 
     # Check cross-dependency wiring (done by __init__)
     assert app_instance.mock_memory.handler == app_instance.mock_handler
     assert app_instance.mock_memory.task_system == app_instance.mock_task
+    # Check handler injection into TaskSystem
+    app_instance.mock_task.set_handler.assert_called_once_with(app_instance.mock_handler)
 
     # Check Aider initialization was NOT called in __init__
     # (Assuming initialize_aider is now commented out or removed from __init__)
@@ -104,39 +136,24 @@ def test_application_init_wiring(app_instance):
     # so we rely on checking tool registration below.
 
     # Check tool registration calls (System tools ONLY)
-    call_args_list = app_instance.mock_handler.register_tool.call_args_list
-    registered_tool_names = [c.args[0]['name'] for c in call_args_list]
-
+    tool_register_calls = app_instance.mock_handler.register_tool.call_args_list
+    registered_tool_names = [c.args[0]['name'] for c in tool_register_calls]
     assert "system:get_context" in registered_tool_names
     assert "system:read_files" in registered_tool_names
     # Assert Aider tools were NOT registered
     assert "aiderAutomatic" not in registered_tool_names
     assert "aiderInteractive" not in registered_tool_names
 
-    # Check cross-dependency wiring (done by __init__)
-    assert app_instance.mock_memory.handler == app_instance.mock_handler
-    assert app_instance.mock_memory.task_system == app_instance.mock_task
-
-    # Check Aider initialization was NOT called in __init__
-    # (Assuming initialize_aider is now commented out or removed from __init__)
-    # If initialize_aider is still present but empty, this check might need adjustment
-    # For now, we check that AiderBridge constructor wasn't called during app init.
-    # Note: The fixture patches AiderBridge, so we access the class mock via app_instance
-    # This assertion might fail if the fixture setup itself triggers the patch,
-    # so we rely on checking tool registration below.
-
-    # Check tool registration calls (System tools ONLY)
-    call_args_list = app_instance.mock_handler.register_tool.call_args_list
-    registered_tool_names = [c.args[0]['name'] for c in call_args_list]
-
-    assert "system:get_context" in registered_tool_names
-    assert "system:read_files" in registered_tool_names
-    # Assert Aider tools were NOT registered
-    assert "aiderAutomatic" not in registered_tool_names
-    assert "aiderInteractive" not in registered_tool_names
-
-    # Check core template registration (example - if implemented)
-    # app_instance.mock_task.register_template.assert_any_call(EXPECTED_CORE_TEMPLATE_DICT)
+    # Check core template registration
+    register_calls = app_instance.mock_task.register_template.call_args_list
+    registered_template_names = [c.args[0]['name'] for c in register_calls]
+    assert "internal:associative_matching_content" in registered_template_names
+    assert "internal:associative_matching_metadata" in registered_template_names
+    # Optionally, add more detailed checks on the template dict structure passed
+    content_template_call = next(c for c in register_calls if c.args[0]['name'] == "internal:associative_matching_content")
+    metadata_template_call = next(c for c in register_calls if c.args[0]['name'] == "internal:associative_matching_metadata")
+    assert "file_contents" in content_template_call.args[0]['params']
+    assert "metadata_snippet" in metadata_template_call.args[0]['params']
 
 def test_application_register_system_tools(app_instance):
     """Verify system tools are registered with the handler during init."""

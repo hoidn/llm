@@ -227,7 +227,7 @@ class ContextGenerationInput(BaseModel):
     """
     Input structure for Memory System context requests.
     Can be called with template context or a direct query.
-    [Type:Memory:ContextGenerationInput:4.0]
+    [Type:System:ContextGenerationInput:5.0]
     """
     templateDescription: Optional[str] = None
     templateType: Optional[str] = None
@@ -236,6 +236,7 @@ class ContextGenerationInput(BaseModel):
     inputs: Optional[Dict[str, Any]] = None
     inheritedContext: Optional[str] = None
     previousOutputs: Optional[str] = None
+    matching_strategy: Optional[Literal['content', 'metadata']] = None # Default handled by consumer
 
 # --- Subtask Request Definition ---
 class SubtaskRequest(BaseModel):

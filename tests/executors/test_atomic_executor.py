@@ -3,6 +3,7 @@ Unit tests for the AtomicTaskExecutor.
 """
 
 import pytest
+import logging # Add import
 from unittest.mock import MagicMock, call # Use MagicMock for flexibility
 from src.executors.atomic_executor import AtomicTaskExecutor, ParameterMismatchError
 from src.system.models import TaskResult, TaskFailureError # Assuming TaskResult model
@@ -187,3 +188,35 @@ def test_execute_body_no_instructions(executor, mock_handler):
         tools_override=None,
         output_type_override=None,
     )
+
+def test_substitute_large_dict_param(executor, mock_handler, caplog):
+    """Test substitution with a dictionary parameter, check logging."""
+    task_def = {"instructions": "Data: {{big_dict}}"}
+    large_dict = {f"key_{i}": f"value_{i}" for i in range(5)}
+    params = {"big_dict": large_dict}
+
+    with caplog.at_level(logging.DEBUG):
+        executor.execute_body(task_def, params, mock_handler)
+
+    # Assert substitution happened (handler called with stringified dict)
+    mock_handler._execute_llm_call.assert_called_once()
+    call_args, call_kwargs = mock_handler._execute_llm_call.call_args
+    assert str(large_dict) in call_kwargs['prompt']
+    # Assert log message was generated
+    assert f"Substituting 'big_dict': Type=<class 'dict'>, Size/Len={len(large_dict)}" in caplog.text
+
+def test_substitute_large_string_param(executor, mock_handler, caplog):
+    """Test substitution with a long string parameter, check logging."""
+    task_def = {"instructions": "Metadata: {{long_meta}}"}
+    long_string = "metadata " * 100
+    params = {"long_meta": long_string}
+
+    with caplog.at_level(logging.DEBUG):
+        executor.execute_body(task_def, params, mock_handler)
+
+    # Assert substitution happened
+    mock_handler._execute_llm_call.assert_called_once()
+    call_args, call_kwargs = mock_handler._execute_llm_call.call_args
+    assert long_string in call_kwargs['prompt']
+    # Assert log message was generated
+    assert f"Substituting 'long_meta': Type=<class 'str'>, Size/Len={len(long_string)}" in caplog.text

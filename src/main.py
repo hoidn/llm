@@ -16,6 +16,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 from src.memory.memory_system import MemorySystem
 from src.task_system.task_system import TaskSystem
 from src.handler.passthrough_handler import PassthroughHandler
+from src.handler.file_access import FileAccessManager # Add import
 from src.memory.indexers.git_repository_indexer import GitRepositoryIndexer
 from src.system.models import TaskResult, TaskFailureError, TaskFailureReason
 from src.executors.system_executors import SystemExecutorFunctions
@@ -61,9 +62,22 @@ class Application:
         logger.info("Initializing Application components...")
         try:
             # Instantiate components in dependency order
-            self.memory_system = MemorySystem(config=self.config.get('memory_config'))
+            # 1. FileAccessManager (needed by MemorySystem)
+            # TODO: Consider making base_path configurable
+            self.file_access_manager = FileAccessManager() # Use default base path (project root)
+
+            # 2. MemorySystem (needs FileAccessManager)
+            self.memory_system = MemorySystem(
+                handler=None, # Will be injected later
+                task_system=None, # Will be injected later
+                file_access_manager=self.file_access_manager,
+                config=self.config.get('memory_config')
+            )
+
+            # 3. TaskSystem (needs MemorySystem)
             self.task_system = TaskSystem(memory_system=self.memory_system)
-            # Pass handler-specific config if available
+
+            # 4. Handler (needs TaskSystem, MemorySystem)
             handler_config = self.config.get('handler_config', {})
             # Ensure a default model identifier is provided if not in config
             default_model = handler_config.get('default_model_identifier', "anthropic:claude-3-5-sonnet-latest")
@@ -88,56 +102,72 @@ class Application:
             # --- Core Template Registration ---
             logger.info("Registering core task templates...")
             try:
-                assoc_matching_template = {
-                    "name": "internal:associative_matching", # Use a distinct name
+                # Define the two associative matching templates
+                assoc_matching_content_template = {
+                    "name": "internal:associative_matching_content",
                     "type": "atomic",
-                    "subtype": "associative_matching", # Use the specific subtype
-                    "description": "Internal task to find relevant files based on query and index.",
-                    "params": {
-                        "context_input": { "description": "Input query/context details (as dict)" }
-                        # Removing global_index from params as we won't pass it in prompt
+                    "subtype": "associative_matching",
+                    "description": "Internal task to find relevant files based on query and file content.",
+                    "params": { # Define expected inputs for clarity
+                        "context_input": { "description": "Input query/context details (as dict)" },
+                        "file_contents": { "description": "Dict mapping file paths to their content" }
                     },
-                    # This is where the LLM instructions go.
                     "instructions": """Analyze the user query: '{{context_input.query}}'.
-Based *only* on the query, identify the 3 most likely relevant file paths from a hypothetical project index containing Python and Markdown files.
+Based on the query and the provided file contents, identify the 3 most relevant file paths.
+File Contents:
+{{file_contents}}
+
 Provide a brief 'context_summary'.
-Output the result as a JSON object conforming to the AssociativeMatchResult structure:
+Output the result *only* as a JSON object conforming to the AssociativeMatchResult structure:
 {
   "context_summary": "string",
   "matches": [ { "path": "string", "relevance": float (0.0-1.0) } ],
   "error": null
-}
-Example Query: 'user authentication class'
-Example Output:
+}""",
+                    "output_format": {"type": "json"}
+                }
+
+                assoc_matching_metadata_template = {
+                    "name": "internal:associative_matching_metadata",
+                    "type": "atomic",
+                    "subtype": "associative_matching",
+                    "description": "Internal task to find relevant files based on query and file metadata.",
+                     "params": {
+                        "context_input": { "description": "Input query/context details (as dict)" },
+                        "metadata_snippet": { "description": "Dict mapping file paths to their metadata" }
+                    },
+                   "instructions": """Analyze the user query: '{{context_input.query}}'.
+Based on the query and the provided file metadata snippets, identify the 3 most relevant file paths.
+Metadata Snippets:
+{{metadata_snippet}}
+
+Provide a brief 'context_summary'.
+Output the result *only* as a JSON object conforming to the AssociativeMatchResult structure:
 {
-  "context_summary": "Found files related to user authentication.",
-  "matches": [
-    { "path": "src/auth/models.py", "relevance": 0.9 },
-    { "path": "src/user/schemas.py", "relevance": 0.7 },
-    { "path": "docs/auth.md", "relevance": 0.6 }
-  ],
+  "context_summary": "string",
+  "matches": [ { "path": "string", "relevance": float (0.0-1.0) } ],
   "error": null
 }""",
-                    # Optional: Specify a model optimized for this kind of task
-                    # "model": "anthropic:claude-3-haiku-latest",
-                    "output_format": {"type": "json"} # Expecting JSON output
+                    "output_format": {"type": "json"}
                 }
-                try:
-                    success = self.task_system.register_template(assoc_matching_template)
-                    if success:
-                        logger.info(f"Successfully registered template: {assoc_matching_template['name']}")
-                    else:
-                        # This path might be hit if registry validation fails silently
-                        logger.error(f"Failed to register template (returned False): {assoc_matching_template['name']}")
-                except Exception as reg_err:
-                     # Catch errors raised by registry validation
-                     logger.error(f"Error during template registration for {assoc_matching_template['name']}: {reg_err}")
-                # Add other core templates if needed here...
+
+                # Register both templates
+                templates_to_register = [assoc_matching_content_template, assoc_matching_metadata_template]
+                for template in templates_to_register:
+                    try:
+                        success = self.task_system.register_template(template)
+                        if success:
+                            logger.info(f"Successfully registered template: {template['name']}")
+                        else:
+                            logger.error(f"Failed to register template (returned False): {template['name']}")
+                    except Exception as reg_err:
+                        logger.error(f"Error during template registration for {template['name']}: {reg_err}")
+
             except Exception as e:
-                logger.exception(f"Failed to register core templates: {e}")
-                # Decide if this should be fatal for application startup
-            
-            logger.info("Core templates registration complete.")
+                logger.exception(f"Failed during core template definition or registration: {e}")
+                # Decide if this should be fatal
+
+            logger.info("Core templates registration process complete.")
 
             # Register system-level tools
             self._register_system_tools()
