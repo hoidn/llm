@@ -42,13 +42,13 @@ module src.handler.base_handler {
         // - Returns true if registration is successful (tool_spec has a name).
         // - Returns false if registration fails (e.g., missing name in tool_spec).
         // Behavior:
-        // - This is the single, unified method for registering any callable action (tool) intended for LLM use or programmatic invocation.
-        // - Validates that tool_spec contains a 'name'.
-        // - Stores the original tool_spec in the `registered_tools` registry.
-        // - Stores the executor_func in the `tool_executors` registry for direct programmatic invocation (e.g., by SexpEvaluator).
-        // - Note: Making these tools available to the pydantic-ai Agent may require additional steps during LLM calls, 
-        //   such as passing them to the LLMInteractionManager during execute_llm_call or potentially reinitializing the agent.
-        //   The exact mechanism depends on pydantic-ai's capabilities for dynamic tool registration.
+        // - This is the single, unified method for registering any callable action (tool).
+        // - Stores the executor_func in `tool_executors` for direct programmatic invocation.
+        // - Stores the tool_spec in `registered_tools` for reference.
+        // - **Tool Availability Strategy:**
+        //   - Model-Agnostic (Generic) Tools (e.g., file access, system commands, Aider via MCP client): Registered unconditionally. The LLMInteractionManager makes these available to any configured pydantic-ai Agent.
+        //   - Provider-Specific Tools (e.g., Anthropic Editor): Require conditional registration logic (typically during Application/Handler init). These tools should only be registered if the LLMInteractionManager is configured with a compatible provider/agent.
+        // - Note: Making dynamically registered tools available to a *live* pydantic-ai Agent during its execution run can be complex and may require passing them explicitly during the LLM call or agent re-initialization.
         boolean register_tool(dict<string, Any> tool_spec, function executor_func);
 
         // Executes a shell command expected to output file paths and parses the result.

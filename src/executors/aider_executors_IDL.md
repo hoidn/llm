@@ -1,7 +1,7 @@
 // == !! BEGIN IDL TEMPLATE !! ===
 module src.executors.aider_executors {
 
-    # @depends_on(src.aider_bridge.bridge.AiderBridge) // Needs the bridge to execute Aider tasks
+    # @depends_on(src.aider_bridge.bridge.AiderBridge) // Depends on the REFACRORED AiderBridge (MCP Client)
 
     // Interface aggregating Aider Direct Tool executor functions.
     // These functions wrap calls to the AiderBridge for specific Aider modes.
@@ -18,8 +18,9 @@ module src.executors.aider_executors {
         // - Returns a FAILED TaskResult if required parameters are missing or file_context parsing fails.
         // Behavior:
         // - Validates the 'prompt' parameter.
-        // - Parses the 'file_context' parameter (if provided) from a JSON string array into a list of strings using internal helper `_parse_file_context`. Handles parsing errors.
-        // - Calls `aider_bridge.execute_automatic_task` with the prompt and parsed file paths.
+        // - Parses the 'file_context' parameter (if provided) into a list of strings. Handles parsing errors.
+        // - Retrieves/uses the `aider_bridge` (MCP Client) instance.
+        // - Calls `aider_bridge.call_aider_tool`, passing the Aider MCP tool name (e.g., "aider_ai_code") and the necessary parameters (prompt, parsed file paths, etc.).
         // - Handles exceptions during the bridge call.
         // @raises_error(condition="INPUT_VALIDATION_FAILURE", description="Returned via FAILED TaskResult for missing prompt or invalid file_context.")
         // @raises_error(condition="AiderExecutionError", description="Returned via FAILED TaskResult if bridge call fails.")
@@ -38,8 +39,9 @@ module src.executors.aider_executors {
         // - Returns a FAILED TaskResult if required parameters are missing or file_context parsing fails.
         // Behavior:
         // - Validates that 'query' or 'prompt' parameter is present.
-        // - Parses the 'file_context' parameter (if provided) from a JSON string array into a list of strings. Handles parsing errors.
-        // - Calls `aider_bridge.start_interactive_session` with the query and parsed file paths.
+        // - Parses the 'file_context' parameter (if provided) into a list of strings. Handles parsing errors.
+        // - Retrieves/uses the `aider_bridge` (MCP Client) instance.
+        // - Calls `aider_bridge.call_aider_tool`, passing the Aider MCP tool name for starting an interactive session (exact name TBD by server) and the necessary parameters (query, parsed file paths, etc.).
         // - Handles exceptions during the bridge call.
         // @raises_error(condition="INPUT_VALIDATION_FAILURE", description="Returned via FAILED TaskResult for missing query/prompt or invalid file_context.")
         // @raises_error(condition="AiderExecutionError", description="Returned via FAILED TaskResult if bridge call fails.")

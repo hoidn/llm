@@ -5,7 +5,7 @@ module src.main {
     # @depends_on(src.task_system.task_system.TaskSystem)
     # @depends_on(src.handler.passthrough_handler.PassthroughHandler)
     # @depends_on(src.handler.file_access.FileAccessManager) // ADDED
-    # @depends_on(src.aider_bridge.bridge.AiderBridge)
+    # @depends_on(src.aider_bridge.bridge.AiderBridge) // Depends on the REFACRORED AiderBridge (MCP Client)
     # @depends_on(src.memory.indexers.git_repository_indexer.GitRepositoryIndexer)
     # @depends_on(src.executors.aider_executors.AiderExecutorFunctions) // Indirectly via initialize_aider
     # @depends_on(src.executors.system_executors.SystemExecutorFunctions) // Indirectly via _register_system_tools
@@ -78,8 +78,9 @@ module src.main {
         //   - Registers Aider tools ('aiderInteractive', 'aiderAutomatic') and their corresponding executor functions (wrapping `execute_aider_automatic`, `execute_aider_interactive` to pass the `aider_bridge` instance) with the PassthroughHandler using `handler.register_tool(...)`.
         // - Logs success or failure messages related to Aider initialization and registration.
         // Behavior:
-        // - Performs lazy initialization of `aider_bridge`.
-        // - Uses helper functions from `aider_bridge.tools` and `executors.aider_executors`.
+        // - Performs lazy initialization of `aider_bridge` (MCP Client).
+        // - Uses helper functions from `executors.aider_executors` for the executor part of registration.
+        // - Connects to the external Aider MCP Server as configured.
         void initialize_aider();
 
         // Note: The main() function and private methods like _register_system_tools
