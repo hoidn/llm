@@ -286,29 +286,27 @@ def test_get_relevant_context_for_no_matches(mock_generate_context, memory_syste
     # Assert Result
     assert result == expected_result_obj
 
-def test_get_relevant_context_for_query_match(memory_system_instance):
-    """Verify matching based on the 'query' field."""
-    # Setup: Add specific metadata to match
+@patch.object(TaskSystem, 'generate_context_for_memory_system')
+def test_get_relevant_context_for_query_match(mock_generate_context, memory_system_instance):
+    """Verify behavior when delegation returns a query match."""
+    # Arrange
+    input_data = ContextGenerationInput(query="feature_x")
     path1 = os.path.abspath("/path/file1.py")
-    meta1 = "Relevant python code for feature_x"
-    path2 = os.path.abspath("/path/other.txt")
-    meta2 = "Some other text"
-    memory_system_instance.update_global_index({
-        path1: meta1,
-        path2: meta2,
-    })
-    # Use case-insensitive matching for robustness if implemented
-    input_data = ContextGenerationInput(query="feature_x") # Lowercase query
+    # Configure mock TaskSystem to return a result with one match
+    expected_match = MatchTuple(path=path1, relevance=1.0) # Placeholder relevance
+    expected_result_obj = AssociativeMatchResult(
+        context_summary="Mocked: Found 1 match", matches=[expected_match], error=None
+    )
+    mock_generate_context.return_value = expected_result_obj
 
+    # Act
     result = memory_system_instance.get_relevant_context_for(input_data)
 
-    assert isinstance(result, AssociativeMatchResult)
-    assert len(result.matches) == 1
-    # MatchTuple should follow Pydantic model: path, relevance, excerpt
-    expected_match = MatchTuple(path=path1, relevance=1.0) # Placeholder relevance
-    assert result.matches[0].path == expected_match.path
-    assert result.matches[0].relevance == expected_match.relevance
-    assert "Found 1 potential matches" in result.context_summary
+    # Assert Call
+    mock_generate_context.assert_called_once_with(
+        context_input=input_data, global_index=memory_system_instance.global_index
+    )
+    # Assert Result
     assert result == expected_result_obj
 
 @patch.object(TaskSystem, 'generate_context_for_memory_system')
@@ -337,30 +335,30 @@ def test_get_relevant_context_for_template_description_match(mock_generate_conte
     # Assert Result
     assert result == expected_result_obj
 
-def test_get_relevant_context_for_query_precedence(memory_system_instance):
-    """Verify 'query' takes precedence over templateDescription."""
-    path_query = os.path.abspath("/path/query_match.js")
-    meta_query = "JavaScript for query processing"
-    path_template = os.path.abspath("/path/template_match.py")
-    meta_template = "Python for template logic"
-    memory_system_instance.update_global_index({
-        path_query: meta_query,
-        path_template: meta_template
-    })
-    # Both query and templateDesc are provided
+@patch.object(TaskSystem, 'generate_context_for_memory_system')
+def test_get_relevant_context_for_query_precedence(mock_generate_context, memory_system_instance):
+    """Verify delegation is called correctly when query and templateDescription are present."""
+    # Arrange
     input_data = ContextGenerationInput(
-        query="javascript query", # Should match this
-        templateDescription="Logic related to python templates" # Should be ignored
+        query="javascript query",
+        templateDescription="Logic related to python templates"
     )
+    path_query = os.path.abspath("/path/query_match.js")
+    # Configure mock TaskSystem to return a result based on query
+    expected_match = MatchTuple(path=path_query, relevance=1.0)
+    expected_result_obj = AssociativeMatchResult(
+        context_summary="Mocked: Found 1 query match (precedence)", matches=[expected_match], error=None
+    )
+    mock_generate_context.return_value = expected_result_obj
 
+    # Act
     result = memory_system_instance.get_relevant_context_for(input_data)
 
-    assert isinstance(result, AssociativeMatchResult)
-    assert len(result.matches) == 1
-    # Should match based on query, not templateDescription
-    expected_match = MatchTuple(path=path_query, relevance=1.0)
-    assert result.matches[0].path == expected_match.path
-    assert result.matches[0].relevance == expected_match.relevance
+    # Assert Call
+    mock_generate_context.assert_called_once_with(
+        context_input=input_data, global_index=memory_system_instance.global_index
+    )
+    # Assert Result
     assert result == expected_result_obj
 
 @patch.object(TaskSystem, 'generate_context_for_memory_system')
@@ -456,17 +454,26 @@ def test_get_relevant_context_for_case_insensitive_match(mock_generate_context, 
     # Assert Result
     assert result_upper == expected_result_obj # Check result matches mock
 
-def test_get_relevant_context_for_no_query_or_description(memory_system_instance):
-    """Verify behavior when neither query nor templateDescription is provided."""
-    memory_system_instance.update_global_index({os.path.abspath("/path/some_file.py"): "some metadata"})
+@patch.object(TaskSystem, 'generate_context_for_memory_system')
+def test_get_relevant_context_for_no_query_or_description(mock_generate_context, memory_system_instance):
+    """Verify behavior when delegation is called with no query/description."""
+    # Arrange
     input_data = ContextGenerationInput(inputs={"some": "input"}) # Only inputs
+    # Configure mock TaskSystem to return an error result (as per current MemorySystem logic)
+    expected_result_obj = AssociativeMatchResult(
+        context_summary="Mocked: No search criteria", matches=[], error="No query or templateDescription provided"
+    )
+    mock_generate_context.return_value = expected_result_obj
 
+    # Act
     result = memory_system_instance.get_relevant_context_for(input_data)
 
-    assert isinstance(result, AssociativeMatchResult)
-    assert result.matches == []
-    assert "No search criteria provided" in result.context_summary
-    assert "No query or templateDescription provided" in result.error
+    # Assert Call
+    mock_generate_context.assert_called_once_with(
+        context_input=input_data, global_index=memory_system_instance.global_index
+    )
+    # Assert Result
+    assert result == expected_result_obj
 
 # Test sharding path still delegates
 @patch.object(TaskSystem, 'generate_context_for_memory_system')
