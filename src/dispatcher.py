@@ -86,19 +86,36 @@ def execute_programmatic_task(
 
         except SexpSyntaxError as e:
             logging.warning(f"S-expression syntax error for '{identifier}': {e}", exc_info=True)
-            details = {"expression": e.sexp_string, "error_details": e.error_details}
             # Extract first line of message for content
-            error_message = str(e).split('\n')[0]
-            return _create_failed_result_dict("input_validation_failure", f"S-expression Syntax Error: {error_message}", details)
+            error_message = e.args[0] if e.args else str(e)
+            # Ensure details include the expression string
+            details = {"expression": e.sexp_string, "error_details": e.error_details}
+            return _create_failed_result_dict(
+                "input_validation_failure",
+                f"S-expression Syntax Error: {error_message}",
+                details=details,
+                existing_notes=notes # Pass notes for merging
+            )
         except SexpEvaluationError as e:
             logging.warning(f"S-expression evaluation error for '{identifier}': {e}", exc_info=True)
-            details = {"expression": e.expression, "error_details": e.error_details}
             # Use args[0] for the primary message from the exception
             error_message = e.args[0] if e.args else str(e)
-            return _create_failed_result_dict("subtask_failure", f"S-expression Evaluation Error: {error_message}", details)
+            # Ensure details are captured correctly
+            details = {"expression": e.expression, "error_details": e.error_details}
+            return _create_failed_result_dict(
+                "subtask_failure",
+                f"S-expression Evaluation Error: {error_message}",
+                details=details,
+                existing_notes=notes # Pass notes for merging
+            )
         except Exception as e:
             logging.exception(f"Unexpected error evaluating S-expression '{identifier}': {e}")
-            return _create_failed_result_dict("unexpected_error", f"Unexpected error during S-expression evaluation: {e}")
+            # Pass notes for merging in unexpected errors too
+            return _create_failed_result_dict(
+                "unexpected_error",
+                f"Unexpected error during S-expression evaluation: {e}",
+                existing_notes=notes
+            )
 
     # 2. Parse file_context if present (for non-Sexp paths)
     file_context_param = params.pop('file_context', None) # Remove from params
