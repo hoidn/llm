@@ -42,7 +42,7 @@ except ImportError as e:
     sys.exit(1)
 
 # --- Configuration ---
-LOG_LEVEL = logging.INFO # Change to logging.DEBUG for more verbose output
+LOG_LEVEL = logging.DEBUG # Change to logging.DEBUG for more verbose output
 SAMPLE_REPO_PATH = os.path.join(PROJECT_ROOT, "demo_sample_repo")
 # Keyword used in the S-expression query and placed in sample files
 SEARCH_KEYWORD = "class"
