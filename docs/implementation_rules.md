@@ -81,6 +81,13 @@ This document outlines the standard conventions, patterns, and rules for impleme
             # Handle the validation error (e.g., return error TaskResult)
     ```
 
+**5.x Dependency Injection & Initialization**
+
+*   **Constructor/Setter Injection:** Components MUST receive their runtime dependencies (other components, resources specified in IDL `@depends_on`) via their constructor (`__init__`) or dedicated setter methods (e.g., `set_handler`). Avoid complex internal logic within components to locate or instantiate their own major dependencies. Document injection points clearly.
+*   **Initialization Order:** In orchestrating components (like `Application` which creates other components), instantiate dependencies in the correct order *before* injecting them into dependent components that require them during their own initialization.
+*   **Circular Dependencies:** Be vigilant for circular import dependencies during design and code reviews, as they can lead to subtle initialization errors (like the `pydantic-ai` import issues encountered). Minimize top-level imports in modules involved in complex interactions; prefer imports inside methods/functions where feasible. Use string type hints (e.g., `handler: 'BaseHandler'`) or `from typing import TYPE_CHECKING` blocks to break cycles needed only for type checking. If cycles are identified, prioritize refactoring.
+*   **Test Instantiation:** Include tests verifying that components can be instantiated correctly with their required (real or mocked) dependencies.
+
 **6. LLM Interaction (Leveraging Pydantic-AI via Manager)**
 
 *   **Standard:** The project now uses the **`pydantic-ai`** library for all core LLM interactions. The previous custom `ProviderAdapter` interface is deprecated.
@@ -173,11 +180,16 @@ This document outlines the standard conventions, patterns, and rules for impleme
     *   **Guideline 4: Minimize Mocking (Strategic Use):**
         *   **Avoid excessive mocking.** Mocks can make tests brittle and hide integration problems.
         *   Prefer testing with real component instances where feasible, especially for core logic within a component.
-        *   **Use Mocks Strategically:** Mock primarily at the boundaries of the system (external APIs like LLM providers, filesystem *if absolutely necessary*, external databases) or for components that are slow, non-deterministic, or have significant side effects not relevant to the test.
+        *   **Use Mocks Strategically:** Mock primarily at the boundaries of the system (external APIs like LLM providers, filesystem *if absolutely necessary*, external databases) or for components that are slow, non-deterministic, or have significant side effects not relevant to the test. Avoid mocking direct collaborators within the system's core logic where feasible. For example, when testing `TaskSystem`, inject and use a *real* (or near-real) `Handler` instance rather than mocking its methods extensively. Reserve mocking primarily for boundaries with external, non-deterministic, or slow systems (e.g., LLM APIs, databases, network services).
         *   When mocking, mock the *dependency* as seen by the component under test, not deep internal implementation details.
 
     *   **Guideline 5: Mock Object Subtleties (Advanced):**
         *   Be aware that `MagicMock` instances are generally "truthy". If testing code like `if not ImportedClass:`, patching `ImportedClass` with a standard `MagicMock` might not behave as expected. Using `patch('module.ImportedClass', new_callable=MagicMock)` can sometimes help ensure the mock *class* itself is handled correctly in such checks.
+
+*   **[NEW] Guideline 6: Verify Mock Calls Correctly:** When asserting mock calls (`assert_called_once_with`, `assert_called`), ensure you are checking the correct mock object. If you used `with patch.object(...)` or `@patch.object(...)`, assert against the mock object created by the patcher (often passed into the test function or available as the `as` target in the `with` statement). If you passed a mock instance during DI (Guideline 1), assert against that original mock instance variable.
+
+*   **7.y Vertical Slice Testing:** Incorporate integration tests early in the development cycle that cover a key 'vertical slice' of functionality, exercising the main path through multiple collaborating components (e.g., Dispatcher -> SexpEvaluator -> MemorySystem -> TaskSystem -> Executor -> Handler). Even if some deeper dependencies within the slice are initially mocked or simplified, these tests validate the core wiring and data flow sooner.
+*   **7.z Testing Failure Paths:** Explicitly design integration tests to verify how errors propagate between components. Test scenarios where a dependency returns a FAILED `TaskResult` or raises a documented exception, and assert that the calling component handles it correctly according to the [Error Handling Philosophy](../system/architecture/overview.md#error-handling-philosophy) and its own IDL contract.
 
     *   **[NEW] Guideline 6: Verify Mock Calls Correctly:** When asserting mock calls (`assert_called_once_with`, `assert_called`), ensure you are checking the correct mock object. If you used `with patch.object(...)` or `@patch.object(...)`, assert against the mock object created by the patcher (often passed into the test function or available as the `as` target in the `with` statement). If you passed a mock instance during DI (Guideline 1), assert against that original mock instance variable.
 
