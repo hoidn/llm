@@ -317,7 +317,20 @@ class MemorySystem:
                 # Handle cases where the mock might return something unexpected, though it shouldn't
                 error_msg = f"TaskSystem returned unexpected type: {type(task_result)}"
                 logger.error(error_msg)
-                return AssociativeMatchResult(context_summary="", matches=[], error=error_msg)
+                # Try to convert to TaskResult if possible
+                if hasattr(task_result, 'status') and hasattr(task_result, 'content'):
+                    logger.warning("Attempting to convert returned object to TaskResult")
+                    try:
+                        task_result = TaskResult(
+                            status=getattr(task_result, 'status', "COMPLETE"),
+                            content=getattr(task_result, 'content', ""),
+                            notes=getattr(task_result, 'notes', {})
+                        )
+                    except Exception as e:
+                        logger.error(f"Failed to convert to TaskResult: {e}")
+                        return AssociativeMatchResult(context_summary="", matches=[], error=error_msg)
+                else:
+                    return AssociativeMatchResult(context_summary="", matches=[], error=error_msg)
 
             if task_result.status == "FAILED":
                 # Extract error details from the FAILED TaskResult

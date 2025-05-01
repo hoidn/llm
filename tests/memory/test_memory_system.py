@@ -43,15 +43,23 @@ def mock_dependencies(mock_file_manager_ms): # Add mock_file_manager_ms fixture 
     return handler_mock, task_system_mock, mock_file_manager_ms
 
 
+@pytest.fixture
+def mock_task_system():
+    """Provides a mock TaskSystem with proper spec."""
+    mock = MagicMock(name="MockTaskSystem", spec=TaskSystem)
+    # Configure default behaviors
+    mock.execute_atomic_template.return_value = TaskResult(status="COMPLETE", content="Mock task success")
+    return mock
+
 @pytest.fixture # Update memory_system_instance to use new fixture
-def memory_system_instance(mock_dependencies, mock_file_manager_ms): # Add mock_file_manager_ms
+def memory_system_instance(mock_dependencies, mock_file_manager_ms, mock_task_system): # Add mock_task_system
     """Provides a MemorySystem instance with mock dependencies."""
-    # Unpack 3 items from mock_dependencies, ignoring the 3rd (file manager mock)
-    handler_mock, task_system_mock, _ = mock_dependencies
-    # Pass the new mock file manager
+    # Unpack handler from mock_dependencies, ignore the rest
+    handler_mock, _, _ = mock_dependencies
+    # Pass the new mock file manager and dedicated task_system mock
     return MemorySystem(
         handler=handler_mock,
-        task_system=task_system_mock,
+        task_system=mock_task_system,
         file_access_manager=mock_file_manager_ms, # Pass mock FM
         config=TEST_CONFIG.copy()
     )
