@@ -28,3 +28,10 @@
 **Rationale:**
 
 This change standardizes the format of file content provided to LLM tasks, whether it's for the main passthrough handler or internal tasks like context matching. It ensures the LLM always receives the file path alongside the content, which is crucial for tasks that need to identify *which* file the relevant information came from.
+
+**Status:**
+
+*   [ ] Step 1: Modify `src/memory/memory_system.py`
+*   [ ] Step 2: Modify `src/main.py` (Template Definition)
+*   [ ] Step 3: Update `src/memory/memory_system_IDL.md`
+*   [ ] Step 4: Update `src/main_IDL.md`
