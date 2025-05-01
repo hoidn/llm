@@ -14,8 +14,8 @@ if TYPE_CHECKING:
 
 def resolve_paths_from_template(
     template: Dict[str, Any],
-    memory_system: Optional[MemorySystem],
-    handler: Optional[BaseHandler],
+    memory_system: Optional['MemorySystem'],
+    handler: Optional['BaseHandler'],
 ) -> Tuple[List[str], Optional[str]]:
     """
     Resolves the final list of file paths based on template settings.
