@@ -92,7 +92,7 @@ class Application:
                     "type": "atomic",
                     "subtype": "associative_matching", # Use the specific subtype
                     "description": "Internal task to find relevant files based on query and index.",
-                    "parameters": {
+                    "params": {
                         "context_input": {"description": "ContextGenerationInput object as dict"},
                         "global_index": {"description": "Dictionary of file paths to metadata"}
                     },
