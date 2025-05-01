@@ -40,7 +40,7 @@ except ImportError as e:
 LOG_LEVEL = logging.DEBUG # Keep DEBUG for detailed output during demo
 # --- START MODIFICATION ---
 # Point to the actual project root directory for indexing
-REPO_TO_INDEX = os.path.join(PROJECT_ROOT, 'src')
+REPO_TO_INDEX = PROJECT_ROOT # Pass the actual Git repo root
 # Change search keyword to something likely in the project code
 SEARCH_KEYWORD = "TaskSystem"
 # --- END MODIFICATION ---
@@ -62,10 +62,8 @@ def run_demo():
     app: Application | None = None
 
     try:
-        # --- START MODIFICATION ---
-        # 1. Remove Sample Repo Creation
+        # 1. Log Target Repo Path
         logger.info(f"Target repository for indexing: {REPO_TO_INDEX}")
-        # --- END MODIFICATION ---
 
         # 2. Instantiate Application
         logger.info("Instantiating Application...")
@@ -79,12 +77,12 @@ def run_demo():
         # 3. Index Repository
         logger.info(f"Indexing repository: {REPO_TO_INDEX}")
         try:
-            # --- START MODIFICATION ---
-            # Define more realistic index options for the project repo
+            # Define index options to limit scope using patterns
+            # These patterns are relative to REPO_TO_INDEX (which is now PROJECT_ROOT)
             index_options = {
-                # Include Python files in src and Markdown files in docs
-                "include_patterns": ["src/**/*.py", "docs/**/*.md"],
-                # Exclude virtual environments, caches, git dir, specific files/dirs
+                # Include Python files ONLY within the 'src' directory
+                "include_patterns": ["src/**/*.py"],
+                # Exclude common unwanted directories/files globally
                 "exclude_patterns": [
                     "**/venv/**",
                     "**/__pycache__/**",
@@ -92,20 +90,23 @@ def run_demo():
                     "**/node_modules/**",
                     "*.pyc",
                     "*.log",
-                    "demo_sample_repo/**", # Exclude the old sample repo if it exists
+                    "demo_sample_repo/**",
                     "src/scripts/**" # Exclude this script itself
                  ]
             }
-            # Pass the correct repo path and options
+            logger.info(f"Using index options: {index_options}") # Log the options being used
+            # Pass the correct repo path (PROJECT_ROOT) and options
             success = app.index_repository(REPO_TO_INDEX, options=index_options)
-            # --- END MODIFICATION ---
             if not success:
                 logger.error("Failed to index repository. Context may be unavailable.")
-                return
-            logger.info("Repository indexing initiated successfully.")
+                # Decide if you want to exit here or continue without context
+                # return # Optional: exit if indexing fails
+            else:
+                logger.info("Repository indexing initiated successfully.")
         except Exception as e:
             logger.exception("Error during repository indexing.")
-            return
+            # Decide if you want to exit here or continue without context
+            # return # Optional: exit if indexing fails
 
         # 4. Define S-expression Command
         # Use the updated SEARCH_KEYWORD
@@ -131,9 +132,7 @@ def run_demo():
 
             if result_dict.get("status") == "COMPLETE":
                 print("\n--- Interpretation ---")
-                # --- START MODIFICATION ---
-                print(f"Workflow looked for files related to '{SEARCH_KEYWORD}' in the project repo and attempted to read them.")
-                # --- END MODIFICATION ---
+                print(f"Workflow looked for files related to '{SEARCH_KEYWORD}' in the project repo (scoped by index patterns) and attempted to read them.")
                 read_count = result_dict.get('notes', {}).get('files_read_count', 'N/A')
                 skipped_list = result_dict.get('notes', {}).get('skipped_files', [])
                 print(f"Files Found & Attempted: {len(skipped_list) + (read_count if isinstance(read_count, int) else 0)}") # Approx based on skipped + read
@@ -165,10 +164,7 @@ def run_demo():
         print("="*53)
 
     finally:
-        # --- START MODIFICATION ---
         # Remove cleanup call
-        # cleanup_sample_repo(SAMPLE_REPO_PATH)
-        # --- END MODIFICATION ---
         logger.info("Demo script finished.")
 
 
