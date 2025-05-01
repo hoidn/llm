@@ -120,9 +120,18 @@ class AtomicTaskExecutor:
             # Build the final system prompt using the handler's method
             # File context is explicitly None as per IDL/ADR for atomic execution body.
             # Context must be prepared by the caller (e.g., TaskSystem) if needed.
+            # Build file_context string from params if available
+            file_context_str = None
+            fc = params.get("file_contents")
+            if isinstance(fc, dict) and fc:
+                pieces = []
+                for path, content in fc.items():
+                    if content:
+                        pieces.append(f"--- File: {path} ---\n{content}\n--- End File: {path} ---")
+                file_context_str = "\n\n".join(pieces)
             final_system_prompt = handler._build_system_prompt(
                 template=substituted_system_prompt_template,
-                file_context=None
+                file_context=file_context_str
             )
 
             # Main prompt is the substituted instructions
