@@ -56,7 +56,7 @@ module src.sexp_evaluator.sexp_evaluator {
         //   - Lists: Delegates processing to `_eval_list` to determine if it's a special form, primitive call, function/task/tool invocation, or invalid.
         // - **Guideline:** Focuses on returning the value; the *application* of functions/operators happens within the logic called by `_eval_list`.
         //     - **Dispatch Order & Explicitness:** Follows a strict dispatch order:
-        //   1. Check if operator is a symbol matching a **Special Form** (`if`, `let`, `bind`, `progn`, `quote`, `lambda`). If yes, execute special form logic (which handles its own argument evaluation).
+        //   1. Check if operator is a symbol matching a **Special Form** (`if`, `let`, `bind`, `progn`, `quote`, `lambda`, `defatom`). If yes, execute special form logic (which handles its own argument evaluation or definition).
         //   2. Else, check if operator is a symbol matching a **Primitive** (`list`, `get_context`). If yes, execute primitive logic (which evaluates necessary arguments internally).
         //   3. Else (operator is not a special form or primitive symbol, OR operator is a complex expression like another list): Evaluate the operator expression itself using `_eval`. Let the result be `evaluated_operator`.
         //      a. If `evaluated_operator` is a **Closure object** (a function created by `lambda`): Trigger the **Function Application** process:
@@ -71,6 +71,13 @@ module src.sexp_evaluator.sexp_evaluator {
         //      d. Else, if `evaluated_operator` is a symbol but **not recognized** as executable (special form, primitive, task, tool, Closure, callable), raise an "Undefined function or task" error.
         //      e. Else (e.g., `evaluated_operator` is a non-callable value like a list or number), raise a "Cannot apply non-callable operator" error.
         // - `(lambda (param...) body...)`: **Special Form.** Creates and returns a first-class function object (a Closure). Does *not* evaluate the parameter list or body immediately. The returned Closure captures the parameter list (symbols), the body AST nodes, and the current lexical environment (the environment where the lambda expression itself was evaluated). This captured environment enables lexical scoping when the function is later applied.
+        // - `(defatom task-name (params ...) (instructions ...) ...)`: **Special Form.** Defines a new atomic task template.
+        //     - Parses its *unevaluated* arguments to extract the task name (Symbol), parameter definitions (`(params (p1 type?) ...)`), instructions string (`(instructions "...")`), and optional key-value pairs (e.g., `(subtype "subtask")`, `(description "...")`).
+        //     - Constructs a template dictionary conforming to the atomic task structure.
+        //     - Registers the template globally with the `TaskSystem` via `TaskSystem.register_template`.
+        //     - Raises `SexpEvaluationError` if syntax is invalid or registration fails.
+        //     - Returns the `task-name` Symbol upon success.
+        //     - **Note:** This definition is global for the current session/evaluator instance. It does not currently support lexical scoping for task definitions.
         
         // **Note on Closures:** A Closure is a runtime object representing a function created by `lambda` (or potentially `define` if added later). It bundles the function's code (parameter list and body AST) with a reference to the environment where it was defined, enabling lexical scoping. It is a first-class value that can be passed around, stored in variables, and invoked later.
         

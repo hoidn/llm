@@ -452,3 +452,276 @@ def test_evaluate_string_implicit_progn(evaluator, mock_parser):
     # Assert that SexpSyntaxError is raised by the parser
     with pytest.raises(SexpSyntaxError, match="Multiple top-level S-expressions found"):
         evaluator.evaluate_string("(bind x 10) (bind y 20) y")
+
+
+# --- Test Class for defatom ---
+# Use the existing 'evaluator' fixture which has mocks injected
+class TestSexpEvaluatorDefatom:
+
+    def test_defatom_basic_registration(self, evaluator, mock_parser, mock_task_system):
+        """Test basic defatom registration with minimal arguments."""
+        task_name = "my-task"
+        task_sym = Symbol(task_name)
+        params_sym = Symbol("params")
+        p1_sym = Symbol("p1")
+        str_sym = Symbol("str") # Placeholder type
+        instructions_sym = Symbol("instructions")
+
+        sexp_ast = [
+            Symbol("defatom"),
+            task_sym,
+            [params_sym, [p1_sym, str_sym]],
+            [instructions_sym, "inst {{p1}}"]
+        ]
+        mock_parser.parse_string.return_value = sexp_ast
+
+        expected_template_dict = {
+            "name": task_name,
+            "type": "atomic",
+            "subtype": "standard", # Default
+            "description": f"Dynamically defined task: {task_name}", # Default
+            "parameters": {"p1": {"description": "Parameter p1"}},
+            "instructions": "inst {{p1}}",
+            "model": None # Ensure not present if not specified
+        }
+        # Clear model if it exists from optional args test
+        if "model" in expected_template_dict: del expected_template_dict["model"]
+
+
+        mock_task_system.register_template.return_value = True # Simulate success
+
+        result = evaluator.evaluate_string(f"(defatom {task_name} ...)") # String content doesn't matter due to mock
+
+        mock_task_system.register_template.assert_called_once_with(expected_template_dict)
+        assert isinstance(result, Symbol)
+        assert result.value() == task_name
+
+    def test_defatom_with_optional_args(self, evaluator, mock_parser, mock_task_system):
+        """Test defatom registration with optional arguments."""
+        task_name = "fancy"
+        task_sym = Symbol(task_name)
+        params_sym = Symbol("params")
+        a_sym = Symbol("a")
+        any_sym = Symbol("any")
+        b_sym = Symbol("b")
+        int_sym = Symbol("int")
+        instructions_sym = Symbol("instructions")
+        subtype_sym = Symbol("subtype")
+        description_sym = Symbol("description")
+        model_sym = Symbol("model")
+
+        sexp_ast = [
+            Symbol("defatom"),
+            task_sym,
+            [params_sym, [a_sym, any_sym], [b_sym, int_sym]],
+            [instructions_sym, "Do {{a}} {{b}}"],
+            [subtype_sym, "subtask"],
+            [description_sym, "Desc"],
+            [model_sym, "claude"]
+        ]
+        mock_parser.parse_string.return_value = sexp_ast
+
+        expected_template_dict = {
+            "name": task_name,
+            "type": "atomic",
+            "subtype": "subtask",
+            "description": "Desc",
+            "parameters": {
+                "a": {"description": "Parameter a"},
+                "b": {"description": "Parameter b"}
+            },
+            "instructions": "Do {{a}} {{b}}",
+            "model": "claude"
+        }
+
+        mock_task_system.register_template.return_value = True
+
+        result = evaluator.evaluate_string(f"(defatom {task_name} ...)")
+
+        mock_task_system.register_template.assert_called_once_with(expected_template_dict)
+        assert isinstance(result, Symbol)
+        assert result.value() == task_name
+
+    def test_defatom_invocation_after_definition(self, evaluator, mock_parser, mock_task_system):
+        """Test invoking a task immediately after defining it with defatom."""
+        def_task_name = "task-a"
+        def_task_sym = Symbol(def_task_name)
+        params_sym = Symbol("params")
+        x_sym = Symbol("x")
+        str_sym = Symbol("str")
+        instructions_sym = Symbol("instructions")
+        progn_sym = Symbol("progn")
+
+        defatom_ast = [
+            Symbol("defatom"),
+            def_task_sym,
+            [params_sym, [x_sym, str_sym]],
+            [instructions_sym, "Run {{x}}"]
+        ]
+        invocation_ast = [def_task_sym, [x_sym, "val"]]
+        sexp_ast = [progn_sym, defatom_ast, invocation_ast] # Use progn to sequence
+
+        mock_parser.parse_string.return_value = sexp_ast
+
+        # Mock registration success
+        mock_task_system.register_template.return_value = True
+        # Mock find_template to return the definition *after* registration is called
+        # Use side_effect to control return value based on call order if needed,
+        # or simply mock it to return the template assuming registration worked.
+        expected_template_dict = {
+            "name": def_task_name, "type": "atomic", "subtype": "standard",
+            "description": f"Dynamically defined task: {def_task_name}",
+            "parameters": {"x": {"description": "Parameter x"}},
+            "instructions": "Run {{x}}", "model": None
+        }
+        if "model" in expected_template_dict: del expected_template_dict["model"]
+
+        # Mock find_template to return the dict *after* registration
+        mock_task_system.find_template.side_effect = [
+            None, # First call during defatom (shouldn't happen, but safe)
+            expected_template_dict # Second call during invocation
+        ]
+
+        # Mock invocation result
+        mock_invocation_result = TaskResult(status="COMPLETE", content="Task A Done")
+        mock_task_system.execute_atomic_template.return_value = mock_invocation_result
+
+        result = evaluator.evaluate_string(f"(progn (defatom {def_task_name} ...) ({def_task_name} ...))")
+
+        # Assert registration happened
+        mock_task_system.register_template.assert_called_once_with(expected_template_dict)
+
+        # Assert invocation happened correctly
+        mock_task_system.execute_atomic_template.assert_called_once()
+        call_args, _ = mock_task_system.execute_atomic_template.call_args
+        request = call_args[0]
+        assert isinstance(request, SubtaskRequest)
+        assert request.name == def_task_name
+        assert request.inputs == {"x": "val"}
+
+        # Assert final result is the invocation result
+        assert result == mock_invocation_result
+
+    def test_defatom_missing_args(self, evaluator, mock_parser):
+        """Test defatom with too few arguments."""
+        sexp_ast = [Symbol("defatom"), Symbol("name")] # Only name
+        mock_parser.parse_string.return_value = sexp_ast
+        with pytest.raises(SexpEvaluationError, match=r"'defatom' requires at least name, params, and instructions"):
+            evaluator.evaluate_string("(defatom name)")
+
+    def test_defatom_name_not_symbol(self, evaluator, mock_parser):
+        """Test defatom with a non-symbol task name."""
+        sexp_ast = [Symbol("defatom"), "name", [Symbol("params")], [Symbol("instructions"), ""]] # Name is string
+        mock_parser.parse_string.return_value = sexp_ast
+        with pytest.raises(SexpEvaluationError, match=r"'defatom' task name must be a Symbol"):
+            evaluator.evaluate_string('(defatom "name" ...)')
+
+    def test_defatom_missing_params(self, evaluator, mock_parser):
+        """Test defatom without a (params ...) definition."""
+        sexp_ast = [Symbol("defatom"), Symbol("name"), [Symbol("instructions"), "inst"]] # Missing params
+        mock_parser.parse_string.return_value = sexp_ast
+        with pytest.raises(SexpEvaluationError, match=r"'defatom' requires a \(params \.\.\.\) definition"):
+            evaluator.evaluate_string("(defatom name (instructions ...))")
+
+    def test_defatom_invalid_params_format(self, evaluator, mock_parser):
+        """Test defatom with invalid format within (params ...)."""
+        # Case 1: params value is not a list
+        sexp_ast_not_list = [
+            Symbol("defatom"), Symbol("name"),
+            [Symbol("params"), "bad"], # params value is string
+            [Symbol("instructions"), "inst"]
+        ]
+        mock_parser.parse_string.return_value = sexp_ast_not_list
+        with pytest.raises(SexpEvaluationError, match=r"Invalid parameter definition format"):
+             evaluator.evaluate_string("(defatom name (params \"bad\") ...)")
+
+        # Case 2: item inside params list is not a list or symbol
+        sexp_ast_invalid_item = [
+            Symbol("defatom"), Symbol("name"),
+            [Symbol("params"), ["p1"], "bad-item"], # "bad-item" is not a list
+             [Symbol("instructions"), "inst"]
+        ]
+        mock_parser.parse_string.return_value = sexp_ast_invalid_item
+        with pytest.raises(SexpEvaluationError, match=r"Invalid parameter definition format"):
+             evaluator.evaluate_string("(defatom name (params ((p1)) \"bad-item\") ...)")
+
+        # Case 3: item inside params list is list but doesn't start with symbol
+        sexp_ast_invalid_subitem = [
+            Symbol("defatom"), Symbol("name"),
+            [Symbol("params"), [123, Symbol("type")]], # Starts with number
+             [Symbol("instructions"), "inst"]
+        ]
+        mock_parser.parse_string.return_value = sexp_ast_invalid_subitem
+        with pytest.raises(SexpEvaluationError, match=r"Invalid parameter definition format"):
+             evaluator.evaluate_string("(defatom name (params ((123 type))) ...)")
+
+
+    def test_defatom_missing_instructions(self, evaluator, mock_parser):
+        """Test defatom without an (instructions ...) definition."""
+        sexp_ast = [Symbol("defatom"), Symbol("name"), [Symbol("params"), [Symbol("p1")]]] # Missing instructions
+        mock_parser.parse_string.return_value = sexp_ast
+        with pytest.raises(SexpEvaluationError, match=r"'defatom' requires an \(instructions \"string\"\) definition"):
+            evaluator.evaluate_string("(defatom name (params (p1)))")
+
+    def test_defatom_instructions_not_string(self, evaluator, mock_parser):
+        """Test defatom where instructions value is not a string."""
+        sexp_ast = [
+            Symbol("defatom"), Symbol("name"),
+            [Symbol("params"), [Symbol("p1")]],
+            [Symbol("instructions"), [Symbol("list"), "bad"]] # Value is a list
+        ]
+        mock_parser.parse_string.return_value = sexp_ast
+        with pytest.raises(SexpEvaluationError, match=r"'defatom' requires an \(instructions \"string\"\) definition"):
+            evaluator.evaluate_string("(defatom name (params (p1)) (instructions (list \"bad\")))")
+
+    def test_defatom_invalid_optional_arg_format(self, evaluator, mock_parser):
+        """Test defatom with an optional arg value that's not a string literal."""
+        sexp_ast = [
+            Symbol("defatom"), Symbol("name"),
+            [Symbol("params"), [Symbol("p1")]],
+            [Symbol("instructions"), "inst"],
+            [Symbol("subtype"), [Symbol("list"), "bad"]] # Subtype value is a list
+        ]
+        mock_parser.parse_string.return_value = sexp_ast
+        with pytest.raises(SexpEvaluationError, match=r"subtype.*must be a string"):
+            evaluator.evaluate_string("(defatom name ... (subtype (list \"bad\")))")
+
+    def test_defatom_unknown_optional_arg(self, evaluator, mock_parser):
+        """Test defatom with an unknown optional argument key."""
+        sexp_ast = [
+            Symbol("defatom"), Symbol("name"),
+            [Symbol("params"), [Symbol("p1")]],
+            [Symbol("instructions"), "inst"],
+            [Symbol("badkey"), "value"] # Unknown key
+        ]
+        mock_parser.parse_string.return_value = sexp_ast
+        with pytest.raises(SexpEvaluationError, match=r"Unknown optional argument 'badkey'"):
+            evaluator.evaluate_string("(defatom name ... (badkey \"value\"))")
+
+    def test_defatom_registration_failure_exception(self, evaluator, mock_parser, mock_task_system):
+        """Test defatom when TaskSystem.register_template raises an exception."""
+        sexp_ast = [
+            Symbol("defatom"), Symbol("my-task"),
+            [Symbol("params"), [Symbol("p1")]],
+            [Symbol("instructions"), "inst"]
+        ]
+        mock_parser.parse_string.return_value = sexp_ast
+        mock_task_system.register_template.side_effect = ValueError("Mock registration error")
+
+        with pytest.raises(SexpEvaluationError, match=r"Failed to register template.*Mock registration error"):
+            evaluator.evaluate_string("(defatom my-task ...)")
+        mock_task_system.register_template.assert_called_once() # Ensure it was called
+
+    def test_defatom_registration_failure_false(self, evaluator, mock_parser, mock_task_system):
+        """Test defatom when TaskSystem.register_template returns False."""
+        sexp_ast = [
+            Symbol("defatom"), Symbol("my-task"),
+            [Symbol("params"), [Symbol("p1")]],
+            [Symbol("instructions"), "inst"]
+        ]
+        mock_parser.parse_string.return_value = sexp_ast
+        mock_task_system.register_template.return_value = False # Simulate non-exception failure
+
+        with pytest.raises(SexpEvaluationError, match=r"TaskSystem failed to register template.*returned False"):
+            evaluator.evaluate_string("(defatom my-task ...)")
+        mock_task_system.register_template.assert_called_once() # Ensure it was called

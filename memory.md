@@ -56,12 +56,17 @@
     - Created `tests/executors/test_system_executors.py` with unit tests. Commit `cfeff54`.
     - Ran tests, identified failures related to Pydantic model access, TaskFailureReason usage, and mock call signatures.
     - Fixed executor logic and tests. Commit `d61b395`.
+- **Phase 5: Implement `defatom` Special Form:**
+    - Added `_eval_defatom` method to `SexpEvaluator`.
+    - Implemented parsing, validation, template construction, and registration logic.
+    - Added dispatch for `defatom` in `_eval_special_form`.
+    - Updated `sexp_evaluator_IDL.md` to include `defatom`.
+    - Added `TestSexpEvaluatorDefatom` class with comprehensive tests in `test_sexp_evaluator.py`.
 
 ## Next Steps
 
-1.  **Complete Phase 4 - Stream 2:** Implement remaining Sexp/Passthrough related tasks (if assigned to this stream and not already covered by System Executors).
-2.  **Merge Streams:** Integrate changes from both Phase 4 streams.
-3.  **Implement Remaining Deferred Methods (Phase 2 Dependencies):**
+1.  **Merge Streams:** Integrate changes from Phase 4 streams (Git Indexer, System Executors) and Phase 5 (`defatom`).
+2.  **Implement Remaining Deferred Methods (Phase 2 Dependencies):**
     *   `LLMInteractionManager`: `execute_call` (needed by `BaseHandler`/`PassthroughHandler`).
     *   `TaskSystem`: `execute_atomic_template` (needed by `SexpEvaluator`).
     *   `BaseHandler`: `_execute_tool` (needed by `SexpEvaluator`).

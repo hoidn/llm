@@ -235,6 +235,8 @@ class SexpEvaluator:
 
         if op_str == "if":
             return self._eval_if(args, env)
+        elif op_str == "defatom": # Add defatom dispatch
+            return self._eval_defatom(args, env)
         elif op_str == "let":
             return self._eval_let(args, env)
         elif op_str == "bind":
@@ -317,6 +319,144 @@ class SexpEvaluator:
         quoted_expression = args[0]
         logging.debug(f"Eval 'quote' END: -> {quoted_expression} (unevaluated)")
         return quoted_expression
+
+    def _eval_defatom(self, args: list, env: SexpEnvironment) -> Symbol:
+        """
+        Evaluates the 'defatom' special form.
+
+        Syntax:
+        (defatom task-name-symbol
+          (params (param1-symbol type?) (param2-symbol type?) ...)
+          (instructions "String with {{param}} substitutions")
+          ; Optional elements below:
+          (subtype "standard" | "subtask" | ...) ; Defaults to 'standard'
+          (description "Optional description string")
+          (model "Optional model identifier string")
+          ; ... other atomic template fields ...
+        )
+
+        Behavior:
+        1. Parses the unevaluated `args` list to extract the task name symbol,
+           parameter definitions list, instructions string, and optional fields.
+        2. Validates the extracted components against the required format.
+        3. Constructs a template dictionary adhering to the structure expected
+           by `TaskSystem.register_template` (setting `type` to "atomic").
+        4. Calls `self.task_system.register_template` with the constructed dictionary.
+        5. (Optional: Does not currently implement lexical binding).
+        6. Returns the task name symbol upon successful registration.
+
+        Args:
+            args: The list of *unevaluated* arguments following 'defatom'.
+                  Expected: [task-name-symbol, params-list, instructions-list, ...]
+            env: The current SexpEnvironment (used for potential future extensions,
+                 but not directly for evaluating defatom's structure).
+
+        Returns:
+            The Symbol representing the defined task's name.
+
+        Raises:
+            SexpEvaluationError: If syntax is incorrect, required elements are missing,
+                                 validation fails, or registration with TaskSystem fails.
+        """
+        node_repr = f"(defatom {' '.join(map(str, args))})" # For error context
+        logging.debug(f"Eval 'defatom' START: {node_repr}")
+
+        # 1. Parse & Validate Arguments
+        if len(args) < 3:
+            raise SexpEvaluationError(
+                f"'defatom' requires at least name, params, and instructions arguments. Got {len(args)}.",
+                node_repr
+            )
+
+        # Task Name
+        task_name_node = args[0]
+        if not isinstance(task_name_node, Symbol):
+            raise SexpEvaluationError(
+                f"'defatom' task name must be a Symbol, got {type(task_name_node)}: {task_name_node}",
+                node_repr
+            )
+        task_name_str = task_name_node.value()
+
+        # Params
+        params_node = args[1]
+        if not (isinstance(params_node, list) and len(params_node) > 0 and isinstance(params_node[0], Symbol) and params_node[0].value() == "params"):
+            raise SexpEvaluationError(
+                f"'defatom' requires a (params ...) definition as the second argument, got: {params_node}",
+                node_repr
+            )
+        params_list = params_node[1:]
+        template_params = {}
+        for param_def in params_list:
+            if not (isinstance(param_def, list) and len(param_def) >= 1 and isinstance(param_def[0], Symbol)):
+                 # Allow just (param-name) or (param-name type?) - type ignored for now
+                raise SexpEvaluationError(
+                    f"Invalid parameter definition format in (params ...). Expected (symbol type?), got: {param_def}",
+                    node_repr
+                )
+            param_name = param_def[0].value()
+            # Store placeholder description - type info ignored for now
+            template_params[param_name] = {"description": f"Parameter {param_name}"}
+
+        # Instructions
+        instructions_node = args[2]
+        if not (isinstance(instructions_node, list) and len(instructions_node) == 2 and isinstance(instructions_node[0], Symbol) and instructions_node[0].value() == "instructions" and isinstance(instructions_node[1], str)):
+            raise SexpEvaluationError(
+                f"'defatom' requires an (instructions \"string\") definition as the third argument, got: {instructions_node}",
+                node_repr
+            )
+        instructions_str = instructions_node[1]
+
+        # Optional Arguments
+        optional_args = {}
+        allowed_optionals = {"subtype", "description", "model"} # Add more as needed
+        for opt_node in args[3:]:
+            if not (isinstance(opt_node, list) and len(opt_node) == 2 and isinstance(opt_node[0], Symbol)):
+                raise SexpEvaluationError(
+                    f"Invalid optional argument format for 'defatom'. Expected (key value), got: {opt_node}",
+                    node_repr
+                )
+            key_node, value_node = opt_node
+            key_str = key_node.value()
+
+            if key_str not in allowed_optionals:
+                raise SexpEvaluationError(f"Unknown optional argument '{key_str}' for 'defatom'. Allowed: {allowed_optionals}", node_repr)
+
+            # Basic type validation for known optionals (expecting literals here)
+            if key_str in ["subtype", "description", "model"]:
+                if not isinstance(value_node, str):
+                    raise SexpEvaluationError(f"Optional argument '{key_str}' for 'defatom' must be a string, got {type(value_node)}: {value_node}", node_repr)
+                optional_args[key_str] = value_node
+            # Add more type checks if other optionals are added
+
+        # 2. Construct Template Dictionary
+        template_dict = {
+            "name": task_name_str,
+            "type": "atomic",
+            "subtype": optional_args.get("subtype", "standard"), # Default subtype
+            "description": optional_args.get("description", f"Dynamically defined task: {task_name_str}"), # Default description
+            "parameters": template_params,
+            "instructions": instructions_str,
+            # Add other fields from optional_args
+            **{k: v for k, v in optional_args.items() if k not in ["subtype", "description"]}
+        }
+        logging.debug(f"Constructed template dictionary for '{task_name_str}': {template_dict}")
+
+        # 3. Register with TaskSystem
+        try:
+            logging.info(f"Registering dynamic atomic task template: '{task_name_str}'")
+            success = self.task_system.register_template(template_dict)
+            if not success:
+                # TaskSystem.register might return False on non-exception failure (e.g., duplicate)
+                 raise SexpEvaluationError(f"TaskSystem failed to register template '{task_name_str}' (returned False).", node_repr)
+        except Exception as e:
+            logging.exception(f"Error registering template '{task_name_str}' with TaskSystem: {e}")
+            # Wrap underlying error (ValueError, etc.)
+            raise SexpEvaluationError(f"Failed to register template '{task_name_str}' with TaskSystem: {e}", node_repr, error_details=str(e)) from e
+
+        logging.info(f"Successfully registered dynamic task '{task_name_str}'.")
+        # 4. Return Task Name Symbol
+        return task_name_node
+
 
     # --- Primitive Handlers ---
 
