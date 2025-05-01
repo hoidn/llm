@@ -2,6 +2,9 @@ import logging
 import os  # Add os import for environment variable checking
 from typing import Any, Dict, List, Optional, Callable, Type, TYPE_CHECKING
 
+# Define module-level logger
+logger = logging.getLogger(__name__)
+
 # --- REVERT TO TOP-LEVEL IMPORT ---
 try:
     from pydantic_ai import Agent
@@ -58,7 +61,6 @@ class LLMInteractionManager:
         Initializes the pydantic-ai Agent instance.
         (Implementation deferred to Phase 1B - Now Implemented)
         """
-        logger = logging.getLogger(__name__) # Use specific logger
         logger.debug("Attempting to initialize pydantic-ai Agent...")
 
         # --- REVERT CHECK ---
@@ -106,7 +108,7 @@ class LLMInteractionManager:
                 # tools=... # Tools are typically passed per-call or registered differently
                 **agent_config # Pass any additional config
             )
-            logging.info(f"pydantic-ai Agent initialized successfully for model: {self.default_model_identifier}")
+            logger.info(f"pydantic-ai Agent initialized successfully for model: {self.default_model_identifier}")
             return agent
         except Exception as e:
             # Log the full exception details
