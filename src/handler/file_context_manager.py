@@ -1,11 +1,9 @@
 import logging
-from typing import Any, List, Optional
+from typing import Any, List
 
-# Assuming FileAccessManager is importable
+# real imports
 from src.handler.file_access import FileAccessManager
-# Assuming MemorySystem and ContextGenerationInput are importable
-# from src.memory.memory_system import MemorySystem # Forward declaration if needed
-# from src.system.models import ContextGenerationInput # Forward declaration if needed
+from src.system.models import ContextGenerationInput
 
 
 class FileContextManager:
@@ -41,44 +39,33 @@ class FileContextManager:
         Returns:
             A list of relevant file paths.
         """
-        logging.debug(f"Getting relevant files for query: '{query[:50]}...'")
-        # --- Start Phase 2, Set A: Behavior Structure ---
-        # 1. Check if `self.memory_system` is available. If not, return empty list or raise error.
+        logging.debug(f"[FileContextManager] get_relevant_files for query: {query!r}")
         if not self.memory_system:
-            logging.error("Memory system is not available for get_relevant_files.")
+            logging.error("[FileContextManager] No memory_system available – returning empty file list.")
             return []
-
-        # 2. Construct input for memory system context retrieval (e.g., ContextGenerationInput or legacy dict).
-        #    - `input_data = ContextGenerationInput(query=query, ...)` # Add other relevant fields if known
-        # TODO: Replace dict with ContextGenerationInput model when available and integrated
-        input_data = {"query": query} # Placeholder
 
         try:
-            # 3. Call `self.memory_system.get_relevant_context_for(input_data)`.
-            # Assuming get_relevant_context_for returns an object with a 'matches' attribute
-            # which is a list of objects/tuples, where each has a 'path' attribute/element.
-            # Adjust based on actual MemorySystem return type.
-            result = self.memory_system.get_relevant_context_for(input_data)
+            # build proper ContextGenerationInput
+            input_model = ContextGenerationInput(query=query)
+            result = self.memory_system.get_relevant_context_for(input_model)
 
-            # 4. Process the result:
-            #    - If the call fails or returns an error, log it and return empty list.
-            if not result or not hasattr(result, 'matches'):
-                 logging.warning(f"No relevant context or matches found for query: '{query[:50]}...'")
-                 return []
+            if not result or not hasattr(result, "matches"):
+                logging.warning(f"[FileContextManager] No matches found for '{query}'.")
+                return []
 
-            #    - Extract the list of file paths from `result.matches`.
-            #    - `file_paths = [match.path for match in result.matches]`
-            # Adjust '.path' if the match object structure is different (e.g., tuple index)
-            file_paths = [match[0] for match in result.matches if match and isinstance(match, (tuple, list)) and len(match) > 0] # Example for tuple match[0]
-            # file_paths = [match.path for match in result.matches if hasattr(match, 'path')] # Example for object match.path
+            paths: List[str] = []
+            for match in result.matches:
+                # handle Pydantic MatchTuple or simple tuple/list
+                if hasattr(match, "path"):
+                    paths.append(match.path)
+                elif isinstance(match, (tuple, list)) and match:
+                    paths.append(match[0])
 
-            logging.debug(f"Found relevant files: {file_paths}")
-            # 5. Return `file_paths`.
-            return file_paths
-        except Exception as e:
-            logging.error(f"Error getting relevant context from memory system: {e}", exc_info=True)
+            logging.debug(f"[FileContextManager] Relevant files: {paths}")
+            return paths
+        except Exception:
+            logging.exception(f"[FileContextManager] Error retrieving context for '{query}'")
             return []
-        # --- End Phase 2, Set A ---
         # raise NotImplementedError(
         #     "_get_relevant_files implementation deferred to Phase 2"
         # ) # Original placeholder removed
@@ -93,40 +80,23 @@ class FileContextManager:
         Returns:
             A single string containing the formatted content of the files.
         """
-        logging.debug(f"Creating file context for paths: {file_paths}")
-        # --- Start Phase 2, Set A: Behavior Structure ---
-        # 1. Initialize an empty list `context_parts`.
-        context_parts = []
-        # 2. Iterate through the `file_paths`:
-        for file_path in file_paths:
-            #    - For each `file_path`:
+        logging.debug(f"[FileContextManager] create_file_context for paths: {file_paths}")
+
+        context_parts: List[str] = []
+        for p in file_paths:
             try:
-                #        - Try:
-                #            - `content = self.file_manager.read_file(file_path)`
-                content = self.file_manager.read_file(file_path)
-                #            - If content is not None:
-                if content is not None:
-                    #                - Format the content (e.g., add filename header).
-                    #                - `formatted_part = f"--- File: {file_path} ---\n{content}\n--- End File: {file_path} ---"`
-                    formatted_part = f"--- File: {file_path} ---\n{content}\n--- End File: {file_path} ---"
-                    #                - Append `formatted_part` to `context_parts`.
-                    context_parts.append(formatted_part)
-                #            - Else (file not found or too large):
+                content = self.file_manager.read_file(p)
+                if content:
+                    logging.debug(f"[FileContextManager] Read {len(content)} chars from '{p}'")
+                    context_parts.append(f"--- File: {p} ---\n{content}\n--- End File: {p} ---")
                 else:
-                    #                - Log a warning.
-                    logging.warning(
-                        f"Could not read file or file is empty/too large: {file_path}"
-                    )
-            #        - Catch exceptions during file reading, log errors.
-            except Exception as e:
-                logging.error(f"Error reading file {file_path}: {e}", exc_info=True)
-        # 3. Join the `context_parts` into a single string, separated by newlines.
-        #    - `final_context_string = "\n\n".join(context_parts)`
-        final_context_string = "\n\n".join(context_parts)
-        logging.debug(f"Created context string length: {len(final_context_string)}")
-        # 4. Return `final_context_string`.
-        return final_context_string
-        # --- End Phase 2, Set A ---
+                    logging.warning(f"[FileContextManager] No content for '{p}' (skipped).")
+            except Exception:
+                logging.exception(f"[FileContextManager] Failed to read '{p}'")
+
+        final = "\n\n".join(context_parts)
+        logging.debug(f"[FileContextManager] Built file_context (length={len(final)})")
+        return final
         # raise NotImplementedError(
         #     "_create_file_context implementation deferred to Phase 2"
         # ) # Original placeholder removed
