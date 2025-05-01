@@ -66,6 +66,10 @@
     - Corrected expected error messages in `test_defatom_missing_params` and `test_defatom_missing_instructions` to match the argument count check failure. Commit `47c3d1a`.
 - **Phase 6: Fix Dispatcher Tests:**
     - Iteratively fixed failures in `tests/test_dispatcher.py` related to `TaskFailureDetails` handling, error message assertions, and notes merging. Commits `30ef927`, `8db23da`, `022ff9b`, `3362198`, `19403d9`. All dispatcher tests now pass.
+- **Phase 6: Fix `file_contents` Substitution:**
+    - Identified that the `{{ file_contents | ... }}` placeholder in the `internal:associative_matching_content` template (in `src/main.py`) was not being substituted because the `AtomicTaskExecutor`'s regex mechanism doesn't support filters (`|`).
+    - Simplified the placeholder to `{{file_contents}}` in `src/main.py` to allow the basic substitution to work. Commit `ca0c431`.
+    - Updated documentation (`atomic_executor_IDL.md`, `implementation_rules.md`, `main_IDL.md`, `memory.md`) to reflect this limitation and the fix.
 
 ## Next Steps
 
@@ -97,3 +101,4 @@
 - Phase 4 Stream 1 focused on adding the Git repository indexing capability. Requires `GitPython`. Placeholder `text_extraction` used.
 - Refactored `GitRepositoryIndexer` tests to favor integration tests over brittle unit tests, improving confidence and reducing mock complexity. Added `git_repo` fixture to `conftest.py`.
 - Phase 4 Stream 2 implemented system-level tool executors (`system:get_context`, `system:read_files`) used for direct invocation, potentially by the Dispatcher or SexpEvaluator.
+- `AtomicTaskExecutor` uses simple regex substitution, incompatible with template filters (`|`). Placeholders must be simple `{{variable}}` or `{{variable.attribute}}`.

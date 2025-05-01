@@ -26,14 +26,14 @@ module src.executors.atomic_executor {
         // Postconditions:
         // - Returns a TaskResult dictionary representing the outcome of the atomic task execution (typically from the Handler call).
         // Behavior:
-        // - Performs {{variable}} substitution within the atomic_task_def's prompts/description.
-        // - Substitution ONLY uses the key-value pairs provided in the `params` dictionary.
-        // - Access to the caller's wider environment or any variables not explicitly passed in `params` is forbidden.
+        // - Performs {{variable}} or {{variable.attribute}} substitution within the atomic_task_def's prompts/description.
+        // - **Substitution Mechanism:** Uses a simple regular expression (`\{\{([\w.]+)\}\}`) to find placeholders. It converts the resolved parameter value to a string using `str()` before insertion. **Crucially, this mechanism does NOT support template engine features like filters (e.g., `{{ my_var | filter }}`) or complex logic within placeholders.** Placeholders must strictly match the `{{word.characters.or.dots}}` pattern.
+        // - Substitution ONLY uses the key-value pairs provided in the `params` dictionary. Access to the caller's wider environment or any variables not explicitly passed in `params` is forbidden.
         // - Constructs the final HandlerPayload (prompts, model info from def, tools if applicable).
-        // - Invokes the appropriate method on the provided `handler` instance (e.g., `handler.executePrompt`).
+        // - Invokes the appropriate method on the provided `handler` instance (e.g., `handler._execute_llm_call`).
         // - May perform output parsing/validation based on `atomic_task_def.output_format`.
         // - Returns the TaskResult from the handler, potentially adding output parsing info to notes.
-        @raises_error(condition="ParameterError", description="Raised if substitution references a variable name not present as a key in the `params` dictionary.")
+        @raises_error(condition="ParameterError", description="Raised if substitution references a variable name not present as a key in the `params` dictionary or if the placeholder syntax is incompatible with the regex.")
         // @raises_error(condition="TASK_FAILURE", description="Propagated from the handler call if LLM execution fails.")
         // Expected JSON format for params: { "param_name": "value", ... }
         // Expected JSON format for return value: TaskResult structure { "status": "string", "content": "Any", "notes": { ... } }

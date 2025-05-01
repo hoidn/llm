@@ -320,6 +320,7 @@ This document outlines the standard conventions, patterns, and rules for impleme
 *   **Return Types:** Return types must match the IDL. Use Pydantic models or `TypedDict` if the IDL specifies a structured dictionary return.
 *   **Error Raising:** Implement error conditions described in `@raises_error` by raising appropriate Python exceptions (custom `TaskError` subclasses or built-in exceptions). Ensure error handling logic (e.g., returning a FAILED `TaskResult`) matches the IDL description for handled errors.
 *   **Dependencies:** Implement dependencies (`@depends_on`) using constructor injection.
+*   **Parameter Substitution (AtomicTaskExecutor):** Be aware that the current `AtomicTaskExecutor` uses a simple regex-based substitution mechanism (`{{variable}}` or `{{variable.attribute}}`) and **does not support template engine features like filters or complex logic within placeholders**. See `src/executors/atomic_executor_IDL.md` for details. If complex templating is needed, the executor would require enhancement (e.g., integrating Jinja2).
 
 **10. Missing Items?**
 

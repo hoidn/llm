@@ -20,6 +20,7 @@ module src.main {
         // - Initializes FileAccessManager, MemorySystem, TaskSystem, and PassthroughHandler instances.
         // - Establishes necessary dependencies between core components (e.g., MemorySystem gets TaskSystem/Handler/FileManager refs, TaskSystem gets Handler ref).
         // - Registers core task templates with TaskSystem, including **two** associative matching templates: "internal:associative_matching_content" and "internal:associative_matching_metadata".
+        //   (Note: The 'internal:associative_matching_content' template uses a simple `{{file_contents}}` placeholder due to limitations in the AtomicTaskExecutor's substitution mechanism).
         // - Calls `initialize_aider` to set up AiderBridge and register Aider tools/executors.
         //   (Note: Aider registration might depend on Handler initialization).
         // - Calls internal `_register_system_tools` to register 'system:get_context' and 'system:read_files' tools and their executor functions using `handler.register_tool(...)`.
