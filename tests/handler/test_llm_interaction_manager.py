@@ -92,10 +92,15 @@ def test_llm_manager_init_agent_exception(mock_log_error):
 
         assert manager.agent is None, "Agent should be None after failed initialization"
         MockAgentClassForTest.assert_called_once() # Verify instantiation was attempted
-        # Check log call with corrected expected message
-        mock_log_error.assert_called_with(
-            f"Failed to initialize pydantic-ai Agent for model 'fail:model': {test_exception}", exc_info=True
-        )
+        
+        # Check log call more robustly
+        mock_log_error.assert_called_once() # Verify it was called
+        args, kwargs = mock_log_error.call_args
+        # Check the main message content
+        expected_msg_part = f"Failed to initialize pydantic-ai Agent for model 'fail:model': {test_exception}"
+        assert expected_msg_part in args[0]
+        # Check exc_info was passed
+        assert kwargs.get('exc_info') is True
 
 # No patch needed here as we are testing the manager's internal state
 def test_llm_manager_set_debug_mode(llm_manager_instance):

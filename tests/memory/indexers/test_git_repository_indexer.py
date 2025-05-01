@@ -49,6 +49,10 @@ except ImportError:
 from src.memory.indexers.git_repository_indexer import GitRepositoryIndexer, DEFAULT_INCLUDE_PATTERNS, DEFAULT_MAX_FILE_SIZE, BINARY_EXTENSIONS
 # Import MemorySystem for integration tests
 from src.memory.memory_system import MemorySystem
+# Import classes needed for spec in mocks
+from src.handler.base_handler import BaseHandler
+from src.task_system.task_system import TaskSystem
+from src.handler.file_access import FileAccessManager
 
 
 # --- Fixtures ---
@@ -237,10 +241,10 @@ def test_integration_index_basic_repo(git_repo):
     add_file("subdir/file2.txt", "some text content")
     commit("Initial commit")
 
-    # Create mock dependencies for MemorySystem
-    mock_handler = MagicMock()
-    mock_task_system = MagicMock()
-    mock_file_manager = MagicMock()
+    # Create mock dependencies for MemorySystem with proper specs
+    mock_handler = MagicMock(spec=BaseHandler)
+    mock_task_system = MagicMock(spec=TaskSystem)
+    mock_file_manager = MagicMock(spec=FileAccessManager)
     
     # Create a real memory system with mock dependencies
     memory_system = MemorySystem(
@@ -276,10 +280,10 @@ def test_integration_index_skips_binary(git_repo):
     add_file("image.jpg", b"\xFF\xD8\xFF\xE0") # Add binary content
     commit("Add text and binary")
 
-    # Create mock dependencies for MemorySystem
-    mock_handler = MagicMock()
-    mock_task_system = MagicMock()
-    mock_file_manager = MagicMock()
+    # Create mock dependencies for MemorySystem with proper specs
+    mock_handler = MagicMock(spec=BaseHandler)
+    mock_task_system = MagicMock(spec=TaskSystem)
+    mock_file_manager = MagicMock(spec=FileAccessManager)
     
     # Create a real memory system with mock dependencies
     memory_system = MemorySystem(
@@ -310,10 +314,10 @@ def test_integration_index_skips_large_files(git_repo):
     add_file("large.txt", "This content is definitely larger than fifty bytes to test skipping.")
     commit("Add small and large files")
 
-    # Create mock dependencies for MemorySystem
-    mock_handler = MagicMock()
-    mock_task_system = MagicMock()
-    mock_file_manager = MagicMock()
+    # Create mock dependencies for MemorySystem with proper specs
+    mock_handler = MagicMock(spec=BaseHandler)
+    mock_task_system = MagicMock(spec=TaskSystem)
+    mock_file_manager = MagicMock(spec=FileAccessManager)
     
     # Create a real memory system with mock dependencies
     memory_system = MemorySystem(
@@ -347,10 +351,10 @@ def test_integration_index_respects_patterns(git_repo):
     add_file("build/output.log", "log content")
     commit("Add various files")
 
-    # Create mock dependencies for MemorySystem
-    mock_handler = MagicMock()
-    mock_task_system = MagicMock()
-    mock_file_manager = MagicMock()
+    # Create mock dependencies for MemorySystem with proper specs
+    mock_handler = MagicMock(spec=BaseHandler)
+    mock_task_system = MagicMock(spec=TaskSystem)
+    mock_file_manager = MagicMock(spec=FileAccessManager)
     
     # Create a real memory system with mock dependencies
     memory_system = MemorySystem(

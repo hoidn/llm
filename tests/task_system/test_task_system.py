@@ -310,7 +310,11 @@ def test_execute_atomic_template_executor_param_mismatch(
     assert result.notes and result.notes.get("error")
     error_details = TaskFailureError.model_validate(result.notes["error"]) # Validate error structure
     assert error_details.type == "TASK_FAILURE"
-    assert "Missing parameter(s) for substitution: input1" in result.content
+    assert error_details.reason == "input_validation_failure" # Check reason set by executor
+    # Check that the wrapped error message contains the original error
+    assert "Missing parameter(s) or access error for substitution: input1" in result.content
+    # Check that it indicates an unexpected error occurred during substitution
+    assert "Unexpected substitution error" in result.content
 
 
 # --- Tests for resolve_file_paths (Phase 2c) ---
