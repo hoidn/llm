@@ -25,7 +25,7 @@ This guide outlines the step-by-step process for implementing system tool execut
 <step-title>Stub Test Cases</step-title>
 <step-actions>
 - Map test cases to IDL requirements by creating test stubs for each behavior specified in the IDL
-- Create test fixtures for `mock_memory_system` and `mock_file_manager`
+- TODO something about test fixtures or choosing between unit, integration and functional tests?
 - Draft assertions and validations specifying what each test will verify
 - Define success and failure scenarios with tests for both normal operation and error handling
 </step-actions>
@@ -37,7 +37,7 @@ This guide outlines the step-by-step process for implementing system tool execut
 - Create a detailed specification with pseudocode before diving into implementation
 - Identify validation logic specifying how parameters will be validated
 - Define error formatting determining how error responses will be structured
-- Specify integration with dependencies documenting how `memory_system` and `file_manager` will be used
+- Specify integration with dependencies documenting how components will be used
 </step-actions>
 </process-step>
 
@@ -54,11 +54,11 @@ This guide outlines the step-by-step process for implementing system tool execut
 ## <process-step id="6">
 <step-title>Implement Production Code</step-title>
 <step-actions>
-- Implement validation logic for required parameters
-- Add code to transform input parameters to the format expected by dependencies
-- Implement the main business logic that integrates with dependencies
-- Add comprehensive error handling and result formatting
-- Ensure the output matches the TaskResult structure specified in the IDL
+- Draft self contained instructions for the developer to fully implement the phase
+- instruct the dev to use IDL-based development 
+- provide the implementation stubs that you drafted in step 4 
+- provide the full test specs from step 5
+- Advise the dev on best practices (see start_here.md for a refresher)
 </step-actions>
 </process-step>
 

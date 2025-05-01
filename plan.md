@@ -1,6 +1,17 @@
-**Project Implementation Plan (Revised)**
+**Project Implementation Plan (Revised & Corrected)**
 
-**Overall Goal:** Build a system capable of orchestrating LLM interactions, external tools (Git), and file system operations via an S-expression DSL, with features for context management, Git indexing, inline task definition (`defatom`), anonymous functions (`lambda`), and a top-level dispatcher. Code editing integration (Aider/MCP) is deferred.
+**Overall Goal:** Build a system capable of orchestrating LLM interactions, external tools (Git, Aider via MCP), and file system operations via an S-expression DSL, leveraging `pydantic-ai` for LLM calls and Pydantic for data modeling.
+
+**Core Technologies/Patterns:**
+
+*   S-expression DSL evaluated by `SexpEvaluator`.
+*   Atomic tasks defined in XML, managed by `TaskSystem`.
+*   `pydantic-ai` library for all LLM interactions via `LLMInteractionManager` within `BaseHandler`.
+*   Pydantic models for data structures and validation (`src/system/models.py`, `Parse, Don't Validate`).
+*   Unified Tool Interface (`BaseHandler.register_tool`) for Direct Tools (sync, Handler-executed) and Subtask Tools (async, LLM-delegated).
+*   Aider integration via an external **Aider MCP Server** and an internal **AiderBridge (MCP Client)**.
+
+---
 
 **Phase Breakdown:**
 
@@ -8,7 +19,7 @@
     *   **Status:** DONE & VERIFIED
     *   **Goal:** Establish core building blocks, types, and contracts.
     *   **Components:** Core utilities (`src.handler.file_access`, `src.handler.command_executor`), shared Pydantic models (`src.system.models`), base IDL definitions, `SexpParser`, `SexpEnvironment`.
-    *   **Outcome:** Essential building blocks and contracts defined.
+    *   **Outcome:** Essential building blocks, Pydantic models, and contracts defined.
     *   **Readiness:** Level 0: Foundational Code.
 
 *   **Phase 1A: Mechanical IDL-to-Python Skeleton Creation**
@@ -71,7 +82,6 @@
     *   **Outcome:** Atomic tasks requiring structured output leverage `pydantic-ai`'s robust mechanisms, increasing reliability and simplifying validation logic.
     *   **Readiness:** Core Feature Enhancement (Builds on Phase 3).
 
----
 *   **Phase 4: Specialized Features (Indexers & System Tools)**
     *   **Status:** PENDING (NEXT)
     *   **Goal:** Implement integration with Git for indexing and add specific system-level tools callable from S-expressions. Implement generic model-agnostic tools.
@@ -81,7 +91,7 @@
         3.  **`SystemExecutorFunctions` (`src/executors/system_executors.py`):** Implement `execute_get_context` (using `MemorySystem`) and `execute_read_files` (using `FileAccessManager`) based on IDL. These are generic, model-agnostic tools.
         4.  **(Optional) Implement other generic File/Bash Tools:** If needed beyond `system:read_files` and the command executor, implement Python functions (e.g., `list_directory`, `write_file`) and register them with `BaseHandler` using `register_tool`.
         5.  **Testing:** Write unit/integration tests for indexer and system/generic tools. Requires mocking for Git interaction.
-    *   **Integration:** `Application` (Phase 7) will need to register the System and Generic tools with the `PassthroughHandler`.
+    *   **Integration:** `Application` (Phase 6) will need to register the System and Generic tools with the `PassthroughHandler`.
     *   **Outcome:** System gains Git indexing and useful generic system/file/bash tools accessible via S-expressions or LLM calls (handled by `pydantic-ai`).
     *   **Readiness:** Partial Level 5: Advanced Features Enabled (Git indexing and system tools available, code editing feature deferred).
 
@@ -98,27 +108,9 @@
     *   **Components & Tasks:** `Dispatcher` (`src/dispatcher.py`), `Application` (`src/main.py`). Implement `DispatcherFunctions.execute_programmatic_task` (routing S-exp vs direct ID). Implement `Application` class (`__init__` wiring components, `handle_query`, `index_repository`, `handle_task_command` using Dispatcher). Implement helper `_register_system_tools` to register generic tools from Phase 4.
     *   **Testing:** Integration tests for Dispatcher routing logic and basic `Application` functionality.
     *   **Outcome:** System functions as a cohesive unit, accessible via `Application` methods and the `/task` dispatcher.
-    *   **Readiness:** Level 6: Fully Integrated System (Initial - minus structured output, provider tools, Aider, Lambda).
+    *   **Readiness:** Level 6: Fully Integrated System (Initial - minus provider tools, Aider, Lambda).
 
-*   **Phase 7: Structured Output Implementation (Pydantic-AI)**
-    *   **Status:** PENDING
-    *   **Goal:** Implement reliable structured output (e.g., JSON parsed into Pydantic models) for atomic tasks using `pydantic-ai`'s capabilities, as per `ADR_pydantic_output.md`.
-    *   **Components & Tasks:**
-        1.  **Schema-to-Model Mapping:** Implement a mechanism (e.g., registry or convention-based import) within `AtomicTaskExecutor` (or an accessible helper) to resolve Pydantic model class names (strings like `"MyOutputModel"`) found in template `output_format.schema` fields into actual Python Pydantic model classes (e.g., `src.system.models.MyOutputModel`).
-        2.  **`AtomicTaskExecutor` Update:** Modify `AtomicTaskExecutor.execute_body` to:
-            *   Detect when `atomic_task_def.output_format` specifies `{"type": "json", "schema": "ModelName"}`.
-            *   Use the mapping mechanism (from step 1) to get the corresponding Pydantic model class.
-            *   Pass this resolved model class as the `output_type_override` argument when calling `handler._execute_llm_call`.
-            *   Receive the parsed Pydantic model instance back from the handler (if successful).
-            *   Place the received Pydantic instance directly into the `TaskResult.parsedContent` field.
-        3.  **`BaseHandler`/`LLMInteractionManager` Update:** Modify `BaseHandler._execute_llm_call` and `LLMInteractionManager.execute_call` to accept the `output_type_override` parameter and pass it down to the `pydantic-ai` `agent.run_sync()` call.
-        4.  **Result Handling Update:** Ensure `LLMInteractionManager` returns the parsed Pydantic instance received from `agent.run_sync()` when `output_type_override` is used successfully.
-    *   **Integration:** Requires changes in `AtomicTaskExecutor`, `BaseHandler`, `LLMInteractionManager`. Relies on Pydantic models defined (likely in `src.system.models`). May allow simplification in components that previously validated JSON results manually (e.g., `MemorySystem` for context tasks).
-    *   **Testing:** Add tests verifying that the `output_type_override` is passed correctly, that `pydantic-ai` performs parsing/validation, and that the resulting Pydantic object is placed in `TaskResult.parsedContent`. Test error handling for schema mapping failures or `pydantic-ai` validation errors.
-    *   **Outcome:** Atomic tasks requiring structured output leverage `pydantic-ai`'s robust mechanisms, increasing reliability and simplifying validation logic.
-    *   **Readiness:** Core Feature Enhancement (Builds on Phase 6).
-
-*   **Phase 8: Provider-Specific Tool Integration (e.g., Anthropic Editor)**
+*   **Phase 7: Provider-Specific Tool Integration (e.g., Anthropic Editor)**
     *   **Status:** PENDING
     *   **Goal:** Implement and conditionally register tools specific to certain LLM providers.
     *   **Components & Tasks:** `BaseHandler`, `LLMInteractionManager`.
@@ -128,9 +120,9 @@
     *   **Integration:** Leverages `pydantic-ai`'s handling of provider-specific tool schemas.
     *   **Testing:** Test conditional registration and tool availability based on provider configuration.
     *   **Outcome:** System can leverage powerful provider-specific tools when the appropriate LLM is in use.
-    *   **Readiness:** Feature Enhancement (Builds on Level 6 & Phase 7).
+    *   **Readiness:** Feature Enhancement (Builds on Level 6 & Phase 3b).
 
-*   **Phase 9: Aider Integration (MCP Approach)**
+*   **Phase 8: Aider Integration (MCP Approach)**
     *   **Status:** PENDING
     *   **Goal:** Add code editing capabilities using Aider via the MCP client/server model (as defined in ADR 19).
     *   **Prerequisites:** Functional external `Aider MCP Server`.
@@ -143,9 +135,9 @@
     *   **Testing:** Integration tests for `AiderBridge` (mocking MCP server), executor functions. E2E requires running server.
     *   **Documentation:** Deprecate old Aider IDLs, update bridge/executor IDLs to reflect MCP client role. Reference ADR 19.
     *   **Outcome:** System gains code editing features via Aider/MCP. **Completes Feature Readiness Level 5.**
-    *   **Readiness:** Advanced Feature Enabled (Builds on Level 6, 7, 8).
+    *   **Readiness:** Advanced Feature Enabled (Builds on Level 6, Phase 7).
 
-*   **Phase 10: `lambda` Special Form**
+*   **Phase 9: `lambda` Special Form**
     *   **Status:** PENDING
     *   **Goal:** Add anonymous functions with lexical scoping (closures) to the DSL.
     *   **Components & Tasks:** `SexpEvaluator`, `SexpEnvironment`, New `Closure` class. Implement `lambda` special form, `Closure` class, function application logic (`_apply_closure`) in `SexpEvaluator`. Add extensive tests.
@@ -153,9 +145,8 @@
     *   **Outcome:** DSL gains significant expressive power with first-class functions and lexical scoping.
     *   **Readiness:** Core Language Enhancement (Builds on previous phases).
 
-*   **Phase 11: Documentation Alignment & Final Review**
+*   **Phase 10: Documentation Alignment & Final Review**
     *   **Status:** PENDING
     *   **Goal:** Ensure all documentation is up-to-date, consistent, and accurate. Perform final code review.
     *   **Tasks:** Update all relevant IDLs, READMEs, guides (`start_here.md`, `implementation_rules.md`), ADRs (including ensuring ADR 19 is finalized). Add usage examples for S-expressions, Aider, Lambda, etc. Final linting, formatting, testing, and review.
     *   **Outcome:** Project is polished, well-documented, and ready for release or further development cycles.
-
