@@ -137,7 +137,7 @@ class Application:
                     },
                     "instructions": """Analyze the user query details in 'context_input'.
 Review the **full file contents** provided in the 'file_contents' parameter (a dictionary mapping paths to content).
-Based on the query and the **provided file contents**, select the top 3-5 most relevant file paths *from the keys of the file_contents dictionary*. Assign a relevance score (0.0-1.0) to each selected path.
+Based on the query and the **provided file contents**, select up to 10 relevant file paths *from the keys of the file_contents dictionary*. Assign a relevance score (0.0-1.0) to each selected path.
 Provide a brief 'context_summary' explaining the relevance based on the selected files' content.
 Output the result as a JSON object conforming to the AssociativeMatchResult structure:
 {
