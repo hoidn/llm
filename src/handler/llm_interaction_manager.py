@@ -136,15 +136,21 @@ class LLMInteractionManager:
                 "error": Optional[str] # Error message if success is False
             }
         """
-        # Import needed types here
+        logger = logging.getLogger(__name__) # Use specific logger
+
+        # Import needed types here robustly
         try:
+            # Attempt import - adjust type name if necessary based on pydantic-ai docs/version
             from pydantic_ai.models import AIResponse
-        except ImportError:
-            logging.error("Failed to import pydantic_ai response type in execute_call.")
-            return {"success": False, "error": "Pydantic-AI type import failed."}
+            if AIResponse is None: # Check if import resulted in None
+                 raise ImportError("AIResponse resolved to None after import.")
+            logger.debug("Successfully imported AIResponse inside execute_call.")
+        except ImportError as import_err:
+             logger.error(f"Failed to import pydantic_ai response type in execute_call: {import_err}", exc_info=True)
+             return {"success": False, "error": "Pydantic-AI type import failed."}
             
         if not self.agent:
-            logging.error("Cannot execute LLM call: Agent is not initialized.")
+            logger.error("Cannot execute LLM call: Agent is not initialized.")
             return {"success": False, "error": "LLM Agent not initialized."}
 
         try:
