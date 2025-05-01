@@ -7,6 +7,9 @@ import os
 import logging
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+# Configure logger
+logger = logging.getLogger(__name__)
+
 # Import necessary models
 from src.system.models import ContextGenerationInput, AssociativeMatchResult, MatchTuple, SubtaskRequest, ContextManagement
 from src.handler.file_access import FileAccessManager
@@ -70,7 +73,7 @@ class MemorySystem:
         self._config: Dict[str, Any] = DEFAULT_SHARDING_CONFIG.copy()
         if config:
             self._config.update(config)
-        logging.info(
+        logger.info(
             f"MemorySystem initialized. Sharding enabled: {self._config.get('sharding_enabled', False)}"
         )
 
@@ -113,7 +116,7 @@ class MemorySystem:
         # --- END ADDITION ---
 
         self.global_index.update(normalized_index)
-        logging.debug(
+        logger.debug(
             f"Global index updated with {len(normalized_index)} entries. Total size: {len(self.global_index)}"
         )
 
@@ -128,7 +131,7 @@ class MemorySystem:
             enabled: Boolean value to enable/disable sharding.
         """
         self._config["sharding_enabled"] = enabled
-        logging.info(f"Sharding explicitly set to: {enabled}")
+        logger.info(f"Sharding explicitly set to: {enabled}")
         if enabled:
             self._recalculate_shards()
         else:
@@ -159,7 +162,7 @@ class MemorySystem:
         if max_parallel_shards is not None:
             self._config["max_parallel_shards"] = max_parallel_shards
 
-        logging.info(f"Sharding configuration updated: {self._config}")
+        logger.info(f"Sharding configuration updated: {self._config}")
 
         if self._config.get("sharding_enabled", False):
             self._recalculate_shards()
@@ -178,7 +181,7 @@ class MemorySystem:
             An AssociativeMatchResult object.
         """
         # Implementation deferred to Phase 2
-        logging.debug(
+        logger.debug(
             "get_relevant_context_with_description called. Constructing input for get_relevant_context_for."
         )
         # --- Start Phase 2, Set A: Behavior Structure ---
@@ -351,14 +354,14 @@ class MemorySystem:
             self._sharded_index = []
             return
 
-        logging.debug("Recalculating shards (logic TBD)...")
+        logger.debug("Recalculating shards (logic TBD)...")
         # Placeholder: In Phase 2, this will split self.global_index into
         # self._sharded_index based on token estimates and config limits.
         # For now, just log and potentially clear/reset.
         self._sharded_index = []  # Resetting for now
         # Example placeholder logic:
         # self._sharded_index = [self.global_index] # Put everything in one shard for now if enabled
-        logging.debug(f"Shards recalculated. Count: {len(self._sharded_index)}")
+        logger.debug(f"Shards recalculated. Count: {len(self._sharded_index)}")
         pass  # Actual sharding logic deferred
 
     def index_git_repository(
@@ -389,12 +392,12 @@ class MemorySystem:
 
         # --- Start Phase 4 Implementation ---
         if GitRepositoryIndexer is None:
-            logging.error("GitRepositoryIndexer is not available. Cannot index repository.")
+            logger.error("GitRepositoryIndexer is not available. Cannot index repository.")
             return
 
-        logging.info(f"Received request to index Git repository: {repo_path}")
+        logger.info(f"Received request to index Git repository: {repo_path}")
         if not os.path.isdir(repo_path):
-             logging.error(f"Repository path is not a valid directory: {repo_path}")
+             logger.error(f"Repository path is not a valid directory: {repo_path}")
              # Consider raising an error or returning a status
              return
 
@@ -404,7 +407,7 @@ class MemorySystem:
 
             # 4. Configure the indexer based on options
             if options:
-                logging.debug(f"Configuring indexer with options: {options}")
+                logger.debug(f"Configuring indexer with options: {options}")
                 if 'max_file_size' in options and isinstance(options['max_file_size'], int):
                     # Use setter method if available, otherwise direct attribute access (matching test assumption)
                     # indexer.set_max_file_size(options['max_file_size'])
@@ -421,11 +424,11 @@ class MemorySystem:
             indexed_data = indexer.index_repository(memory_system=self)
 
             # 6. Log results (already done within indexer.index_repository)
-            logging.info(f"Successfully initiated indexing for {repo_path}. {len(indexed_data)} files processed by indexer.")
+            logger.info(f"Successfully initiated indexing for {repo_path}. {len(indexed_data)} files processed by indexer.")
 
         except ValueError as ve: # Catch init errors
-            logging.error(f"Error initializing GitRepositoryIndexer for {repo_path}: {ve}")
+            logger.error(f"Error initializing GitRepositoryIndexer for {repo_path}: {ve}")
         except Exception as e:
-            logging.error(f"Error indexing repository {repo_path}: {e}", exc_info=True)
+            logger.error(f"Error indexing repository {repo_path}: {e}", exc_info=True)
             # Potentially re-raise or handle more gracefully depending on desired system behavior
         # --- End Phase 4 Implementation ---
