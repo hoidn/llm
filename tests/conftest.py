@@ -49,7 +49,7 @@ def mock_task_system():
     """Provides a mock TaskSystem instance."""
     ts = MagicMock(name="MockTaskSystem")
     ts.find_template.return_value = {"name": "mock_template", "type": "atomic", "params": {}}
-    ts.execute_atomic_template.return_value = TaskResult(status=ReturnStatus.COMPLETE, content="Mock task success")
+    ts.execute_atomic_template.return_value = TaskResult(status="COMPLETE", content="Mock task success")
     # Adjust MatchTuple mock
     ts.generate_context_for_memory_system.return_value = AssociativeMatchResult(
         context_summary="Mock generated context",
