@@ -62,7 +62,7 @@ class Application:
         try:
             # Instantiate components in dependency order
             self.memory_system = MemorySystem(config=self.config.get('memory_config'))
-            self.task_system = TaskSystem(memory_system=self.memory_system, config=self.config.get('task_system_config'))
+            self.task_system = TaskSystem(memory_system=self.memory_system)
             # Pass handler-specific config if available
             handler_config = self.config.get('handler_config', {})
             self.passthrough_handler = PassthroughHandler(
