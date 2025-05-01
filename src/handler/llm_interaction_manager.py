@@ -8,10 +8,12 @@ try:
     from pydantic_ai.models import AIResponse # Example, might be different
     # Import specific model classes if needed for type checking or direct instantiation
     # from pydantic_ai.models import OpenAIModel, AnthropicModel
+    _PydanticAI_Import_Success = True
 except ImportError:
-    logging.error("pydantic-ai library not found. Please install it.")
+    logging.error("Top-level import of pydantic-ai failed.")
     Agent = None # type: ignore
     AIResponse = None # type: ignore
+    _PydanticAI_Import_Success = False
 
 class LLMInteractionManager:
     """
@@ -48,9 +50,40 @@ class LLMInteractionManager:
         Initializes the pydantic-ai Agent instance.
         (Implementation deferred to Phase 1B - Now Implemented)
         """
-        # --- START ADDITIONS ---
         logger = logging.getLogger(__name__) # Use specific logger
         logger.debug("Attempting to initialize pydantic-ai Agent...")
+
+        # --- START MODIFICATION ---
+        # Use a local variable for the class check and instantiation
+        AgentClass = None
+        if _PydanticAI_Import_Success:
+            # Try to use the potentially already imported Agent
+            if 'Agent' in globals() and globals()['Agent'] is not None:
+                AgentClass = globals()['Agent']
+                logger.debug("Using Agent class from initial top-level import.")
+            else:
+                # Fallback: Explicitly try importing again if top-level failed/was None
+                try:
+                    from pydantic_ai import Agent as AgentCheck
+                    if AgentCheck is None:
+                        logger.error("Explicit import check resulted in None.")
+                    else:
+                        AgentClass = AgentCheck
+                        logger.debug("Using Agent class from explicit import check.")
+                except ImportError as import_err:
+                    logger.error(f"Explicit import check failed: {import_err}", exc_info=True)
+        else:
+            logger.error("Cannot proceed with agent init, top-level import failed.")
+            return None
+
+        # Log the state of AgentClass right before the check
+        logger.debug(f"Value of AgentClass before check: {AgentClass} (Type: {type(AgentClass)})")
+
+        # Check if AgentClass is actually available *before* calling constructor
+        if not AgentClass:
+            logger.error("Cannot initialize agent: Resolved pydantic-ai Agent class is None or unavailable.")
+            return None
+        # --- END MODIFICATION ---
 
         # Log relevant config values
         logger.debug(f"  Default Model Identifier: {self.default_model_identifier}")
@@ -62,11 +95,6 @@ class LLMInteractionManager:
         anthropic_key_present = "ANTHROPIC_API_KEY" in os.environ and bool(os.environ["ANTHROPIC_API_KEY"])
         google_key_present = "GOOGLE_API_KEY" in os.environ and bool(os.environ["GOOGLE_API_KEY"])
         logger.debug(f"  Env Keys Check: OpenAI={openai_key_present}, Anthropic={anthropic_key_present}, Google={google_key_present}")
-        # --- END ADDITIONS ---
-
-        if not Agent:
-            logger.error("Cannot initialize agent: pydantic-ai Agent class not available (Import failed).")
-            return None
 
         if not self.default_model_identifier:
             logger.error("Cannot initialize agent: No default_model_identifier provided or found in config.")
@@ -78,17 +106,15 @@ class LLMInteractionManager:
             # depending on pydantic-ai's requirements and the config structure.
             # API keys might need to be passed explicitly or set as environment variables.
             agent_config = self.config.get("pydantic_ai_agent_config", {}) # Allow passing extra config
-
-            # --- START ADDITION ---
             logger.debug(f"  Using Agent Config additions: {agent_config}")
-            # --- END ADDITION ---
 
             # Example: Extracting potential API key from config
             # api_key = self.config.get("llm_api_key")
             # if api_key:
             #     agent_config['api_key'] = api_key # Adjust key name based on pydantic-ai model needs
 
-            agent = Agent(
+            # Use the local variable AgentClass for the constructor call
+            agent = AgentClass(
                 model=self.default_model_identifier,
                 system_prompt=self.base_system_prompt, # Base prompt set here
                 # tools=... # Tools are typically passed per-call or registered differently
@@ -97,10 +123,8 @@ class LLMInteractionManager:
             logging.info(f"pydantic-ai Agent initialized successfully for model: {self.default_model_identifier}")
             return agent
         except Exception as e:
-            # --- START MODIFICATION ---
             # Log the full exception details
             logger.error(f"Failed to initialize pydantic-ai Agent for model '{self.default_model_identifier}': {e}", exc_info=True)
-            # --- END MODIFICATION ---
             return None
 
     def set_debug_mode(self, enabled: bool) -> None:
