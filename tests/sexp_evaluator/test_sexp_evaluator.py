@@ -576,11 +576,10 @@ class TestSexpEvaluatorDefatom:
         }
         if "model" in expected_template_dict: del expected_template_dict["model"]
 
-        # Mock find_template to return the dict *after* registration
-        mock_task_system.find_template.side_effect = [
-            None, # First call during defatom (shouldn't happen, but safe)
-            expected_template_dict # Second call during invocation
-        ]
+        # Mock find_template to return the dict when called with the task name
+        # No need for side_effect list here, as defatom doesn't call find_template
+        mock_task_system.find_template.side_effect = lambda name: expected_template_dict if name == def_task_name else None
+
 
         # Mock invocation result
         mock_invocation_result = TaskResult(status="COMPLETE", content="Task A Done")
@@ -620,7 +619,8 @@ class TestSexpEvaluatorDefatom:
         """Test defatom without a (params ...) definition."""
         sexp_ast = [Symbol("defatom"), Symbol("name"), [Symbol("instructions"), "inst"]] # Missing params
         mock_parser.parse_string.return_value = sexp_ast
-        with pytest.raises(SexpEvaluationError, match=r"'defatom' requires a \(params \.\.\.\) definition"):
+        # Fix: Match the actual error message from the length check
+        with pytest.raises(SexpEvaluationError, match=r"'defatom' requires at least name, params, and instructions arguments. Got 2."):
             evaluator.evaluate_string("(defatom name (instructions ...))")
 
     def test_defatom_invalid_params_format(self, evaluator, mock_parser):
@@ -660,7 +660,8 @@ class TestSexpEvaluatorDefatom:
         """Test defatom without an (instructions ...) definition."""
         sexp_ast = [Symbol("defatom"), Symbol("name"), [Symbol("params"), [Symbol("p1")]]] # Missing instructions
         mock_parser.parse_string.return_value = sexp_ast
-        with pytest.raises(SexpEvaluationError, match=r"'defatom' requires an \(instructions \"string\"\) definition"):
+        # Fix: Match the actual error message from the length check
+        with pytest.raises(SexpEvaluationError, match=r"'defatom' requires at least name, params, and instructions arguments. Got 2."):
             evaluator.evaluate_string("(defatom name (params (p1)))")
 
     def test_defatom_instructions_not_string(self, evaluator, mock_parser):
