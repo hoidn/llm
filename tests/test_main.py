@@ -9,8 +9,12 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 
 # Assume Application class is importable
 from src.main import Application
-# Assume models are importable
-from src.system.models import TaskResult, TaskFailureError, MemorySystem, TaskSystem, PassthroughHandler, GitRepositoryIndexer # Import base classes for isinstance checks
+# Import system models and component classes from their correct locations
+from src.system.models import TaskResult, TaskFailureError
+from src.memory.memory_system import MemorySystem
+from src.task_system.task_system import TaskSystem
+from src.handler.passthrough_handler import PassthroughHandler
+from src.memory.indexers.git_repository_indexer import GitRepositoryIndexer
 # Import dispatcher for patching
 from src import dispatcher
 # Import Aider components for patching targets
