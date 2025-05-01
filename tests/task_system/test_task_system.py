@@ -106,17 +106,13 @@ def test_init(mock_memory_system):
 def test_set_test_mode(task_system_instance):
     """Test enabling and disabling test mode."""
     assert task_system_instance._test_mode is False
-    # Check handler cache is initially populated by fixture
-    assert task_system_instance._handler_cache != {}
+    # _handler_cache attribute no longer exists, remove assertions about it
 
     task_system_instance.set_test_mode(True)
     assert task_system_instance._test_mode is True
-    # Check handler cache is cleared when mode changes
-    assert task_system_instance._handler_cache == {}
 
     task_system_instance.set_test_mode(False)
     assert task_system_instance._test_mode is False
-    assert task_system_instance._handler_cache == {}  # Should remain cleared
 
 
 # --- Test register_template ---

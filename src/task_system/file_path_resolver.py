@@ -2,19 +2,14 @@ import logging
 from typing import Any, Dict, List, Optional, Tuple
 
 # Need imports used by the original method's logic
-# Assuming MemorySystem and BaseHandler types are importable for hinting
-# (Actual imports might vary based on project structure)
-try:
+# Import the actual models needed for runtime use
+from src.system.models import ContextGenerationInput, MatchTuple, AssociativeMatchResult
+
+# Types needed only for type hints
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
     from src.memory.memory_system import MemorySystem
     from src.handler.base_handler import BaseHandler
-    from src.system.models import ContextGenerationInput, MatchTuple, AssociativeMatchResult
-except ImportError:
-    # Define dummy types if imports fail, to allow type hinting
-    MemorySystem = Any
-    BaseHandler = Any
-    ContextGenerationInput = Any
-    MatchTuple = Any
-    AssociativeMatchResult = Any
 
 
 def resolve_paths_from_template(

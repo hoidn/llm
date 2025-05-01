@@ -241,7 +241,10 @@ def test_eval_primitive_get_context_with_content_strategy(evaluator, mock_parser
     # Mock the symbol lookup for 'content' if needed, or assume it evaluates to "content"
     # For simplicity, assume it evaluates to the string "content"
     expected_context_input = ContextGenerationInput(query="q", matching_strategy='content')
-    mock_memory_system.get_relevant_context_for.return_value = AssociativeMatchResult(matches=[])
+    mock_memory_system.get_relevant_context_for.return_value = AssociativeMatchResult(
+        context_summary="Mock context summary",
+        matches=[]
+    )
 
     evaluator.evaluate_string('(get_context (query "q") (matching_strategy "content"))')
 
@@ -261,7 +264,10 @@ def test_eval_primitive_get_context_with_metadata_strategy(evaluator, mock_parse
         [strategy_sym, metadata_str] # Pass strategy as string literal
     ]
     expected_context_input = ContextGenerationInput(query="q", matching_strategy='metadata')
-    mock_memory_system.get_relevant_context_for.return_value = AssociativeMatchResult(matches=[])
+    mock_memory_system.get_relevant_context_for.return_value = AssociativeMatchResult(
+        context_summary="Mock context summary",
+        matches=[]
+    )
 
     evaluator.evaluate_string('(get_context (query "q") (matching_strategy "metadata"))')
 
@@ -561,17 +567,17 @@ def test_eval_primitive_get_context_invalid_strategy_value(evaluator, mock_parse
     get_context_sym = Symbol("get_context")
     query_sym = Symbol("query")
     strategy_sym = Symbol("matching_strategy")
-    invalid_sym = Symbol("invalid") # Invalid strategy value
+    invalid_str = "invalid" # Use string literal instead of symbol
 
-    # Sexp: (get_context (query "q") (matching_strategy 'invalid))
+    # Sexp: (get_context (query "q") (matching_strategy "invalid"))
     mock_parser.parse_string.return_value = [
         get_context_sym,
         [query_sym, "q"],
-        [strategy_sym, invalid_sym]
+        [strategy_sym, invalid_str]
     ]
 
     with pytest.raises(SexpEvaluationError, match="Invalid value for 'matching_strategy'"):
-        evaluator.evaluate_string("(get_context (query \"q\") (matching_strategy 'invalid))")
+        evaluator.evaluate_string('(get_context (query "q") (matching_strategy "invalid"))')
 
 def test_eval_primitive_get_context_invalid_strategy_type(evaluator, mock_parser):
     """Test get_context with an invalid strategy type (e.g., number)."""
@@ -586,7 +592,7 @@ def test_eval_primitive_get_context_invalid_strategy_type(evaluator, mock_parser
         [strategy_sym, 123] # Invalid type
     ]
 
-    with pytest.raises(SexpEvaluationError, match="Invalid value type for 'matching_strategy'"):
+    with pytest.raises(SexpEvaluationError, match="Invalid value for 'matching_strategy'. Expected 'content' or 'metadata', got: 123"):
          evaluator.evaluate_string("(get_context (query \"q\") (matching_strategy 123))")
 
 

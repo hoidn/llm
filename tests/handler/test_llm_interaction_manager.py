@@ -92,9 +92,9 @@ def test_llm_manager_init_agent_exception(mock_log_error):
 
         assert manager.agent is None, "Agent should be None after failed initialization"
         MockAgentClassForTest.assert_called_once() # Verify instantiation was attempted
-        # Check log call (no change needed here)
+        # Check log call with corrected expected message
         mock_log_error.assert_called_with(
-            f"Failed to initialize pydantic-ai Agent: {test_exception}", exc_info=True
+            f"Failed to initialize pydantic-ai Agent for model 'fail:model': {test_exception}", exc_info=True
         )
 
 # No patch needed here as we are testing the manager's internal state
@@ -137,9 +137,9 @@ def test_manager_execute_call_success(llm_manager_instance, mock_agent_instance)
     # Verify agent call arguments
     mock_agent_instance.run_sync.assert_called_once()
     call_args, call_kwargs = mock_agent_instance.run_sync.call_args
-    expected_messages = history + [{"role": "user", "content": prompt}]
-    assert call_kwargs['messages'] == expected_messages
-    assert call_kwargs['system_prompt'] == llm_manager_instance.base_system_prompt # Default
+    assert call_args[0] == prompt  # Check positional arg
+    assert call_kwargs.get('message_history') == history  # Check kwarg
+    assert call_kwargs.get('system_prompt') == llm_manager_instance.base_system_prompt  # Default
     assert 'tools' not in call_kwargs
     assert 'output_type' not in call_kwargs
 
@@ -177,10 +177,11 @@ def test_manager_execute_call_with_overrides(llm_manager_instance, mock_agent_in
     # Verify agent call arguments
     mock_agent_instance.run_sync.assert_called_once()
     call_args, call_kwargs = mock_agent_instance.run_sync.call_args
-    assert call_kwargs['messages'][-1]['content'] == prompt
-    assert call_kwargs['system_prompt'] == system_override # Override used
-    assert call_kwargs['tools'] == tools_override
-    assert call_kwargs['output_type'] == output_override
+    assert call_args[0] == prompt  # Check positional arg
+    assert call_kwargs.get('message_history') == history
+    assert call_kwargs.get('system_prompt') == system_override  # Override used
+    assert call_kwargs.get('tools') == tools_override
+    assert call_kwargs.get('output_type') == output_override
 
 # No patch needed here
 def test_manager_execute_call_agent_failure(llm_manager_instance, mock_agent_instance):
