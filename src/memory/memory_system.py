@@ -254,24 +254,19 @@ class MemorySystem:
         # 4/5. Retrieve Data based on Strategy & Prepare Inputs
         if strategy == 'content':
             llm_task_name = "internal:associative_matching_content"
-            file_contents: Dict[str, str] = {}
-            skipped_reads = []
-            # TODO: Implement sharding/chunking for content if candidate_paths is large
-            logger.debug(f"Retrieving content for {len(candidate_paths)} candidate paths...")
+            tagged_blocks: List[str] = []
+            # Read and wrap each file's content in <file path="...">...</file> tags
             for path in candidate_paths:
                 try:
-                    # Use file_access_manager - assuming it handles limits/errors internally
                     content = self.file_access_manager.read_file(path, max_size=None)
-                    if content is not None:
-                        file_contents[path] = content
-                    else:
-                        skipped_reads.append(path)
-                        logger.warning(f"Could not read content for candidate path: {path}")
                 except Exception as e:
-                    logger.error(f"Error reading content for {path}: {e}")
-                    skipped_reads.append(path)
-            inputs_for_llm["file_contents"] = file_contents
-            logger.debug(f"Prepared file_contents input: {len(file_contents)} files included, {len(skipped_reads)} skipped.")
+                    logger.warning(f"Could not read content for candidate path: {path}: {e}")
+                    continue
+                tagged = f'<file path="{path}">{content}</file>'
+                tagged_blocks.append(tagged)
+            merged = "\n\n".join(tagged_blocks)
+            inputs_for_llm["file_contents"] = merged
+            logger.debug(f"Prepared file_contents input as merged tagged string with {len(tagged_blocks)} files.")
 
         elif strategy == 'metadata':
             llm_task_name = "internal:associative_matching_metadata"

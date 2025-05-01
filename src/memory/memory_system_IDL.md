@@ -72,7 +72,7 @@ module src.memory.memory_system {
         // 1. Determines the matching strategy ('content' default, or 'metadata' from input_data.matching_strategy).
         // 2. Determines the query string from input_data.
         // 3. (Optional) Performs pre-filtering on stored file paths based on query to get candidate_paths.
-        // 4. If strategy is 'content': Reads full content for candidate_paths using FileAccessManager. Packages content into `inputs_for_llm = {"context_input":..., "file_contents": ...}`. Sets task name to "internal:associative_matching_content".
+        // 4. For the 'content' strategy, inputs_for_llm["file_contents"] is a single string containing the contents of each candidate file wrapped in `<file path="...">...</file>` tags, separated by blank lines. Sets task name to "internal:associative_matching_content".
         // 5. If strategy is 'metadata': Retrieves metadata for candidate_paths from internal index. Packages metadata into `inputs_for_llm = {"context_input":..., "metadata_snippet": ...}`. Sets task name to "internal:associative_matching_metadata".
         // 6. Handles potential sharding of content/metadata if applicable (details TBD).
         // 7. Creates a SubtaskRequest with the determined task name and inputs_for_llm. Sets context management to disable fresh context fetching within the LLM task.

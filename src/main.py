@@ -133,7 +133,7 @@ class Application:
                     "description": "Internal task to find relevant files based on query and FULL FILE CONTENT.",
                     "params": {
                         "context_input": { "description": "Input query/context details (as dict)" },
-                        "file_contents": { "description": "Dictionary mapping candidate file paths to their full content strings" }
+                        "file_contents": { "description": "A single string containing file contents wrapped in `<file path=...>...</file>` tags" }
                     },
                     "instructions": """Analyze the user query details in 'context_input'.
 Review the **full file contents** provided in the 'file_contents' parameter (a dictionary mapping paths to content).
