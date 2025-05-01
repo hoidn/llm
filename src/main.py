@@ -58,116 +58,126 @@ class Application:
         self.passthrough_handler: Optional[PassthroughHandler] = None
         self.aider_bridge: Optional['AiderBridge'] = None # Forward reference if needed
         self.indexed_repositories: List[str] = []
+        self.file_access_manager: Optional[FileAccessManager] = None # Add attribute
 
         logger.info("Initializing Application components...")
         try:
-            # Instantiate components in dependency order
-            # 1. FileAccessManager (needed by MemorySystem)
-            # TODO: Consider making base_path configurable
-            self.file_access_manager = FileAccessManager() # Use default base path (project root)
+            # Instantiate FileAccessManager first
+            # Assuming base_path comes from config or defaults to PROJECT_ROOT
+            # Ensure PROJECT_ROOT is defined correctly earlier in the file
+            # fm_base_path = self.config.get('file_manager_base_path', PROJECT_ROOT) # PROJECT_ROOT might not be defined here
+            fm_base_path = self.config.get('file_manager_base_path') # Get from config or None
+            self.file_access_manager = FileAccessManager(base_path=fm_base_path) # Pass None if not in config
+            logger.info(f"FileAccessManager initialized with base_path: {self.file_access_manager.base_path}") # Log actual base path
 
-            # 2. MemorySystem (needs FileAccessManager)
+            # Instantiate components needing FileAccessManager
             self.memory_system = MemorySystem(
                 handler=None, # Will be injected later
                 task_system=None, # Will be injected later
-                file_access_manager=self.file_access_manager,
+                file_access_manager=self.file_access_manager, # Pass instance
                 config=self.config.get('memory_config')
             )
-
-            # 3. TaskSystem (needs MemorySystem)
+            # TaskSystem now only needs memory_system initially
             self.task_system = TaskSystem(memory_system=self.memory_system)
 
-            # 4. Handler (needs TaskSystem, MemorySystem)
             handler_config = self.config.get('handler_config', {})
-            # Ensure a default model identifier is provided if not in config
             default_model = handler_config.get('default_model_identifier', "anthropic:claude-3-5-sonnet-latest")
-            
+            # BaseHandler/PassthroughHandler creates its *own* FileAccessManager internally
+            # based on its config, which is fine. MemorySystem needs its own instance passed in.
             self.passthrough_handler = PassthroughHandler(
                 task_system=self.task_system,
                 memory_system=self.memory_system,
                 config=handler_config,
-                # Pass the determined default model identifier
                 default_model_identifier=default_model
             )
 
-            # Wire cross-dependencies
+            # Wire cross-dependencies (Inject handler into TaskSystem and MemorySystem)
             self.memory_system.handler = self.passthrough_handler
             self.memory_system.task_system = self.task_system
-            # Inject the handler into TaskSystem
-            self.task_system.set_handler(self.passthrough_handler)
-            logging.info("Injected Handler into TaskSystem.")
+            # Make sure set_handler exists in TaskSystem
+            if hasattr(self.task_system, 'set_handler'):
+                 self.task_system.set_handler(self.passthrough_handler)
+                 logging.info("Injected Handler into TaskSystem and MemorySystem.")
+            else:
+                 logger.error("TaskSystem does not have set_handler method! Cannot inject handler.")
+                 raise AttributeError("TaskSystem missing set_handler method")
+
 
             logger.info("Components instantiated.")
 
             # --- Core Template Registration ---
             logger.info("Registering core task templates...")
             try:
-                # Define the two associative matching templates
+                # Define CONTENT-based template
                 assoc_matching_content_template = {
-                    "name": "internal:associative_matching_content",
+                    "name": "internal:associative_matching_content", # New name
                     "type": "atomic",
-                    "subtype": "associative_matching",
-                    "description": "Internal task to find relevant files based on query and file content.",
-                    "params": { # Define expected inputs for clarity
+                    "subtype": "associative_matching", # Keep subtype consistent
+                    "description": "Internal task to find relevant files based on query and FULL FILE CONTENT.",
+                    "params": {
                         "context_input": { "description": "Input query/context details (as dict)" },
-                        "file_contents": { "description": "Dict mapping file paths to their content" }
+                        "file_contents": { "description": "Dictionary mapping candidate file paths to their full content strings" }
                     },
-                    "instructions": """Analyze the user query: '{{context_input.query}}'.
-Based on the query and the provided file contents, identify the 3 most relevant file paths.
-File Contents:
-{{file_contents}}
-
-Provide a brief 'context_summary'.
-Output the result *only* as a JSON object conforming to the AssociativeMatchResult structure:
+                    "instructions": """Analyze the user query details in 'context_input'.
+Review the **full file contents** provided in the 'file_contents' parameter (a dictionary mapping paths to content).
+Based on the query and the **provided file contents**, select the top 3-5 most relevant file paths *from the keys of the file_contents dictionary*. Assign a relevance score (0.0-1.0) to each selected path.
+Provide a brief 'context_summary' explaining the relevance based on the selected files' content.
+Output the result as a JSON object conforming to the AssociativeMatchResult structure:
 {
   "context_summary": "string",
   "matches": [ { "path": "string", "relevance": float (0.0-1.0) } ],
   "error": null
-}""",
+}
+
+Query Details: {{context_input.query}}
+
+File Contents Snippet (Example Format - Actual input is the full dict):
+{{ file_contents | dict_slice(5) | format_dict_snippet(300) }}
+
+Select the best matching paths *from the provided file contents* and output the JSON.""", # Simplified template example
                     "output_format": {"type": "json"}
                 }
+                self.task_system.register_template(assoc_matching_content_template)
+                logger.info(f"Registered template: {assoc_matching_content_template['name']}")
 
+                # Define METADATA-based template
                 assoc_matching_metadata_template = {
-                    "name": "internal:associative_matching_metadata",
+                    "name": "internal:associative_matching_metadata", # New name
                     "type": "atomic",
                     "subtype": "associative_matching",
-                    "description": "Internal task to find relevant files based on query and file metadata.",
+                    "description": "Internal task to find relevant files based on query and pre-generated METADATA.",
                      "params": {
                         "context_input": { "description": "Input query/context details (as dict)" },
-                        "metadata_snippet": { "description": "Dict mapping file paths to their metadata" }
+                        "metadata_snippet": { "description": "Dictionary mapping candidate file paths to their metadata strings" }
                     },
-                   "instructions": """Analyze the user query: '{{context_input.query}}'.
-Based on the query and the provided file metadata snippets, identify the 3 most relevant file paths.
-Metadata Snippets:
-{{metadata_snippet}}
-
-Provide a brief 'context_summary'.
-Output the result *only* as a JSON object conforming to the AssociativeMatchResult structure:
+                   "instructions": """Analyze the user query details in 'context_input'.
+Review the **file metadata** provided in the 'metadata_snippet' parameter (a dictionary mapping paths to metadata strings).
+Based on the query and the **provided metadata**, select the top 3-5 most relevant file paths *from the keys of the metadata_snippet dictionary*. Assign a relevance score (0.0-1.0) to each selected path.
+Provide a brief 'context_summary' explaining the relevance based on the selected files' metadata.
+Output the result as a JSON object conforming to the AssociativeMatchResult structure:
 {
   "context_summary": "string",
   "matches": [ { "path": "string", "relevance": float (0.0-1.0) } ],
   "error": null
-}""",
+}
+
+Query Details: {{context_input.query}}
+
+Metadata Snippet (Example Format - Actual input is the full dict):
+{{ metadata_snippet | dict_slice(10) | format_dict_snippet(250) }}
+
+Select the best matching paths *from the provided metadata* and output the JSON.""", # Simplified template example
                     "output_format": {"type": "json"}
                 }
+                self.task_system.register_template(assoc_matching_metadata_template)
+                logger.info(f"Registered template: {assoc_matching_metadata_template['name']}")
 
-                # Register both templates
-                templates_to_register = [assoc_matching_content_template, assoc_matching_metadata_template]
-                for template in templates_to_register:
-                    try:
-                        success = self.task_system.register_template(template)
-                        if success:
-                            logger.info(f"Successfully registered template: {template['name']}")
-                        else:
-                            logger.error(f"Failed to register template (returned False): {template['name']}")
-                    except Exception as reg_err:
-                        logger.error(f"Error during template registration for {template['name']}: {reg_err}")
-
+            except AttributeError as ae:
+                 logger.exception(f"Failed to register core templates - likely missing register_template method: {ae}")
+                 raise # Re-raise as this is critical
             except Exception as e:
-                logger.exception(f"Failed during core template definition or registration: {e}")
-                # Decide if this should be fatal
-
-            logger.info("Core templates registration process complete.")
+                logger.exception(f"Failed to register core templates: {e}")
+                raise # Re-raise as this is critical
 
             # Register system-level tools
             self._register_system_tools()

@@ -528,13 +528,29 @@ class SexpEvaluator:
             # Evaluate the value expression
             try:
                 value = self._eval(value_expr, env)
-                logging.debug(f"  _parse_get_context: Evaluated arg '{key_str}' to: {value}")
-                context_input_args[key_str] = value
+                logging.debug(f"  _parse_get_context: Evaluated arg '{key_str}' to: {value} (Type: {type(value)})")
+
+                # --- START MODIFICATION ---
+                # Special handling and validation for matching_strategy
+                if key_str == "matching_strategy":
+                    # The evaluated value should be the strategy name (string)
+                    # Sexp symbols 'content'/'metadata' evaluate to strings if not bound
+                    allowed_strategies = {'content', 'metadata'}
+                    if not isinstance(value, str) or value not in allowed_strategies:
+                         # Raise error if the *evaluated value* is not 'content' or 'metadata'
+                         raise SexpEvaluationError(f"Invalid value for 'matching_strategy'. Expected 'content' or 'metadata', got: {value!r}", node_repr)
+                    context_input_args[key_str] = value
+                # --- END MODIFICATION ---
+                else:
+                    # Store other evaluated args directly
+                    context_input_args[key_str] = value
+
             except Exception as e:
-                logging.exception(f"Error evaluating argument '{key_str}' for 'get_context': {e}")
-                if isinstance(e, SexpEvaluationError): raise # Re-raise if already specific
+                # ... (existing exception handling) ...
+                logging.exception(f"Error evaluating argument value for key '{key_str}' in 'get_context': {e}")
+                if isinstance(e, SexpEvaluationError): raise
                 # Use node_repr from parameter
-                raise SexpEvaluationError(f"Error evaluating argument '{key_str}' for 'get_context': {e}", node_repr) from e
+                raise SexpEvaluationError(f"Error evaluating argument value for key '{key_str}' in 'get_context': {e}", node_repr) from e
 
         if not context_input_args:
             # Use node_repr from parameter
@@ -544,22 +560,8 @@ class SexpEvaluator:
 
         # Map to ContextGenerationInput fields
         try:
-            # Handle matching_strategy specifically
-            if "matching_strategy" in context_input_args:
-                strategy_val = context_input_args["matching_strategy"]
-                # Value should be a symbol ('content or 'metadata) evaluated to a string
-                if isinstance(strategy_val, Symbol):
-                     strategy_str = strategy_val.value()
-                elif isinstance(strategy_val, str): # Allow string literal too
-                     strategy_str = strategy_val
-                else:
-                     raise SexpEvaluationError(f"Invalid value type for 'matching_strategy': expected Symbol or String, got {type(strategy_val)}", node_repr)
-
-                if strategy_str not in ['content', 'metadata']:
-                    raise SexpEvaluationError(f"Invalid value for 'matching_strategy': must be 'content' or 'metadata', got '{strategy_str}'", node_repr)
-                context_input_args["matching_strategy"] = strategy_str # Store the validated string
-
             # Convert 'inputs' if it's a list of pairs to a dictionary
+            # Note: matching_strategy is already validated and stored as string above
             if "inputs" in context_input_args and isinstance(context_input_args["inputs"], list):
                 try:
                     inputs_dict = {}

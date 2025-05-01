@@ -193,7 +193,7 @@ class MemorySystem:
         return self.get_relevant_context_for(input_data)
 
     def get_relevant_context_for(
-        self, input_data: Any # Union[Dict[str, Any], ContextGenerationInput]
+        self, input_data: ContextGenerationInput # Expect v5.0 model
     ) -> AssociativeMatchResult:
         """
         Retrieves relevant context for a task, orchestrating content/metadata retrieval and LLM analysis.
@@ -206,124 +206,141 @@ class MemorySystem:
             An AssociativeMatchResult object containing the context summary and a list of MatchTuple objects.
             Returns an error result if dependencies are unavailable, pre-filtering/reading fails, or the LLM task fails.
         """
-        logging.debug(f"get_relevant_context_for called with input: {input_data}")
+        logger.debug(f"get_relevant_context_for called with strategy: {input_data.matching_strategy}")
 
-        # 1. Validate input_data and dependencies
-        if not isinstance(input_data, ContextGenerationInput):
-            logging.warning("Received non-ContextGenerationInput, attempting conversion.")
-            try:
-                input_data = ContextGenerationInput.model_validate(input_data)
-            except Exception as e:
-                msg = f"Invalid input data format: {e}"
-                logging.error(msg)
-                return AssociativeMatchResult(context_summary="Error", matches=[], error=msg)
+        # 1. Determine Strategy (Default to 'content')
+        strategy = input_data.matching_strategy or 'content'
+        logger.debug(f"Using matching strategy: {strategy}")
 
-        if not self.task_system:
-            msg = "TaskSystem dependency not available."
-            logging.error(msg)
-            return AssociativeMatchResult(context_summary="Error", matches=[], error=msg)
-        if not self.file_access_manager:
-            msg = "FileAccessManager dependency not available."
-            logging.error(msg)
-            return AssociativeMatchResult(context_summary="Error", matches=[], error=msg)
-
-        # 2. Determine matching strategy and query
-        strategy = input_data.matching_strategy or 'content' # Default to 'content'
-        query = input_data.query or input_data.templateDescription or "" # Determine query source
+        # 2. Determine Query
+        query = input_data.query
+        if not query and input_data.templateDescription:
+            query = input_data.templateDescription # Fallback
         if not query:
-            msg = "No query or templateDescription provided for context matching."
-            logging.warning(msg)
-            return AssociativeMatchResult(context_summary="No query", matches=[], error=msg)
+             return AssociativeMatchResult(context_summary="Error: No query provided.", matches=[], error="No query provided.")
 
-        logging.info(f"Using matching strategy: '{strategy}' for query: '{query[:50]}...'")
-
-        # 3. Pre-filter candidate paths (Placeholder - using all for now)
-        # TODO: Implement pre-filtering based on query/index structure
+        # 3. Pre-filtering (Optional - Placeholder: Use all indexed paths for now)
+        # TODO: Implement actual pre-filtering based on query vs paths/metadata later if needed.
         candidate_paths = list(self.global_index.keys())
-        logging.debug(f"Candidate paths for matching: {len(candidate_paths)}")
+        logger.debug(f"Pre-filtering selected {len(candidate_paths)} candidate paths (currently uses all).")
         if not candidate_paths:
-            return AssociativeMatchResult(context_summary="No files indexed", matches=[])
+            return AssociativeMatchResult(context_summary="No files indexed to search.", matches=[])
 
-        # 4/5. Prepare inputs for the appropriate internal LLM task
         inputs_for_llm: Dict[str, Any] = {"context_input": input_data.model_dump(exclude_none=True)}
-        task_name: str
+        llm_task_name: str = ""
 
+        # 4/5. Retrieve Data based on Strategy & Prepare Inputs
         if strategy == 'content':
-            task_name = "internal:associative_matching_content"
+            llm_task_name = "internal:associative_matching_content"
             file_contents: Dict[str, str] = {}
+            skipped_reads = []
+            # TODO: Implement sharding/chunking for content if candidate_paths is large
+            logger.debug(f"Retrieving content for {len(candidate_paths)} candidate paths...")
             for path in candidate_paths:
                 try:
-                    content = self.file_access_manager.read_file(path)
+                    # Use file_access_manager - assuming it handles limits/errors internally
+                    content = self.file_access_manager.read_file(path) # Use default size limit for now? Or None? Check IDL/impl.
                     if content is not None:
                         file_contents[path] = content
                     else:
-                        logging.warning(f"Could not read content for candidate file: {path}")
+                        skipped_reads.append(path)
+                        logger.warning(f"Could not read content for candidate path: {path}")
                 except Exception as e:
-                    logging.warning(f"Error reading file {path}: {e}")
-            if not file_contents:
-                 msg = "No content could be read for any candidate files."
-                 logging.warning(msg)
-                 return AssociativeMatchResult(context_summary="No content read", matches=[], error=msg)
+                    logger.error(f"Error reading content for {path}: {e}")
+                    skipped_reads.append(path)
             inputs_for_llm["file_contents"] = file_contents
-            logging.debug(f"Prepared {len(file_contents)} file contents for LLM.")
+            logger.debug(f"Prepared file_contents input: {len(file_contents)} files included, {len(skipped_reads)} skipped.")
 
         elif strategy == 'metadata':
-            task_name = "internal:associative_matching_metadata"
-            metadata_snippet: Dict[str, str] = {path: self.global_index[path] for path in candidate_paths}
+            llm_task_name = "internal:associative_matching_metadata"
+            metadata_snippet: Dict[str, str] = {}
+            # TODO: Implement sharding/chunking for metadata if candidate_paths is large
+            logger.debug(f"Retrieving metadata for {len(candidate_paths)} candidate paths...")
+            for path in candidate_paths:
+                 meta = self.global_index.get(path)
+                 if meta is not None:
+                     metadata_snippet[path] = meta # Pass full metadata string for now
+                 else:
+                      logger.warning(f"Metadata not found in index for candidate path: {path}")
             inputs_for_llm["metadata_snippet"] = metadata_snippet
-            logging.debug(f"Prepared {len(metadata_snippet)} metadata snippets for LLM.")
-
+            logger.debug(f"Prepared metadata_snippet input: {len(metadata_snippet)} entries included.")
         else:
-            # Should not happen if validation is correct, but handle defensively
-            msg = f"Invalid matching strategy: {strategy}"
-            logging.error(msg)
-            return AssociativeMatchResult(context_summary="Error", matches=[], error=msg)
+             # Should not happen if ContextGenerationInput validation works
+             return AssociativeMatchResult(context_summary="Error: Invalid matching strategy.", matches=[], error=f"Invalid matching strategy: {strategy}")
 
-        # 6. Handle sharding (Placeholder - TBD)
-        # TODO: Implement sharding logic if needed
+        # 6. Check TaskSystem dependency
+        if not self.task_system:
+            error_msg = "TaskSystem dependency not available in MemorySystem."
+            logger.error(error_msg)
+            return AssociativeMatchResult(context_summary="", matches=[], error=error_msg)
 
-        # 7. Create SubtaskRequest for the internal LLM task
-        # Ensure this task does not try to fetch more context itself
-        context_override = ContextManagement(freshContext="disabled", inheritContext="none")
-        subtask_request = SubtaskRequest(
-            task_id=f"context-gen-{strategy}-{hash(query)}", # Unique-ish ID
-            type="atomic",
-            name=task_name,
-            description=f"Internal context generation using {strategy}",
-            inputs=inputs_for_llm,
-            context_management=context_override
-        )
-
-        # 8. Call TaskSystem to execute the internal task
-        logging.debug(f"Executing internal task: {task_name}")
+        # 7. Create SubtaskRequest
         try:
-            task_result = self.task_system.execute_atomic_template(subtask_request)
+            # Prevent recursive context fetching within the matching task
+            context_override = ContextManagement(freshContext='disabled', inheritContext='none')
+            request = SubtaskRequest(
+                task_id=f"context-gen-{strategy}-{input_data.query[:20]}", # Unique-ish ID
+                type="atomic",
+                name=llm_task_name,
+                inputs=inputs_for_llm,
+                context_management=context_override
+            )
         except Exception as e:
-            msg = f"Unexpected error calling TaskSystem for internal task {task_name}: {e}"
-            logging.exception(msg)
-            return AssociativeMatchResult(context_summary="Error", matches=[], error=msg)
+             error_msg = f"Failed to create SubtaskRequest: {e}"
+             logger.exception(error_msg)
+             return AssociativeMatchResult(context_summary="", matches=[], error=error_msg)
 
-        # 9. Parse the AssociativeMatchResult from the TaskResult
-        if task_result.status == "FAILED":
-            error_msg = task_result.notes.get("error", {}).get("message", task_result.content)
-            msg = f"Associative matching task '{task_name}' failed: {error_msg}"
-            logging.error(msg)
-            return AssociativeMatchResult(context_summary="Error", matches=[], error=msg)
-
-        if not isinstance(task_result.content, str):
-             msg = f"Internal task '{task_name}' returned non-string content: {type(task_result.content)}"
-             logging.error(msg)
-             return AssociativeMatchResult(context_summary="Error", matches=[], error=msg)
-
+        # 8. Call TaskSystem
         try:
-            # Use Pydantic validation for parsing
-            assoc_match_result = AssociativeMatchResult.model_validate_json(task_result.content)
-            logging.info(f"Successfully generated context via '{task_name}': {len(assoc_match_result.matches)} matches.")
-            return assoc_match_result
+            logger.debug(f"Calling TaskSystem to execute: {llm_task_name}")
+            task_result: TaskResult = self.task_system.execute_atomic_template(request)
+
+            # 9. Parse Result
+            if task_result.status == "FAILED":
+                error_msg = f"Associative matching task '{llm_task_name}' failed."
+                error_details = task_result.notes.get("error")
+                if error_details:
+                     # If error details are structured, extract message
+                     if isinstance(error_details, dict) and 'message' in error_details:
+                         error_msg += f" Reason: {error_details['message']}"
+                     else:
+                          error_msg += f" Details: {error_details}"
+                else:
+                     error_msg += f" Reason: {task_result.content}" # Fallback to content
+                logger.error(error_msg)
+                return AssociativeMatchResult(context_summary="", matches=[], error=error_msg)
+
+            # Try parsing from parsedContent first (if executor uses pydantic-ai output_type)
+            # then fall back to content (if executor uses json.loads)
+            parsed_assoc_result = None
+            if task_result.parsedContent and isinstance(task_result.parsedContent, dict):
+                 try:
+                     parsed_assoc_result = AssociativeMatchResult.model_validate(task_result.parsedContent)
+                     logger.debug("Parsed AssociativeMatchResult from TaskResult.parsedContent")
+                 except Exception as e:
+                     logger.warning(f"Failed to validate parsedContent as AssociativeMatchResult: {e}")
+
+            if parsed_assoc_result is None and isinstance(task_result.content, str):
+                try:
+                    parsed_assoc_result = AssociativeMatchResult.model_validate_json(task_result.content)
+                    logger.debug("Parsed AssociativeMatchResult from TaskResult.content JSON string")
+                except Exception as e:
+                    error_msg = f"Failed to parse AssociativeMatchResult JSON from task output: {e}"
+                    logger.error(f"{msg}\nContent was: {task_result.content}")
+                    return AssociativeMatchResult(context_summary="", matches=[], error=error_msg)
+
+            if parsed_assoc_result is None:
+                 error_msg = "Failed to obtain valid AssociativeMatchResult from task."
+                 logger.error(error_msg)
+                 return AssociativeMatchResult(context_summary="", matches=[], error=error_msg)
+
+            logger.info(f"Successfully generated context via '{llm_task_name}'. Matches: {len(parsed_assoc_result.matches)}")
+            return parsed_assoc_result
+
         except Exception as e:
-            msg = f"Failed to parse AssociativeMatchResult JSON from task '{task_name}': {e}"
-            logging.error(f"{msg}\nContent was: {task_result.content[:500]}...") # Log truncated content
-            return AssociativeMatchResult(context_summary="Error", matches=[], error=msg)
+            error_msg = f"Unexpected error executing matching task via TaskSystem: {e}"
+            logger.exception(error_msg)
+            return AssociativeMatchResult(context_summary="", matches=[], error=error_msg)
 
     def _recalculate_shards(self) -> None:
         """

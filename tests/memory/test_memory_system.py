@@ -43,15 +43,14 @@ def mock_dependencies(mock_file_manager_ms): # Add mock_file_manager_ms fixture 
 
 
 @pytest.fixture # Update memory_system_instance to use new fixture
-def memory_system_instance(mock_dependencies): # mock_dependencies now includes file_manager
+def memory_system_instance(mock_dependencies, mock_file_manager_ms): # Add mock_file_manager_ms
     """Provides a MemorySystem instance with mock dependencies."""
-    handler_mock, task_system_mock, file_manager_mock = mock_dependencies
-    # Use TEST_CONFIG for a predictable starting state, overriding defaults
+    handler_mock, task_system_mock = mock_dependencies # Unpack only handler and task_system
     # Pass the new mock file manager
     return MemorySystem(
         handler=handler_mock,
         task_system=task_system_mock,
-        file_access_manager=file_manager_mock, # Pass mock FM
+        file_access_manager=mock_file_manager_ms, # Pass mock FM
         config=TEST_CONFIG.copy()
     )
 
@@ -292,7 +291,7 @@ def test_recalculate_shards_placeholder_clears_when_disabled(mock_log, memory_sy
 
 # ---- New Tests for get_relevant_context_for ----
 
-def test_g rcf_default_strategy_is_content(memory_system_instance, mock_task_system, mock_file_manager_ms):
+def test_get_relevant_context_for_default_strategy_is_content(memory_system_instance, mock_task_system, mock_file_manager_ms): # Corrected name
     """Verify default strategy is 'content'."""
     input_data = ContextGenerationInput(query="test")
     # Mock TaskSystem return for the content task
@@ -307,7 +306,7 @@ def test_g rcf_default_strategy_is_content(memory_system_instance, mock_task_sys
     assert isinstance(request_arg, SubtaskRequest)
     assert request_arg.name == "internal:associative_matching_content"
 
-def test_g rcf_content_strategy_flow(memory_system_instance, mock_task_system, mock_file_manager_ms):
+def test_get_relevant_context_for_content_strategy_flow(memory_system_instance, mock_task_system, mock_file_manager_ms): # Corrected name
     """Test the full flow for the 'content' strategy."""
     input_data = ContextGenerationInput(query="test content", matching_strategy='content')
     # Assume global index has paths
@@ -341,7 +340,7 @@ def test_g rcf_content_strategy_flow(memory_system_instance, mock_task_system, m
     assert result.matches == expected_matches
     assert result.error is None
 
-def test_g rcf_metadata_strategy_flow(memory_system_instance, mock_task_system, mock_file_manager_ms):
+def test_get_relevant_context_for_metadata_strategy_flow(memory_system_instance, mock_task_system, mock_file_manager_ms): # Corrected name
     """Test the full flow for the 'metadata' strategy."""
     input_data = ContextGenerationInput(query="test metadata", matching_strategy='metadata')
     # Assume global index has paths
@@ -371,7 +370,7 @@ def test_g rcf_metadata_strategy_flow(memory_system_instance, mock_task_system, 
     assert result.matches == expected_matches
     assert result.error is None
 
-def test_g rcf_content_strategy_read_error(memory_system_instance, mock_task_system, mock_file_manager_ms):
+def test_get_relevant_context_for_content_strategy_read_error(memory_system_instance, mock_task_system, mock_file_manager_ms): # Corrected name
     """Test content strategy when some files cannot be read."""
     input_data = ContextGenerationInput(query="test partial read", matching_strategy='content')
     memory_system_instance.global_index = {"/path/a.py": "meta a", "/path/error.py": "meta err"}
@@ -395,7 +394,7 @@ def test_g rcf_content_strategy_read_error(memory_system_instance, mock_task_sys
     # Assert final result
     assert result.matches == expected_matches
 
-def test_g rcf_task_system_call_fails(memory_system_instance, mock_task_system, mock_file_manager_ms):
+def test_get_relevant_context_for_task_system_call_fails(memory_system_instance, mock_task_system, mock_file_manager_ms): # Corrected name
     """Test when the TaskSystem call returns a FAILED status."""
     input_data = ContextGenerationInput(query="test failure", matching_strategy='content')
     memory_system_instance.global_index = {"/path/a.py": "meta a"}
@@ -414,7 +413,7 @@ def test_g rcf_task_system_call_fails(memory_system_instance, mock_task_system, 
     assert "failed" in result.error
     assert "LLM timed out" in result.error # Check original error message is included
 
-def test_g rcf_task_system_returns_invalid_json(memory_system_instance, mock_task_system, mock_file_manager_ms):
+def test_get_relevant_context_for_task_system_returns_invalid_json(memory_system_instance, mock_task_system, mock_file_manager_ms): # Corrected name
     """Test when TaskSystem returns non-JSON content."""
     input_data = ContextGenerationInput(query="test bad json", matching_strategy='metadata')
     memory_system_instance.global_index = {"/path/a.py": "meta a"}
@@ -429,7 +428,7 @@ def test_g rcf_task_system_returns_invalid_json(memory_system_instance, mock_tas
     assert result.error is not None
     assert "Failed to parse AssociativeMatchResult JSON" in result.error
 
-def test_g rcf_missing_task_system(memory_system_instance, mock_file_manager_ms):
+def test_get_relevant_context_for_missing_task_system(memory_system_instance, mock_file_manager_ms): # Corrected name
     """Test when TaskSystem dependency is missing."""
     memory_system_instance.task_system = None # Remove dependency
     input_data = ContextGenerationInput(query="test no ts")

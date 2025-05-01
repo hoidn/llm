@@ -92,7 +92,7 @@ def test_application_init_wiring(app_instance):
         app_test = Application(config={"handler_config": {"some_key": "val"}})
 
         # Assert FileAccessManager was called (assuming patch)
-        MockFM_test.assert_called_once_with() # Check FM instantiation
+        MockFM_test.assert_called_once() # Check FM instantiation with default base_path=None
         mock_fm_instance_test = MockFM_test.return_value
 
         # Assert MemorySystem received FileAccessManager instance
