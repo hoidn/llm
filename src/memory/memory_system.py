@@ -224,6 +224,12 @@ class MemorySystem:
             logger.error(error_msg)
             return AssociativeMatchResult(context_summary="", matches=[], error=error_msg)
             
+        # Check FileAccessManager dependency EARLY
+        if not self.file_access_manager:
+            error_msg = "FileAccessManager dependency not available in MemorySystem."
+            logger.error(error_msg)
+            return AssociativeMatchResult(context_summary="", matches=[], error=error_msg)
+            
         logger.debug(f"get_relevant_context_for called with strategy: {input_data.matching_strategy}")
 
         # 1. Determine Strategy (Default to 'content')
