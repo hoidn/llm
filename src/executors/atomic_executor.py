@@ -13,8 +13,8 @@ from typing import Any, Dict, Optional, Type # Added Type for output_type_overri
 from src.system.models import TaskResult, TaskFailureReason, TaskFailureError
 from pydantic import ValidationError
 
-# Regex to find {{parameter_name}} placeholders
-PARAM_REGEX = re.compile(r"\{\{(\w+)\}\}")
+# Regex to find {{parameter.name.access}} placeholders
+PARAM_REGEX = re.compile(r"\{\{([\w.]+)\}\}")  # Allow dots in parameter names
 
 class ParameterMismatchError(Exception):
     """Custom exception for missing parameters during substitution."""
@@ -42,20 +42,37 @@ class AtomicTaskExecutor:
             return None
 
         missing_params = []
+        
+        def resolve_dot_notation(param_dict, key_string):
+            """Helper to access nested dict/object attributes."""
+            keys = key_string.split('.')
+            val = param_dict
+            for key in keys:
+                if isinstance(val, dict):
+                    if key not in val: raise KeyError(key)
+                    val = val[key]
+                elif hasattr(val, key):
+                    val = getattr(val, key)
+                else:
+                    raise KeyError(key)  # Or AttributeError
+            return val
+            
         def replace_match(match):
-            param_name = match.group(1)
-            if param_name not in params:
-                logging.error(f"Parameter '{param_name}' not found in provided params: {list(params.keys())}")
-                missing_params.append(param_name)
+            full_param_name = match.group(1)  # e.g., "context_input.query"
+            try:
+                # Use helper to resolve dot notation
+                value = resolve_dot_notation(params, full_param_name)
+                return str(value)  # Convert final value to string
+            except (KeyError, AttributeError, TypeError) as e:  # Catch potential errors during access
+                logging.error(f"Parameter '{full_param_name}' not found or access error in provided params: {e}")
+                missing_params.append(full_param_name)
                 # Return the placeholder itself to find all missing ones first
                 return match.group(0)
-            # Convert param value to string for substitution
-            return str(params[param_name])
 
         try:
             substituted_text = PARAM_REGEX.sub(replace_match, text)
             if missing_params:
-                raise ParameterMismatchError(f"Missing parameter(s) for substitution: {', '.join(missing_params)}")
+                raise ParameterMismatchError(f"Missing parameter(s) or access error for substitution: {', '.join(missing_params)}")
             return substituted_text
         except Exception as e:
             # Catch potential errors during string conversion or regex
