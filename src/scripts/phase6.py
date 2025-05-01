@@ -12,7 +12,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 # Project root is two levels up from the script's directory (src/scripts -> src -> PROJECT_ROOT)
 PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, '..', '..'))
 # Source directory is one level down from the project root
-SRC_PATH = os.path.join(PROJECT_ROOT, 'src/task_system')
+SRC_PATH = os.path.join(PROJECT_ROOT, 'src')
 
 # Add SRC_PATH to sys.path FIRST to prioritize imports from src
 if SRC_PATH not in sys.path:
@@ -40,7 +40,7 @@ except ImportError as e:
 LOG_LEVEL = logging.DEBUG # Keep DEBUG for detailed output during demo
 # --- START MODIFICATION ---
 # Point to the actual project root directory for indexing
-REPO_TO_INDEX = PROJECT_ROOT
+REPO_TO_INDEX = os.path.join(PROJECT_ROOT, 'src')
 # Change search keyword to something likely in the project code
 SEARCH_KEYWORD = "TaskSystem"
 # --- END MODIFICATION ---
