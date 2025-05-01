@@ -51,6 +51,7 @@ SEARCH_KEYWORD = "class"
 logging.basicConfig(level=LOG_LEVEL,
                     format='%(asctime)s - %(levelname)s - %(name)s - %(message)s')
 logger = logging.getLogger("DemoScript")
+print(f"##### Root logger effective level: {logging.getLogger().getEffectiveLevel()} (DEBUG={logging.DEBUG}, INFO={logging.INFO}) #####") # Added diagnostic print
 
 # --- Helper Functions ---
 def create_sample_repo(repo_path: str):
