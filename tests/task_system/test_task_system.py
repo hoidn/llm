@@ -80,8 +80,8 @@ def mock_handler():
 def task_system_instance(mock_memory_system, mock_handler):
     """Provides a TaskSystem instance with mock dependencies."""
     ts = TaskSystem(memory_system=mock_memory_system)
-    # Inject mock handler into cache for _get_handler placeholder
-    ts._handler_cache["default_handler"] = mock_handler
+    # Inject mock handler using the public setter method
+    ts.set_handler(mock_handler)
     return ts
 
 
@@ -96,7 +96,8 @@ def test_init(mock_memory_system):
     assert ts._registry.templates == {}
     assert ts._registry.template_index == {}
     assert ts._test_mode is False
-    assert ts._handler_cache == {}
+    assert hasattr(ts, '_handler') # Check for the new attribute name
+    assert ts._handler is None     # Assert it's None if not passed during init
 
 
 # --- Test set_test_mode ---

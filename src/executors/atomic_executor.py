@@ -124,9 +124,9 @@ class AtomicTaskExecutor:
             # Main prompt is the substituted instructions
             main_prompt = substituted_instructions
             if not main_prompt:
-                 logging.warning(f"Task '{task_name}' has empty instructions after substitution.")
-                 # Raise error if prompt is empty, as Anthropic requires content
-                 raise ValueError("Substituted instructions resulted in an empty prompt.")
+                 logging.warning(f"Task '{task_name}' has empty instructions after substitution. Proceeding with empty prompt.")
+                 # raise ValueError("Substituted instructions resulted in an empty prompt.") # REMOVE or COMMENT OUT this line
+                 main_prompt = "" # Ensure it's an empty string if None/empty
             elif not isinstance(main_prompt, str):
                  logging.error(f"Substituted instructions are not a string (type: {type(main_prompt)}). Value: {main_prompt!r}")
                  raise TypeError("Substituted instructions must result in a string.")

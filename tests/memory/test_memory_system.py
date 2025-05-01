@@ -7,11 +7,13 @@ import pytest
 from unittest.mock import MagicMock, patch, call
 import os
 import logging # Ensure logging is imported
+from unittest.mock import patch # Added
 
 # Assuming MemorySystem is importable
 from src.memory.memory_system import MemorySystem, DEFAULT_SHARDING_CONFIG
 # Import necessary models for tests
-from src.system.models import ContextGenerationInput, AssociativeMatchResult, MatchTuple
+from src.system.models import ContextGenerationInput, AssociativeMatchResult, MatchTuple # Added
+from src.task_system.task_system import TaskSystem # Added for patching
 
 
 # Default config for tests
@@ -263,21 +265,26 @@ def test_recalculate_shards_placeholder_clears_when_disabled(mock_log, memory_sy
 
 # Use the existing 'memory_system_instance' fixture
 
-def test_get_relevant_context_for_no_matches(memory_system_instance):
-    """Verify behavior when no metadata matches the query."""
-    # Setup: Ensure index has data that *won't* match
-    memory_system_instance.update_global_index({
-        os.path.abspath("/path/to/file1.py"): "metadata about python code",
-        os.path.abspath("/path/to/file2.txt"): "text file description",
-    })
+@patch.object(TaskSystem, 'generate_context_for_memory_system')
+def test_get_relevant_context_for_no_matches(mock_generate_context, memory_system_instance):
+    """Verify behavior when delegation returns no matches."""
+    # Arrange
     input_data = ContextGenerationInput(query="non_existent_keyword")
+    # Configure mock TaskSystem to return an empty result
+    expected_result_obj = AssociativeMatchResult(
+        context_summary="Mocked: No matches found", matches=[], error=None
+    )
+    mock_generate_context.return_value = expected_result_obj
 
+    # Act
     result = memory_system_instance.get_relevant_context_for(input_data)
 
-    assert isinstance(result, AssociativeMatchResult)
-    assert result.matches == []
-    assert "Found 0 potential matches" in result.context_summary # Check summary text
-    assert result.error is None
+    # Assert Call
+    mock_generate_context.assert_called_once_with(
+        context_input=input_data, global_index=memory_system_instance.global_index
+    )
+    # Assert Result
+    assert result == expected_result_obj
 
 def test_get_relevant_context_for_query_match(memory_system_instance):
     """Verify matching based on the 'query' field."""
@@ -302,26 +309,33 @@ def test_get_relevant_context_for_query_match(memory_system_instance):
     assert result.matches[0].path == expected_match.path
     assert result.matches[0].relevance == expected_match.relevance
     assert "Found 1 potential matches" in result.context_summary
-    assert result.error is None
+    assert result == expected_result_obj
 
-def test_get_relevant_context_for_template_description_match(memory_system_instance):
-    """Verify matching based on templateDescription if query is absent."""
-    path1 = os.path.abspath("/path/template_match.py")
-    meta1 = "Code related to user authentication"
-    memory_system_instance.update_global_index({path1: meta1})
+@patch.object(TaskSystem, 'generate_context_for_memory_system')
+def test_get_relevant_context_for_template_description_match(mock_generate_context, memory_system_instance):
+    """Verify behavior when delegation returns a template description match."""
+    # Arrange
     input_data = ContextGenerationInput(
         templateDescription="Handle user login and authentication flow",
-        inputs={"user_id": 123} # Input potentially used if logic combines them
+        inputs={"user_id": 123}
     )
+    path1 = os.path.abspath("/path/template_match.py")
+    # Configure mock TaskSystem to return a result based on templateDescription
+    expected_match = MatchTuple(path=path1, relevance=1.0)
+    expected_result_obj = AssociativeMatchResult(
+        context_summary="Mocked: Found 1 template match", matches=[expected_match], error=None
+    )
+    mock_generate_context.return_value = expected_result_obj
 
+    # Act
     result = memory_system_instance.get_relevant_context_for(input_data)
 
-    assert isinstance(result, AssociativeMatchResult)
-    assert len(result.matches) == 1
-    expected_match = MatchTuple(path=path1, relevance=1.0)
-    assert result.matches[0].path == expected_match.path
-    assert result.matches[0].relevance == expected_match.relevance
-    assert result.error is None
+    # Assert Call
+    mock_generate_context.assert_called_once_with(
+        context_input=input_data, global_index=memory_system_instance.global_index
+    )
+    # Assert Result
+    assert result == expected_result_obj
 
 def test_get_relevant_context_for_query_precedence(memory_system_instance):
     """Verify 'query' takes precedence over templateDescription."""
@@ -347,80 +361,100 @@ def test_get_relevant_context_for_query_precedence(memory_system_instance):
     expected_match = MatchTuple(path=path_query, relevance=1.0)
     assert result.matches[0].path == expected_match.path
     assert result.matches[0].relevance == expected_match.relevance
-    assert result.error is None
+    assert result == expected_result_obj
 
-def test_get_relevant_context_for_multiple_matches(memory_system_instance):
-    """Verify multiple files can be matched."""
-    path1 = os.path.abspath("/proj/common_feature.py")
-    meta1 = "shared code for common_feature"
-    path2 = os.path.abspath("/proj/specific/impl_common.txt")
-    meta2 = "notes about common_feature implementation"
-    path3 = os.path.abspath("/proj/other.java")
-    meta3 = "unrelated java code"
-    memory_system_instance.update_global_index({
-        path1: meta1,
-        path2: meta2,
-        path3: meta3,
-    })
+@patch.object(TaskSystem, 'generate_context_for_memory_system')
+def test_get_relevant_context_for_multiple_matches(mock_generate_context, memory_system_instance):
+    """Verify behavior when delegation returns multiple matches."""
+    # Arrange
     input_data = ContextGenerationInput(query="common_feature")
+    path1 = os.path.abspath("/proj/common_feature.py")
+    path2 = os.path.abspath("/proj/specific/impl_common.txt")
+    # Configure mock TaskSystem to return multiple matches
+    expected_matches = [
+        MatchTuple(path=path1, relevance=0.9),
+        MatchTuple(path=path2, relevance=0.8)
+    ]
+    expected_result_obj = AssociativeMatchResult(
+        context_summary="Mocked: Found 2 matches", matches=expected_matches, error=None
+    )
+    mock_generate_context.return_value = expected_result_obj
 
+    # Act
     result = memory_system_instance.get_relevant_context_for(input_data)
 
-    assert isinstance(result, AssociativeMatchResult)
-    assert len(result.matches) == 2
-    # Check if both expected matches are present (order might vary)
-    match_paths = {m.path for m in result.matches}
-    assert match_paths == {path1, path2}
-    assert "Found 2 potential matches" in result.context_summary
-    assert result.error is None
+    # Assert Call
+    mock_generate_context.assert_called_once_with(
+        context_input=input_data, global_index=memory_system_instance.global_index
+    )
+    # Assert Result
+    assert result == expected_result_obj
 
 # Use patch.object on the class itself
+# Patch the underlying get_relevant_context_for method which is now simple
 @patch.object(MemorySystem, 'get_relevant_context_for')
 def test_get_relevant_context_with_description_calls_correctly(mock_get_relevant_context_for, memory_system_instance):
     """Verify get_relevant_context_with_description constructs input and calls main method."""
-    # Setup mock return value from the mocked get_relevant_context_for
-    mock_return = AssociativeMatchResult(context_summary="Mocked Result", matches=[], error=None)
-    mock_get_relevant_context_for.return_value = mock_return
-
+    # Arrange
     query_text = "Main task query (should be ignored by this method)"
     context_desc = "Specific description for context lookup" # This should become the query
+    expected_input_data = ContextGenerationInput(query=context_desc) # Expected input to the main method
 
-    # Call the method under test
+    # Setup mock return value for the underlying get_relevant_context_for
+    mock_return = AssociativeMatchResult(context_summary="Mocked Result from main method", matches=[], error=None)
+    mock_get_relevant_context_for.return_value = mock_return
+
+    # Act
     result = memory_system_instance.get_relevant_context_with_description(query_text, context_desc)
 
-    # Assert the result is what the mock returned
+    # Assert Call
+    # Verify that the underlying get_relevant_context_for was called with the correctly constructed input
+    mock_get_relevant_context_for.assert_called_once_with(expected_input_data)
+
+    # Assert Result
+    # Verify that the result returned by the wrapper is the result from the underlying method
     assert result == mock_return
-    # Assert the mock was called exactly once
-    mock_get_relevant_context_for.assert_called_once()
 
-    # Check the arguments passed to the mocked method
-    # call_args is a tuple, first element is args tuple, second is kwargs dict
-    # In this case, it's called like method(input_arg) on the instance,
-    # so the mock receives only input_arg.
-    assert len(mock_get_relevant_context_for.call_args.args) == 1 # Only input_data is passed to the mock
-    input_arg = mock_get_relevant_context_for.call_args.args[0]
-
-    assert isinstance(input_arg, ContextGenerationInput)
-    assert input_arg.query == context_desc # Crucial check: context_desc became the query
-    assert input_arg.templateDescription is None # Or default value if model has one
-    assert input_arg.inputs is None # Or default value
-
-def test_get_relevant_context_for_case_insensitive_match(memory_system_instance):
-    """Verify matching is case-insensitive."""
+@patch.object(TaskSystem, 'generate_context_for_memory_system')
+def test_get_relevant_context_for_case_insensitive_match(mock_generate_context, memory_system_instance):
+    """Verify delegation occurs correctly for different case queries."""
+    # Arrange
     path1 = os.path.abspath("/path/case_test.py")
-    meta1 = "Metadata with MixedCaseKeyword"
-    memory_system_instance.update_global_index({path1: meta1})
-    input_data = ContextGenerationInput(query="mixedcasekeyword") # Lowercase query
+    # Configure mock TaskSystem to return a result
+    expected_match = MatchTuple(path=path1, relevance=1.0)
+    expected_result_obj = AssociativeMatchResult(
+        context_summary="Mocked: Case match", matches=[expected_match], error=None
+    )
+    mock_generate_context.return_value = expected_result_obj
 
-    result = memory_system_instance.get_relevant_context_for(input_data)
+    # Test lowercase query
+    input_data_lower = ContextGenerationInput(query="mixedcasekeyword")
+    result_lower = memory_system_instance.get_relevant_context_for(input_data_lower)
 
-    assert len(result.matches) == 1
-    assert result.matches[0].path == path1
+    # Assert Call (first call)
+    mock_generate_context.assert_called_once_with(
+        context_input=input_data_lower, global_index=memory_system_instance.global_index
+    )
+    # Assert Result
+    assert result_lower == expected_result_obj # Check first result matches mock
 
-    input_data_upper = ContextGenerationInput(query="MIXEDCASEKEYWORD") # Uppercase query
+    # Test uppercase query - should also delegate and return the same mock result
+    input_data_upper = ContextGenerationInput(query="MIXEDCASEKEYWORD")
+    # Reset mock for the second call if needed, or assume it's configured once
+    # mock_generate_context.reset_mock()
+    # mock_generate_context.return_value = expected_result_obj # Re-assign if reset
+
     result_upper = memory_system_instance.get_relevant_context_for(input_data_upper)
-    assert len(result_upper.matches) == 1
-    assert result_upper.matches[0].path == path1
+
+    # Assert Call (check second call)
+    # Note: assert_called_once_with fails on second call. Use call_args_list or check call_count.
+    assert mock_generate_context.call_count == 2
+    # Check the arguments of the second call
+    assert mock_generate_context.call_args_list[1] == call(
+        context_input=input_data_upper, global_index=memory_system_instance.global_index
+    )
+    # Assert Result
+    assert result_upper == expected_result_obj # Check result matches mock
 
 def test_get_relevant_context_for_no_query_or_description(memory_system_instance):
     """Verify behavior when neither query nor templateDescription is provided."""
@@ -434,23 +468,30 @@ def test_get_relevant_context_for_no_query_or_description(memory_system_instance
     assert "No search criteria provided" in result.context_summary
     assert "No query or templateDescription provided" in result.error
 
-# Test sharding path still uses global index for now
-@patch('logging.debug')
-def test_get_relevant_context_for_sharding_enabled_uses_global_index_phase2a(mock_log, memory_system_instance):
-    """Verify sharding path uses global index in Phase 2a."""
-    path1 = os.path.abspath("/path/shard_test.py")
-    meta1 = "Keyword for sharding test"
-    memory_system_instance.update_global_index({path1: meta1})
+# Test sharding path still delegates
+@patch.object(TaskSystem, 'generate_context_for_memory_system')
+def test_get_relevant_context_for_sharding_enabled_delegates(mock_generate_context, memory_system_instance):
+    """Verify delegation occurs even if sharding is enabled (Phase 2a)."""
+    # Arrange
     memory_system_instance.enable_sharding(True) # Enable sharding
-
     input_data = ContextGenerationInput(query="sharding test")
+    path1 = os.path.abspath("/path/shard_test.py")
+    # Configure mock TaskSystem to return a result
+    expected_match = MatchTuple(path=path1, relevance=1.0)
+    expected_result_obj = AssociativeMatchResult(
+        context_summary="Mocked: Sharding enabled match", matches=[expected_match], error=None
+    )
+    mock_generate_context.return_value = expected_result_obj
+
+    # Act
     result = memory_system_instance.get_relevant_context_for(input_data)
 
-    # Check that matching still worked
-    assert len(result.matches) == 1
-    assert result.matches[0].path == path1
-    # Check that the debug log indicates global index was used despite sharding being enabled
-    mock_log.assert_any_call("Sharding enabled, but using global index for Phase 2a matching.")
+    # Assert Call
+    mock_generate_context.assert_called_once_with(
+        context_input=input_data, global_index=memory_system_instance.global_index
+    )
+    # Assert Result
+    assert result == expected_result_obj
 
 
 # --- Tests for index_git_repository ---

@@ -78,13 +78,15 @@ def test_execute_body_missing_param(executor, mock_handler):
     # Assert
     assert result.status == "FAILED"
     # Check content and error details
-    assert "Missing parameter(s) for substitution: missing_param" in result.content
+    expected_error_content = "Unexpected substitution error: Missing parameter(s) or access error for substitution: missing_param"
+    assert result.content == expected_error_content # Check exact content
     assert result.notes is not None
     assert "error" in result.notes
     error_details = TaskFailureError.model_validate(result.notes["error"])
     assert error_details.type == "TASK_FAILURE"
     assert error_details.reason == "input_validation_failure"
-    assert "missing_param" in error_details.message
+    # Check the message within the error notes structure
+    assert error_details.message == expected_error_content
     # Ensure handler was NOT called
     mock_handler._build_system_prompt.assert_not_called()
     mock_handler._execute_llm_call.assert_not_called()

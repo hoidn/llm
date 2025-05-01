@@ -2,10 +2,26 @@ import logging
 import os  # Add os import for environment variable checking
 from typing import Any, Dict, List, Optional, Callable, Type, TYPE_CHECKING
 
+# --- REVERT TO TOP-LEVEL IMPORT ---
+try:
+    from pydantic_ai import Agent
+    from pydantic_ai.models import AIResponse # Keep if AIResponse is used for hints/processing
+    _PydanticAI_Import_Success = True
+    logging.debug("LLMInteractionManager: Top-level pydantic-ai import successful.")
+except ImportError:
+    logging.error("LLMInteractionManager: Top-level import of pydantic-ai failed.")
+    Agent = None # type: ignore
+    AIResponse = None # type: ignore
+    _PydanticAI_Import_Success = False
+# --- END REVERT ---
+
 # Use TYPE_CHECKING for type hints without runtime imports
 if TYPE_CHECKING:
-    from pydantic_ai import Agent
-    from pydantic_ai.models import AIResponse
+    # These are now potentially defined above, but keep for clarity if needed
+    # or adjust based on actual usage if AIResponse is only used in hints.
+    # If Agent/AIResponse are None above, these hints might cause issues
+    # depending on the type checker. Consider conditional hints if necessary.
+    pass # Keep the block for potential future use or remove if empty
 
 class LLMInteractionManager:
     """
@@ -45,6 +61,15 @@ class LLMInteractionManager:
         logger = logging.getLogger(__name__) # Use specific logger
         logger.debug("Attempting to initialize pydantic-ai Agent...")
 
+        # --- REVERT CHECK ---
+        # Remove internal import logic
+        # Check module-level Agent variable
+        logger.debug(f"Value of module-level Agent before check: {Agent} (Type: {type(Agent)})")
+        if not Agent:
+            logger.error("Cannot initialize agent: pydantic-ai Agent class is None or unavailable (Import failed).")
+            return None
+        # --- END REVERT ---
+
         # Log relevant config values
         logger.debug(f"  Default Model Identifier: {self.default_model_identifier}")
         logger.debug(f"  Base System Prompt: {self.base_system_prompt}")
@@ -58,17 +83,10 @@ class LLMInteractionManager:
 
         if not self.default_model_identifier:
             logger.error("Cannot initialize agent: No default_model_identifier provided or found in config.")
+            logger.error("Cannot initialize agent: No default_model_identifier provided or found in config.")
             return None
 
         try:
-            # Import Agent right before use
-            try:
-                from pydantic_ai import Agent
-                logger.debug("Successfully imported pydantic_ai.Agent inside _initialize_pydantic_ai_agent.")
-            except ImportError as import_err:
-                logger.error(f"Failed to import pydantic_ai within _initialize_pydantic_ai_agent: {import_err}", exc_info=True)
-                return None
-                
             # Basic initialization - assumes model identifier string is sufficient
             # More complex setup (API keys, specific model args) might be needed
             # depending on pydantic-ai's requirements and the config structure.
@@ -81,7 +99,7 @@ class LLMInteractionManager:
             # if api_key:
             #     agent_config['api_key'] = api_key # Adjust key name based on pydantic-ai model needs
 
-            # Call the constructor using the locally imported Agent
+            # Call the constructor using the module-level Agent
             agent = Agent(
                 model=self.default_model_identifier,
                 system_prompt=self.base_system_prompt, # Base prompt set here
@@ -166,7 +184,10 @@ class LLMInteractionManager:
                 logger.debug(f"Calling agent.run_sync with prompt='{prompt[:100]}...' and kwargs={run_kwargs}")
 
             # Call the agent with prompt as positional arg, others as kwargs
-            response = self.agent.run_sync(prompt, **run_kwargs) # type: ignore
+            # --- REVERT HINT ---
+            # Hint using module-level AIResponse (make Optional if needed)
+            response: Optional[AIResponse] = self.agent.run_sync(prompt, **run_kwargs) # type: ignore
+            # --- END REVERT ---
 
             if self.debug_mode:
                 logging.debug(f"Agent response received: {response}")
