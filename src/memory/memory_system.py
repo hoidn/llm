@@ -97,6 +97,10 @@ class MemorySystem:
         # Store with normalized absolute paths
         normalized_index = {os.path.abspath(p): meta for p, meta in index.items()}
 
+        # --- START ADDITION ---
+        logging.debug(f"MemorySystem: Adding/updating keys in global index: {list(normalized_index.keys())}")
+        # --- END ADDITION ---
+
         self.global_index.update(normalized_index)
         logging.debug(
             f"Global index updated with {len(normalized_index)} entries. Total size: {len(self.global_index)}"

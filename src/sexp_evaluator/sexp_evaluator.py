@@ -596,6 +596,10 @@ class SexpEvaluator:
             logging.debug(f"Calling memory_system.get_relevant_context_for with: {context_input}")
             match_result: AssociativeMatchResult = self.memory_system.get_relevant_context_for(context_input)
 
+            # --- START ADDITION ---
+            logging.debug(f"SexpEvaluator: Received match_result from MemorySystem: {match_result}")
+            # --- END ADDITION ---
+
         except Exception as e:
             # Catch errors specifically from the MemorySystem call
             logging.exception(f"MemorySystem.get_relevant_context_for failed: {e}")
