@@ -1,6 +1,7 @@
 import logging
 import os  # Add os import for environment variable checking
 from typing import Any, Dict, List, Optional, Callable, Type, TYPE_CHECKING
+import json
 
 # Define module-level logger
 logger = logging.getLogger(__name__)
@@ -174,6 +175,19 @@ class LLMInteractionManager:
                 "message_history": conversation_history, # Pass history here
                 "system_prompt": current_system_prompt,
             }
+
+            # Log the full prompt and context to a file for debugging
+            try:
+                log_data = {
+                    "system_prompt": current_system_prompt,
+                    "conversation_history": conversation_history,
+                    "prompt": prompt
+                }
+                with open("llm_full_prompt.log", "w") as _f:
+                    _f.write(json.dumps(log_data, indent=2))
+                logger.info("LLM full prompt written to llm_full_prompt.log")
+            except Exception as _e:
+                logger.error(f"Failed to write full LLM prompt to file: {_e}")
             if tools_override:
                 run_kwargs["tools"] = tools_override
                 logging.debug(f"Executing agent call with {len(tools_override)} tools.")
