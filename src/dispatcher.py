@@ -2,36 +2,48 @@
 Dispatcher module responsible for routing programmatic task requests.
 """
 
-import json
+import json # For parsing file_context
 import logging
-from typing import Dict, Any, Optional, List, Union
+from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
-from src.sexp_evaluator.sexp_evaluator import SexpEvaluator
-from src.system.models import TaskResult, SubtaskRequest, TaskFailureError, TaskError, TaskFailureReason
+# Import necessary models and error types
+from src.system.models import (
+    SubtaskRequest, TaskResult, TaskError, TaskFailureError, TaskFailureReason,
+    ContextManagement, TaskFailureDetails # Import TaskFailureDetails
+)
 from src.system.errors import SexpSyntaxError, SexpEvaluationError
-from src.task_system.task_system import TaskSystem # Assuming TaskSystem type hint needed
-from src.handler.base_handler import BaseHandler # Assuming BaseHandler type hint needed
-from src.memory.memory_system import MemorySystem # Assuming MemorySystem type hint needed
+from src.sexp_evaluator.sexp_evaluator import SexpEvaluator # Import SexpEvaluator
+
+# Use TYPE_CHECKING to avoid circular imports at runtime
+if TYPE_CHECKING:
+    from src.handler.base_handler import BaseHandler
+    from src.task_system.task_system import TaskSystem
+    from src.memory.memory_system import MemorySystem
 
 # Helper function to create a standard FAILED TaskResult dictionary
+# FIX 1: Accept TaskFailureDetails object for details
 def _create_failed_result_dict(
     reason: TaskFailureReason,
     message: str,
-    details: Optional[Dict[str, Any]] = None,
-    existing_notes: Optional[Dict[str, Any]] = None # Add parameter for existing notes
+    details_obj: Optional[TaskFailureDetails] = None
 ) -> Dict[str, Any]:
     """
-    Creates a dictionary representing a FAILED TaskResult, merging existing notes.
+    Creates a dictionary representing a FAILED TaskResult.
     """
-    error_obj = TaskFailureError(type="TASK_FAILURE", reason=reason, message=message, details=details or {})
-    # Start with existing notes, then add the error object
-    final_notes = {**(existing_notes or {}), "error": error_obj}
-    task_result = TaskResult(status="FAILED", content=message, notes=final_notes)
-    # Use exclude_none=True to avoid sending null fields if not set
-    return task_result.model_dump(exclude_none=True)
+    # Pass the details_obj directly to TaskFailureError
+    error_obj = TaskFailureError(type="TASK_FAILURE", reason=reason, message=message, details=details_obj)
+    # Use .model_dump() for Pydantic v2 compatibility
+    # Error details are now nested within the error_obj
+    return TaskResult(status="FAILED", content=message, notes={"error": error_obj.model_dump(exclude_none=True)}).model_dump(exclude_none=True)
+
 
 def execute_programmatic_task(
     identifier: str,
+    params: Dict[str, Any],
+    flags: Dict[str, bool], # Changed type hint to bool
+    handler_instance: 'BaseHandler',
+    task_system_instance: 'TaskSystem',
+    memory_system: 'MemorySystem', # Added memory_system dependency
     params: Dict[str, Any],
     flags: Dict[str, Any], # Keep flags for future use, though not used in this phase
     handler_instance: BaseHandler,
