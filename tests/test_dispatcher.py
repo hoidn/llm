@@ -207,9 +207,9 @@ def test_dispatch_handler_tool_execution_error(MockSexpEvaluatorClass, mock_hand
     mock_handler._execute_tool.return_value = failed_tool_result
 
     result = execute_programmatic_task(identifier, params, flags, mock_handler, mock_task_system, mock_memory_system)
-
     assert result['status'] == "FAILED"
-    assert result['content'] == "Tool crashed"
+    # Update assertion to expect the prefixed message
+    assert result['content'] == "Tool Execution Error: Tool crashed"
     assert result['notes']['error']['type'] == "TASK_FAILURE"
     assert result['notes']['error']['reason'] == fail_reason
     assert result['notes']['error']['message'] == "Tool crashed"

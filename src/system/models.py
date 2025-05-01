@@ -117,6 +117,7 @@ class TaskFailureDetails(BaseModel):
     script_stdout: Optional[str] = None
     script_stderr: Optional[str] = None
     script_exit_code: Optional[int] = None
+    notes: Optional[Dict[str, Any]] = None # Added missing notes field
 
 class TaskFailureError(BaseTaskError):
     """Error indicating a general task failure."""
