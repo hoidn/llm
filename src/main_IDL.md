@@ -4,6 +4,7 @@ module src.main {
     # @depends_on(src.memory.memory_system.MemorySystem)
     # @depends_on(src.task_system.task_system.TaskSystem)
     # @depends_on(src.handler.passthrough_handler.PassthroughHandler)
+    # @depends_on(src.handler.file_access.FileAccessManager) // ADDED
     # @depends_on(src.aider_bridge.bridge.AiderBridge)
     # @depends_on(src.memory.indexers.git_repository_indexer.GitRepositoryIndexer)
     # @depends_on(src.executors.aider_executors.AiderExecutorFunctions) // Indirectly via initialize_aider
@@ -16,10 +17,11 @@ module src.main {
         // Preconditions:
         // - config is an optional configuration dictionary.
         // Postconditions:
-        // - Initializes TaskSystem, MemorySystem, and PassthroughHandler instances.
-        // - Establishes necessary dependencies between core components (e.g., MemorySystem gets TaskSystem/Handler refs).
-        // - Registers core task templates (associative_matching, aider metadata, debug) with TaskSystem.
+        // - Initializes FileAccessManager, MemorySystem, TaskSystem, and PassthroughHandler instances.
+        // - Establishes necessary dependencies between core components (e.g., MemorySystem gets TaskSystem/Handler/FileManager refs, TaskSystem gets Handler ref).
+        // - Registers core task templates with TaskSystem, including **two** associative matching templates: "internal:associative_matching_content" and "internal:associative_matching_metadata".
         // - Calls `initialize_aider` to set up AiderBridge and register Aider tools/executors.
+        //   (Note: Aider registration might depend on Handler initialization).
         // - Calls internal `_register_system_tools` to register 'system:get_context' and 'system:read_files' tools and their executor functions using `handler.register_tool(...)`.
         // - Initializes `indexed_repositories` list.
         void __init__(optional dict<string, Any> config);

@@ -129,26 +129,6 @@ module src.task_system.task_system {
         // - May perform additional processing or validation before returning the template.
         optional dict<string, Any> find_template(string identifier);
 
-        // Generates context for the Memory System using an associative matching template.
-        // Preconditions:
-        // - context_input is a ContextGenerationInput object containing query information.
-        // - global_index is a dictionary mapping file paths to metadata strings.
-        // Expected JSON format for context_input: ContextGenerationInput structure { "query": "string", ... }
-        // Expected JSON format for global_index: { "file_path": "metadata_string", ... }
-        // Postconditions:
-        // - Returns an AssociativeMatchResult object containing matched files and a context summary.
-        // - Returns an error result if context generation fails.
-        // Behavior:
-        // - Finds the internal associative_matching template.
-        // - Creates a SubtaskRequest with the context_input and global_index as inputs.
-        // - Calls execute_atomic_template with this request.
-        // - Parses the TaskResult to extract the AssociativeMatchResult.
-        // - Handles potential errors during template execution or result parsing.
-        // @raises_error(condition="TEMPLATE_NOT_FOUND", description="Handled internally, returns error result.")
-        // @raises_error(condition="EXECUTION_ERROR", description="Handled internally, returns error result.")
-        // @raises_error(condition="PARSING_ERROR", description="Handled internally, returns error result.")
-        // Returns: AssociativeMatchResult object
-        object generate_context_for_memory_system(object context_input, dict<string, string> global_index); // First arg represents ContextGenerationInput
 
         // Resolves file paths for a template execution based on various sources.
         // Preconditions:

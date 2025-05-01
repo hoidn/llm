@@ -177,7 +177,7 @@ const SUBTASK_CONTEXT_DEFAULTS: ContextManagement = {
 /**
  * Input structure for Memory System context requests.
  * Used by TaskSystem and SexpEvaluator to request context.
- * [Type:System:ContextGenerationInput:4.0] // Kept version 4.0 as it matched
+ * [Type:System:ContextGenerationInput:5.0] // Incremented version
  */
 interface ContextGenerationInput {
     /** Optional: Template description */
@@ -197,6 +197,13 @@ interface ContextGenerationInput {
     inheritedContext?: string;
     /** Optional: String summarizing accumulated outputs from previous steps */
     previousOutputs?: string;
+
+    /**
+     * Optional: Strategy for associative matching. Defaults to 'content' if omitted.
+     * 'content': Retrieve full file content for LLM analysis (default).
+     * 'metadata': Use pre-generated metadata strings for LLM analysis.
+     */
+    matching_strategy?: 'content' | 'metadata';
 }
 ```
 

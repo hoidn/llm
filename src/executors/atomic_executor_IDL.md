@@ -19,7 +19,9 @@ module src.executors.atomic_executor {
         // Executes the body of a pre-parsed atomic task template.
         // Preconditions:
         // - atomic_task_def is a representation of the parsed atomic task XML (e.g., a dictionary or object).
-        // - params is a dictionary mapping declared input parameter names (from template's <inputs>) to their evaluated values (from SubtaskRequest).
+        // - params is a dictionary mapping declared input parameter names (from template's `params` definition)
+        //   to their evaluated values (from SubtaskRequest). Values can be simple types or complex objects/dictionaries
+        //   (e.g., ContextGenerationInput dict, file content dict/string).
         // - handler is a valid BaseHandler instance to use for LLM execution.
         // Postconditions:
         // - Returns a TaskResult dictionary representing the outcome of the atomic task execution (typically from the Handler call).

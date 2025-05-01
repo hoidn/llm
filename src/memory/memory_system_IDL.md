@@ -1,8 +1,9 @@
 // == !! BEGIN IDL TEMPLATE !! ===
 module src.memory.memory_system {
 
-    # @depends_on(src.handler.base_handler.BaseHandler) // For context generation LLM calls
-    # @depends_on(src.task_system.task_system.TaskSystem) // For mediating context generation
+    # @depends_on(src.handler.base_handler.BaseHandler) // For invoking tasks via TaskSystem
+    # @depends_on(src.task_system.task_system.TaskSystem) // For executing matching tasks
+    # @depends_on(src.handler.file_access.FileAccessManager) // For reading file content
     # @depends_on(src.memory.indexers.git_repository_indexer.GitRepositoryIndexer) // For indexing repos
 
     // Interface for the Memory System. Manages file metadata and context retrieval.
@@ -10,15 +11,16 @@ module src.memory.memory_system {
 
         // Constructor: Initializes the Memory System.
         // Preconditions:
-        // - handler is an optional BaseHandler instance (required for context generation).
-        // - task_system is an optional TaskSystem instance (required for context generation mediation).
+        // - handler is a valid BaseHandler instance.
+        // - task_system is a valid TaskSystem instance.
+        // - file_access_manager is a valid FileAccessManager instance.
         // - config is an optional dictionary for sharding parameters and other settings.
         // Postconditions:
         // - MemorySystem is initialized with an empty global index (`global_index`).
-        // - References to handler and task_system are stored.
+        // - References to handler, task_system, and file_access_manager are stored.
         // - Sharding configuration (`_config`) is initialized with defaults or values from config.
         // - Sharded index (`_sharded_index`) is initialized as an empty list.
-        void __init__(optional object handler, optional object task_system, optional dict<string, Any> config); // Args represent BaseHandler, TaskSystem
+        void __init__(object handler, object task_system, object file_access_manager, optional dict<string, Any> config); // Args represent BaseHandler, TaskSystem, FileAccessManager
 
         // Retrieves the current global file metadata index.
         // Preconditions: None.
@@ -28,7 +30,7 @@ module src.memory.memory_system {
 
         // Updates the global file metadata index with new entries.
         // Preconditions:
-        // - index is a dictionary mapping file paths to metadata strings.
+        // - index is a dictionary mapping absolute file paths to metadata strings. Metadata is used for the 'metadata' matching strategy.
         // - File paths in the index MUST be absolute paths (validation performed).
         // Postconditions:
         // - Entries from the input `index` are added to or update the internal `global_index`.
@@ -54,56 +56,34 @@ module src.memory.memory_system {
 
         // Retrieves relevant context using a specific description string for matching, bypassing the main query.
         // Deprecated or less common way to get context. `get_relevant_context_for` is preferred.
-        // Preconditions:
-        // - query is the main task query string (potentially used for logging/metadata but not matching).
-        // - context_description is the string to be used for the associative matching process.
-        // Postconditions:
-        // - Returns an AssociativeMatchResult object.
-        // Behavior:
-        // - Constructs a simple input dictionary using `context_description` as the 'taskText'.
-        // - Calls `get_relevant_context_for` with this constructed input.
-        // [NEW Emphasis] Note: This is a **less common** way to retrieve context, primarily using a simple description string for matching.
-        // **`get_relevant_context_for` is generally preferred** as it handles richer input (`ContextGenerationInput`)
-        // and integrates with the TaskSystem mediation layer. This method might be useful in specific scenarios
-        // where only a simple descriptive string is available and the full context generation input cannot be constructed,
-        // but its use should be limited. Consider if using `get_relevant_context_for` with the description
-        // placed in the `query` field of `ContextGenerationInput` would be more appropriate.
-        // Returns: AssociativeMatchResult object
+        // Behavior: Constructs a ContextGenerationInput with the description as the query and calls get_relevant_context_for.
+        // Returns: AssociativeMatchResult object.
         object get_relevant_context_with_description(string query, string context_description);
 
-        // Retrieves relevant context for a task, mediating through the TaskSystem.
+        // Retrieves relevant context for a task, orchestrating content/metadata retrieval and LLM analysis.
         // This is the primary method for context retrieval.
         // Preconditions:
-        // - input_data is either a legacy dictionary (containing 'taskText') or a ContextGenerationInput object.
-        // - The TaskSystem dependency must be available and correctly configured.
+        // - input_data is a valid ContextGenerationInput object (v5.0 or later).
+        // - TaskSystem and FileAccessManager dependencies must be available.
         // Postconditions:
         // - Returns an AssociativeMatchResult object containing the context summary and a list of MatchTuple objects (path, relevance, score).
-        // - Returns an error result if TaskSystem is unavailable or context generation fails.
+        // - Returns an error result if dependencies are unavailable, pre-filtering/reading fails, or the LLM task fails.
         // Behavior:
-        // - Converts legacy dictionary input to ContextGenerationInput if necessary.
-        // - Checks if fresh context is disabled; if so, returns inherited context.
-        // - If sharding is enabled and applicable, processes shards in parallel using `_process_single_shard`, then aggregates results.
-        // - If sharding is disabled or not applicable, calls `_get_relevant_context_with_mediator`.
-        // - The mediator method (`_get_relevant_context_with_mediator`) delegates the actual context generation (LLM call) to `TaskSystem.generate_context_for_memory_system`.
-        // Behavior:
-        // - Receives a `ContextGenerationInput` object.
-        // - **Determines Match Query:** Prioritizes `input_data.query` if present (typically from Sexp `get_context`). If `query` is absent, uses `input_data.templateDescription` and relevant `input_data.inputs` (typically from TaskSystem calling for a template).
-        // - Checks if fresh context is effectively disabled based on other context factors (e.g., if only `inheritedContext` is provided and no fresh lookup needed based on task settings - logic handled by caller like TaskSystem, MemorySystem just performs match if asked).
-        // - Performs associative matching against the `global_index` using the determined match query and potentially `input_data.inheritedContext` / `input_data.previousOutputs` as additional signals.
-        // - If sharding is enabled and applicable, processes shards in parallel using `_process_single_shard`, then aggregates results.
-        // - If sharding is disabled or not applicable, calls `_get_relevant_context_with_mediator` (delegating actual LLM call for summary to TaskSystem if needed).
-        // - Handles exceptions during context generation.
-        // - Returns an AssociativeMatchResult object.
-        // This method is invoked by the `SexpEvaluator` when processing the `(get_context ...)` S-expression primitive, and by TaskSystem when preparing context for `execute_atomic_template`.
-        // [NEW Emphasis] Note: This is the **primary method** for retrieving context based on task requirements or explicit queries.
-        // It is designed to be called by components like the `TaskSystem` (when preparing context for template execution)
-        // and the `SexpEvaluator` (when handling the `(get_context ...)` primitive).
-        // It handles potential sharding and mediation via the TaskSystem for summary generation if required.
-        // @raises_error(condition="TASK_FAILURE", reason="dependency_error", description="Handled internally, returns error result if TaskSystem is unavailable.")
+        // 1. Determines the matching strategy ('content' default, or 'metadata' from input_data.matching_strategy).
+        // 2. Determines the query string from input_data.
+        // 3. (Optional) Performs pre-filtering on stored file paths based on query to get candidate_paths.
+        // 4. If strategy is 'content': Reads full content for candidate_paths using FileAccessManager. Packages content into `inputs_for_llm = {"context_input":..., "file_contents": ...}`. Sets task name to "internal:associative_matching_content".
+        // 5. If strategy is 'metadata': Retrieves metadata for candidate_paths from internal index. Packages metadata into `inputs_for_llm = {"context_input":..., "metadata_snippet": ...}`. Sets task name to "internal:associative_matching_metadata".
+        // 6. Handles potential sharding of content/metadata if applicable (details TBD).
+        // 7. Creates a SubtaskRequest with the determined task name and inputs_for_llm. Sets context management to disable fresh context fetching within the LLM task.
+        // 8. Calls `task_system.execute_atomic_template(request)`.
+        // 9. Parses the AssociativeMatchResult from the returned TaskResult.
+        // 10. Returns the AssociativeMatchResult.
+        // @raises_error(condition="TASK_FAILURE", reason="dependency_error", description="Handled internally, returns error result if TaskSystem or FileAccessManager is unavailable.")
         // @raises_error(condition="CONTEXT_RETRIEVAL_FAILURE", description="Handled internally, returns error result.")
-        // Expected JSON format for legacy input_data: { "taskText": "string", ... }
+        // Expected JSON format for input_data: ContextGenerationInput v5.0 structure.
         // Returns: AssociativeMatchResult object.
-        object get_relevant_context_for(object input_data); // Arg represents updated ContextGenerationInput
+        object get_relevant_context_for(object input_data); // Arg represents ContextGenerationInput v5.0
 
         // Indexes a Git repository and updates the global index.
         // Preconditions:
@@ -124,5 +104,8 @@ module src.memory.memory_system {
         // - `global_index` is always a dictionary.
         // - `_sharded_index` is always a list of dictionaries if sharding is enabled and index updated.
     };
+
+    // Removed: generate_context_for_memory_system (Absorbed into get_relevant_context_for)
+
 };
 // == !! END IDL TEMPLATE !! ===
