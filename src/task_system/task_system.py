@@ -328,7 +328,7 @@ class TaskSystem:
             An AssociativeMatchResult object.
         """
         logging.info("Generating context for Memory System via internal task.")
-        matching_template_id = "atomic:associative_matching"
+        matching_template_id = "internal:associative_matching"
         matching_template = self.find_template(matching_template_id)
 
         if not matching_template:

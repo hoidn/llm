@@ -120,8 +120,16 @@ Based only on the provided query and index metadata, determine the most relevant
                     # "model": "anthropic:claude-3-haiku-latest",
                     "output_format": {"type": "json"} # Expecting JSON output
                 }
-                self.task_system.register_template(assoc_matching_template)
-                logger.info(f"Registered template: {assoc_matching_template['name']}")
+                try:
+                    success = self.task_system.register_template(assoc_matching_template)
+                    if success:
+                        logger.info(f"Successfully registered template: {assoc_matching_template['name']}")
+                    else:
+                        # This path might be hit if registry validation fails silently
+                        logger.error(f"Failed to register template (returned False): {assoc_matching_template['name']}")
+                except Exception as reg_err:
+                     # Catch errors raised by registry validation
+                     logger.error(f"Error during template registration for {assoc_matching_template['name']}: {reg_err}")
                 # Add other core templates if needed here...
             except Exception as e:
                 logger.exception(f"Failed to register core templates: {e}")
