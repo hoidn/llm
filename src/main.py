@@ -95,7 +95,7 @@ class Application:
                     "description": "Internal task to find relevant files based on query and index.",
                     "params": {
                         "context_input": { "description": "Input query/context details (as dict)" }
-                        // Removing global_index from params as we won't pass it in prompt
+                        # Removing global_index from params as we won't pass it in prompt
                     },
                     # This is where the LLM instructions go.
                     "instructions": """Analyze the user query: '{{context_input.query}}'.
