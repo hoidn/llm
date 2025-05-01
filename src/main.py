@@ -94,8 +94,8 @@ class Application:
                     "subtype": "associative_matching", # Use the specific subtype
                     "description": "Internal task to find relevant files based on query and index.",
                     "params": {
-                        "context_input": {"description": "ContextGenerationInput object as dict"},
-                        "global_index": {"description": "Dictionary of file paths to metadata"}
+                        "context_input": {"description": "Input query/context details (as dict)"},
+                        "global_index": {"description": "File index (as dict)"}
                     },
                     # This is where the LLM instructions go.
                     "instructions": """Analyze the user query and context provided in 'context_input'.
