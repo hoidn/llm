@@ -178,6 +178,175 @@ Metadata management and context retrieval component.
 
 See [Contract:Integration:TaskMemory:3.0] for memory integration specification.
 
+## High-Level Interaction Flows
+
+This section outlines the typical sequence of component interactions for key system operations, starting from the `Application` layer.
+
+### 1. Handling a Natural Language Query (`Application.handle_query`)
+
+This flow describes how a simple user query is processed in passthrough mode.
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant App as Application
+    participant Handler as PassthroughHandler
+    participant FCM as FileContextManager
+    participant MS as MemorySystem
+    participant FAM as FileAccessManager
+    participant LLMM as LLMInteractionManager
+    participant LLM as pydantic-ai Agent
+
+    User->>App: handle_query(query)
+    App->>Handler: handle_query(query)
+    Handler->>FCM: get_relevant_files(query)
+    FCM->>MS: get_relevant_context_for(input)
+    MS-->>FCM: AssociativeMatchResult (paths)
+    FCM-->>Handler: relevant_file_paths
+    Handler->>FCM: create_file_context(paths)
+    FCM->>FAM: read_file(path1)
+    FAM-->>FCM: content1
+    FCM->>FAM: read_file(path2)
+    FAM-->>FCM: content2
+    FCM-->>Handler: formatted_context_string
+    Handler->>Handler: _build_system_prompt(...)
+    Handler->>LLMM: execute_call(prompt=query, history, system_prompt, ...)
+    LLMM->>LLM: run_sync(...)
+    LLM-->>LLMM: LLM Response
+    LLMM-->>Handler: Formatted Result (dict)
+    Handler->>Handler: Update History
+    Handler-->>App: TaskResult
+    App-->>User: TaskResult (dict)
+```
+
+**Steps:**
+
+1.  User sends query to `Application.handle_query`.
+2.  `Application` delegates to `PassthroughHandler.handle_query`.
+3.  `Handler` calls `FileContextManager.get_relevant_files` (inherited via `BaseHandler._get_relevant_files`).
+4.  `FileContextManager` calls `MemorySystem.get_relevant_context_for` to find relevant file paths based on the query.
+5.  `MemorySystem` returns paths in an `AssociativeMatchResult`.
+6.  `Handler` calls `FileContextManager.create_file_context` (inherited via `BaseHandler._create_file_context`).
+7.  `FileContextManager` uses `FileAccessManager` to read the content of the relevant files.
+8.  `FileContextManager` returns a formatted string containing the file content.
+9.  `Handler` builds the final system prompt using `BaseHandler._build_system_prompt`.
+10. `Handler` calls `LLMInteractionManager.execute_call` (inherited via `BaseHandler._execute_llm_call`), passing the user query, conversation history, system prompt, etc.
+11. `LLMInteractionManager` interacts with the configured `pydantic-ai` Agent.
+12. `LLMInteractionManager` processes the response and returns a structured result dictionary to the `Handler`.
+13. `Handler` updates its internal conversation history.
+14. `Handler` returns the final `TaskResult` to `Application`.
+15. `Application` returns the result dictionary to the caller.
+
+### 2. Handling a Programmatic Task Command (`Application.handle_task_command`)
+
+This flow describes how commands (like S-expressions or direct task/tool IDs) are executed.
+
+#### 2a. S-Expression Workflow
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant App as Application
+    participant Dispatcher
+    participant SexpEval as SexpEvaluator
+    participant SexpEnv as SexpEnvironment
+    participant MS as MemorySystem
+    participant TS as TaskSystem
+    participant Handler as BaseHandler
+
+    User->>App: handle_task_command(sexp_string, ...)
+    App->>Dispatcher: execute_programmatic_task(sexp_string, ...)
+    Dispatcher->>SexpEval: evaluate_string(sexp_string)
+    SexpEval->>SexpEval: Parse S-expression
+    SexpEval->>SexpEnv: Create/Lookup Environment
+    Note over SexpEval, SexpEnv: Recursive Evaluation (_eval)
+    alt Primitive Call (e.g., get_context)
+        SexpEval->>MS: get_relevant_context_for(...)
+        MS-->>SexpEval: Result (e.g., paths)
+    else Task Invocation (e.g., (call my-task ...))
+        SexpEval->>TS: execute_atomic_template(...)
+        TS-->>SexpEval: TaskResult
+    else Tool Invocation (e.g., (system:read_files ...))
+        SexpEval->>Handler: _execute_tool(...)
+        Handler-->>SexpEval: TaskResult
+    end
+    SexpEval-->>Dispatcher: Final Result (Any)
+    Dispatcher->>Dispatcher: Format as TaskResult if needed
+    Dispatcher-->>App: TaskResult (dict)
+    App-->>User: TaskResult (dict)
+```
+
+**Steps:**
+
+1.  User sends S-expression string via `Application.handle_task_command`.
+2.  `Application` delegates to `Dispatcher.execute_programmatic_task`.
+3.  `Dispatcher` identifies the input as an S-expression and calls `SexpEvaluator.evaluate_string`.
+4.  `SexpEvaluator` parses the string and begins recursive evaluation (`_eval`) using `SexpEnvironment` for variable scope.
+5.  During evaluation:
+    *   **Special Forms** (`let`, `if`, `quote`, etc.) manipulate the environment or control flow.
+    *   **Primitives** (`get_context`, `list`, etc.) execute built-in logic, potentially calling other components like `MemorySystem`.
+    *   **Task/Tool Invocations** (`(call task-name ...)` or `(tool-name ...)`):
+        *   `SexpEvaluator` resolves arguments.
+        *   It calls `TaskSystem.execute_atomic_template` for atomic tasks OR `Handler._execute_tool` for direct tools.
+        *   The called component executes the task/tool (potentially involving `AtomicTaskExecutor`, `Handler`, `LLMInteractionManager` as in Flow 1 for atomic tasks).
+        *   The `TaskResult` is returned to `SexpEvaluator`.
+6.  `SexpEvaluator` returns the final value of the S-expression to the `Dispatcher`.
+7.  `Dispatcher` formats the result into a standard `TaskResult` dictionary if necessary.
+8.  `Dispatcher` returns the result dictionary to `Application`.
+9.  `Application` returns the result dictionary to the caller.
+
+#### 2b. Direct Task/Tool Invocation
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant App as Application
+    participant Dispatcher
+    participant TS as TaskSystem
+    participant Handler as BaseHandler
+    participant Executor as AtomicTaskExecutor
+
+    User->>App: handle_task_command(identifier, params, ...)
+    App->>Dispatcher: execute_programmatic_task(identifier, params, ...)
+    Dispatcher->>TS: find_template(identifier)
+    alt Template Found
+        TS-->>Dispatcher: Template Definition
+        Dispatcher->>TS: execute_atomic_template(SubtaskRequest(params))
+        TS->>Executor: execute_body(template_def, params, handler_instance)
+        Executor->>Handler: _execute_llm_call(...)
+        Handler-->>Executor: TaskResult
+        Executor-->>TS: TaskResult
+        TS-->>Dispatcher: TaskResult
+    else Tool Found
+        Dispatcher->>Handler: tool_executors[identifier](params)
+        Handler-->>Dispatcher: Tool Result (dict/TaskResult)
+        Dispatcher->>Dispatcher: Format as TaskResult if needed
+    else Not Found
+        Dispatcher-->>Dispatcher: Create FAILED TaskResult
+    end
+    Dispatcher-->>App: TaskResult (dict)
+    App-->>User: TaskResult (dict)
+```
+
+**Steps:**
+
+1.  User sends task/tool identifier and parameters via `Application.handle_task_command`.
+2.  `Application` delegates to `Dispatcher.execute_programmatic_task`.
+3.  `Dispatcher` attempts to find an atomic template in `TaskSystem` using `find_template`.
+4.  **If Template Found:**
+    *   `Dispatcher` creates a `SubtaskRequest` with the parameters.
+    *   `Dispatcher` calls `TaskSystem.execute_atomic_template`.
+    *   `TaskSystem` prepares context, instantiates `AtomicTaskExecutor`, and calls `execute_body`.
+    *   `AtomicTaskExecutor` performs parameter substitution and calls `Handler._execute_llm_call`.
+    *   The `Handler` (via `LLMInteractionManager`) interacts with the LLM.
+    *   The `TaskResult` propagates back up through `Executor` and `TaskSystem` to the `Dispatcher`.
+5.  **If Template Not Found:**
+    *   `Dispatcher` looks up the identifier in `Handler.tool_executors`.
+    *   **If Tool Found:** `Dispatcher` calls the registered executor function directly with the parameters. The executor function runs (e.g., `SystemExecutorFunctions.execute_read_files` calls `FileAccessManager`). The result is returned to `Dispatcher`, which formats it as a `TaskResult` if needed.
+    *   **If Tool Not Found:** `Dispatcher` creates a FAILED `TaskResult`.
+6.  `Dispatcher` returns the final `TaskResult` dictionary to `Application`.
+7.  `Application` returns the result dictionary to the caller.
+
 ## Component Integration
 
 ### Core Integration Patterns
