@@ -1,19 +1,11 @@
 import logging
 import os  # Add os import for environment variable checking
-from typing import Any, Dict, List, Optional, Callable, Type
+from typing import Any, Dict, List, Optional, Callable, Type, TYPE_CHECKING
 
-# Import pydantic-ai components - adjust imports based on actual pydantic-ai structure
-try:
+# Use TYPE_CHECKING for type hints without runtime imports
+if TYPE_CHECKING:
     from pydantic_ai import Agent
-    from pydantic_ai.models import AIResponse # Example, might be different
-    # Import specific model classes if needed for type checking or direct instantiation
-    # from pydantic_ai.models import OpenAIModel, AnthropicModel
-    _PydanticAI_Import_Success = True
-except ImportError:
-    logging.error("Top-level import of pydantic-ai failed.")
-    Agent = None # type: ignore
-    AIResponse = None # type: ignore
-    _PydanticAI_Import_Success = False
+    from pydantic_ai.models import AIResponse
 
 class LLMInteractionManager:
     """
@@ -38,52 +30,20 @@ class LLMInteractionManager:
         self.default_model_identifier = default_model_identifier or self.config.get("default_model_identifier")
         self.base_system_prompt = self.config.get("base_system_prompt", "You are a helpful assistant.")
         self.debug_mode = False
-        self.agent: Optional[Agent] = self._initialize_pydantic_ai_agent()
+        self.agent: Optional[Any] = self._initialize_pydantic_ai_agent()
 
         if self.agent:
             logging.info(f"LLMInteractionManager initialized with agent for model: {self.default_model_identifier}")
         else:
             logging.warning("LLMInteractionManager initialized, but pydantic-ai agent creation failed.")
 
-    def _initialize_pydantic_ai_agent(self) -> Optional[Agent]:
+    def _initialize_pydantic_ai_agent(self) -> Optional[Any]:
         """
         Initializes the pydantic-ai Agent instance.
         (Implementation deferred to Phase 1B - Now Implemented)
         """
         logger = logging.getLogger(__name__) # Use specific logger
         logger.debug("Attempting to initialize pydantic-ai Agent...")
-
-        # --- START MODIFICATION ---
-        # Use a local variable for the class check and instantiation
-        AgentClass = None
-        if _PydanticAI_Import_Success:
-            # Try to use the potentially already imported Agent
-            if 'Agent' in globals() and globals()['Agent'] is not None:
-                AgentClass = globals()['Agent']
-                logger.debug("Using Agent class from initial top-level import.")
-            else:
-                # Fallback: Explicitly try importing again if top-level failed/was None
-                try:
-                    from pydantic_ai import Agent as AgentCheck
-                    if AgentCheck is None:
-                        logger.error("Explicit import check resulted in None.")
-                    else:
-                        AgentClass = AgentCheck
-                        logger.debug("Using Agent class from explicit import check.")
-                except ImportError as import_err:
-                    logger.error(f"Explicit import check failed: {import_err}", exc_info=True)
-        else:
-            logger.error("Cannot proceed with agent init, top-level import failed.")
-            return None
-
-        # Log the state of AgentClass right before the check
-        logger.debug(f"Value of AgentClass before check: {AgentClass} (Type: {type(AgentClass)})")
-
-        # Check if AgentClass is actually available *before* calling constructor
-        if not AgentClass:
-            logger.error("Cannot initialize agent: Resolved pydantic-ai Agent class is None or unavailable.")
-            return None
-        # --- END MODIFICATION ---
 
         # Log relevant config values
         logger.debug(f"  Default Model Identifier: {self.default_model_identifier}")
@@ -101,6 +61,14 @@ class LLMInteractionManager:
             return None
 
         try:
+            # Import Agent right before use
+            try:
+                from pydantic_ai import Agent
+                logger.debug("Successfully imported pydantic_ai.Agent inside _initialize_pydantic_ai_agent.")
+            except ImportError as import_err:
+                logger.error(f"Failed to import pydantic_ai within _initialize_pydantic_ai_agent: {import_err}", exc_info=True)
+                return None
+                
             # Basic initialization - assumes model identifier string is sufficient
             # More complex setup (API keys, specific model args) might be needed
             # depending on pydantic-ai's requirements and the config structure.
@@ -113,8 +81,8 @@ class LLMInteractionManager:
             # if api_key:
             #     agent_config['api_key'] = api_key # Adjust key name based on pydantic-ai model needs
 
-            # Use the local variable AgentClass for the constructor call
-            agent = AgentClass(
+            # Call the constructor using the locally imported Agent
+            agent = Agent(
                 model=self.default_model_identifier,
                 system_prompt=self.base_system_prompt, # Base prompt set here
                 # tools=... # Tools are typically passed per-call or registered differently
@@ -168,6 +136,13 @@ class LLMInteractionManager:
                 "error": Optional[str] # Error message if success is False
             }
         """
+        # Import needed types here
+        try:
+            from pydantic_ai.models import AIResponse
+        except ImportError:
+            logging.error("Failed to import pydantic_ai response type in execute_call.")
+            return {"success": False, "error": "Pydantic-AI type import failed."}
+            
         if not self.agent:
             logging.error("Cannot execute LLM call: Agent is not initialized.")
             return {"success": False, "error": "LLM Agent not initialized."}
@@ -197,7 +172,7 @@ class LLMInteractionManager:
                 logging.debug(f"Calling agent.run_sync with args: {agent_args}")
 
             # Call the agent (synchronously for now)
-            response: AIResponse = self.agent.run_sync(**agent_args) # type: ignore
+            response = self.agent.run_sync(**agent_args)
 
             if self.debug_mode:
                 logging.debug(f"Agent response received: {response}")

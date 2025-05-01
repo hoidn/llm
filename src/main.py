@@ -5,18 +5,6 @@ Initializes and wires together the core components (MemorySystem, TaskSystem, Ha
 and provides top-level methods for interacting with the system.
 """
 
-# ---- START TEST IMPORT ----
-try:
-    from pydantic_ai import Agent as PydanticAgentCheck
-    if PydanticAgentCheck:
-        print("##### DEBUG: Successfully imported pydantic_ai.Agent in main.py #####")
-    else:
-        print("##### DEBUG: Imported pydantic_ai.Agent in main.py but it is None/Falsey #####")
-except ImportError as main_import_err:
-    print(f"##### DEBUG: FAILED to import pydantic_ai.Agent in main.py: {main_import_err} #####")
-    # Optionally re-raise or sys.exit if this is critical path
-# ---- END TEST IMPORT ----
-
 import os
 import sys
 import logging
