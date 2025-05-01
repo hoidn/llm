@@ -108,6 +108,7 @@ the goal is a clear, language- and UI-agnostic **specification (SPEC)** that def
     *   **syntax:** Use comment lines within the method's documentation block.
         `// @raises_error(condition="UniqueErrorCode", description="Explanation of when this error occurs.")`
     *   **purpose:** To standardize the reporting of specific failure modes beyond simple success/failure, making the contract more precise. `condition` should be a stable identifier.
+    Note: While `@raises_error` documents potential exceptions, the project's [Error Handling Philosophy](./system/architecture/overview.md#error-handling-philosophy) prefers returning FAILED `TaskResult` objects for recoverable errors where feasible.
 
 **iii. code-to-idl reduction guidelines**
 

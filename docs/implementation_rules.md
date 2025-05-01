@@ -199,12 +199,58 @@ This document outlines the standard conventions, patterns, and rules for impleme
     *   **Less Brittle Assertions:** Where possible, write assertions that test the *behavioral outcome* rather than being rigidly tied to the exact constant value. For example, instead of `assert len(results) == 5` (which depends on the threshold), assert that the *highest-scoring* result is the expected one and that its score is *above* the threshold, or that other specific items are *below* it.
     *   **Review Tests on Change:** If you modify a constant or configuration value that affects logic flow or thresholds in the production code, make it a practice to search for and review tests that might be impacted by this change. Update assertions accordingly.
 
+*   **7.x Testing Error Conditions:** When writing tests (`pytest`) to verify error handling logic:
+    *   **Verify Status:** Always assert the overall status is `FAILED` (e.g., `assert result['status'] == 'FAILED'`).
+    *   **Prefer Asserting Type/Reason:** Instead of matching exact error message strings, prioritize asserting the `type` and `reason` fields within the structured error object found in `notes['error']`. This verifies the correct error *category* was identified.
+        ```python
+        assert result['notes']['error']['type'] == 'TASK_FAILURE'
+        assert result['notes']['error']['reason'] == 'template_not_found'
+        ```
+    *   **Check Key Details:** Assert the presence and validity of essential data within the error `details` object/dictionary if the test scenario requires specific details to be preserved.
+        ```python
+        assert 'details' in result['notes']['error']
+        assert result['notes']['error']['details']['failing_param'] == 'expected_value'
+        ```
+    *   **Use Message Checks Sparingly:** If checking the error message string is necessary:
+        *   Prefer checking for the presence of key *substrings* (`assert 'important part' in error_message`) over exact equality (`==`), as formatting might change slightly.
+        *   If exact equality is required, consider defining the expected error message format using shared constants or helpers used by both production code and tests to avoid drift.
+    *   **Test Exception Raising:** If testing code that *raises* an exception (as documented in IDL `@raises_error`), use `pytest.raises`:
+        ```python
+        import pytest
+        from src.system.errors import SpecificError # Replace with actual error type
+
+        with pytest.raises(SpecificError) as exc_info:
+            component.method_that_raises(invalid_input)
+        # Optionally assert specific attributes of the caught exception
+        assert "specific detail" in str(exc_info.value)
+        ```
+
 **8. Error Handling**
 
 *   Use custom exception classes defined in `src.system.errors` (like `TaskError`) where appropriate for application-specific errors.
 *   Catch specific exceptions rather than generic `Exception`.
 *   Provide informative error messages.
 *   Format errors into the standard `TaskResult` structure (`status: "FAILED"`, details in `content`/`notes`) at the appropriate boundary (e.g., in the Dispatcher, Handler, or Evaluator error handling).
+*   Adhere to the project's [Error Handling Philosophy](../system/architecture/overview.md#error-handling-philosophy) regarding returning FAILED `TaskResult` vs. raising exceptions.
+*   **8.x Consistent Error Formatting in Orchestrators:** Components responsible for calling other components and orchestrating workflows (e.g., `Dispatcher`, `SexpEvaluator`, `TaskSystem` when calling executors) MUST implement a consistent mechanism for handling both raised exceptions and returned FAILED `TaskResult` objects from their dependencies.
+    *   Use dedicated internal helper functions (like `_create_failed_result_dict` used in `Dispatcher`) to standardize the creation of FAILED `TaskResult` dictionaries.
+    *   Ensure these helpers correctly populate the `notes['error']` field with a structured error object/dictionary (e.g., based on `TaskFailureError`), preserving details from the original error where possible.
+    *   Apply this consistent formatting mechanism uniformly across all error paths within the orchestrator (e.g., in `try...except` blocks and when processing returned FAILED statuses) before returning the final `TaskResult` to the orchestrator's own caller. This ensures uniform error reporting structure regardless of how the error originated in a dependency.
+*   **8.y Defensive Handling of Returned Data Structures:** When receiving complex data structures (especially dictionaries or objects like `TaskResult` containing variant or optional fields like `notes['error']`) returned from other components or external sources (even after initial parsing/validation):
+    *   Perform defensive checks using `isinstance()` or `dict.get()` with defaults before accessing nested attributes or keys.
+    *   Do not assume the structure perfectly matches expectations, especially for fields that can hold different types (e.g., `notes['error']` might contain a `TaskFailureError` object or a dictionary representation) or optional fields that might be absent.
+    *   Example:
+        ```python
+        # Instead of directly accessing: details = result.notes['error']['details']
+        error_info = result.notes.get('error')
+        details = None
+        if isinstance(error_info, TaskFailureError):
+            details = error_info.details
+        elif isinstance(error_info, dict):
+            details = error_info.get('details')
+        # Now safely use 'details' if it's not None
+        ```
+    *   This practice prevents common `AttributeError` or `KeyError` exceptions during result processing and makes the code more resilient to variations in returned data.
 
 **9. IDL to Python Implementation**
 
@@ -248,3 +294,21 @@ When implementing components that parse and evaluate Domain-Specific Languages o
 *   **11.5. Ensure Contextual Error Reporting:**
     *   Design error handling (`raise` statements, exception messages) to pinpoint the semantic source of the error as accurately as possible (e.g., "Undefined function 'foo' in expression (foo 1)" is better than "Type error processing arguments").
     *   Include relevant context in error messages, such as the specific expression or node being processed when the error occurred.
+
+**12. Data Merging Conventions**
+
+When merging data from multiple sources (e.g., configuration layers, default values, runtime parameters, results from different components), the code MUST clearly implement the intended precedence rules.
+
+*   **Document Precedence:** Briefly document the merging logic and precedence rules in comments or docstrings where the merge occurs.
+*   **Establish Conventions:** For common merging scenarios, establish a project convention. For example:
+    *   **Status Notes Merging:** When an orchestrator (like `Dispatcher` or `TaskSystem`) receives a `TaskResult` from a called component, the notes from the *component's result* typically take precedence over any default or contextual notes generated by the orchestrator itself for that specific operation.
+*   **Implement Correctly:** Ensure the code implements the desired precedence. For dictionary merging where `component_data` should overwrite `orchestrator_defaults` on key collision:
+    ```python
+    # Correct precedence: component_data overwrites orchestrator_defaults
+    final_data = orchestrator_defaults.copy()
+    final_data.update(component_data)
+
+    # Incorrect precedence (defaults overwrite component data):
+    # final_data = component_data.copy()
+    # final_data.update(orchestrator_defaults) # Avoid this if component data is primary
+    ```
