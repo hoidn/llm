@@ -1,5 +1,6 @@
 import logging
 import os
+import json
 from typing import Any, Dict, List, Optional, Callable, Type
 
 # Import Phase 0 components
@@ -237,6 +238,21 @@ class BaseHandler:
             A TaskResult object representing the outcome.
         """
         self.log_debug(f"Executing LLM call for prompt: '{prompt[:100]}...'")
+
+        # Log full LLM payload for debugging
+        try:
+            payload_log = {
+                "prompt": prompt,
+                "system_prompt_override": system_prompt_override,
+                "tools_override": tools_override,
+                "output_type_override": str(output_type_override),
+                "conversation_history": self.conversation_history
+            }
+            with open("basehandler_llm_payload.log", "w") as _f:
+                _f.write(json.dumps(payload_log, indent=2))
+            logging.info("BaseHandler: full LLM payload written to basehandler_llm_payload.log")
+        except Exception as _e:
+            logging.error(f"BaseHandler: Failed to write LLM payload log: {_e}")
         if not self.llm_manager:
             logging.error("LLMInteractionManager not initialized, cannot execute LLM call.")
             error_details: TaskError = { # type: ignore # Trusting dict structure matches TaskError union
