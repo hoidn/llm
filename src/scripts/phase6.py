@@ -38,12 +38,10 @@ except ImportError as e:
 
 # --- Configuration ---
 LOG_LEVEL = logging.DEBUG # Keep DEBUG for detailed output during demo
-# --- START MODIFICATION ---
 # Point to the actual project root directory for indexing
 REPO_TO_INDEX = PROJECT_ROOT # Pass the actual Git repo root
 # Change search keyword to something likely in the project code
 SEARCH_KEYWORD = "TaskSystem"
-# --- END MODIFICATION ---
 
 # --- Logging Setup ---
 logging.basicConfig(level=LOG_LEVEL,
@@ -109,11 +107,13 @@ def run_demo():
             # return # Optional: exit if indexing fails
 
         # 4. Define S-expression Command
+        # --- START MODIFICATION: Change S-expression to return the list ---
         # Use the updated SEARCH_KEYWORD
         sexp_command = f"""
         (let ((relevant_files (get_context (query "{SEARCH_KEYWORD}"))))
-          (system:read_files (file_paths relevant_files)))
+          relevant_files) ; Return the list of paths directly
         """
+        # --- END MODIFICATION ---
         logger.info(f"Prepared S-expression command:\n{sexp_command}")
 
         # 5. Execute S-expression via handle_task_command
@@ -130,24 +130,17 @@ def run_demo():
         try:
             print(json.dumps(result_dict, indent=2))
 
+            # --- START MODIFICATION: Update interpretation ---
             if result_dict.get("status") == "COMPLETE":
                 print("\n--- Interpretation ---")
-                print(f"Workflow looked for files related to '{SEARCH_KEYWORD}' in the project repo (scoped by index patterns) and attempted to read them.")
-                read_count = result_dict.get('notes', {}).get('files_read_count', 'N/A')
-                skipped_list = result_dict.get('notes', {}).get('skipped_files', [])
-                print(f"Files Found & Attempted: {len(skipped_list) + (read_count if isinstance(read_count, int) else 0)}") # Approx based on skipped + read
-                print(f"Files Successfully Read: {read_count}")
-                print(f"Files Skipped (Not Found/Access Denied): {len(skipped_list)}")
-                if skipped_list:
-                     print(f"  (Examples: {skipped_list[:3]}{'...' if len(skipped_list)>3 else ''})") # Show a few skipped
-                print("\nThe 'content' field shows the concatenated text from successfully read files (if any).")
-                # Check if content actually contains the keyword (less reliable now)
-                if SEARCH_KEYWORD in result_dict.get("content", ""):
-                    print(f"(Note: Result content contains the keyword '{SEARCH_KEYWORD}')")
-                elif read_count == 0 and skipped_list:
-                     print(f"(Note: No files were read, likely because paths returned by LLM context task don't exactly match local paths)")
-                elif read_count > 0:
-                     print(f"(Note: Result content might not contain '{SEARCH_KEYWORD}' if it wasn't in the specific parts read)")
+                print(f"Workflow looked for files related to '{SEARCH_KEYWORD}' in the project repo (scoped by index patterns).")
+                print("\nThe 'content' field now shows the list of file paths returned by the 'get_context' primitive.")
+                content = result_dict.get("content")
+                if isinstance(content, list):
+                    print(f"Number of relevant files found: {len(content)}")
+                else:
+                    print(f"Content type is not a list: {type(content)}")
+            # --- END MODIFICATION ---
 
             else:
                 print("\n--- Workflow Execution Failed ---")
