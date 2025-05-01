@@ -98,25 +98,26 @@ class Application:
                         // Removing global_index from params as we won't pass it in prompt
                     },
                     # This is where the LLM instructions go.
-                    "instructions": """Analyze the user query and context provided in 'context_input'.
-Review the file metadata provided in 'global_index'.
-Identify the top 3-5 most relevant file paths from the index based on the query.
-Provide a brief 'context_summary' explaining the relevance.
+                    "instructions": """Analyze the user query: '{{context_input.query}}'.
+Based *only* on the query, identify the 3 most likely relevant file paths from a hypothetical project index containing Python and Markdown files.
+Provide a brief 'context_summary'.
 Output the result as a JSON object conforming to the AssociativeMatchResult structure:
 {
-"context_summary": "string",
-"matches": [ { "path": "string", "relevance": float (0.0-1.0), "excerpt": "optional string" } ],
-"error": null
+  "context_summary": "string",
+  "matches": [ { "path": "string", "relevance": float (0.0-1.0) } ],
+  "error": null
 }
-Query Details: {{context_input.query}}
-Inherited Context Hints: {{context_input.inheritedContext}}
-Previous Output Hints: {{context_input.previousOutputs}}
-File Index Snippet (Example Format - Actual input is a dict):
-{% for path, meta in global_index.items() | slice(5) %}
---- File: {{ path }} ---
-{{ meta | truncate(200) }}
-{% endfor %}
-Based only on the provided query and index metadata, determine the most relevant file paths and output the JSON.""",
+Example Query: 'user authentication class'
+Example Output:
+{
+  "context_summary": "Found files related to user authentication.",
+  "matches": [
+    { "path": "src/auth/models.py", "relevance": 0.9 },
+    { "path": "src/user/schemas.py", "relevance": 0.7 },
+    { "path": "docs/auth.md", "relevance": 0.6 }
+  ],
+  "error": null
+}""",
                     # Optional: Specify a model optimized for this kind of task
                     # "model": "anthropic:claude-3-haiku-latest",
                     "output_format": {"type": "json"} # Expecting JSON output
