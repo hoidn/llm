@@ -9,9 +9,9 @@ module src.memory.indexers.git_repository_indexer {
 
         // Constructor: Initializes the indexer for a specific repository path.
         // Preconditions:
-        // - repo_path is a string representing the path to the local Git repository.
+        // - repo_path is a string representing the path to the **root** of the local Git repository (containing the .git directory).
         // Postconditions:
-        // - Indexer is initialized with the repository path.
+        // - Indexer is initialized with the repository root path.
         // - Default values are set for max_file_size (1MB) and include_patterns (["**/*.py"]).
         // - exclude_patterns is initialized as an empty list.
         void __init__(string repo_path);
@@ -24,11 +24,11 @@ module src.memory.indexers.git_repository_indexer {
         // - Calls `memory_system.update_global_index` with the generated file metadata.
         // - Skips files exceeding `max_file_size` or identified as binary.
         // Behavior:
-        // - Scans the repository using `scan_repository` based on `include_patterns` and `exclude_patterns`.
+        // - Scans the repository starting from the `repo_path` (Git root) using `scan_repository`. The scope of the scan is filtered by `include_patterns` and `exclude_patterns`.
         // - For each matching text file within size limits:
         //   - Reads its content.
         //   - Generates metadata using `create_metadata`.
-        // - Updates the `memory_system`'s global index.
+        // - Updates the `memory_system`'s global index with the collected metadata.
         // - Handles potential errors during file processing.
         // @raises_error(condition="FileProcessingError", description="Logged internally, file is skipped.")
         // Expected JSON format for return value: { "absolute/path/to/file.py": "metadata string\n...", ... }
@@ -36,7 +36,7 @@ module src.memory.indexers.git_repository_indexer {
 
         // Scans the repository directory for files matching include/exclude patterns.
         // Preconditions:
-        // - `repo_path`, `include_patterns`, `exclude_patterns` attributes are set.
+        // - `repo_path` (Git root), `include_patterns`, `exclude_patterns` attributes are set.
         // Postconditions:
         // - Returns a list of absolute file paths within the `repo_path` that match the include patterns but not the exclude patterns.
         // - Filters out directories, returning only file paths.

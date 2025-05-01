@@ -69,7 +69,12 @@
 - **Phase 6: Fix `file_contents` Substitution:**
     - Identified that the `{{ file_contents | ... }}` placeholder in the `internal:associative_matching_content` template (in `src/main.py`) was not being substituted because the `AtomicTaskExecutor`'s regex mechanism doesn't support filters (`|`).
     - Simplified the placeholder to `{{file_contents}}` in `src/main.py` to allow the basic substitution to work. Commit `ca0c431`.
-    - Updated documentation (`atomic_executor_IDL.md`, `implementation_rules.md`, `main_IDL.md`, `memory.md`) to reflect this limitation and the fix.
+    - Updated documentation (`atomic_executor_IDL.md`, `implementation_rules.md`, `main_IDL.md`, `memory.md`) to reflect this limitation and the fix. Commit `8699af2`.
+- **Phase 6: Fix `phase6.py` Script:**
+    - Corrected `sys.path` setup in `src/scripts/phase6.py` to correctly add `SRC_PATH` (`.../agents5/src`) instead of `.../agents5/src/task_system`, resolving `ImportError: No module named 'main'`. Commit `f5d5d9e`.
+    - Corrected `REPO_TO_INDEX` in `src/scripts/phase6.py` to point to the Git repository root (`PROJECT_ROOT`) and rely on `include_patterns` in `index_options` to scope indexing to the `src` directory, resolving the "no .git directory found" error. Commit `dd11e79`.
+- **Phase 6: Clarify Indexing Documentation:**
+    - Updated `src/main_IDL.md` and `src/memory/indexers/git_repository_indexer_IDL.md` to explicitly state that `repo_path` must be the Git repository root and that subdirectory scoping is achieved via `options['include_patterns']`.
 
 ## Next Steps
 
@@ -102,3 +107,4 @@
 - Refactored `GitRepositoryIndexer` tests to favor integration tests over brittle unit tests, improving confidence and reducing mock complexity. Added `git_repo` fixture to `conftest.py`.
 - Phase 4 Stream 2 implemented system-level tool executors (`system:get_context`, `system:read_files`) used for direct invocation, potentially by the Dispatcher or SexpEvaluator.
 - `AtomicTaskExecutor` uses simple regex substitution, incompatible with template filters (`|`). Placeholders must be simple `{{variable}}` or `{{variable.attribute}}`.
+- Indexing scope is controlled by passing the Git repository root to `Application.index_repository` and using `include_patterns` in the options.

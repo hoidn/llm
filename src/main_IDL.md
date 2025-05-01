@@ -29,21 +29,25 @@ module src.main {
 
         // Indexes a local Git repository and updates the MemorySystem's global index.
         // Preconditions:
-        // - repo_path is a string representing a valid path to a local Git repository directory containing a '.git' subdirectory.
+        // - repo_path is a string representing a valid path to the **root directory** of a local Git repository (i.e., the directory containing the '.git' subdirectory).
+        // - options is an optional dictionary for indexer configuration.
+        // Expected JSON format for options: { "include_patterns": list<string>, "exclude_patterns": list<string>, "max_file_size": int }
         // Postconditions:
         // - Returns true if indexing completes successfully.
-        // - Returns false if the path is invalid, not a git repo, or indexing fails.
-        // - If successful, the MemorySystem's global index is updated with metadata from the repository's files (respecting indexer's include/exclude patterns).
-        // - The absolute path of the indexed repository is added to the internal `indexed_repositories` list.
+        // - Returns false if the path is invalid, not a git repo root, or indexing fails.
+        // - If successful, the MemorySystem's global index is updated with metadata from the repository's files.
+        // - The scope of indexed files is determined by the `include_patterns` and `exclude_patterns` provided in the `options` dictionary (relative to `repo_path`).
+        // - The absolute path of the indexed repository root is added to the internal `indexed_repositories` list.
         // Behavior:
-        // - Normalizes and validates the `repo_path`.
-        // - Instantiates `GitRepositoryIndexer`.
-        // - Configures indexer exclude patterns (e.g., __pycache__, node_modules, .git).
+        // - Normalizes and validates the `repo_path`, ensuring it contains a '.git' directory.
+        // - Instantiates `GitRepositoryIndexer` with the validated `repo_path`.
+        // - Configures the indexer using the provided `options` (e.g., setting include/exclude patterns).
         // - Calls `indexer.index_repository`, passing the application's `memory_system` instance.
+        // - **Note:** To index only a subdirectory (e.g., 'src'), provide the repository root as `repo_path` and use `options={'include_patterns': ['src/**/*']}` (adjust pattern as needed).
         // @raises_error(condition="InvalidPath", description="Handled internally, returns false.")
-        // @raises_error(condition="NotGitRepository", description="Handled internally, returns false.")
+        // @raises_error(condition="NotGitRepository", description="Handled internally, returns false if .git directory is missing at repo_path.")
         // @raises_error(condition="IndexingError", description="Handled internally, returns false.")
-        boolean index_repository(string repo_path);
+        boolean index_repository(string repo_path, optional dict<string, Any> options);
 
         // Handles a user query using the PassthroughHandler.
         // Preconditions:
