@@ -31,7 +31,7 @@ This change standardizes the format of file content provided to LLM tasks, wheth
 
 **Status:**
 
-*   [ ] Step 1: Modify `src/memory/memory_system.py`
-*   [ ] Step 2: Modify `src/main.py` (Template Definition)
-*   [ ] Step 3: Update `src/memory/memory_system_IDL.md`
-*   [ ] Step 4: Update `src/main_IDL.md`
+*   [x] Step 1: Modify `src/memory/memory_system.py` - Completed in commit f656633
+*   [x] Step 2: Modify `src/main.py` (Template Definition) - Completed in commit f656633
+*   [x] Step 3: Update `src/memory/memory_system_IDL.md` - Completed in commit f656633
+*   [x] Step 4: Update `src/main_IDL.md` - Completed in commit f656633
