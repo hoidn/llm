@@ -5,19 +5,20 @@ from typing import Any, Dict, List, Optional, Callable, Type, TYPE_CHECKING
 # Define module-level logger
 logger = logging.getLogger(__name__)
 
-# --- Attempt Top-Level Import for Both Agent and AIResponse ---
+# --- Attempt Top-Level Import for Agent ONLY ---
 try:
-    # Try importing both from the top level
-    from pydantic_ai import Agent, AIResponse
+    # Try importing only Agent from the top level
+    from pydantic_ai import Agent
     _PydanticAI_Import_Success = True
-    logging.debug("LLMInteractionManager: Top-level pydantic-ai import successful (Agent, AIResponse).")
+    logging.debug("LLMInteractionManager: Top-level pydantic-ai import successful (Agent).")
 except ImportError as e:
     # Log the specific import error details
-    logging.error(f"LLMInteractionManager: Top-level import of pydantic-ai failed: {e}", exc_info=True)
-    # Set both to None if import fails
+    logging.error(f"LLMInteractionManager: Top-level import of pydantic-ai Agent failed: {e}", exc_info=True)
+    # Set Agent to None if import fails
     Agent = None # type: ignore
-    AIResponse = None # type: ignore
     _PydanticAI_Import_Success = False
+# Define AIResponse as Any since we can't import it reliably
+AIResponse = Any # type: ignore
 # --- End Import Attempt ---
 
 # Use TYPE_CHECKING for type hints without runtime imports
@@ -188,9 +189,8 @@ class LLMInteractionManager:
                 logger.debug(f"Calling agent.run_sync with prompt='{prompt[:100]}...' and kwargs={run_kwargs}")
 
             # Call the agent with prompt as positional arg, others as kwargs
-            # Hint using module-level AIResponse (make Optional if needed)
-            # Remove # type: ignore if import is expected to succeed now
-            response: Optional[AIResponse] = self.agent.run_sync(prompt, **run_kwargs)
+            # Use Optional[Any] for the type hint as AIResponse import failed
+            response: Optional[Any] = self.agent.run_sync(prompt, **run_kwargs)
 
             if self.debug_mode:
                 logging.debug(f"Agent response received: {response}")
