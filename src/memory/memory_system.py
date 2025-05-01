@@ -225,6 +225,8 @@ class MemorySystem:
             logger.error(error_msg)
             return AssociativeMatchResult(context_summary="", matches=[], error=error_msg)
             
+        # dump the input_data
+        logger.debug(f"[MemorySystem] get_relevant_context_for called with input_data: {input_data!r}")
         logger.debug(f"get_relevant_context_for called with strategy: {input_data.matching_strategy}")
 
         # 1. Determine Strategy (Default to 'content')
@@ -241,6 +243,7 @@ class MemorySystem:
         # 3. Pre-filtering (Optional - Placeholder: Use all indexed paths for now)
         # TODO: Implement actual pre-filtering based on query vs paths/metadata later if needed.
         candidate_paths = list(self.global_index.keys())
+        logger.debug(f"[MemorySystem] global_index size={len(self.global_index)}, candidate_paths={candidate_paths[:5]}{'...' if len(candidate_paths)>5 else ''}")
         logger.debug(f"Pre-filtering selected {len(candidate_paths)} candidate paths (currently uses all).")
         if not candidate_paths:
             return AssociativeMatchResult(context_summary="No files indexed to search.", matches=[])
@@ -311,6 +314,7 @@ class MemorySystem:
         try:
             logger.debug(f"Calling TaskSystem to execute: {llm_task_name} with request ID: {request.task_id}")
             task_result: TaskResult = self.task_system.execute_atomic_template(request)
+            logger.debug(f"[MemorySystem] TaskSystem returned: status={task_result.status}, content_snippet={task_result.content[:100]!r}")
 
             # 9. Parse Result
             if not isinstance(task_result, TaskResult):
