@@ -11,8 +11,9 @@ try:
     from pydantic_ai.models import AIResponse # Keep if AIResponse is used for hints/processing
     _PydanticAI_Import_Success = True
     logging.debug("LLMInteractionManager: Top-level pydantic-ai import successful.")
-except ImportError:
-    logging.error("LLMInteractionManager: Top-level import of pydantic-ai failed.")
+except ImportError as e:
+    # Log the specific import error details
+    logging.error(f"LLMInteractionManager: Top-level import of pydantic-ai failed: {e}", exc_info=True)
     Agent = None # type: ignore
     AIResponse = None # type: ignore
     _PydanticAI_Import_Success = False
