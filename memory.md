@@ -61,7 +61,12 @@
     - Implemented parsing, validation, template construction, and registration logic.
     - Added dispatch for `defatom` in `_eval_special_form`.
     - Updated `sexp_evaluator_IDL.md` to include `defatom`.
-    - Added `TestSexpEvaluatorDefatom` class with comprehensive tests in `test_sexp_evaluator.py`.
+    - Added `TestSexpEvaluatorDefatom` class with comprehensive tests in `test_sexp_evaluator.py`. Commit `4fc75ac`.
+- **Phase 5: Fix `defatom` Dispatch:**
+    - Corrected the dispatch logic in `SexpEvaluator._eval_list` to ensure `defatom` is routed to `_eval_special_form`. Commit `bd304a5`.
+- **Phase 5: Fix `defatom` Tests:**
+    - Updated mock setup in `test_defatom_invocation_after_definition` to correctly mock `find_template`.
+    - Corrected expected error messages in `test_defatom_missing_params` and `test_defatom_missing_instructions` to match the argument count check failure. Commit `47c3d1a`.
 
 ## Next Steps
 
