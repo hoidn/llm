@@ -295,109 +295,28 @@ def test_application_handle_task_command_exception(mock_dispatcher_func, app_ins
     assert "Dispatcher error" in result['content']
     assert result['notes']['error']['reason'] == "unexpected_error"
 
-# --- Tests for initialize_aider ---
+# --- Test for Deferred Aider Initialization ---
 
-# Need to patch AiderBridge *where it's imported* in src.main
-@patch('src.main.AiderBridge', MagicMock(spec=aider_bridge_module.AiderBridge))
-@patch('src.main.get_aider_automatic_tool_spec', return_value=DUMMY_AIDER_AUTO_SPEC)
-@patch('src.main.get_aider_interactive_tool_spec', return_value=DUMMY_AIDER_INTERACTIVE_SPEC)
-def test_application_initialize_aider_success(mock_spec_inter, mock_spec_auto, MockAiderBridgeCls, app_instance):
-     """Verify AiderBridge is created and tools registered when available."""
-     # Re-configure mocks specifically for this test if needed (fixture sets available=True)
-     mock_aider_instance = MockAiderBridgeCls.return_value
-     mock_aider_instance.aider_available = True
-     app_instance.aider_bridge = None # Reset bridge to force re-initialization
-
-     # Reset mock call counts before the action
-     MockAiderBridgeCls.reset_mock()
-     app_instance.mock_handler.register_tool.reset_mock()
-
-     app_instance.initialize_aider() # Call the method under test
-
-     # Assert AiderBridge was instantiated
-     MockAiderBridgeCls.assert_called_once_with(
-         memory_system=app_instance.mock_memory,
-         file_manager=app_instance.mock_handler.file_manager
-     )
-     assert app_instance.aider_bridge == mock_aider_instance
-
-     # Check register_tool calls specifically for aider tools
-     aider_calls = [c for c in app_instance.mock_handler.register_tool.call_args_list if c.args[0]['name'].startswith('aider')]
-     assert len(aider_calls) == 2
-     assert any(c.args[0]['name'] == 'aiderAutomatic' for c in aider_calls)
-     assert any(c.args[0]['name'] == 'aiderInteractive' for c in aider_calls)
-
-     # Test the lambda wrappers
-     auto_call = next(c for c in aider_calls if c.args[0]['name'] == 'aiderAutomatic')
-     auto_lambda = auto_call.args[1]
-     auto_params = {"param1": "auto"}
-     auto_lambda(auto_params)
-     app_instance.mock_aider_exec.execute_aider_automatic.assert_called_once_with(auto_params, app_instance.aider_bridge)
-
-     inter_call = next(c for c in aider_calls if c.args[0]['name'] == 'aiderInteractive')
-     inter_lambda = inter_call.args[1]
-     inter_params = {"param1": "inter"}
-     inter_lambda(inter_params)
-     app_instance.mock_aider_exec.execute_aider_interactive.assert_called_once_with(inter_params, app_instance.aider_bridge)
-
-
-@patch('src.main.AiderBridge', MagicMock(spec=aider_bridge_module.AiderBridge))
-def test_application_initialize_aider_unavailable(MockAiderBridgeCls, app_instance):
-     """Verify Aider tools are not registered if AiderBridge reports unavailable."""
-     mock_aider_instance = MockAiderBridgeCls.return_value
-     mock_aider_instance.aider_available = False # Simulate unavailable
-     app_instance.aider_bridge = None # Reset bridge
-
-     # Reset mock call counts before the action
-     MockAiderBridgeCls.reset_mock()
-     app_instance.mock_handler.register_tool.reset_mock()
-     # Store call count *after* system tools are registered in fixture, *before* this call
-     register_call_count_before = app_instance.mock_handler.register_tool.call_count
-
-     app_instance.initialize_aider() # Call the method under test
-
-     MockAiderBridgeCls.assert_called_once() # Bridge is still instantiated
-     assert app_instance.aider_bridge == mock_aider_instance # Bridge instance is stored
-
-     # Check that no *new* calls for aider tools were made
-     register_call_count_after = app_instance.mock_handler.register_tool.call_count
-     # Get calls made *during this test's execution*
-     new_calls = app_instance.mock_handler.register_tool.call_args_list[register_call_count_before:]
-     aider_calls_in_test = [c for c in new_calls if c.args[0]['name'].startswith('aider')]
-     assert len(aider_calls_in_test) == 0
-
-
-# Patch AiderBridge where it's looked up in src.main
-@patch('src.main.AiderBridge', side_effect=ImportError("Aider not installed"))
-def test_application_initialize_aider_import_error(MockAiderBridgeImportError, app_instance):
-    """Verify initialization handles AiderBridge import error gracefully."""
-    # NOTE: The fixture setup might fail if the import error happens *before*
-    # the Application() call inside the fixture. We need to test the behavior
-    # *during* the initialize_aider call itself.
-    # Let's assume the top-level import succeeded, but the instantiation fails.
-
-    # Reset bridge and mocks
-    app_instance.aider_bridge = None
-    MockAiderBridgeImportError.reset_mock()
+def test_application_initialize_aider_deferred(app_instance):
+    """Verify initialize_aider is a placeholder and does not register tools."""
+    # Reset mock calls before calling the method
     app_instance.mock_handler.register_tool.reset_mock()
     register_call_count_before = app_instance.mock_handler.register_tool.call_count
 
-    # Manually trigger initialize_aider again to test the try/except block inside it
+    # Call the placeholder method
     app_instance.initialize_aider()
 
-    # Assert that the instantiation was attempted
-    MockAiderBridgeImportError.assert_called_once()
-    # Assert that the bridge remains None because instantiation failed
+    # Assert the bridge remains None
     assert app_instance.aider_bridge is None
-    # Check that no new Aider tools were registered
-    register_call_count_after = app_instance.mock_handler.register_tool.call_count
-    new_calls = app_instance.mock_handler.register_tool.call_args_list[register_call_count_before:]
-    aider_calls_in_test = [c for c in new_calls if c.args[0]['name'].startswith('aider')]
-    assert len(aider_calls_in_test) == 0
 
-# Test case for Application init failure
+    # Assert no new tools were registered
+    register_call_count_after = app_instance.mock_handler.register_tool.call_count
+    assert register_call_count_after == register_call_count_before
+
+
+# --- Test case for Application init failure ---
 def test_application_init_failure():
-    """Verify Application init handles component instantiation failure."""
+    """Verify Application __init__ handles component instantiation failure."""
     with patch('src.main.MemorySystem', side_effect=Exception("Memory init failed")):
         with pytest.raises(Exception, match="Memory init failed"):
             Application() # Instantiation should fail and raise
