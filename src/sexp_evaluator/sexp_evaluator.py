@@ -544,6 +544,21 @@ class SexpEvaluator:
 
         # Map to ContextGenerationInput fields
         try:
+            # Handle matching_strategy specifically
+            if "matching_strategy" in context_input_args:
+                strategy_val = context_input_args["matching_strategy"]
+                # Value should be a symbol ('content or 'metadata) evaluated to a string
+                if isinstance(strategy_val, Symbol):
+                     strategy_str = strategy_val.value()
+                elif isinstance(strategy_val, str): # Allow string literal too
+                     strategy_str = strategy_val
+                else:
+                     raise SexpEvaluationError(f"Invalid value type for 'matching_strategy': expected Symbol or String, got {type(strategy_val)}", node_repr)
+
+                if strategy_str not in ['content', 'metadata']:
+                    raise SexpEvaluationError(f"Invalid value for 'matching_strategy': must be 'content' or 'metadata', got '{strategy_str}'", node_repr)
+                context_input_args["matching_strategy"] = strategy_str # Store the validated string
+
             # Convert 'inputs' if it's a list of pairs to a dictionary
             if "inputs" in context_input_args and isinstance(context_input_args["inputs"], list):
                 try:

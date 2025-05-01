@@ -200,6 +200,9 @@ def test_eval_primitive_get_context(evaluator, mock_parser, mock_memory_system):
 
     # Assert MemorySystem was called correctly
     mock_memory_system.get_relevant_context_for.assert_called_once_with(expected_context_input)
+    # Check default strategy is None
+    call_args, _ = mock_memory_system.get_relevant_context_for.call_args
+    assert call_args[0].matching_strategy is None
 
     # Assert result is the list of paths from the mock
     assert result == ["/mock/file.py"]

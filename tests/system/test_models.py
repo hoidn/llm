@@ -306,3 +306,24 @@ def test_context_generation_input_empty():
     assert input_data.query is None
     assert input_data.matching_strategy is None
     # ... check all fields are None ...
+
+def test_context_generation_input_v5_with_strategy():
+    """Test ContextGenerationInput v5.0 with valid matching_strategy."""
+    input_data = ContextGenerationInput(query="test", matching_strategy='content')
+    assert input_data.query == "test"
+    assert input_data.matching_strategy == 'content'
+
+    input_data_meta = ContextGenerationInput(query="test", matching_strategy='metadata')
+    assert input_data_meta.matching_strategy == 'metadata'
+
+def test_context_generation_input_v5_default_strategy():
+    """Test ContextGenerationInput v5.0 defaults matching_strategy to None."""
+    input_data = ContextGenerationInput(query="test")
+    assert input_data.matching_strategy is None
+
+def test_context_generation_input_v5_invalid_strategy():
+    """Test ContextGenerationInput v5.0 raises error for invalid matching_strategy."""
+    with pytest.raises(ValidationError):
+        ContextGenerationInput(query="test", matching_strategy='invalid')
+    with pytest.raises(ValidationError):
+        ContextGenerationInput(query="test", matching_strategy=123)
