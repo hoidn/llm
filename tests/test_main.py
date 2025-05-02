@@ -44,7 +44,7 @@ def app_components(tmp_path):
          patch('src.main.anthropic_tools', MagicMock(spec=anthropic_tools_module)) as MockAnthropicTools, \
          patch('src.handler.llm_interaction_manager.Agent') as MockPydanticAgent, \
          patch('src.main.AiderBridge') as MockAiderBridge, \
-         patch('src.main.AiderExecutorFunctions', MagicMock(spec=aider_executors_module.AiderExecutorFunctions)) as MockAiderExec: # Patch Aider Executors
+         patch('src.main.AiderExecutors', spec=True) as MockAiderExec: # Corrected Patch Target (using alias from src/main.py)
 
         # Configure mocks BEFORE Application instantiation
         mock_fm_instance = MockFM.return_value
@@ -604,7 +604,7 @@ def mock_app_dependencies_for_aider(tmp_path):
          patch('src.main.anthropic_tools', spec=True) as MockAnthropicTools, \
          patch('src.handler.llm_interaction_manager.Agent') as MockPydanticAgent, \
          patch('src.main.AiderBridge') as MockAiderBridge, \
-         patch('src.main.AiderExecutorFunctions', spec=True) as MockAiderExec:
+         patch('src.main.AiderExecutors', spec=True) as MockAiderExec: # Corrected Patch Target
 
         mock_fm_instance = MockFM.return_value
         mock_memory_instance = MockMemory.return_value
@@ -651,6 +651,8 @@ def test_application_init_registers_aider_tools(mock_app_dependencies_for_aider)
     """Verify Application.__init__ registers aider tools with the handler when AIDER_AVAILABLE is True."""
     # Arrange
     mock_handler_instance = mock_app_dependencies_for_aider["mock_handler_instance"]
+    # Get the mock class from the fixture, not the instance
+    mock_aider_exec_class = mock_app_dependencies_for_aider["MockAiderExec"]
     expected_auto_executor = mock_app_dependencies_for_aider["mock_aider_auto_func"]
     expected_inter_executor = mock_app_dependencies_for_aider["mock_aider_inter_func"]
     registered_tools_storage = mock_app_dependencies_for_aider["registered_tools_storage"]
@@ -665,9 +667,22 @@ def test_application_init_registers_aider_tools(mock_app_dependencies_for_aider)
     assert "aider:automatic" in registered_tools_storage
     assert "aider:interactive" in registered_tools_storage
 
-    # Verify the executor functions stored are the mocked ones
-    assert registered_tools_storage["aider:automatic"]["executor"] is expected_auto_executor
-    assert registered_tools_storage["aider:interactive"]["executor"] is expected_inter_executor
+    # Verify the executor functions stored are the mocked ones from the class
+    # The lambda wrapper in initialize_aider calls the static methods on the class
+    # So we check if the stored executor, when called, calls the correct mock static method.
+    aider_auto_lambda = registered_tools_storage["aider:automatic"]["executor"]
+    aider_inter_lambda = registered_tools_storage["aider:interactive"]["executor"]
+
+    # Test the lambda wrapper for automatic
+    test_params_auto = {"prompt": "auto test"}
+    aider_auto_lambda(test_params_auto)
+    expected_auto_executor.assert_called_once_with(test_params_auto, app.aider_bridge)
+
+    # Test the lambda wrapper for interactive
+    test_params_inter = {"query": "inter test"}
+    aider_inter_lambda(test_params_inter)
+    expected_inter_executor.assert_called_once_with(test_params_inter, app.aider_bridge)
+
 
     # Verify the specs passed (basic check)
     assert isinstance(registered_tools_storage["aider:automatic"]["spec"], dict)
@@ -682,7 +697,6 @@ def test_application_init_registers_aider_tools(mock_app_dependencies_for_aider)
     initialized_tools_list = kwargs['tools']
     # Expect 2 system tools + 2 aider tools = 4 total
     assert len(initialized_tools_list) == 4
-    # Check that the aider executors are present in the list passed to the agent
-    # Note: These are the raw mock functions, not wrapped lambdas in this case
-    assert expected_auto_executor in initialized_tools_list
-    assert expected_inter_executor in initialized_tools_list
+    # Check that the aider executor lambdas are present in the list passed to the agent
+    assert aider_auto_lambda in initialized_tools_list
+    assert aider_inter_lambda in initialized_tools_list

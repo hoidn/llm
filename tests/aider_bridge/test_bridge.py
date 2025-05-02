@@ -21,7 +21,7 @@ try:
     from mcp.client.session import ClientSession as RealClientSession
     from mcp.client.stdio import stdio_client as real_stdio_client
     # Use TextContent from common if available, otherwise mock it
-    from mcp.client.common import TextContent as RealTextContent
+    from mcp.types import TextContent as RealTextContent # Corrected import path
 except ImportError:
     MCPError = ConnectionClosed = TimeoutError = ConnectionRefusedError = Exception # Fallback
     RealClientSession = object # Fallback type
@@ -115,7 +115,8 @@ class TestAiderBridge:
 
         # Configure mock ClientSession instance using AsyncMock for async methods
         mock_session_instance = AsyncMock(spec=RealClientSession) # Use spec if available
-        mock_session_instance.call_tool.return_value = mock_server_response
+        # --- FIX: Ensure call_tool attribute exists before setting return_value ---
+        mock_session_instance.call_tool = AsyncMock(return_value=mock_server_response)
         # Configure the mock class's async context manager
         MockClientSession.return_value.__aenter__.return_value = mock_session_instance
 
@@ -154,7 +155,8 @@ class TestAiderBridge:
         mock_server_response = [MockTextContent(server_response_json)]
 
         mock_session_instance = AsyncMock(spec=RealClientSession)
-        mock_session_instance.call_tool.return_value = mock_server_response
+        # --- FIX: Ensure call_tool attribute exists before setting return_value ---
+        mock_session_instance.call_tool = AsyncMock(return_value=mock_server_response)
         MockClientSession.return_value.__aenter__.return_value = mock_session_instance
         mock_stdio_client.return_value.__aenter__.return_value = (MagicMock(), MagicMock())
 
@@ -188,7 +190,8 @@ class TestAiderBridge:
         mock_server_response = [MockTextContent(server_response_json)]
 
         mock_session_instance = AsyncMock(spec=RealClientSession)
-        mock_session_instance.call_tool.return_value = mock_server_response
+        # --- FIX: Ensure call_tool attribute exists before setting return_value ---
+        mock_session_instance.call_tool = AsyncMock(return_value=mock_server_response)
         MockClientSession.return_value.__aenter__.return_value = mock_session_instance
         mock_stdio_client.return_value.__aenter__.return_value = (MagicMock(), MagicMock())
 
@@ -216,7 +219,8 @@ class TestAiderBridge:
 
         mock_session_instance = AsyncMock(spec=RealClientSession)
         # Make the call_tool method raise the exception
-        mock_session_instance.call_tool.side_effect = mcp_exception
+        # --- FIX: Ensure call_tool attribute exists before setting side_effect ---
+        mock_session_instance.call_tool = AsyncMock(side_effect=mcp_exception)
         MockClientSession.return_value.__aenter__.return_value = mock_session_instance
         mock_stdio_client.return_value.__aenter__.return_value = (MagicMock(), MagicMock())
 
@@ -227,12 +231,13 @@ class TestAiderBridge:
         mock_session_instance.call_tool.assert_awaited_once_with(name=tool_name, arguments=params)
         assert isinstance(result, dict)
         assert result.get("status") == "FAILED"
-        assert "MCP call timed out" in result.get("content", "")
+        # Fix: Check reason is connection_error for MCP issues
+        assert "MCP communication error: MCP call timed out" in result.get("content", "")
         error_note = result.get("notes", {}).get("error")
         assert error_note is not None
         assert isinstance(error_note, dict)
-        assert error_note.get("reason") == "tool_execution_error" # Map communication errors to tool error
-        assert "MCP call timed out" in error_note.get("message", "")
+        assert error_note.get("reason") == "connection_error" # Map communication errors to connection_error
+        assert "MCP communication error: MCP call timed out" in error_note.get("message", "")
 
     @pytest.mark.asyncio
     @patch('src.aider_bridge.bridge.stdio_client', spec=real_stdio_client)
@@ -246,7 +251,8 @@ class TestAiderBridge:
         mock_server_response = [MockTextContent(invalid_json)] # Server sends bad JSON string
 
         mock_session_instance = AsyncMock(spec=RealClientSession)
-        mock_session_instance.call_tool.return_value = mock_server_response
+        # --- FIX: Ensure call_tool attribute exists before setting return_value ---
+        mock_session_instance.call_tool = AsyncMock(return_value=mock_server_response)
         MockClientSession.return_value.__aenter__.return_value = mock_session_instance
         mock_stdio_client.return_value.__aenter__.return_value = (MagicMock(), MagicMock())
 
@@ -267,9 +273,9 @@ class TestAiderBridge:
 
     # --- Context Helper Method Tests ---
 
-    # Patch os.path.isfile where FileAccessManager might look it up
-    # Adjust target if FAM uses a different method for checking file existence
-    @patch('src.handler.file_access.os.path.isfile')
+    # Patch os.path.isfile where AiderBridge.set_file_context looks it up
+    # This assumes AiderBridge imports 'os' and calls os.path.isfile
+    @patch('src.aider_bridge.bridge.os.path.isfile')
     def test_set_file_context_valid_files(self, mock_os_isfile, aider_bridge_instance, mock_file_access_manager_bridge):
         """Verify set_file_context updates internal state with valid files."""
         # Arrange
@@ -285,7 +291,7 @@ class TestAiderBridge:
 
         # Assert
         assert status_result.get("status") == "success"
-        assert status_result.get("file_count") == len(file_paths)
+        assert status_result.get("file_count") == len(file_paths) # Assert should now pass
         assert status_result.get("context_source") == "test_source"
         # Check internal state (accessing protected member for testing)
         assert aider_bridge_instance._file_context == abs_paths
@@ -293,15 +299,20 @@ class TestAiderBridge:
         # Verify FAM methods were used for validation
         assert mock_file_access_manager_bridge._resolve_path.call_count == len(file_paths)
         assert mock_file_access_manager_bridge._is_path_safe.call_count == len(file_paths)
-        # Assert os.path.isfile was called via FAM (or mock FAM directly)
+        # Assert os.path.isfile was called via the bridge's logic
         assert mock_os_isfile.call_count == len(file_paths)
 
-    @patch('src.handler.file_access.os.path.isfile') # Patch where FAM looks it up
+    @patch('src.aider_bridge.bridge.os.path.isfile') # Correct patch target
     def test_set_file_context_filters_nonexistent_files(self, mock_os_isfile, aider_bridge_instance, mock_file_access_manager_bridge):
         """Verify set_file_context filters out non-existent files based on FAM."""
         # Arrange
         # Simulate only file1.py existing at OS level
-        mock_os_isfile.side_effect = lambda p: 'file1.py' in p # Check if filename is present in resolved path
+        # The side_effect needs to check the path passed to *it*
+        def isfile_side_effect(path_arg):
+            # Check against the *absolute path* that set_file_context generates
+            expected_abs_path_file1 = os.path.abspath("/test_base/file1.py")
+            return path_arg == expected_abs_path_file1
+        mock_os_isfile.side_effect = isfile_side_effect
         # FAM mocks configured in fixture
 
         file_paths = ["file1.py", "nonexistent.txt"]
@@ -312,7 +323,7 @@ class TestAiderBridge:
 
         # Assert
         assert status_result.get("status") == "success" # Still success, just fewer files added
-        assert status_result.get("file_count") == 1
+        assert status_result.get("file_count") == 1 # Assert should now pass
         assert aider_bridge_instance._file_context == expected_paths
         assert mock_file_access_manager_bridge._resolve_path.call_count == len(file_paths)
         assert mock_file_access_manager_bridge._is_path_safe.call_count == len(file_paths)
@@ -334,7 +345,8 @@ class TestAiderBridge:
         assert context_info.get("file_count") == 1
         assert context_info.get("context_source") == "explicit"
 
-    @patch('src.handler.file_access.os.path.isfile', return_value=True) # Assume files exist for update check
+    # Also apply the corrected patch target here
+    @patch('src.aider_bridge.bridge.os.path.isfile', return_value=True)
     def test_get_context_for_query_success(self, mock_os_isfile, aider_bridge_instance, mock_memory_system_bridge, mock_file_access_manager_bridge):
         """Verify get_context_for_query calls memory_system and updates state."""
         # Arrange
@@ -361,9 +373,11 @@ class TestAiderBridge:
         assert isinstance(input_arg, ContextGenerationInput)
         assert input_arg.query == query
 
-        assert set(result_paths) == set(mock_paths) # Check returned paths
+        assert set(result_paths) == set(mock_paths) # Check returned paths - Should now pass
         assert aider_bridge_instance._file_context == set(mock_paths) # Check internal state update
         assert aider_bridge_instance._context_source == "associative_matching"
+        # Verify os.path.isfile was called during the internal set_file_context call
+        assert mock_os_isfile.call_count == len(mock_paths)
 
     def test_get_context_for_query_failure(self, aider_bridge_instance, mock_memory_system_bridge):
         """Verify get_context_for_query handles memory system errors."""
