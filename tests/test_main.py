@@ -158,7 +158,7 @@ def app_components(mocker, tmp_path): # Add tmp_path
         # Mock initialize_agent as an async function if it's called with await
         mock_llm_manager_instance.initialize_agent = MagicMock() # Use MagicMock if synchronous
 
-        # Yield the dictionary of mocks within the 'with' block
+        # Yield the dictionary of necessary mocks
         yield {
             # Core Component Class Mocks (from 'with patch')
             "MockMemorySystem": MockMemory,
