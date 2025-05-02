@@ -21,6 +21,8 @@ from src.memory.indexers.git_repository_indexer import GitRepositoryIndexer
 from src.system.models import TaskResult, TaskFailureError, TaskFailureReason
 from src.executors.system_executors import SystemExecutorFunctions
 from src import dispatcher # Import the dispatcher module
+# Import the new tools module
+from src.tools import anthropic_tools
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -94,15 +96,15 @@ class Application:
             # Get provider identifier for tool determination
             provider_id = self.passthrough_handler.get_provider_identifier()
             logger.info(f"Provider identifier: {provider_id}")
-            
-            # Determine active tools based on provider
-            active_tools = self._determine_active_tools(provider_id)
-            
-            # Set active tools on the handler
-            if active_tools:
-                self.passthrough_handler.set_active_tool_definitions(active_tools)
-                logger.info(f"Set {len(active_tools)} active tool definitions on handler")
-                
+
+            # Determine active tools based on provider (DEFERRED - done after registration)
+            # active_tools = self._determine_active_tools(provider_id)
+
+            # Set active tools on the handler (DEFERRED - done after registration)
+            # if active_tools:
+            #     self.passthrough_handler.set_active_tool_definitions(active_tools)
+            #     logger.info(f"Set {len(active_tools)} active tool definitions on handler")
+
             # 3. Instantiate MemorySystem (needs Handler, TaskSystem, FileManager)
             self.memory_system = MemorySystem(
                 handler=self.passthrough_handler, # Pass Handler instance
@@ -213,13 +215,65 @@ Select the best matching paths *from the provided metadata* and output the JSON.
             self._register_system_tools()
             logger.info("System tools registered.")
 
-            # Retrieve tools for agent initialization
-            agent_tools = self.passthrough_handler.get_tools_for_agent()
-            logger.info(f"Retrieved {len(agent_tools)} tools for agent initialization.")
+            # --- Conditional Provider Tool Registration ---
+            provider_id = self.passthrough_handler.get_provider_identifier()
+            logger.info(f"Checking provider for specific tools: {provider_id}")
 
-            # Trigger agent initialization in the manager
+            if provider_id and provider_id.startswith("anthropic:"):
+                logger.info("Anthropic provider detected. Registering Anthropic Editor tools...")
+                registered_anthropic_count = 0
+                # Ensure anthropic_tools module and its components are imported
+                try:
+                    # List of tuples: (spec_dict, function_callable)
+                    anthropic_tool_pairs = [
+                        (anthropic_tools.ANTHROPIC_VIEW_SPEC, anthropic_tools.view),
+                        (anthropic_tools.ANTHROPIC_CREATE_SPEC, anthropic_tools.create),
+                        (anthropic_tools.ANTHROPIC_STR_REPLACE_SPEC, anthropic_tools.str_replace),
+                        (anthropic_tools.ANTHROPIC_INSERT_SPEC, anthropic_tools.insert),
+                    ]
+
+                    for tool_spec, tool_func in anthropic_tool_pairs:
+                        # Create a wrapper lambda that captures the handler's file_manager
+                        # and passes it as the first argument to the actual tool function.
+                        # It receives the tool_input dict from the handler's _execute_tool.
+                        # Use default arguments in lambda to capture current values of func and fm
+                        executor_wrapper = lambda tool_input, func=tool_func, fm=self.passthrough_handler.file_manager: func(fm, **tool_input) # type: ignore
+
+                        success = self.passthrough_handler.register_tool(tool_spec, executor_wrapper)
+                        if success:
+                            registered_anthropic_count += 1
+                            logger.debug(f"Registered Anthropic tool: {tool_spec['name']}")
+                        else:
+                            logger.warning(f"Failed to register Anthropic tool: {tool_spec['name']}")
+                    logger.info(f"Registered {registered_anthropic_count}/{len(anthropic_tool_pairs)} Anthropic tools.")
+
+                except ImportError:
+                    logger.error("Failed to import anthropic_tools module. Cannot register Anthropic tools.")
+                except AttributeError as e:
+                     logger.error(f"Error accessing expected attributes/methods during Anthropic tool registration: {e}")
+                except Exception as e:
+                    logger.exception(f"Unexpected error during Anthropic tool registration: {e}")
+            else:
+                logger.info("Provider is not Anthropic. Skipping Anthropic tool registration.")
+            # --- End Conditional Provider Tool Registration ---
+
+
+            # Determine active tools based on provider AFTER registration
+            active_tools_specs = self._determine_active_tools(provider_id)
+
+            # Set active tools on the handler AFTER registration
+            if active_tools_specs:
+                self.passthrough_handler.set_active_tool_definitions(active_tools_specs)
+                logger.info(f"Set {len(active_tools_specs)} active tool definitions on handler")
+
+
+            # Retrieve tools for agent initialization AFTER registration
+            agent_tools_executors = self.passthrough_handler.get_tools_for_agent()
+            logger.info(f"Retrieved {len(agent_tools_executors)} tool executors for agent initialization.")
+
+            # Trigger agent initialization in the manager AFTER registration
             if self.passthrough_handler.llm_manager:
-                self.passthrough_handler.llm_manager.initialize_agent(tools=agent_tools)
+                self.passthrough_handler.llm_manager.initialize_agent(tools=agent_tools_executors)
                 logger.info("Triggered LLMInteractionManager agent initialization.")
             else:
                 logger.error("LLMInteractionManager not available for agent initialization.")
@@ -239,48 +293,58 @@ Select the best matching paths *from the provided metadata* and output the JSON.
     def _determine_active_tools(self, provider_identifier: Optional[str]) -> List[Dict[str, Any]]:
         """
         Determines which tools should be active based on the provider identifier.
-        
+        This should return the list of TOOL SPECIFICATIONS.
+
         Args:
             provider_identifier: String identifying the LLM provider (e.g., "openai:gpt-4o", "anthropic:claude-3-5-sonnet-latest")
-            
+
         Returns:
             List of tool specification dictionaries to be set as active.
         """
-        logger.info(f"Determining active tools for provider: {provider_identifier}")
-        
-        # Start with system tools that work with all providers
-        system_tools = []
-        
+        logger.info(f"Determining active tool specifications for provider: {provider_identifier}")
+
+        active_tool_specs = []
+
         # Add system tools from registered_tools if they exist
         if self.passthrough_handler and hasattr(self.passthrough_handler, 'registered_tools'):
-            for tool_name, tool_spec in self.passthrough_handler.registered_tools.items():
+            for tool_name, tool_data in self.passthrough_handler.registered_tools.items():
+                # tool_data is expected to be {'spec': {...}, 'executor': callable}
                 if tool_name.startswith('system:'):
-                    system_tools.append(tool_spec)
-                    logger.debug(f"Including system tool: {tool_name}")
-        
-        # Provider-specific tools would be added here based on the provider_identifier
-        provider_tools = []
-        
+                    if 'spec' in tool_data:
+                        active_tool_specs.append(tool_data['spec'])
+                        logger.debug(f"Including system tool spec: {tool_name}")
+                    else:
+                        logger.warning(f"System tool '{tool_name}' missing 'spec' in registered_tools.")
+
+        # Add provider-specific tools based on the provider_identifier
         if provider_identifier:
-            # Example: Add OpenAI-specific tools
-            if provider_identifier.startswith('openai:'):
-                # Add OpenAI-specific tools here if needed
-                pass
-            # Example: Add Anthropic-specific tools
-            elif provider_identifier.startswith('anthropic:'):
-                # Add Anthropic-specific tools here if needed
-                pass
-            
-        # Combine all tools
-        active_tools = system_tools + provider_tools
-        logger.info(f"Determined {len(active_tools)} active tools: {[t.get('name', 'unnamed') for t in active_tools]}")
-        return active_tools
+            if provider_identifier.startswith('anthropic:'):
+                logger.debug("Including Anthropic tool specs.")
+                # Add Anthropic tool specs from registered_tools
+                if self.passthrough_handler and hasattr(self.passthrough_handler, 'registered_tools'):
+                     for tool_name, tool_data in self.passthrough_handler.registered_tools.items():
+                         if tool_name.startswith('anthropic:'):
+                             if 'spec' in tool_data:
+                                 active_tool_specs.append(tool_data['spec'])
+                                 logger.debug(f"Including Anthropic tool spec: {tool_name}")
+                             else:
+                                 logger.warning(f"Anthropic tool '{tool_name}' missing 'spec' in registered_tools.")
+            # Add other provider-specific logic here if needed
+            # elif provider_identifier.startswith('openai:'):
+            #     pass
+
+        logger.info(f"Determined {len(active_tool_specs)} active tool specifications: {[t.get('name', 'unnamed') for t in active_tool_specs]}")
+        return active_tool_specs
 
     def _register_system_tools(self):
         """Registers system-level tools with the handler."""
         if not self.passthrough_handler:
             logger.error("Cannot register system tools: Handler not initialized.")
             return
+        if not self.memory_system:
+             logger.error("Cannot register system:get_context tool: MemorySystem not initialized.")
+             # Decide whether to continue or raise
+             # return # Or raise an error
 
         tools_to_register = [
             {
@@ -297,7 +361,8 @@ Select the best matching paths *from the provided metadata* and output the JSON.
                     }
                 },
                 # Use lambda to pass the correct dependency instance
-                "executor": lambda params: SystemExecutorFunctions.execute_get_context(params, self.memory_system)
+                # Ensure memory_system is available when lambda is defined
+                "executor": lambda params, mem_sys=self.memory_system: SystemExecutorFunctions.execute_get_context(params, mem_sys) if mem_sys else {"status": "FAILED", "content": "Memory system not available"}
             },
             {
                 "spec": {
@@ -317,13 +382,22 @@ Select the best matching paths *from the provided metadata* and output the JSON.
                     }
                 },
                 # Use lambda to pass the handler's file manager
-                "executor": lambda params: SystemExecutorFunctions.execute_read_files(params, self.passthrough_handler.file_manager)
+                # Ensure file_manager is available when lambda is defined
+                "executor": lambda params, fm=self.passthrough_handler.file_manager: SystemExecutorFunctions.execute_read_files(params, fm) if fm else {"status": "FAILED", "content": "File manager not available"}
             }
         ]
 
         registered_count = 0
         for tool in tools_to_register:
             try:
+                # Check if dependencies for the executor are met before registering
+                if tool['spec']['name'] == 'system:get_context' and not self.memory_system:
+                    logger.error("Skipping registration of system:get_context: MemorySystem not initialized.")
+                    continue
+                if tool['spec']['name'] == 'system:read_files' and not self.passthrough_handler.file_manager:
+                    logger.error("Skipping registration of system:read_files: FileAccessManager not initialized.")
+                    continue
+
                 success = self.passthrough_handler.register_tool(tool["spec"], tool["executor"])
                 if success:
                     registered_count += 1
@@ -382,7 +456,7 @@ Select the best matching paths *from the provided metadata* and output the JSON.
 
             # Instantiate indexer
             indexer = GitRepositoryIndexer(repo_path=norm_path)
-            
+
             # Configure the indexer based on options passed to this method
             if options:
                 logger.debug(f"Applying indexer options: {options}")
@@ -399,7 +473,7 @@ Select the best matching paths *from the provided metadata* and output the JSON.
                     logger.debug(f"  Set indexer exclude_patterns to: {indexer.exclude_patterns}")
             else:
                 logger.debug("No specific indexer options provided, using indexer defaults.")
-            
+
             logger.info(f"Starting indexing for {norm_path}...")
             index_results = indexer.index_repository(memory_system=self.memory_system)
             logger.info(f"Indexing complete for {norm_path}. Indexed {len(index_results)} files.")
@@ -498,7 +572,8 @@ if __name__ == "__main__":
     # In a real application, Application instance would likely be managed elsewhere
     logger.info("Running basic Application example...")
     try:
-        app = Application()
+        # Example with Anthropic provider to test tool registration
+        app = Application(config={"handler_config": {"default_model_identifier": "anthropic:claude-3-5-sonnet-latest"}})
 
         # Example: Index a dummy repo (replace with actual path if needed)
         # dummy_repo_path = "./dummy_repo_for_testing"
@@ -522,6 +597,27 @@ if __name__ == "__main__":
         print("\nSystem Tool Result:")
         print(json.dumps(tool_result, indent=2))
 
+        # Example: Use an Anthropic tool via task command (if provider is Anthropic)
+        if app.passthrough_handler.get_provider_identifier().startswith("anthropic:"):
+            # Create a dummy file first
+            dummy_file = "dummy_anthropic_test.txt"
+            create_params = {"file_path": dummy_file, "content": "Hello Anthropic!"}
+            create_result = app.handle_task_command("anthropic:create", create_params)
+            print("\nAnthropic Create Result:")
+            print(json.dumps(create_result, indent=2))
+
+            if create_result.get("status") == "COMPLETE":
+                # View the created file
+                view_params = {"file_path": dummy_file}
+                view_result = app.handle_task_command("anthropic:view", view_params)
+                print("\nAnthropic View Result:")
+                print(json.dumps(view_result, indent=2))
+
+                # Clean up dummy file
+                if os.path.exists(dummy_file):
+                    os.remove(dummy_file)
+
 
     except Exception as main_e:
         logger.exception(f"Error in main execution block: {main_e}")
+

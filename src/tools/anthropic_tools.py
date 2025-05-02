@@ -1,582 +1,496 @@
 """
-Tools for Anthropic Claude editor integration.
+Implementation of Anthropic-specific editor tools.
 
-This module provides functions for file system operations through 
-Claude's native editor tools.
+These tools provide functionalities for viewing, creating, and modifying files,
+mirroring the tools available with certain Anthropic models.
+
+They rely on the FileAccessManager for safe file operations.
 """
 
-import logging
 import os
-from typing import Optional
+import logging
+from typing import Optional, List, Union
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
-from pydantic import BaseModel, Field, ValidationError, validator
+# Assuming FileAccessManager is importable like this
+from src.handler.file_access import FileAccessManager
 
 logger = logging.getLogger(__name__)
 
-# Maximum read size (default from FileAccessManager)
-DEFAULT_MAX_FILE_SIZE = 100 * 1024  # 100 KB
+# Constants
+DEFAULT_MAX_FILE_SIZE = 100 * 1024 # 100 KB, same as FileAccessManager default
 
-# Tool specification constants
-ANTHROPIC_VIEW_SPEC = {
-    "name": "anthropic:view",
-    "description": "Views the content of a file.",
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "file_path": {
-                "type": "string",
-                "description": "The path to the file to view.",
-            },
-            "max_bytes": {
-                "type": "integer",
-                "description": "Optional maximum number of bytes to read.",
-            },
-        },
-        "required": ["file_path"],
-    },
-}
+# --- Helper Function (Consider moving to a shared utility if used elsewhere) ---
 
-ANTHROPIC_STR_REPLACE_SPEC = {
-    "name": "anthropic:str_replace",
-    "description": "Replaces text in a file.",
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "file_path": {
-                "type": "string",
-                "description": "The path to the file to modify.",
-            },
-            "old_string": {"type": "string", "description": "The text to replace."},
-            "new_string": {
-                "type": "string",
-                "description": "The text to replace it with.",
-            },
-            "count": {
-                "type": "integer",
-                "description": "Number of replacements to make. Default is 1, specify -1 for all occurrences.",
-            },
-        },
-        "required": ["file_path", "old_string", "new_string"],
-    },
-}
-
-ANTHROPIC_CREATE_SPEC = {
-    "name": "anthropic:create",
-    "description": "Creates a new file with the specified content.",
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "file_path": {
-                "type": "string",
-                "description": "The path to the file to create.",
-            },
-            "content": {
-                "type": "string",
-                "description": "The content to write to the file.",
-            },
-        },
-        "required": ["file_path", "content"],
-    },
-}
-
-ANTHROPIC_INSERT_SPEC = {
-    "name": "anthropic:insert",
-    "description": "Inserts content at a specific position in a file.",
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "file_path": {
-                "type": "string",
-                "description": "The path to the file to modify.",
-            },
-            "position": {
-                "type": "integer",
-                "description": "The position (character offset) where to insert content.",
-            },
-            "content": {"type": "string", "description": "The content to insert."},
-        },
-        "required": ["file_path", "position", "content"],
-    },
-}
-
-# Collection of all Anthropic tool specifications
-ANTHROPIC_TOOLS = [
-    ANTHROPIC_VIEW_SPEC,
-    ANTHROPIC_STR_REPLACE_SPEC,
-    ANTHROPIC_CREATE_SPEC,
-    ANTHROPIC_INSERT_SPEC,
-]
-
-# Collection of all Anthropic tool names
-ANTHROPIC_TOOL_NAMES = [spec["name"] for spec in ANTHROPIC_TOOLS]
-
-
-def _normalize_path(file_path: str) -> str:
+def _normalize_path(base_path: str, relative_path: str) -> str:
     """
-    Normalizes a file path, ensuring it's an absolute path.
+    Safely normalizes and resolves a path relative to a base path.
 
     Args:
-        file_path: The file path to normalize.
+        base_path: The absolute base directory.
+        relative_path: The path provided by the user/LLM.
 
     Returns:
-        The normalized absolute path.
+        The absolute, normalized path.
 
     Raises:
-        ValueError: If the path is empty or appears unsafe.
+        ValueError: If the resolved path attempts to escape the base path
+                    or contains potentially unsafe elements.
     """
-    if not file_path or not file_path.strip():
+    if not relative_path:
         raise ValueError("File path cannot be empty")
 
-    # Convert to absolute path if it's relative
-    norm_path = os.path.abspath(file_path)
+    # Ensure base_path is absolute and normalized
+    abs_base_path = os.path.abspath(base_path)
 
-    # Basic safety check - prevent paths with unusual patterns
-    # This is a very basic check; a production system would need more thorough validation
-    if (
-        ".." in norm_path.split(os.sep)
-        or norm_path.startswith("/dev/")
-        or norm_path.startswith("/proc/")
-    ):
-        raise ValueError(f"Potentially unsafe path: {norm_path}")
+    # Resolve the combined path
+    combined_path = os.path.join(abs_base_path, relative_path)
+    abs_resolved_path = os.path.abspath(combined_path)
 
-    return norm_path
+    # Security Check: Ensure the resolved path is still within the base path
+    if not abs_resolved_path.startswith(abs_base_path):
+        logger.warning(f"Path traversal attempt detected: '{relative_path}' resolved outside base '{abs_base_path}'")
+        raise ValueError("Invalid path: Access denied outside allowed directory.")
 
+    # Additional checks (optional, depending on security needs)
+    # e.g., disallow '..' even if it stays within base?
+    # if '..' in relative_path.split(os.sep):
+    #     raise ValueError("Invalid path: '..' components are not allowed.")
+
+    return abs_resolved_path
+
+
+# --- Pydantic Input Models ---
 
 class ViewInput(BaseModel):
-    """Input model for the view tool."""
+    file_path: str = Field(..., description="Path to the file or directory to view.")
+    start_line: Optional[int] = Field(None, description="Optional 1-based start line number.", ge=1)
+    end_line: Optional[int] = Field(None, description="Optional 1-based end line number.", ge=1)
+    max_bytes: Optional[int] = Field(DEFAULT_MAX_FILE_SIZE, description="Maximum bytes to read.", gt=0)
 
-    file_path: str = Field(..., description="The path to the file to view")
-    max_bytes: Optional[int] = Field(
-        None, description="Maximum number of bytes to read"
-    )
-
-    @validator("file_path")
-    def validate_file_path(cls, v):
-        if not v or not v.strip():
+    @field_validator('file_path')
+    @classmethod
+    def path_must_not_be_empty(cls, v):
+        if not v:
             raise ValueError("File path cannot be empty")
         return v
-
 
 class StrReplaceInput(BaseModel):
-    """Input model for the str_replace tool."""
+    file_path: str = Field(..., description="Path to the file to modify.")
+    old_string: str = Field(..., description="The exact string to replace.")
+    new_string: str = Field(..., description="The string to replace with.")
+    count: int = Field(-1, description="Maximum number of replacements (-1 for all).")
 
-    file_path: str = Field(..., description="The path to the file to modify")
-    old_string: str = Field(..., description="The text to replace")
-    new_string: str = Field(..., description="The text to replace it with")
-    count: Optional[int] = Field(
-        1,
-        description="Number of replacements to make. Default is 1, specify -1 for all occurrences.",
-    )
-
-    @validator("file_path")
-    def validate_file_path(cls, v):
-        if not v or not v.strip():
+    @field_validator('file_path')
+    @classmethod
+    def path_must_not_be_empty(cls, v):
+        if not v:
             raise ValueError("File path cannot be empty")
         return v
 
-    @validator("old_string")
-    def validate_old_string(cls, v):
-        if v == "":
-            raise ValueError("Old string cannot be empty for replacement")
+    @field_validator('old_string')
+    @classmethod
+    def old_string_must_not_be_empty(cls, v):
+        if not v:
+            raise ValueError("Old string cannot be empty")
         return v
-
 
 class CreateInput(BaseModel):
-    """Input model for the create tool."""
+    file_path: str = Field(..., description="Path for the new file.")
+    content: str = Field("", description="Content to write to the new file.")
+    overwrite: bool = Field(False, description="Whether to overwrite if the file already exists.")
 
-    file_path: str = Field(..., description="The path to the file to create")
-    content: str = Field(..., description="The content to write to the file")
-
-    @validator("file_path")
-    def validate_file_path(cls, v):
-        if not v or not v.strip():
+    @field_validator('file_path')
+    @classmethod
+    def path_must_not_be_empty(cls, v):
+        if not v:
             raise ValueError("File path cannot be empty")
         return v
-
 
 class InsertInput(BaseModel):
-    """Input model for the insert tool."""
+    file_path: str = Field(..., description="Path to the file to modify.")
+    content: str = Field(..., description="Content to insert.")
+    position: Optional[int] = Field(None, description="0-based byte offset for insertion.", ge=0)
+    line: Optional[int] = Field(None, description="1-based line number for insertion (alternative to position).", ge=1)
+    after_line: bool = Field(False, description="If using 'line', insert after the specified line instead of before.")
 
-    file_path: str = Field(..., description="The path to the file to modify")
-    position: int = Field(
-        ..., description="The position (character offset) where to insert content"
-    )
-    content: str = Field(..., description="The content to insert")
-
-    @validator("file_path")
-    def validate_file_path(cls, v):
-        if not v or not v.strip():
+    @field_validator('file_path')
+    @classmethod
+    def path_must_not_be_empty(cls, v):
+        if not v:
             raise ValueError("File path cannot be empty")
         return v
 
-    @validator("position")
-    def validate_position(cls, v):
-        if v < 0:
-            raise ValueError("Position cannot be negative")
+    @field_validator('content')
+    @classmethod
+    def content_must_not_be_empty(cls, v):
+        # Allow empty string insertion? Let's allow it for now.
+        # if not v:
+        #     raise ValueError("Content to insert cannot be empty")
         return v
 
-    @validator("content")
-    def validate_content(cls, v):
-        if v == "":
-            raise ValueError("Insert content cannot be empty")
-        return v
-
+# --- Tool Functions ---
 
 def view(
+    file_manager: FileAccessManager,
     file_path: str,
-    max_bytes: Optional[int] = None,
     start_line: Optional[int] = None,
     end_line: Optional[int] = None,
+    max_bytes: Optional[int] = DEFAULT_MAX_FILE_SIZE
 ) -> str:
     """
-    Reads the content of a file, with optional range-based viewing.
+    Views the content of a file, optionally limited by line range or size.
 
     Args:
-        file_path: The path to the file to read.
-        max_bytes: Optional maximum number of bytes to read.
-        start_line: Optional line number to start reading from (1-based indexing).
-        end_line: Optional line number to end reading at (1-based indexing, inclusive).
+        file_manager: The FileAccessManager instance.
+        file_path: Path to the file.
+        start_line: Optional 1-based start line.
+        end_line: Optional 1-based end line.
+        max_bytes: Maximum bytes to read.
 
     Returns:
-        A string containing the file content or error message.
+        The file content or an error message.
     """
     try:
-        # Create input model for validation
-        input_data = {"file_path": file_path}
-        if max_bytes is not None:
-            input_data["max_bytes"] = max_bytes
+        # Validate inputs using Pydantic model
+        input_data = ViewInput(file_path=file_path, start_line=start_line, end_line=end_line, max_bytes=max_bytes)
 
-        # Validate input
-        input_model = ViewInput(**input_data)
+        # Normalize path using FileAccessManager's base path
+        abs_path = file_manager._resolve_path(input_data.file_path) # Use internal helper for consistency
 
-        # Normalize path
-        try:
-            normalized_path = _normalize_path(input_model.file_path)
-        except ValueError as e:
-            return f"Error: Invalid path: {e}"
+        # Check path safety (redundant if _resolve_path does it, but good defense)
+        if not file_manager._is_path_safe(abs_path):
+             raise ValueError("Invalid path: Access denied.") # Should be caught by _resolve_path
 
-        # Check if file exists
-        if not os.path.exists(normalized_path):
-            return f"Error: File not found: {normalized_path}"
+        # Check existence
+        if not os.path.exists(abs_path):
+            return f"Error: File not found at {abs_path}"
+        if not os.path.isfile(abs_path):
+            return f"Error: Path is not a file: {abs_path}"
 
-        if not os.path.isfile(normalized_path):
-            return f"Error: Not a file: {normalized_path}"
+        # Check size limit before reading
+        file_size = os.path.getsize(abs_path)
+        read_limit = input_data.max_bytes if input_data.max_bytes is not None else DEFAULT_MAX_FILE_SIZE
+        if file_size > read_limit:
+            return f"Error: File too large ({file_size} bytes). View limit: {read_limit} bytes."
 
-        # Check file size
-        file_size = os.path.getsize(normalized_path)
-        max_size = input_model.max_bytes or DEFAULT_MAX_FILE_SIZE
+        # Read content using FileAccessManager
+        content = file_manager.read_file(input_data.file_path, max_size=read_limit) # Use relative path for FAM
 
-        if file_size > max_size:
-            return f"Error: File too large: {file_size} bytes (limit: {max_size} bytes)"
+        if content is None:
+            # This might happen if FAM encounters an error despite earlier checks
+            return f"Error: Could not read file: {abs_path}"
 
-        # Read file
-        try:
-            if start_line is not None or end_line is not None:
-                # Line-based reading
-                with open(
-                    normalized_path, encoding="utf-8", errors="replace"
-                ) as f:
-                    all_lines = f.readlines()
+        # Handle line range filtering
+        if input_data.start_line is not None or input_data.end_line is not None:
+            lines = content.splitlines(keepends=True)
+            num_lines = len(lines)
 
-                # Validate line ranges
-                if start_line is not None and (
-                    start_line < 1 or start_line > len(all_lines)
-                ):
-                    return f"Error: Start line out of range: {start_line} (file has {len(all_lines)} lines)"
+            start_idx = (input_data.start_line - 1) if input_data.start_line is not None else 0
+            end_idx = input_data.end_line if input_data.end_line is not None else num_lines
 
-                if end_line is not None and (end_line < 1 or end_line > len(all_lines)):
-                    return f"Error: End line out of range: {end_line} (file has {len(all_lines)} lines)"
+            if input_data.start_line is not None and (input_data.start_line < 1 or input_data.start_line > num_lines):
+                 return f"Error: Start line out of range: {input_data.start_line} (File has {num_lines} lines)"
+            if input_data.end_line is not None and (input_data.end_line < 1 or input_data.end_line > num_lines):
+                 return f"Error: End line out of range: {input_data.end_line} (File has {num_lines} lines)"
+            if start_idx >= end_idx:
+                 return f"Error: Start line ({input_data.start_line or 1}) must be less than or equal to end line ({input_data.end_line or num_lines})"
 
-                # Apply defaults if needed
-                actual_start = (start_line or 1) - 1  # Convert to 0-based indexing
-                actual_end = end_line if end_line is not None else len(all_lines)
+            content = "".join(lines[start_idx:end_idx])
 
-                # Ensure correct ordering
-                if actual_start > actual_end - 1:
-                    return f"Error: Start line ({start_line}) must be less than or equal to end line ({end_line})"
-
-                # Join selected lines
-                content = "".join(all_lines[actual_start:actual_end])
-            else:
-                # Full file reading
-                with open(
-                    normalized_path, encoding="utf-8", errors="replace"
-                ) as f:
-                    content = f.read()
-
-            return content
-        except Exception as e:
-            return f"Error: Error reading file: {e}"
+        return content
 
     except ValidationError as e:
-        return f"Error: Invalid input: {e}"
+        logger.warning(f"Input validation failed for 'view': {e}")
+        return f"Error: Invalid input - {e}"
+    except ValueError as e: # Catch path normalization errors
+        logger.warning(f"Path validation failed for 'view': {e}")
+        return f"Error: Invalid path: {e}"
     except Exception as e:
-        logger.exception(f"Unexpected error in view tool: {e}")
-        return f"Error: Unexpected error: {e}"
+        logger.exception(f"Error during 'view' operation for path '{file_path}': {e}")
+        return f"Error: An unexpected error occurred while viewing the file: {e}"
 
 
 def str_replace(
-    file_path: str, old_string: str, new_string: str, count: Optional[int] = 1
+    file_manager: FileAccessManager,
+    file_path: str,
+    old_string: str,
+    new_string: str,
+    count: int = -1
 ) -> str:
     """
     Replaces occurrences of a string in a file.
 
     Args:
-        file_path: The path to the file to modify.
-        old_string: The text to replace.
-        new_string: The text to replace it with.
-        count: Number of replacements to make. Default is 1, specify -1 for all occurrences.
+        file_manager: The FileAccessManager instance.
+        file_path: Path to the file.
+        old_string: The exact string to replace.
+        new_string: The string to replace with.
+        count: Maximum number of replacements (-1 for all).
 
     Returns:
-        A string describing the result or error message.
+        A status message indicating success or failure.
     """
     try:
-        # Check if old_string is empty
-        if not old_string:
-            return "Error: Old string cannot be empty for replacement"
-
-        # Create input model for validation
-        input_data = {
-            "file_path": file_path,
-            "old_string": old_string,
-            "new_string": new_string,
-        }
-        if count is not None:
-            input_data["count"] = count
-
-        # Validate input
-        input_model = StrReplaceInput(**input_data)
+        # Validate inputs
+        input_data = StrReplaceInput(file_path=file_path, old_string=old_string, new_string=new_string, count=count)
 
         # Normalize path
-        try:
-            normalized_path = _normalize_path(input_model.file_path)
-        except ValueError as e:
-            return f"Error: Invalid path: {e}"
+        abs_path = file_manager._resolve_path(input_data.file_path)
+        if not file_manager._is_path_safe(abs_path):
+             raise ValueError("Invalid path: Access denied.")
 
-        # Check if file exists
-        if not os.path.exists(normalized_path):
-            return f"Error: File not found: {normalized_path}"
+        # Read current content (use large max_size for replace)
+        # Consider adding a specific max_size for safety?
+        current_content = file_manager.read_file(input_data.file_path, max_size=None) # Read full file
 
-        if not os.path.isfile(normalized_path):
-            return f"Error: Not a file: {normalized_path}"
+        if current_content is None:
+            return f"Error: File not found or could not be read: {abs_path}"
 
-        # Read file
-        try:
-            with open(normalized_path, encoding="utf-8", errors="replace") as f:
-                content = f.read()
+        # Perform replacement
+        replace_count = input_data.count if input_data.count != -1 else None # None means replace all for str.replace
+        if replace_count is not None:
+             updated_content = current_content.replace(input_data.old_string, input_data.new_string, replace_count)
+             actual_replaced = (len(current_content) - len(updated_content)) // (len(input_data.old_string) - len(input_data.new_string)) if len(input_data.old_string) != len(input_data.new_string) else current_content.count(input_data.old_string, 0, len(current_content)) # Estimate count
+             # More accurate count for fixed count
+             temp_content = current_content
+             actual_replaced = 0
+             start_index = 0
+             for _ in range(replace_count):
+                 index = temp_content.find(input_data.old_string, start_index)
+                 if index == -1:
+                     break
+                 actual_replaced += 1
+                 start_index = index + 1 # Move past the found occurrence
 
-            # Perform replacement
-            effective_count = input_model.count if input_model.count is not None else 1
-            new_content, replacements = content, 0
+        else: # Replace all
+             updated_content = current_content.replace(input_data.old_string, input_data.new_string)
+             actual_replaced = current_content.count(input_data.old_string)
 
-            if effective_count == -1:  # Replace all occurrences
-                new_content = content.replace(
-                    input_model.old_string, input_model.new_string
-                )
-                replacements = content.count(input_model.old_string)
-            else:
-                new_content = content.replace(
-                    input_model.old_string, input_model.new_string, effective_count
-                )
-                replacements = min(
-                    content.count(input_model.old_string), effective_count
-                )
 
-            # Write back if changes were made
-            if replacements > 0:
-                with open(normalized_path, "w", encoding="utf-8") as f:
-                    f.write(new_content)
+        if actual_replaced == 0:
+            return "No matches found for replacement"
 
-                return f"Successfully replaced {replacements} occurrence(s)"
-            else:
-                return "No matches found for replacement"
+        # Write back using FileAccessManager (always overwrite for replace)
+        success = file_manager.write_file(input_data.file_path, updated_content, overwrite=True)
 
-        except Exception as e:
-            return f"Error: Error processing file: {e}"
+        if success:
+            return f"Successfully replaced {actual_replaced} occurrence(s)"
+        else:
+            return f"Error: Failed to write changes to file: {abs_path}"
 
     except ValidationError as e:
-        return f"Error: Invalid input: {e}"
+        logger.warning(f"Input validation failed for 'str_replace': {e}")
+        return f"Error: Invalid input - {e}"
+    except ValueError as e: # Catch path normalization errors
+        logger.warning(f"Path validation failed for 'str_replace': {e}")
+        return f"Error: Invalid path: {e}"
     except Exception as e:
-        logger.exception(f"Unexpected error in str_replace tool: {e}")
-        return f"Error: Unexpected error: {e}"
+        logger.exception(f"Error during 'str_replace' operation for path '{file_path}': {e}")
+        return f"Error: Error processing file: {e}"
 
 
-def create(file_path: str, content: str, overwrite: bool = False) -> str:
+def create(
+    file_manager: FileAccessManager,
+    file_path: str,
+    content: str = "",
+    overwrite: bool = False
+) -> str:
     """
     Creates a new file with the specified content.
 
     Args:
-        file_path: The path to the file to create.
-        content: The content to write to the file.
-        overwrite: Whether to overwrite the file if it already exists.
+        file_manager: The FileAccessManager instance.
+        file_path: Path for the new file.
+        content: Content to write.
+        overwrite: Whether to overwrite if the file exists.
 
     Returns:
-        A string describing the result or error message.
+        A status message indicating success or failure.
     """
     try:
-        # Create input model for validation
-        input_data = {"file_path": file_path, "content": content}
-
-        # Validate input
-        input_model = CreateInput(**input_data)
+        # Validate inputs
+        input_data = CreateInput(file_path=file_path, content=content, overwrite=overwrite)
 
         # Normalize path
-        try:
-            normalized_path = _normalize_path(input_model.file_path)
-        except ValueError as e:
-            return f"Error: Invalid path: {e}"
+        abs_path = file_manager._resolve_path(input_data.file_path)
+        if not file_manager._is_path_safe(abs_path):
+             raise ValueError("Invalid path: Access denied.")
 
-        # Check if file already exists and handle overwrite flag
-        if os.path.exists(normalized_path):
-            if not overwrite:
-                return f"Error: File already exists: {normalized_path}. Use overwrite=True to replace it."
-            # If overwrite is True, we'll continue and overwrite the file
+        # Check existence if not overwriting
+        if not input_data.overwrite and os.path.exists(abs_path):
+            return f"Error: File already exists at {abs_path}. Use overwrite=True to replace."
 
-        # Create parent directories if they don't exist
-        parent_dir = os.path.dirname(normalized_path)
-        if parent_dir and not os.path.exists(parent_dir):
-            try:
-                os.makedirs(parent_dir, exist_ok=True)
-            except Exception as e:
-                return f"Error: Failed to create parent directory: {e}"
+        # Create parent directories (FileAccessManager.write_file should handle this)
+        # os.makedirs(os.path.dirname(abs_path), exist_ok=True) # FAM handles this
 
-        # Create file
-        try:
-            mode = "w" if not os.path.exists(normalized_path) or overwrite else "x"
-            with open(normalized_path, mode, encoding="utf-8") as f:
-                f.write(input_model.content)
+        # Write file using FileAccessManager
+        success = file_manager.write_file(input_data.file_path, input_data.content, overwrite=input_data.overwrite)
 
-            action = (
-                "Created"
-                if not os.path.exists(normalized_path) or not overwrite
-                else "Overwritten"
-            )
-            return f"Successfully {action.lower()} file: {normalized_path}"
-        except Exception as e:
-            return f"Error: Error creating file: {e}"
+        if success:
+            action = "overwritten" if input_data.overwrite and os.path.exists(abs_path) else "created"
+            return f"Successfully {action} file: {abs_path}"
+        else:
+            # FAM write_file logs errors, return a generic message
+            return f"Error: Error creating file {abs_path}. Check logs for details."
 
     except ValidationError as e:
-        return f"Error: Invalid input: {e}"
+        logger.warning(f"Input validation failed for 'create': {e}")
+        return f"Error: Invalid input - {e}"
+    except ValueError as e: # Catch path normalization errors
+        logger.warning(f"Path validation failed for 'create': {e}")
+        return f"Error: Invalid path: {e}"
     except Exception as e:
-        logger.exception(f"Unexpected error in create tool: {e}")
-        return f"Error: Unexpected error: {e}"
+        logger.exception(f"Error during 'create' operation for path '{file_path}': {e}")
+        return f"Error: An unexpected error occurred while creating the file: {e}"
 
 
 def insert(
+    file_manager: FileAccessManager,
     file_path: str,
     content: str,
     position: Optional[int] = None,
     line: Optional[int] = None,
-    after_line: bool = False,
+    after_line: bool = False
 ) -> str:
     """
-    Inserts content at a specific position in a file.
+    Inserts content into a file at a specific position or line number.
 
     Args:
-        file_path: The path to the file to modify.
-        content: The content to insert.
-        position: The character position (offset) where to insert content. Mutually exclusive with line.
-        line: The line number where to insert content (1-based indexing). Mutually exclusive with position.
-        after_line: If True and using line parameter, insert after the specified line instead of before it.
+        file_manager: The FileAccessManager instance.
+        file_path: Path to the file.
+        content: Content to insert.
+        position: 0-based byte offset for insertion.
+        line: 1-based line number for insertion (alternative to position).
+        after_line: If using 'line', insert after the specified line.
 
     Returns:
-        A string describing the result or error message.
+        A status message indicating success or failure.
     """
     try:
-        # Validate basic input data
-        if position is not None and line is not None:
-            return "Error: Cannot specify both position and line parameters"
+        # Validate inputs
+        input_data = InsertInput(file_path=file_path, content=content, position=position, line=line, after_line=after_line)
 
-        if position is None and line is None:
-            return "Error: Must specify either position or line parameter"
-
-        # Create input model for validation
-        input_data = {
-            "file_path": file_path,
-            "content": content,
-            "position": (
-                position if position is not None else 0
-            ),  # Temporary value if using line
-        }
-
-        # Validate file path and content through model
-        # (We'll set the real position after line calculation if needed)
-        input_model = InsertInput(**input_data)
+        # Check mutual exclusivity of position and line
+        if input_data.position is not None and input_data.line is not None:
+            return "Error: Cannot specify both position and line for insertion."
+        if input_data.position is None and input_data.line is None:
+            return "Error: Must specify either position or line for insertion."
 
         # Normalize path
-        try:
-            normalized_path = _normalize_path(input_model.file_path)
-        except ValueError as e:
-            return f"Error: Invalid path: {e}"
+        abs_path = file_manager._resolve_path(input_data.file_path)
+        if not file_manager._is_path_safe(abs_path):
+             raise ValueError("Invalid path: Access denied.")
 
-        # Check if file exists
-        if not os.path.exists(normalized_path):
-            return f"Error: File not found: {normalized_path}"
+        # Check file existence
+        if not os.path.exists(abs_path):
+            return f"Error: File not found at {abs_path}"
+        if not os.path.isfile(abs_path):
+            return f"Error: Path is not a file: {abs_path}"
 
-        if not os.path.isfile(normalized_path):
-            return f"Error: Not a file: {normalized_path}"
+        insert_pos: int = -1
+        line_mode_description = ""
 
-        # Read file
-        try:
-            with open(normalized_path, encoding="utf-8", errors="replace") as f:
-                if line is not None:
-                    # Line-based approach
-                    lines = f.readlines()
+        if input_data.position is not None:
+            # Validate position against file size
+            file_size = os.path.getsize(abs_path)
+            if input_data.position > file_size:
+                return f"Error: Position {input_data.position} is out of bounds (max: {file_size})"
+            insert_pos = input_data.position
+            line_mode_description = f"at position {insert_pos}"
+        else: # line is not None
+            # Read content to determine line position
+            current_content = file_manager.read_file(input_data.file_path, max_size=None)
+            if current_content is None:
+                return f"Error: Could not read file to determine line position: {abs_path}"
 
-                    # Validate line number
-                    if (
-                        line < 1 or line > len(lines) + 1
-                    ):  # +1 to allow appending at the end
-                        return f"Error: Line {line} is out of bounds (file has {len(lines)} lines)"
+            lines = current_content.splitlines(keepends=True)
+            num_lines = len(lines)
 
-                    if line == len(lines) + 1:
-                        # Special case: append to end of file
-                        position = len("".join(lines))
-                    # Calculate character position from line number
-                    elif after_line:
-                        # Insert after the specified line
-                        position = sum(len(lines[i]) for i in range(line))
-                    else:
-                        # Insert before the specified line
-                        position = sum(len(lines[i]) for i in range(line - 1))
+            target_line_1_based = input_data.line
+            if target_line_1_based < 1 or target_line_1_based > num_lines + (1 if input_data.after_line else 0):
+                 # Allow inserting after the last line
+                 max_line = num_lines + 1 if input_data.after_line else num_lines
+                 if target_line_1_based > max_line:
+                     return f"Error: Line {target_line_1_based} is out of bounds (File has {num_lines} lines, max allowed: {max_line})"
 
-                    content_to_insert = input_model.content
-                    # Ensure content ends with newline if inserting after line
-                    if after_line and not content_to_insert.endswith("\n"):
-                        content_to_insert += "\n"
 
-                    # Reread as a single string to use the position-based logic
-                    f.seek(0)
-                    file_content = f.read()
+            # Calculate byte position
+            insert_pos = 0
+            line_idx_0_based = target_line_1_based - 1
+
+            if input_data.after_line:
+                # Position after the target line
+                if line_idx_0_based >= num_lines: # After last line
+                    insert_pos = len(current_content)
                 else:
-                    # Position-based approach (as before)
-                    file_content = f.read()
-                    content_to_insert = input_model.content
-
-            # Check position bounds for position-based insertion
-            if position > len(file_content):
-                return f"Error: Position {position} is out of bounds (max: {len(file_content)})"
-
-            # Insert content
-            new_content = (
-                file_content[:position] + content_to_insert + file_content[position:]
-            )
-
-            # Write modified content
-            with open(normalized_path, "w", encoding="utf-8") as f:
-                f.write(new_content)
-
-            if line is not None:
-                insert_mode = "after" if after_line else "before"
-                return f"Successfully inserted content {insert_mode} line {line}"
+                    for i in range(line_idx_0_based + 1):
+                        insert_pos += len(lines[i])
+                line_mode_description = f"after line {target_line_1_based}"
             else:
-                return f"Successfully inserted content at position {position}"
+                # Position before the target line
+                for i in range(line_idx_0_based):
+                    insert_pos += len(lines[i])
+                line_mode_description = f"before line {target_line_1_based}"
 
-        except Exception as e:
-            return f"Error: Error processing file: {e}"
+        # Ensure content ends with newline if inserting in line mode?
+        # Anthropic spec doesn't explicitly say, but it's often desired.
+        insert_content = input_data.content
+        if input_data.line is not None and not insert_content.endswith('\n'):
+             insert_content += '\n'
+             logger.debug("Added newline to content for line-based insert.")
+
+
+        # Perform insertion using FileAccessManager
+        success = file_manager.insert_content(input_data.file_path, insert_content, insert_pos)
+
+        if success:
+            return f"Successfully inserted content {line_mode_description}"
+        else:
+            # FAM insert_content logs errors
+            return f"Error: Error processing file {abs_path}. Check logs for details."
 
     except ValidationError as e:
-        return f"Error: Invalid input: {e}"
+        logger.warning(f"Input validation failed for 'insert': {e}")
+        return f"Error: Invalid input - {e}"
+    except ValueError as e: # Catch path normalization errors
+        logger.warning(f"Path validation failed for 'insert': {e}")
+        return f"Error: Invalid path: {e}"
     except Exception as e:
-        logger.exception(f"Unexpected error in insert tool: {e}")
-        return f"Error: Unexpected error: {e}"
+        logger.exception(f"Error during 'insert' operation for path '{file_path}': {e}")
+        return f"Error: An unexpected error occurred while inserting content: {e}"
+
+
+# --- Tool Specifications ---
+
+ANTHROPIC_VIEW_SPEC = {
+    "name": "anthropic:view",
+    "description": "Views the content of a file, optionally limited by line range or size.",
+    "input_schema": ViewInput.model_json_schema()
+}
+
+ANTHROPIC_STR_REPLACE_SPEC = {
+    "name": "anthropic:str_replace",
+    "description": "Replaces occurrences of a string in a file.",
+    "input_schema": StrReplaceInput.model_json_schema()
+}
+
+ANTHROPIC_CREATE_SPEC = {
+    "name": "anthropic:create",
+    "description": "Creates a new file with the specified content.",
+    "input_schema": CreateInput.model_json_schema()
+}
+
+ANTHROPIC_INSERT_SPEC = {
+    "name": "anthropic:insert",
+    "description": "Inserts content into a file at a specific position or line number.",
+    "input_schema": InsertInput.model_json_schema()
+}
+
+# List of all tool specifications for easier import
+ANTHROPIC_TOOLS = [
+    ANTHROPIC_VIEW_SPEC,
+    ANTHROPIC_CREATE_SPEC,
+    ANTHROPIC_STR_REPLACE_SPEC,
+    ANTHROPIC_INSERT_SPEC,
+]
