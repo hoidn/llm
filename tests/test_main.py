@@ -61,112 +61,111 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 def app_components(mocker, tmp_path): # Add tmp_path
     """Provides mocked components for Application testing using autospec."""
     # Patch classes and INDIVIDUAL functions at their DEFINITION location
-    # Mock the core component classes themselves (used by src.main)
-    mock_memory_system_cls = mocker.patch('src.main.MemorySystem', spec=MemorySystem)
-    mock_task_system_cls = mocker.patch('src.main.TaskSystem', spec=TaskSystem)
-    mock_handler_cls = mocker.patch('src.main.PassthroughHandler', spec=PassthroughHandler)
-    mock_fm_cls = mocker.patch('src.main.FileAccessManager', spec=FileAccessManager)
-    # Mock the LLMInteractionManager *inside* the handler module where it's likely used
-    mock_llm_manager_cls = mocker.patch('src.handler.base_handler.LLMInteractionManager', spec=LLMInteractionManager)
-    # Mock AiderBridge (used by src.main)
-    mock_aider_bridge_cls = mocker.patch('src.main.AiderBridge', spec=AiderBridge)
-    # Mock GitRepositoryIndexer (used by src.main)
-    mock_indexer_cls = mocker.patch('src.main.GitRepositoryIndexer', spec=GitRepositoryIndexer)
 
-    # --- Patch specific functions/static methods directly ---
-    # Patch SystemExecutorFunctions methods (called within src.main)
-    mock_exec_get_context = mocker.patch('src.main.SystemExecutorFunctions.execute_get_context', name="mock_execute_get_context")
-    mock_exec_read_files = mocker.patch('src.main.SystemExecutorFunctions.execute_read_files', name="mock_execute_read_files")
+    # --- START FIX: Use 'with patch' for core component classes ---
+    with patch('src.main.MemorySystem', autospec=True) as MockMemory, \
+         patch('src.main.TaskSystem', autospec=True) as MockTaskSystem, \
+         patch('src.main.PassthroughHandler', autospec=True) as MockPassthroughHandler, \
+         patch('src.main.FileAccessManager', autospec=True) as MockFileAccessManager, \
+         patch('src.handler.base_handler.LLMInteractionManager', autospec=True) as MockLLMInteractionManager, \
+         patch('src.main.AiderBridge', autospec=True) as MockAiderBridge, \
+         patch('src.main.GitRepositoryIndexer', autospec=True) as MockGitRepositoryIndexer:
 
-    # Patch AiderExecutorFunctions methods (called within src.main)
-    mock_aider_auto_func = mocker.patch('src.main.AiderExecutors.execute_aider_automatic', new_callable=AsyncMock, name="mock_execute_aider_automatic")
-    mock_aider_inter_func = mocker.patch('src.main.AiderExecutors.execute_aider_interactive', new_callable=AsyncMock, name="mock_execute_aider_interactive")
+        # --- Patch specific functions/static methods directly (using mocker) ---
+        # Patch SystemExecutorFunctions methods (called within src.main)
+        mock_exec_get_context = mocker.patch('src.main.SystemExecutorFunctions.execute_get_context', name="mock_execute_get_context")
+        mock_exec_read_files = mocker.patch('src.main.SystemExecutorFunctions.execute_read_files', name="mock_execute_read_files")
 
-    # Patch Anthropic tool functions WHERE DEFINED
-    mock_anthropic_view_func = mocker.patch('src.tools.anthropic_tools.view', name="mock_anthropic_view")
-    mock_anthropic_create_func = mocker.patch('src.tools.anthropic_tools.create', name="mock_anthropic_create")
-    mock_anthropic_replace_func = mocker.patch('src.tools.anthropic_tools.str_replace', name="mock_anthropic_replace")
-    mock_anthropic_insert_func = mocker.patch('src.tools.anthropic_tools.insert', name="mock_anthropic_insert")
+        # Patch AiderExecutorFunctions methods (called within src.main)
+        mock_aider_auto_func = mocker.patch('src.main.AiderExecutors.execute_aider_automatic', new_callable=AsyncMock, name="mock_execute_aider_automatic")
+        mock_aider_inter_func = mocker.patch('src.main.AiderExecutors.execute_aider_interactive', new_callable=AsyncMock, name="mock_execute_aider_interactive")
 
-    # Create mock instances that the mocked classes will return
-    mock_memory_system_instance = MagicMock(spec=MemorySystem)
-    mock_task_system_instance = MagicMock(spec=TaskSystem)
-    mock_handler_instance = MagicMock(spec=PassthroughHandler)
-    mock_fm_instance = MagicMock(spec=FileAccessManager)
-    mock_llm_manager_instance = MagicMock(spec=LLMInteractionManager)
-    mock_aider_bridge_instance = MagicMock(spec=AiderBridge)
-    mock_indexer_instance = MagicMock(spec=GitRepositoryIndexer) # Instance for indexer
+        # Patch Anthropic tool functions WHERE DEFINED
+        mock_anthropic_view_func = mocker.patch('src.tools.anthropic_tools.view', name="mock_anthropic_view")
+        mock_anthropic_create_func = mocker.patch('src.tools.anthropic_tools.create', name="mock_anthropic_create")
+        mock_anthropic_replace_func = mocker.patch('src.tools.anthropic_tools.str_replace', name="mock_anthropic_replace")
+        mock_anthropic_insert_func = mocker.patch('src.tools.anthropic_tools.insert', name="mock_anthropic_insert")
 
-    # Configure mock instances with attributes accessed during Application.__init__
-    mock_fm_instance.base_path = "/mocked/base/path" # For logging
-    # Add the memory_system attribute so hasattr checks pass in Application.__init__
-    mock_handler_instance.memory_system = None
-    mock_task_system_instance.memory_system = None
+        # Create mock instances that the mocked classes will return
+        # Use autospec=True for instances to mimic the class spec
+        mock_memory_system_instance = MagicMock(spec=MemorySystem)
+        mock_task_system_instance = MagicMock(spec=TaskSystem)
+        mock_handler_instance = MagicMock(spec=PassthroughHandler)
+        mock_fm_instance = MagicMock(spec=FileAccessManager)
+        mock_llm_manager_instance = MagicMock(spec=LLMInteractionManager)
+        mock_aider_bridge_instance = MagicMock(spec=AiderBridge)
+        mock_indexer_instance = MagicMock(spec=GitRepositoryIndexer) # Instance for indexer
 
-    # Configure the mocked classes to return the mock instances
-    mock_memory_system_cls.return_value = mock_memory_system_instance
-    mock_task_system_cls.return_value = mock_task_system_instance
-    mock_handler_cls.return_value = mock_handler_instance
-    mock_fm_cls.return_value = mock_fm_instance
-    mock_llm_manager_cls.return_value = mock_llm_manager_instance # LLMManager instance mock
-    mock_aider_bridge_cls.return_value = mock_aider_bridge_instance
-    mock_indexer_cls.return_value = mock_indexer_instance # Indexer instance mock
+        # Configure mock instances with attributes accessed during Application.__init__
+        mock_fm_instance.base_path = "/mocked/base/path" # For logging
+        # Add the memory_system attribute so hasattr checks pass in Application.__init__
+        mock_handler_instance.memory_system = None
+        mock_task_system_instance.memory_system = None
 
-    # Configure mocks attached TO the handler instance, as they are instantiated within BaseHandler init
-    mock_handler_instance.file_manager = mock_fm_instance # Simulate internal assignment
-    mock_handler_instance.llm_manager = mock_llm_manager_instance # Simulate internal assignment
-    mock_handler_instance.get_provider_identifier.return_value = "mock:provider"
-    registered_tools_storage = {} # Use a real dict to capture registrations
-    tool_executors_storage = {}
-    # Updated mock registration function
-    def mock_register_tool_side_effect(tool_spec, executor_func):
-        tool_name = tool_spec.get("name")
-        if tool_name:
-            registered_tools_storage[tool_name] = {"spec": tool_spec, "executor": executor_func}
-            tool_executors_storage[tool_name] = executor_func
-            return True # Indicate success
-        return False # Indicate failure (e.g., missing name)
-    mock_handler_instance.register_tool = MagicMock(side_effect=mock_register_tool_side_effect)
-    mock_handler_instance.registered_tools = registered_tools_storage # Point to the dict
-    mock_handler_instance.tool_executors = tool_executors_storage # Point to the dict
-    # Let the real get_tools_for_agent work on the mock's storage
-    mock_handler_instance.get_tools_for_agent.side_effect = lambda: list(tool_executors_storage.values()) # Return current executors
+        # Configure the mocked classes to return the mock instances
+        MockMemory.return_value = mock_memory_system_instance
+        MockTaskSystem.return_value = mock_task_system_instance
+        MockPassthroughHandler.return_value = mock_handler_instance
+        MockFileAccessManager.return_value = mock_fm_instance
+        MockLLMInteractionManager.return_value = mock_llm_manager_instance # LLMManager instance mock
+        MockAiderBridge.return_value = mock_aider_bridge_instance
+        MockGitRepositoryIndexer.return_value = mock_indexer_instance # Indexer instance mock
 
-    # No need to configure static methods on class mocks anymore
+        # Configure mocks attached TO the handler instance, as they are instantiated within BaseHandler init
+        mock_handler_instance.file_manager = mock_fm_instance # Simulate internal assignment
+        mock_handler_instance.llm_manager = mock_llm_manager_instance # Simulate internal assignment
+        mock_handler_instance.get_provider_identifier.return_value = "mock:provider"
+        registered_tools_storage = {} # Use a real dict to capture registrations
+        tool_executors_storage = {}
+        # Updated mock registration function
+        def mock_register_tool_side_effect(tool_spec, executor_func):
+            tool_name = tool_spec.get("name")
+            if tool_name:
+                registered_tools_storage[tool_name] = {"spec": tool_spec, "executor": executor_func}
+                tool_executors_storage[tool_name] = executor_func
+                return True # Indicate success
+            return False # Indicate failure (e.g., missing name)
+        mock_handler_instance.register_tool = MagicMock(side_effect=mock_register_tool_side_effect)
+        mock_handler_instance.registered_tools = registered_tools_storage # Point to the dict
+        mock_handler_instance.tool_executors = tool_executors_storage # Point to the dict
+        # Let the real get_tools_for_agent work on the mock's storage
+        mock_handler_instance.get_tools_for_agent.side_effect = lambda: list(tool_executors_storage.values()) # Return current executors
 
-    return {
-        # Core Component Class Mocks
-        "MockMemorySystem": mock_memory_system_cls,
-        "MockTaskSystem": mock_task_system_cls,
-        "MockPassthroughHandler": mock_handler_cls,
-        "MockFileAccessManager": mock_fm_cls,
-        "MockLLMInteractionManager": mock_llm_manager_cls,
-        "MockAiderBridge": mock_aider_bridge_cls,
-        "MockGitRepositoryIndexer": mock_indexer_cls,
+        # Yield the dictionary of mocks within the 'with' block
+        yield {
+            # Core Component Class Mocks (from 'with patch')
+            "MockMemorySystem": MockMemory,
+            "MockTaskSystem": MockTaskSystem,
+            "MockPassthroughHandler": MockPassthroughHandler,
+            "MockFileAccessManager": MockFileAccessManager,
+            "MockLLMInteractionManager": MockLLMInteractionManager,
+            "MockAiderBridge": MockAiderBridge,
+            "MockGitRepositoryIndexer": MockGitRepositoryIndexer,
 
-        # Core Component Instance Mocks
-        "mock_memory_system_instance": mock_memory_system_instance,
-        "mock_task_system_instance": mock_task_system_instance,
-        "mock_handler_instance": mock_handler_instance,
-        "mock_fm_instance": mock_fm_instance,
-        "mock_llm_manager_instance": mock_llm_manager_instance,
-        "mock_aider_bridge_instance": mock_aider_bridge_instance,
-        "mock_indexer_instance": mock_indexer_instance,
+            # Core Component Instance Mocks
+            "mock_memory_system_instance": mock_memory_system_instance,
+            "mock_task_system_instance": mock_task_system_instance,
+            "mock_handler_instance": mock_handler_instance,
+            "mock_fm_instance": mock_fm_instance,
+            "mock_llm_manager_instance": mock_llm_manager_instance,
+            "mock_aider_bridge_instance": mock_aider_bridge_instance,
+            "mock_indexer_instance": mock_indexer_instance,
 
-        # Expose storage for assertions
-        "registered_tools_storage": registered_tools_storage,
-        "tool_executors_storage": tool_executors_storage,
+            # Expose storage for assertions
+            "registered_tools_storage": registered_tools_storage,
+            "tool_executors_storage": tool_executors_storage,
 
-        # Expose specific function/method mocks
-        "mock_exec_get_context": mock_exec_get_context,
-        "mock_exec_read_files": mock_exec_read_files,
-        "mock_aider_auto_func": mock_aider_auto_func,
-        "mock_aider_inter_func": mock_aider_inter_func,
-        "mock_anthropic_view_func": mock_anthropic_view_func,
-        "mock_anthropic_create_func": mock_anthropic_create_func,
-        "mock_anthropic_replace_func": mock_anthropic_replace_func,
-        "mock_anthropic_insert_func": mock_anthropic_insert_func,
-    }
+            # Expose specific function/method mocks (from mocker.patch)
+            "mock_exec_get_context": mock_exec_get_context,
+            "mock_exec_read_files": mock_exec_read_files,
+            "mock_aider_auto_func": mock_aider_auto_func,
+            "mock_aider_inter_func": mock_aider_inter_func,
+            "mock_anthropic_view_func": mock_anthropic_view_func,
+            "mock_anthropic_create_func": mock_anthropic_create_func,
+            "mock_anthropic_replace_func": mock_anthropic_replace_func,
+            "mock_anthropic_insert_func": mock_anthropic_insert_func,
+        }
+    # --- END FIX ---
 
 # --- Tests ---
 
