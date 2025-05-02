@@ -135,12 +135,13 @@ class TestAiderBridge:
         server_response_json = json.dumps({"success": True, "diff": mock_diff})
         mock_server_response = [MockTextContent(server_response_json)]
 
-        # Configure mocks
+        # --- Mock Configuration (Use the CORRECT argument names now) ---
         mock_session_instance = AsyncMock(spec=RealClientSession)
         mock_session_instance.call_tool.return_value = mock_server_response
 
         mock_cm_session = AsyncMock()
         mock_cm_session.__aenter__.return_value = mock_session_instance
+        # 1. Configure the ClientSession CLASS mock
         mock_client_session_cls.return_value = mock_cm_session # Session CLASS returns the context manager
 
         mock_stdio_cm = AsyncMock()
@@ -184,10 +185,11 @@ class TestAiderBridge:
         server_response_json = json.dumps(server_payload)
         mock_server_response = [MockTextContent(server_response_json)]
 
-        # Configure mocks
+        # --- Mock Configuration (Use the CORRECT argument names now) ---
         mock_session_instance = AsyncMock(spec=RealClientSession)
         mock_session_instance.call_tool.return_value = mock_server_response
         mock_cm_session = AsyncMock(); mock_cm_session.__aenter__.return_value = mock_session_instance
+        # 1. Configure the ClientSession CLASS mock
         mock_client_session_cls.return_value = mock_cm_session
         mock_stdio_cm = AsyncMock(); mock_stdio_cm.__aenter__.return_value = (AsyncMock(), AsyncMock())
         mock_stdio_client_func.return_value = mock_stdio_cm
@@ -231,10 +233,11 @@ class TestAiderBridge:
         server_response_json = json.dumps({"models": model_list})
         mock_server_response = [MockTextContent(server_response_json)]
 
-        # Configure mocks
+        # --- Mock Configuration (Use the CORRECT argument names now) ---
         mock_session_instance = AsyncMock(spec=RealClientSession)
         mock_session_instance.call_tool.return_value = mock_server_response
         mock_cm_session = AsyncMock(); mock_cm_session.__aenter__.return_value = mock_session_instance
+        # 1. Configure the ClientSession CLASS mock
         mock_client_session_cls.return_value = mock_cm_session
         mock_stdio_cm = AsyncMock(); mock_stdio_cm.__aenter__.return_value = (AsyncMock(), AsyncMock())
         mock_stdio_client_func.return_value = mock_stdio_cm
@@ -274,10 +277,11 @@ class TestAiderBridge:
         params = {"ai_coding_prompt": "Test", "relative_editable_files": ["f.py"]}
         mcp_exception = TimeoutError("MCP call timed out") # Use specific or generic Exception
 
-        # Configure mocks
+        # --- Mock Configuration (Use the CORRECT argument names now) ---
         mock_session_instance = AsyncMock(spec=RealClientSession)
         mock_session_instance.call_tool.side_effect = mcp_exception # Configure side_effect
         mock_cm_session = AsyncMock(); mock_cm_session.__aenter__.return_value = mock_session_instance
+        # 1. Configure the ClientSession CLASS mock
         mock_client_session_cls.return_value = mock_cm_session
         mock_stdio_cm = AsyncMock(); mock_stdio_cm.__aenter__.return_value = (AsyncMock(), AsyncMock())
         mock_stdio_client_func.return_value = mock_stdio_cm
@@ -316,10 +320,11 @@ class TestAiderBridge:
         invalid_json = "This is not JSON {"
         mock_server_response = [MockTextContent(invalid_json)] # Server sends bad JSON string
 
-        # Configure mocks
+        # --- Mock Configuration (Use the CORRECT argument names now) ---
         mock_session_instance = AsyncMock(spec=RealClientSession)
         mock_session_instance.call_tool.return_value = mock_server_response
         mock_cm_session = AsyncMock(); mock_cm_session.__aenter__.return_value = mock_session_instance
+        # 1. Configure the ClientSession CLASS mock
         mock_client_session_cls.return_value = mock_cm_session
         mock_stdio_cm = AsyncMock(); mock_stdio_cm.__aenter__.return_value = (AsyncMock(), AsyncMock())
         mock_stdio_client_func.return_value = mock_stdio_cm
