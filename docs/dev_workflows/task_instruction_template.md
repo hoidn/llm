@@ -1,6 +1,119 @@
-**`docs/dev_workflows/task_instruction_template.md`**
+# Task Implementation Instructions
 
-*(Instructions for Tech Lead: Fill in all sections below with specific details for the assigned task. Replace bracketed placeholders `[...]` with actual information. Be precise and clear.)*
+**Task Name/ID:** Refactor: Defer Agent Initialization (Pre-Phase 7)  
+**Assigned To:** [Junior Developer Name]  
+**Assigned By:** [Your Name/Tech Lead]  
+**Date Assigned:** [Current Date]  
+**Relevant ADRs/Docs:**  
+- docs/dev_workflows/tech_lead_task_prep.md  
+- docs/librarydocs/pydanticai.md  
+- docs/handler/llm_interaction_manager_IDL.md  
+- docs/handler/base_handler_IDL.md  
+- docs/main_IDL.md  
+- docs/implementation_rules.md  
+
+1. Task Goal  
+   Refactor the initialization sequence for core components (Application, BaseHandler, LLMInteractionManager) to ensure the internal pydantic-ai Agent is created after all tools have been registered. This sets the stage for provider-specific tool registration (Phase 7).
+
+2. Context & Requirements  
+   - **Current behavior:** LLMInteractionManager initializes its Agent immediately in its constructor.  
+   - **Desired behavior:** Defer Agent creation until after tool registration.  
+   - **IDL updates:** Reflect deferred Agent initialization and new `initialize_agent` method in:  
+     - src/handler/llm_interaction_manager_IDL.md  
+     - src/handler/base_handler_IDL.md  
+     - src/main_IDL.md  
+
+3. Files to Modify  
+   - src/handler/llm_interaction_manager.py  
+   - src/handler/base_handler.py  
+   - src/main.py  
+
+4. Implementation Plan  
+   **A. src/handler/llm_interaction_manager.py**  
+   - Ensure `self.agent` is set to `None` in `__init__`.  
+   - Store parameters in internal fields: `self._model_id`, `self._base_prompt`, `self._agent_config`.  
+   - Implement `initialize_agent(self, tools: List[Callable]) -> None` to construct the Agent:  
+     ```python
+     def initialize_agent(self, tools: List[Callable]) -> None:
+         if self.agent is not None:
+             logging.warning("Agent is already initialized.")
+             return
+         if not self._model_id:
+             raise RuntimeError("Cannot initialize agent: No model identifier configured.")
+         if not Agent:
+             raise RuntimeError("Cannot initialize agent: pydantic-ai Agent class unavailable.")
+         try:
+             self.agent = Agent(
+                 model=self._model_id,
+                 system_prompt=self._base_prompt,
+                 tools=tools,
+                 **self._agent_config,
+             )
+             logging.info(f"pydantic-ai Agent initialized for model: {self._model_id}")
+         except Exception as e:
+             logging.exception(f"Failed to initialize agent: {e}")
+             self.agent = None
+             raise RuntimeError(f"AgentInitializationError: {e}") from e
+     ```  
+   - At the top of `execute_call`, add a guard:  
+     ```python
+     if self.agent is None:
+         logging.error("Cannot execute LLM call: Agent not initialized. Call initialize_agent first.")
+         return {
+             "success": False,
+             "content": None,
+             "tool_calls": None,
+             "usage": None,
+             "error": "AgentNotInitializedError: LLM Agent not initialized.",
+         }
+     ```  
+
+   **B. src/handler/base_handler.py**  
+   - Add `get_tools_for_agent(self) -> List[Callable]` if not already present:  
+     ```python
+     def get_tools_for_agent(self) -> List[Callable]:
+         logging.debug(f"Retrieving tool executors for Agent initialization: {list(self.tool_executors.keys())}")
+         return list(self.tool_executors.values())
+     ```  
+
+   **C. src/main.py**  
+   - In `Application.__init__`, after registering all tools and templates, retrieve the tool executors and call `initialize_agent`:  
+     ```python
+     agent_tools = self.passthrough_handler.get_tools_for_agent()
+     logger.info(f"Retrieved {len(agent_tools)} tools for agent initialization.")
+     self.passthrough_handler.llm_manager.initialize_agent(tools=agent_tools)
+     logger.info("Triggered LLMInteractionManager agent initialization.")
+     ```  
+
+5. Testing Plan  
+   - **tests/handler/test_llm_interaction_manager.py**:  
+     - `test_init_defers_agent_creation`  
+     - `test_initialize_agent_success` / `test_initialize_agent_failure`  
+     - `test_execute_call_before_init`  
+   - **tests/handler/test_base_handler.py**:  
+     - `test_get_tools_for_agent`  
+   - **tests/test_main.py**:  
+     - `test_application_init_wiring_deferred_agent`  
+
+6. Run & Debug Commands  
+   ```bash
+   pytest tests/handler/test_llm_interaction_manager.py
+   pytest tests/handler/test_base_handler.py
+   pytest tests/test_main.py
+   pytest
+   ```  
+
+7. Definition of Done  
+   - Code changes in the three source files.  
+   - New/updated tests passing.  
+   - Lint and format checks passed.  
+   - All tests pass.  
+   - IDL files updated.  
+   - docs/memory.md updated.  
+   - Commit message:  
+     ```
+     refactor: Defer pydantic-ai Agent initialization
+     ```
 
 ---
 
