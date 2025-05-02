@@ -66,6 +66,17 @@ def llm_manager_instance(mock_agent_instance):
         manager.agent = mock_agent_instance
         return manager
 
+@pytest.fixture
+def llm_manager_no_agent_init():
+    """Provides an LLMInteractionManager instance *before* initialize_agent is called."""
+    with patch("src.handler.llm_interaction_manager.Agent", new_callable=MagicMock):
+        manager = LLMInteractionManager(
+            default_model_identifier="test:model",
+            config={"base_system_prompt": "Test Base Prompt"},
+        )
+    assert manager.agent is None
+    return manager
+
 
 # --- Test Cases ---
 
@@ -106,23 +117,20 @@ def test_llm_manager_init_no_model_id():
 
 
 @patch("src.handler.llm_interaction_manager.logger.error")
-def test_llm_manager_init_agent_exception(mock_log_error):
-    """Test initialization failure when Agent instantiation raises an error."""
-    test_exception = ValueError("Agent init failed")
-    # Patch Agent specifically for this test, setting side_effect
-    # Use new_callable=MagicMock to ensure the mock class itself is truthy
-    with patch(
-        "src.handler.llm_interaction_manager.Agent", new_callable=MagicMock
-    ) as MockAgentClassForTest:
-        MockAgentClassForTest.side_effect = (
-            test_exception  # Make Agent() raise an error
-        )
-        manager = LLMInteractionManager(
-            default_model_identifier="fail:model", config={}
-        )
-
-        assert manager.agent is None, "Agent should be None after failed initialization"
-        MockAgentClassForTest.assert_called_once()  # Verify instantiation was attempted
+@patch("src.handler.llm_interaction_manager.Agent", new_callable=MagicMock)
+def test_initialize_agent_exception_handling(MockAgentClass, mock_log_error, llm_manager_no_agent_init):
+    """Test exception handling within the initialize_agent method."""
+    test_exception = ValueError("Agent init failed inside initialize_agent")
+    MockAgentClass.side_effect = test_exception
+    with pytest.raises(RuntimeError, match="AgentInitializationError: Agent init failed inside initialize_agent"):
+        llm_manager_no_agent_init.initialize_agent(tools=[])
+    assert llm_manager_no_agent_init.agent is None
+    MockAgentClass.assert_called_once()
+    mock_log_error.assert_called_once()
+    args, kwargs = mock_log_error.call_args
+    assert "Failed to initialize pydantic-ai Agent" in args[0]
+    assert "Agent init failed inside initialize_agent" in args[0]
+    assert kwargs.get("exc_info") is True
 
         # Check log call more robustly
         mock_log_error.assert_called_once()  # Verify it was called
