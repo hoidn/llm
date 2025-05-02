@@ -64,7 +64,7 @@ def app_components(mocker, tmp_path): # Add tmp_path
 
     # --- START FIX: Use 'with patch' for core component classes ---
     with patch('src.main.MemorySystem', autospec=True) as MockMemory, \
-         patch('src.main.TaskSystem', autospec=True) as MockTaskSystem, \
+         patch('src.main.TaskSystem', autospec=True) as MockTask, \
          patch('src.main.PassthroughHandler', autospec=True) as MockPassthroughHandler, \
          patch('src.main.FileAccessManager', autospec=True) as MockFileAccessManager, \
          patch('src.handler.base_handler.LLMInteractionManager', autospec=True) as MockLLMInteractionManager, \
@@ -104,7 +104,7 @@ def app_components(mocker, tmp_path): # Add tmp_path
 
         # Configure the mocked classes to return the mock instances
         MockMemory.return_value = mock_memory_system_instance
-        MockTaskSystem.return_value = mock_task_system_instance
+        MockTask.return_value = mock_task_system_instance # Use updated alias
         MockPassthroughHandler.return_value = mock_handler_instance
         MockFileAccessManager.return_value = mock_fm_instance
         MockLLMInteractionManager.return_value = mock_llm_manager_instance # LLMManager instance mock
@@ -135,7 +135,7 @@ def app_components(mocker, tmp_path): # Add tmp_path
         yield {
             # Core Component Class Mocks (from 'with patch')
             "MockMemorySystem": MockMemory,
-            "MockTaskSystem": MockTaskSystem,
+            "MockTaskSystem": MockTask, # Use updated alias
             "MockPassthroughHandler": MockPassthroughHandler,
             "MockFileAccessManager": MockFileAccessManager,
             "MockLLMInteractionManager": MockLLMInteractionManager,
