@@ -38,6 +38,64 @@ The project follows a modular architecture with clean separation of concerns:
    - **Utils**: Provides constants and helper functions
    - **Data Types**: Defines type definitions using Pydantic models
 
+## MCP Interface Specification
+
+This section details the specific MCP interface exposed by *this* server implementation, as required by MCP clients like the project's `AiderBridge`.
+
+**Transport:** This server implementation uses the STDIO transport (`mcp.server.stdio.stdio_server`). Clients connecting to this server instance should use the corresponding `mcp.client.stdio.stdio_client` transport.
+
+**Authentication:** This implementation does not include built-in authentication.
+
+**Supported Tools:**
+
+The server registers and handles the following tools:
+
+1.  **`aider_ai_code`**
+    *   **Description:** Runs Aider to perform AI coding tasks based on the provided prompt and files.
+    *   **Input Parameters (`arguments` in `call_tool`):**
+        *   `ai_coding_prompt` (string, **required**): The prompt/instructions for the AI coding task.
+        *   `relative_editable_files` (list[string], **required**): Relative paths (from the server's `working_dir`) of files Aider is allowed to edit.
+        *   `relative_readonly_files` (list[string], optional): Relative paths of files Aider can read for context but not edit.
+        *   `model` (string, optional): Specific AI model identifier for Aider to use (overrides the server's default `editor_model`).
+    *   **Response Format:**
+        *   The `call_tool` function returns `list[mcp.types.TextContent]`.
+        *   The `.text` attribute of the `TextContent` object contains a JSON string.
+        *   **On Success:** The parsed JSON dictionary has the format:
+            ```json
+            {
+              "success": true,
+              "diff": "..."
+            }
+            ```
+            Where `"diff"` contains the git diff output of the changes made (or fallback file content if git diff fails).
+        *   **On Failure (Application Level):** The parsed JSON dictionary has the format:
+            ```json
+            {
+              "success": false,
+              "diff": "Error message..."
+            }
+            ```
+            (Note: The `diff` key might still contain partial diffs or error details).
+
+2.  **`list_models`**
+    *   **Description:** Lists available Aider models, optionally filtered by a substring.
+    *   **Input Parameters (`arguments` in `call_tool`):**
+        *   `substring` (string, optional): Substring to filter model names (case-insensitive matching). Defaults to empty string (list all).
+    *   **Response Format:**
+        *   The `call_tool` function returns `list[mcp.types.TextContent]`.
+        *   The `.text` attribute of the `TextContent` object contains a JSON string.
+        *   The parsed JSON dictionary has the format:
+            ```json
+            {
+              "models": ["model_id_1", "model_id_2", ...]
+            }
+            ```
+
+**Error Handling:**
+
+*   **Communication Errors:** The underlying `mcp.py` client library will raise exceptions for connection issues, timeouts, or protocol errors. The client (`AiderBridge`) must handle these.
+*   **Application Errors:** Errors occurring *within* the tool execution on the server (e.g., invalid parameters after initial MCP parsing, Aider execution failure, file processing errors) are typically reported by returning a JSON payload containing an `"error"` key (as handled in `server.py`'s `handle_request` exception block) or by setting `"success": false` in the `aider_ai_code` response. The client must check for the `"error"` key or the `"success"` field in the parsed JSON response.
+
 ## Core Components
 
 ### 1. MCP Server (`server.py`)
