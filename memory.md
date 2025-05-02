@@ -3,25 +3,34 @@
 
 ## Current Task/Focus (As of: 2025-05-01)
 
-**Goal:** Phase 6: Top-Level Integration & Dispatching (`Dispatcher`, `Application`).
+**Goal:** Phase 7: Provider-Specific Tool Integration (Anthropic Editor Tools).
 
-**Current Sub-task:** Implement `Application` class in `src/main.py` and associated tests in `tests/test_main.py`.
+**Current Sub-task:** Final documentation review after Phase 7 fixes (Cycle 3).
 
 **Relevant Files:**
 - `src/main.py`
+- `src/tools/anthropic_tools.py`
+- `src/handler/base_handler.py`
 - `tests/test_main.py`
-- `src/dispatcher.py` (Used by Application)
-- `src/memory/memory_system.py` (Instantiated by Application)
-- `src/task_system/task_system.py` (Instantiated by Application)
-- `src/handler/passthrough_handler.py` (Instantiated by Application)
-- `src/executors/system_executors.py` (Used for tool registration)
-- `src/system/models.py` (Used for types)
-- `docs/plan.md`
-- `docs/project_rules.md`
+- `tests/tools/test_anthropic_tools.py`
+- `tests/handler/test_base_handler.py`
+- `src/main_IDL.md`
+- `src/handler/base_handler_IDL.md`
+- `src/handler/llm_interaction_manager_IDL.md`
+- `src/executors/atomic_executor_IDL.md`
+- `src/scripts/phase6.py`
+- `docs/start_here.md`
+- `docs/implementation_rules.md`
+- `docs/librarydocs/pydanticai.md`
+- `docs/librarydocs/pydanticai_details.md`
+- `docs/librarydocs/MCP_TOOL_GUIDE.md`
+- `docs/documentation_update.md` (Process guide)
 
 **Related IDLs:**
-- `src/dispatcher_IDL.md` (Implemented)
-- Potentially create/refine `src/main_IDL.md` for `Application` class.
+- `src/main_IDL.md`
+- `src/handler/base_handler_IDL.md`
+- `src/handler/llm_interaction_manager_IDL.md`
+- `src/executors/atomic_executor_IDL.md`
 
 ## Recent Activity Log
 
@@ -35,88 +44,46 @@
 - **Implement MemorySystem Context Retrieval (Phase 2a):** Added logic to `MemorySystem.get_relevant_context_for` and `get_relevant_context_with_description`. Commit `f37c09e`.
 - **Fix MemorySystem Tests (Part 1 & 2):** Corrected assertions, removed obsolete tests, removed `NotImplementedError`. Commits `841d680`, `a3e5032`.
 - **Start Phase 3 Implementation:** Implemented `AtomicTaskExecutor`, `SexpEnvironment`, `SexpEvaluator`, `PassthroughHandler` logic and tests. Adhered to IDLs and Unified ADR mandates. (Assumed completed based on previous state).
-- **Phase 4 - Stream 1: Git Indexer Implementation:**
-    - Created placeholder `src/memory/indexers/text_extraction.py`.
-    - Implemented `src.memory.indexers.git_repository_indexer.GitRepositoryIndexer` class based on IDL.
-    - Implemented `src.memory.memory_system.MemorySystem.index_git_repository` method based on IDL.
-    - Created `tests/memory/indexers/test_git_repository_indexer.py` with initial unit tests.
-    - Added tests for `MemorySystem.index_git_repository` to `tests/memory/test_memory_system.py`.
-    - Ran tests, encountered issues with mocking in `test_git_repository_indexer.py`. Commit `8119e2a`.
-- **Phase 4 - Stream 1: Refactor Git Indexer Tests:**
-    - Analyzed test failures in `test_git_repository_indexer.py`. Identified issues with mocking (`os.path.splitext`, `side_effect` usage). Commit `c8604ad`.
-    - Discussed replacing brittle unit tests with integration tests.
-    - Removed several heavily mocked unit tests (`test_index_repository_*`, `test_scan_repository`).
-    - Fixed remaining unit test `test_is_text_file`.
-    - Added integration tests using a new `git_repo` fixture in `conftest.py` to test indexing against a real temporary Git repository.
-- **Phase 4 - Stream 2: Implement System Executors:**
-    - Created `src/executors/system_executors.py` with `execute_get_context` and `execute_read_files`. Commit `5f9a56e`.
-    - Created `tests/executors/test_system_executors.py` with unit tests. Commit `cfeff54`.
-    - Ran tests, identified failures related to Pydantic model access, TaskFailureReason usage, and mock call signatures.
-    - Fixed executor logic and tests. Commit `d61b395`.
-- **Phase 5: Implement `defatom` Special Form:**
-    - Added `_eval_defatom` method to `SexpEvaluator`.
-    - Implemented parsing, validation, template construction, and registration logic.
-    - Added dispatch for `defatom` in `_eval_special_form`.
-    - Updated `sexp_evaluator_IDL.md` to include `defatom`.
-    - Added `TestSexpEvaluatorDefatom` class with comprehensive tests in `test_sexp_evaluator.py`. Commit `4fc75ac`.
-- **Phase 5: Fix `defatom` Dispatch:**
-    - Corrected the dispatch logic in `SexpEvaluator._eval_list` to ensure `defatom` is routed to `_eval_special_form`. Commit `bd304a5`.
-- **Phase 5: Fix `defatom` Tests:**
-    - Updated mock setup in `test_defatom_invocation_after_definition` to correctly mock `find_template`.
-    - Corrected expected error messages in `test_defatom_missing_params` and `test_defatom_missing_instructions` to match the argument count check failure. Commit `47c3d1a`.
-- **Phase 6: Fix Dispatcher Tests:**
-    - Iteratively fixed failures in `tests/test_dispatcher.py` related to `TaskFailureDetails` handling, error message assertions, and notes merging. Commits `30ef927`, `8db23da`, `022ff9b`, `3362198`, `19403d9`. All dispatcher tests now pass.
-- **Phase 6: Fix `file_contents` Substitution:**
-    - Identified that the `{{ file_contents | ... }}` placeholder in the `internal:associative_matching_content` template (in `src/main.py`) was not being substituted because the `AtomicTaskExecutor`'s regex mechanism doesn't support filters (`|`).
-    - Simplified the placeholder to `{{file_contents}}` in `src/main.py` to allow the basic substitution to work. Commit `ca0c431`.
-    - Updated documentation (`atomic_executor_IDL.md`, `implementation_rules.md`, `main_IDL.md`, `memory.md`) to reflect this limitation and the fix. Commit `8699af2`.
-- **Phase 6: Fix `phase6.py` Script:**
-    - Corrected `sys.path` setup in `src/scripts/phase6.py` to correctly add `SRC_PATH` (`.../agents5/src`) instead of `.../agents5/src/task_system`, resolving `ImportError: No module named 'main'`. Commit `f5d5d9e`.
-    - Corrected `REPO_TO_INDEX` in `src/scripts/phase6.py` to point to the Git repository root (`PROJECT_ROOT`) and rely on `include_patterns` in `index_options` to scope indexing to the `src` directory, resolving the "no .git directory found" error. Commit `dd11e79`.
-- **Phase 6: Clarify Indexing Documentation:**
-    - Updated `src/main_IDL.md` and `src/memory/indexers/git_repository_indexer_IDL.md` to explicitly state that `repo_path` must be the Git repository root and that subdirectory scoping is achieved via `options['include_patterns']`.
+- **Phase 4 - Stream 1: Git Indexer Implementation:** Implemented `GitRepositoryIndexer` and related `MemorySystem` method. Added tests, refactored tests to use integration approach with `git_repo` fixture. Commits `8119e2a`, `c8604ad`.
+- **Phase 4 - Stream 2: Implement System Executors:** Implemented `SystemExecutorFunctions` and tests. Fixed test failures. Commits `5f9a56e`, `cfeff54`, `d61b395`.
+- **Phase 5: Implement `defatom` Special Form:** Added `_eval_defatom` to `SexpEvaluator`, updated IDL, added tests. Fixed dispatch logic and test assertions. Commits `4fc75ac`, `bd304a5`, `47c3d1a`.
+- **Phase 6: Fix Dispatcher Tests:** Iteratively fixed failures in `tests/test_dispatcher.py`. Commits `30ef927`, `8db23da`, `022ff9b`, `3362198`, `19403d9`.
+- **Phase 6: Fix `file_contents` Substitution:** Simplified placeholder in `src/main.py`. Updated docs. Commits `ca0c431`, `8699af2`.
+- **Phase 6: Fix `phase6.py` Script:** Corrected `sys.path` and `REPO_TO_INDEX`. Commits `f5d5d9e`, `dd11e79`.
+- **Phase 6: Clarify Indexing Documentation:** Updated IDLs regarding `repo_path` and `include_patterns`.
+- **Phase 3b: Implemented Pydantic-AI Integration for Structured Output:** Added `resolve_model_class`, updated `LLMInteractionManager`, `AtomicTaskExecutor`, `BaseHandler`. Added tests and updated docs.
+- **Phase 3b: Added Provider Identifier Support:** Added `get_provider_identifier` methods and tests.
+- **Phase 7: Implement Anthropic Editor Tools:** Created `src/tools/anthropic_tools.py`. Added conditional registration logic in `src/main.py`. Added unit and integration tests. Commit `0c0e827`.
+- **Phase 7: Fix Tests:** Addressed failures in `test_main.py` (abspath, tool count) and `test_anthropic_tools.py` (newline, resolve_path, assertion). Addressed deprecation warnings in `test_base_handler.py`. Commit `2e4a11b`.
+- **Phase 7: Fix Handler Tool Logic:** Corrected `BaseHandler._execute_llm_call` to pass executors/definitions correctly based on precedence. Fixed related tests in `test_base_handler.py`. Commit `0bc2f51`.
+- **Phase 7: Documentation Update (Cycle 1):** Updated IDLs (`main`, `base_handler`, `llm_interaction_manager`), core guides (`start_here`, `implementation_rules`), and library docs (`pydanticai`, `pydanticai_details`, `MCP_TOOL_GUIDE`). Updated `memory.md`.
+- **Phase 7: Documentation Update (Cycle 2):** Performed final review and refinement of documentation related to tool handling logic (`llm_interaction_manager_IDL.md`, `implementation_rules.md`, `start_here.md`, `pydanticai.md`, `pydanticai_details.md`). Updated `memory.md`.
+- **Phase 7: Documentation Update (Cycle 3):** Reviewed `atomic_executor_IDL.md` and `phase6.py`. Confirmed consistency with recent changes. Updated `memory.md`. (This commit).
 
 ## Next Steps
 
-1.  **Phase 6: Implement `Application` (`src/main.py`):**
-    *   Implement the `Application` class based on its IDL (or create/refine IDL if needed).
-    *   `__init__`: Instantiate `MemorySystem`, `TaskSystem`, `PassthroughHandler`, passing dependencies and configuration.
-    *   Implement helper `_register_system_tools` and call it in `__init__`.
-    *   Implement `handle_query`, `index_repository`, `handle_task_command` methods, delegating to the appropriate components (Handler, MemorySystem, Dispatcher).
-    *   Write tests for `Application` in `tests/test_main.py`, mocking component dependencies.
-2.  **Merge Streams:** Integrate changes from Phase 4 streams (Git Indexer, System Executors) and Phase 5 (`defatom`).
+1.  **Phase 8: Aider Integration:**
+    *   Implement `AiderBridge` (likely as an MCP client or direct wrapper).
+    *   Define Aider tool specifications (`src/aider_bridge/tools.py`).
+    *   Implement Aider executor functions (`src/executors/aider_executors.py`).
+    *   Add logic to `Application.initialize_aider` to register Aider tools conditionally or based on configuration.
+    *   Update `Application._determine_active_tools` if needed.
+    *   Add integration tests for Aider workflows.
+2.  **Merge Streams:** Ensure all Phase 4-7 changes are integrated cleanly.
 3.  **Implement Remaining Deferred Methods (Phase 2 Dependencies):**
-    *   `LLMInteractionManager`: `execute_call` (needed by `BaseHandler`/`PassthroughHandler`).
-    *   `TaskSystem`: `execute_atomic_template` (ensure full implementation matches IDL).
-    *   `BaseHandler`: `_execute_tool` (ensure full implementation matches IDL).
-    *   `MemorySystem`: `get_relevant_context_for` (ensure full implementation matches IDL/needs of `SexpEvaluator`, including sharding/mediation).
-    *   Other deferred methods (`TaskSystem` find/generate/resolve, `MemorySystem` sharding logic).
+    *   Review and finalize implementations for:
+        *   `TaskSystem`: `execute_atomic_template`, find/generate/resolve methods.
+        *   `MemorySystem`: `get_relevant_context_for` (sharding/mediation logic).
+        *   Other deferred methods.
 4.  **Write Tests for Deferred Methods:** Add tests for the methods implemented in step 3.
 5.  **Integration Testing:** Enhance integration tests covering workflows involving SexpEvaluator -> TaskSystem -> AtomicTaskExecutor -> Handler -> LLMManager and MemorySystem indexing/retrieval. Ensure integration tests cover key scenarios previously handled by removed unit tests where appropriate.
-6.  **Review Tool Registration:** Finalize how tools registered in `BaseHandler` are made available during `SexpEvaluator` execution (via `Handler._execute_tool`) and potentially LLM calls.
-7.  **Update Documentation:** Ensure IDLs, rules, and diagrams reflect the implemented state.
+6.  **Review Tool Registration & Execution:** Finalize how tools registered in `BaseHandler` are made available during `SexpEvaluator` execution (via `Handler._execute_tool`) and LLM calls.
+7.  **Update Documentation:** Ensure IDLs, rules, and diagrams reflect the fully implemented state after Phase 8.
 
 ## Notes & Context
 
-- Refactoring `BaseHandler` aimed to improve modularity.
-- `FileContextManager` encapsulates file context logic.
-- `LLMInteractionManager` encapsulates pydantic-ai agent interaction.
-- Phase 2a implemented basic keyword matching in `MemorySystem`.
-- Phase 3 implemented core execution logic (AtomicExecutor, SexpEvaluator, PassthroughHandler).
-- Phase 4 Stream 1 focused on adding the Git repository indexing capability. Requires `GitPython`. Placeholder `text_extraction` used.
-- Refactored `GitRepositoryIndexer` tests to favor integration tests over brittle unit tests, improving confidence and reducing mock complexity. Added `git_repo` fixture to `conftest.py`.
-- Phase 4 Stream 2 implemented system-level tool executors (`system:get_context`, `system:read_files`) used for direct invocation, potentially by the Dispatcher or SexpEvaluator.
-- `AtomicTaskExecutor` uses simple regex substitution, incompatible with template filters (`|`). Placeholders must be simple `{{variable}}` or `{{variable.attribute}}`.
-- Indexing scope is controlled by passing the Git repository root to `Application.index_repository` and using `include_patterns` in the options.
-- **Phase 3b: Implemented Pydantic-AI Integration for Structured Output**
-  - Added `resolve_model_class` helper in `src/system/models.py` to dynamically load Pydantic models from strings
-  - Enhanced `LLMInteractionManager.execute_call` to return Pydantic model instances in `parsed_content`
-  - Updated `AtomicTaskExecutor.execute_body` to use output_format.schema with resolve_model_class
-  - Verified `BaseHandler._execute_llm_call` correctly passes output_type_override parameter
-  - Added comprehensive tests and updated documentation in implementation_rules.md
-  - This enables atomic task templates to specify structured output models via the schema property
-- **Phase 3b: Added Provider Identifier Support**
-  - Added `get_provider_identifier()` method to `LLMInteractionManager` to access model identifier
-  - Added `get_provider_identifier()` method to `BaseHandler` to delegate to LLM manager
-  - Added comprehensive tests for both implementation methods with various cases
-  - Commit `<current_commit_hash>`
+- Phase 7 successfully implemented conditional registration of provider-specific tools (Anthropic Editor Tools).
+- The `Application` initialization sequence now correctly registers tools before initializing the `pydantic-ai Agent`.
+- `BaseHandler._execute_llm_call` logic was refined to correctly handle the precedence of `tools_override` vs. `active_tool_definitions` and pass the appropriate executors and definitions to the `LLMInteractionManager`.
+- Documentation has been updated and reviewed to reflect these changes accurately.
+- The system is now ready for Phase 8 (Aider Integration).
