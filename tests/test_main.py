@@ -104,6 +104,7 @@ def app_components(mocker, tmp_path): # Add tmp_path
         mock_task_instance = MockTask.return_value # Get the instance created by the patch
         # Configure MockTask instance methods if needed
         mock_task_instance.set_handler = MagicMock() # Add mock for set_handler
+        mock_task_instance.register_template = MagicMock() # Add mock for register_template
         mock_handler_instance = MagicMock(spec=PassthroughHandler)
         mock_fm_instance = MagicMock(spec=FileAccessManager)
         mock_llm_manager_instance = MagicMock() # Removed spec
