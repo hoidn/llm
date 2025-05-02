@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, call
 
 import pytest
 
@@ -36,7 +36,11 @@ def mock_agent_instance():
 
 @pytest.fixture
 def llm_manager_instance(mock_agent_instance):
-    """Provides an instance of LLMInteractionManager with a mocked agent class during its init."""
+    """
+    Provides an instance of LLMInteractionManager *after* __init__ but *before*
+    initialize_agent is called. The internal agent is None.
+    (Formerly assumed agent was initialized here).
+    """
     config = {
         "base_system_prompt": "Test Base Prompt",
         "pydantic_ai_agent_config": {"temperature": 0.5},
@@ -46,24 +50,16 @@ def llm_manager_instance(mock_agent_instance):
     with patch(
         "src.handler.llm_interaction_manager.Agent", new_callable=MagicMock
     ) as MockAgentClassForFixture:
-        MockAgentClassForFixture.return_value = (
-            mock_agent_instance  # Configure the mock instance returned
-        )
+        # MockAgentClassForFixture.return_value = mock_agent_instance # No longer needed here
+
         manager = LLMInteractionManager(
             default_model_identifier="test:model", config=config
         )
-        # Verify Agent was called during init
-        MockAgentClassForFixture.assert_called_once_with(
-            model="test:model",
-            system_prompt="Test Base Prompt",
-            temperature=0.5,  # Check extra config was passed
-        )
-        # Store the class mock if tests need to assert calls on the class itself
-        # manager._MockAgentClass = MockAgentClassForFixture # Optional
-        # Ensure the instance uses the mock agent instance we configured
-        # This might be redundant if MockAgentClassForFixture.return_value works as expected,
-        # but explicitly setting it ensures the correct mock instance is used by execute_call tests.
-        manager.agent = mock_agent_instance
+        # Verify Agent was NOT called during init
+        # MockAgentClassForFixture.assert_called_once_with(...) # <-- REMOVED ASSERTION
+
+        # Ensure the instance's agent attribute is None after init
+        assert manager.agent is None
         return manager
 
 @pytest.fixture
@@ -77,32 +73,66 @@ def llm_manager_no_agent_init():
     assert manager.agent is None
     return manager
 
+@pytest.fixture
+def initialized_llm_manager(llm_manager_no_agent_init):
+    """
+    Provides an LLMInteractionManager instance where initialize_agent
+    has been successfully called with mock tools.
+    Relies on llm_manager_no_agent_init fixture.
+    """
+    # Mock the Agent class for the initialize_agent call
+    with patch("src.handler.llm_interaction_manager.Agent", new_callable=MagicMock) as MockAgentClass:
+        # Create a mock agent instance to be returned by the constructor
+        mock_agent_instance_for_init = MagicMock(name="AgentInstanceFromInit")
+        # Configure mock response for execute_call tests using this fixture
+        mock_response = MagicMock()
+        mock_response.output = "Initialized Agent Response"
+        mock_response.tool_calls = []
+        mock_response.usage = {"prompt":5, "completion":5}
+        mock_agent_instance_for_init.run_sync.return_value = mock_response
+        # Set the return value for the Agent class mock
+        MockAgentClass.return_value = mock_agent_instance_for_init
+
+        # Call initialize_agent on the manager provided by the other fixture
+        mock_tools = [MagicMock(spec=callable)] # Provide some mock tools
+        llm_manager_no_agent_init.initialize_agent(tools=mock_tools)
+
+        # Verify initialization happened correctly within the fixture setup
+        assert llm_manager_no_agent_init.agent is not None
+        MockAgentClass.assert_called_once() # Verify constructor called
+        # Store the mock agent instance on the manager if needed for assertions later
+        llm_manager_no_agent_init._mock_agent_instance = mock_agent_instance_for_init
+
+    # Yield the manager which now has an initialized agent
+    yield llm_manager_no_agent_init
+
 
 # --- Test Cases ---
 
 
-def test_llm_manager_init_success(mock_agent_instance):
-    """Test successful initialization of the manager and agent."""
-    config = {"base_system_prompt": "Init Prompt"}
-    # Patch Agent specifically for this test's instantiation
+# Replace the existing test_llm_manager_init_success function with this:
+def test_llm_manager_init_stores_config_defers_agent(mock_agent_instance): # Renamed test
+    """Test __init__ stores config and defers agent creation."""
+    # Arrange
+    config = {
+        "base_system_prompt": "Init Prompt",
+        "pydantic_ai_agent_config": {"temperature": 0.7}
+        }
+    model_id = "init:model"
+    # Act
+    # Patch Agent class import *just for this instantiation* to prevent side effects
     # Use new_callable=MagicMock to ensure the mock class itself is truthy
-    with patch(
-        "src.handler.llm_interaction_manager.Agent", new_callable=MagicMock
-    ) as MockAgentClassForTest:
-        MockAgentClassForTest.return_value = mock_agent_instance
-        manager = LLMInteractionManager(
-            default_model_identifier="init:model", config=config
-        )
+    with patch("src.handler.llm_interaction_manager.Agent", new_callable=MagicMock) as MockAgentClassForTest:
+         manager = LLMInteractionManager(
+             default_model_identifier=model_id, config=config
+         )
 
-        assert manager.agent is not None, "Agent should be initialized"
-        assert manager.agent == mock_agent_instance, "Agent should be the mock instance"
-        assert manager.default_model_identifier == "init:model"
-        assert manager.base_system_prompt == "Init Prompt"
-        MockAgentClassForTest.assert_called_once_with(
-            model="init:model",
-            system_prompt="Init Prompt",
-            # No extra config passed here
-        )
+    # Assert
+    assert manager.agent is None, "Agent should be None after __init__" # Verify deferred init
+    assert manager._model_id == model_id # Verify config stored
+    assert manager._base_prompt == "Init Prompt" # Verify config stored
+    assert manager._agent_config == {"temperature": 0.7} # Verify config stored
+    MockAgentClassForTest.assert_not_called() # Verify Agent constructor was NOT called
 
 
 # No patch needed here as the code checks for model ID before attempting Agent init
@@ -116,9 +146,9 @@ def test_llm_manager_init_no_model_id():
     # Agent constructor should NOT have been called
 
 
-@patch("src.handler.llm_interaction_manager.logger.error")
+@patch("src.handler.llm_interaction_manager.logging.exception") # Patch logging.exception instead
 @patch("src.handler.llm_interaction_manager.Agent", new_callable=MagicMock)
-def test_initialize_agent_exception_handling(MockAgentClass, mock_log_error, llm_manager_no_agent_init):
+def test_initialize_agent_exception_handling(MockAgentClass, mock_log_exception, llm_manager_no_agent_init): # Rename mock param
     """Test exception handling within the initialize_agent method."""
     test_exception = ValueError("Agent init failed inside initialize_agent")
     MockAgentClass.side_effect = test_exception
@@ -126,52 +156,46 @@ def test_initialize_agent_exception_handling(MockAgentClass, mock_log_error, llm
         llm_manager_no_agent_init.initialize_agent(tools=[])
     assert llm_manager_no_agent_init.agent is None
     MockAgentClass.assert_called_once()
-    mock_log_error.assert_called_once()
-    args, kwargs = mock_log_error.call_args
-    assert "Failed to initialize pydantic-ai Agent" in args[0]
+    # Assert logging.exception was called within initialize_agent's try/except block
+    mock_log_exception.assert_called_once() # Check the new mock
+    args, kwargs = mock_log_exception.call_args
+    # Check the message passed to logging.exception
+    assert "Failed to initialize agent" in args[0]
     assert "Agent init failed inside initialize_agent" in args[0]
-    assert kwargs.get("exc_info") is True
-
+    # logging.exception implicitly handles exc_info, no need to check kwargs
 
 
 # No patch needed here as we are testing the manager's internal state
-def test_llm_manager_set_debug_mode(llm_manager_instance):
+def test_llm_manager_set_debug_mode(initialized_llm_manager): # Use new fixture
     """Test setting the debug mode."""
-    # Arrange: llm_manager_instance fixture already provides a manager
-    assert llm_manager_instance.debug_mode is False
+    # Arrange: initialized_llm_manager fixture provides a manager
+    assert initialized_llm_manager.debug_mode is False
 
     # Act & Assert
-    llm_manager_instance.set_debug_mode(True)
-    assert llm_manager_instance.debug_mode is True
-    llm_manager_instance.set_debug_mode(False)
-    assert llm_manager_instance.debug_mode is False
+    initialized_llm_manager.set_debug_mode(True)
+    assert initialized_llm_manager.debug_mode is True
+    initialized_llm_manager.set_debug_mode(False)
+    assert initialized_llm_manager.debug_mode is False
 
 
-# No patch needed here as the fixture provides a manager with a *mocked* agent instance
-def test_manager_execute_call_success(llm_manager_instance, mock_agent_instance):
+# Use the new fixture that provides an initialized agent
+def test_manager_execute_call_success(initialized_llm_manager): # Use new fixture
     """Test a successful agent call via execute_call."""
     # Arrange
     prompt = "User query"
     history = [{"role": "user", "content": "Previous query"}]
-    expected_response_content = "Agent response content"
-    # Configure the mock agent's response (already done in mock_agent_instance fixture,
-    # but can be overridden here if needed for specific test)
-    mock_response = MagicMock()
-    mock_response.output = expected_response_content
-    mock_response.tool_calls = []
-    mock_response.usage = {"prompt": 1, "completion": 2}
-    mock_agent_instance.run_sync.return_value = (
-        mock_response  # Ensure mock agent returns this
-    )
+    expected_response_content = "Initialized Agent Response" # Matches fixture setup
+    # Access the mock agent instance created within the fixture
+    mock_agent_instance = initialized_llm_manager._mock_agent_instance
 
     # Act
-    result = llm_manager_instance.execute_call(prompt, history)
+    result = initialized_llm_manager.execute_call(prompt, history)
 
     # Assert
     assert result["success"] is True
     assert result["content"] == expected_response_content
     assert result["tool_calls"] == []
-    assert result["usage"] == {"prompt": 1, "completion": 2}
+    assert result["usage"] == {"prompt": 5, "completion": 5} # Matches fixture setup
     assert result["error"] is None
 
     # Verify agent call arguments
@@ -180,14 +204,15 @@ def test_manager_execute_call_success(llm_manager_instance, mock_agent_instance)
     assert call_args[0] == prompt  # Check positional arg
     assert call_kwargs.get("message_history") == history  # Check kwarg
     assert (
-        call_kwargs.get("system_prompt") == llm_manager_instance.base_system_prompt
+        call_kwargs.get("system_prompt") == initialized_llm_manager.base_system_prompt
     )  # Default
+    # Tools were passed during initialize_agent, check they are NOT passed again by default
     assert "tools" not in call_kwargs
     assert "output_type" not in call_kwargs
 
 
-# No patch needed here
-def test_manager_execute_call_with_overrides(llm_manager_instance, mock_agent_instance):
+# Use the new fixture
+def test_manager_execute_call_with_overrides(initialized_llm_manager): # Use new fixture
     """Test execute_call with system prompt, tools, and output type overrides."""
     # Arrange
     prompt = "Query with overrides"
@@ -200,6 +225,9 @@ def test_manager_execute_call_with_overrides(llm_manager_instance, mock_agent_in
 
     output_override = OutputModel
 
+    # Access the mock agent instance created within the fixture
+    mock_agent_instance = initialized_llm_manager._mock_agent_instance
+    # Configure response for this specific test
     mock_response = MagicMock()
     mock_response.output = "Override response"
     mock_response.tool_calls = [{"name": "tool1"}]
@@ -207,7 +235,7 @@ def test_manager_execute_call_with_overrides(llm_manager_instance, mock_agent_in
     mock_agent_instance.run_sync.return_value = mock_response
 
     # Act
-    result = llm_manager_instance.execute_call(
+    result = initialized_llm_manager.execute_call(
         prompt,
         history,
         system_prompt_override=system_override,
@@ -226,22 +254,24 @@ def test_manager_execute_call_with_overrides(llm_manager_instance, mock_agent_in
     assert call_args[0] == prompt  # Check positional arg
     assert call_kwargs.get("message_history") == history
     assert call_kwargs.get("system_prompt") == system_override  # Override used
-    assert call_kwargs.get("tools") == tools_override
+    assert call_kwargs.get("tools") == tools_override # tools_override takes precedence
     assert call_kwargs.get("output_type") == output_override
 
 
-# No patch needed here
-def test_manager_execute_call_agent_failure(llm_manager_instance, mock_agent_instance):
+# Use the new fixture
+def test_manager_execute_call_agent_failure(initialized_llm_manager): # Use new fixture
     """Test execute_call when the agent's run_sync raises an exception."""
     # Arrange
     prompt = "This will fail"
     history = []
     test_exception = ConnectionError("API unavailable")
+    # Access the mock agent instance created within the fixture
+    mock_agent_instance = initialized_llm_manager._mock_agent_instance
     # Configure the mock agent instance to raise an error
     mock_agent_instance.run_sync.side_effect = test_exception
 
     # Act
-    result = llm_manager_instance.execute_call(prompt, history)
+    result = initialized_llm_manager.execute_call(prompt, history)
 
     # Assert
     assert result["success"] is False
@@ -253,24 +283,22 @@ def test_manager_execute_call_agent_failure(llm_manager_instance, mock_agent_ins
     mock_agent_instance.run_sync.assert_called_once()
 
 
-# No patch needed here
-def test_manager_execute_call_no_agent(llm_manager_instance):
+# Use the fixture that provides an UNINITIALIZED agent
+def test_manager_execute_call_no_agent(llm_manager_no_agent_init): # Use correct fixture
     """Test execute_call when the agent is not initialized."""
-    # Arrange
-    # Force the agent to None *after* initialization via fixture
-    llm_manager_instance.agent = None
+    # Arrange: llm_manager_no_agent_init provides a manager with agent=None
 
     # Act
-    result = llm_manager_instance.execute_call("Test", [])
+    result = llm_manager_no_agent_init.execute_call("Test", [])
 
     # Assert
     assert result["success"] is False
-    assert "LLM Agent not initialized" in result["error"]
+    assert "AgentNotInitializedError: LLM Agent not initialized." in result["error"]
 
 
-# No patch needed here
+# Use the new fixture
 def test_manager_execute_call_structured_output_stringification(
-    llm_manager_instance, mock_agent_instance
+    initialized_llm_manager, # Use new fixture
 ):
     """Test that structured output (like Pydantic models) is stringified."""
 
@@ -285,6 +313,9 @@ def test_manager_execute_call_structured_output_stringification(
             return json.dumps({"value": self.value})
 
     structured_output = MyOutputModel("structured data")
+    # Access the mock agent instance created within the fixture
+    mock_agent_instance = initialized_llm_manager._mock_agent_instance
+    # Configure response for this specific test
     mock_response = MagicMock()
     mock_response.output = structured_output  # Agent returns the model instance
     mock_response.tool_calls = []
@@ -292,7 +323,7 @@ def test_manager_execute_call_structured_output_stringification(
     mock_agent_instance.run_sync.return_value = mock_response
 
     # Act
-    result = llm_manager_instance.execute_call("Get structured data", [])
+    result = initialized_llm_manager.execute_call("Get structured data", [])
 
     # Assert
     assert result["success"] is True
@@ -301,16 +332,19 @@ def test_manager_execute_call_structured_output_stringification(
     mock_agent_instance.run_sync.assert_called_once()
 
 
+# Use the new fixture
 def test_execute_call_with_output_type_override(
-    llm_manager_instance, mock_agent_instance
+    initialized_llm_manager, # Use new fixture
 ):
     """Test that output_type_override is correctly passed to the agent.run_sync call."""
     # Arrange
     prompt = "Get structured data"
     history = []
+    # Access the mock agent instance created within the fixture
+    mock_agent_instance = initialized_llm_manager._mock_agent_instance
 
     # Act
-    result = llm_manager_instance.execute_call(
+    result = initialized_llm_manager.execute_call(
         prompt, history, output_type_override=TestOutputModel
     )
 
@@ -322,14 +356,17 @@ def test_execute_call_with_output_type_override(
     assert kwargs.get("output_type") == TestOutputModel
 
 
+# Use the new fixture
 def test_execute_call_with_pydantic_model_result(
-    llm_manager_instance, mock_agent_instance
+    initialized_llm_manager, # Use new fixture
 ):
     """Test that Pydantic model in agent response is included in parsed_content."""
     # Arrange
     # Create an instance of our TestOutputModel to simulate agent response
     model_instance = TestOutputModel(result="test result", score=0.95)
 
+    # Access the mock agent instance created within the fixture
+    mock_agent_instance = initialized_llm_manager._mock_agent_instance
     # Mock the agent response to return our model instance
     mock_response = MagicMock()
     mock_response.output = model_instance  # This is what pydantic-ai would return
@@ -337,7 +374,7 @@ def test_execute_call_with_pydantic_model_result(
     mock_agent_instance.run_sync.return_value = mock_response
 
     # Act
-    result = llm_manager_instance.execute_call("Get structured data", [])
+    result = initialized_llm_manager.execute_call("Get structured data", [])
 
     # Assert
     assert result["success"] is True
@@ -348,14 +385,17 @@ def test_execute_call_with_pydantic_model_result(
     assert "0.95" in result["content"]
 
 
-def test_execute_call_with_validation_error(llm_manager_instance, mock_agent_instance):
+# Use the new fixture
+def test_execute_call_with_validation_error(initialized_llm_manager): # Use new fixture
     """Test error handling when agent.run_sync raises a validation error."""
     # Arrange
     validation_error = ValueError("Validation failed for field 'score': expected float")
+    # Access the mock agent instance created within the fixture
+    mock_agent_instance = initialized_llm_manager._mock_agent_instance
     mock_agent_instance.run_sync.side_effect = validation_error
 
     # Act
-    result = llm_manager_instance.execute_call("Get structured data", [])
+    result = initialized_llm_manager.execute_call("Get structured data", [])
 
     # Assert
     assert result["success"] is False
@@ -365,29 +405,33 @@ def test_execute_call_with_validation_error(llm_manager_instance, mock_agent_ins
     assert str(validation_error) in result["error"]
 
 
+# Use the new fixture
 def test_get_provider_identifier_returns_model_id(
-    llm_manager_instance, mock_agent_instance
+    initialized_llm_manager, # Use new fixture
 ):
     """Test that get_provider_identifier returns the model identifier when agent is available."""
-    # Arrange - llm_manager_instance has default_model_identifier="test:model" from fixture
+    # Arrange - initialized_llm_manager has default_model_identifier="test:model" from fixture
+    # Access the mock agent instance created within the fixture
+    mock_agent_instance = initialized_llm_manager._mock_agent_instance
+    assert initialized_llm_manager.agent == mock_agent_instance # Verify agent is set
 
     # Act
-    result = llm_manager_instance.get_provider_identifier()
+    result = initialized_llm_manager.get_provider_identifier()
 
     # Assert
     assert result == "test:model"
 
 
-def test_get_provider_identifier_returns_none_when_no_agent(llm_manager_instance):
+# Use the fixture that provides an UNINITIALIZED agent
+def test_get_provider_identifier_returns_none_when_no_agent(llm_manager_no_agent_init): # Use correct fixture
     """Test that get_provider_identifier returns None when agent is not available."""
-    # Arrange
-    llm_manager_instance.agent = None
+    # Arrange: llm_manager_no_agent_init provides manager with agent=None
 
     # Act
     with patch("logging.warning") as mock_warning:
-        result = llm_manager_instance.get_provider_identifier()
+        result = llm_manager_no_agent_init.get_provider_identifier()
 
     # Assert
     assert result is None
     mock_warning.assert_called_once()
-    assert "Cannot get provider identifier" in mock_warning.call_args[0][0]
+    assert "Cannot get provider identifier: Agent is not initialized." in mock_warning.call_args[0][0]
