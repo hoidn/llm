@@ -2,6 +2,9 @@
 // This interface (AiderInteractiveSession) is deprecated as of ADR 19.
 // Interactive Aider execution is now handled via the refactored AiderBridge (acting as an MCP Client)
 // and the AiderExecutorFunctions which invoke it. The session state is managed by the external Aider MCP Server.
+// See:
+// - src/aider_bridge/bridge_IDL.md
+// - src/executors/aider_executors_IDL.md
 // ==================================
 
 /*

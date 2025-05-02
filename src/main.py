@@ -23,14 +23,21 @@ from src.executors.system_executors import SystemExecutorFunctions
 from src import dispatcher # Import the dispatcher module
 # Import the new tools module
 from src.tools import anthropic_tools
+# Import Aider components conditionally
+try:
+    from src.aider_bridge.bridge import AiderBridge
+    from src.executors.aider_executors import AiderExecutorFunctions as AiderExecutors
+    AIDER_AVAILABLE = True
+except ImportError:
+    AiderBridge = None # type: ignore
+    AiderExecutors = None # type: ignore
+    AIDER_AVAILABLE = False
+    logging.warning("AiderBridge or AiderExecutorFunctions not found. Aider integration disabled.")
+
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
-
-# Aider integration is deferred to Phase 8
-AIDER_AVAILABLE = False
-AiderBridge = None # Define as None for type hinting if needed elsewhere temporarily
 
 # Helper function to create a standard FAILED TaskResult dictionary
 def _create_failed_result_dict(reason: TaskFailureReason, message: str, details: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -257,6 +264,10 @@ Select the best matching paths *from the provided metadata* and output the JSON.
                 logger.info("Provider is not Anthropic. Skipping Anthropic tool registration.")
             # --- End Conditional Provider Tool Registration ---
 
+            # Initialize Aider integration (if available) - Phase 8
+            self.initialize_aider()
+            logger.info(f"Aider integration initialized (Available: {AIDER_AVAILABLE}).")
+
 
             # Determine active tools based on provider AFTER registration
             active_tools_specs = self._determine_active_tools(provider_id)
@@ -279,9 +290,6 @@ Select the best matching paths *from the provided metadata* and output the JSON.
                 logger.error("LLMInteractionManager not available for agent initialization.")
                 raise RuntimeError("LLMInteractionManager not available for agent initialization.")
 
-            # Initialize Aider integration (if available) - DEFERRED to Phase 8
-            # self.initialize_aider()
-            # logger.info(f"Aider integration initialized (Available: {AIDER_AVAILABLE}).")
 
             logger.info("Application initialization complete.")
 
@@ -332,6 +340,19 @@ Select the best matching paths *from the provided metadata* and output the JSON.
             # Add other provider-specific logic here if needed
             # elif provider_identifier.startswith('openai:'):
             #     pass
+
+        # Add Aider tools if available
+        if AIDER_AVAILABLE:
+            logger.debug("Including Aider tool specs.")
+            if self.passthrough_handler and hasattr(self.passthrough_handler, 'registered_tools'):
+                 for tool_name, tool_data in self.passthrough_handler.registered_tools.items():
+                     if tool_name.startswith('aider:'):
+                         if 'spec' in tool_data:
+                             active_tool_specs.append(tool_data['spec'])
+                             logger.debug(f"Including Aider tool spec: {tool_name}")
+                         else:
+                             logger.warning(f"Aider tool '{tool_name}' missing 'spec' in registered_tools.")
+
 
         logger.info(f"Determined {len(active_tool_specs)} active tool specifications: {[t.get('name', 'unnamed') for t in active_tool_specs]}")
         return active_tool_specs
@@ -410,20 +431,90 @@ Select the best matching paths *from the provided metadata* and output the JSON.
 
     def initialize_aider(self) -> None:
         """
-        Placeholder for AiderBridge initialization and tool registration.
-        Currently deferred as per project plan (Phase 8).
+        Initializes the AiderBridge and registers Aider tools if available.
         """
-        # Ensure AiderBridge type hint works if needed, even if None
-        # from typing import TYPE_CHECKING
-        # if TYPE_CHECKING:
-        #     try:
-        #         from src.aider_bridge.bridge import AiderBridge
-        #     except ImportError:
-        #         AiderBridge = None # type: ignore
+        if not AIDER_AVAILABLE:
+            logger.info("Aider integration is unavailable (missing dependencies). Skipping initialization.")
+            self.aider_bridge = None
+            return
 
-        logger.info("Aider initialization is deferred (Phase 8). Skipping.")
-        self.aider_bridge = None # Ensure it remains None
-        # Do not attempt to import Aider components or register Aider tools here in Phase 6
+        if not self.passthrough_handler:
+            logger.error("Cannot initialize Aider: PassthroughHandler not available.")
+            return
+        if not self.memory_system:
+             logger.error("Cannot initialize Aider: MemorySystem not available.")
+             return
+        if not self.file_access_manager:
+             logger.error("Cannot initialize Aider: FileAccessManager not available.")
+             return
+
+        logger.info("Initializing Aider integration...")
+        try:
+            # Instantiate AiderBridge (MCP Client)
+            self.aider_bridge = AiderBridge(
+                memory_system=self.memory_system,
+                file_access_manager=self.file_access_manager,
+                config=self.config.get('aider_config', {}) # Pass aider specific config if any
+            )
+            logger.info("AiderBridge (MCP Client) instantiated.")
+
+            # Define Aider tool specifications
+            aider_tools_to_register = [
+                {
+                    "spec": {
+                        "name": "aider:automatic",
+                        "description": "Executes an Aider coding task automatically based on a prompt and optional file context.",
+                        "input_schema": {
+                            "type": "object",
+                            "properties": {
+                                "prompt": {"type": "string", "description": "The instruction for code changes."},
+                                "file_context": {"type": "string", "description": "Optional JSON string array of explicit file paths."},
+                                "model": {"type": "string", "description": "Optional specific model override for Aider."}
+                            },
+                            "required": ["prompt"]
+                        }
+                    },
+                    # Pass the ASYNC executor function directly
+                    "executor": AiderExecutors.execute_aider_automatic
+                },
+                {
+                    "spec": {
+                        "name": "aider:interactive",
+                        "description": "Starts or continues an interactive Aider coding session.",
+                        "input_schema": {
+                            "type": "object",
+                            "properties": {
+                                "query": {"type": "string", "description": "The initial query or follow-up instruction."},
+                                "prompt": {"type": "string", "description": "Alternative to 'query'."},
+                                "file_context": {"type": "string", "description": "Optional JSON string array of explicit file paths."},
+                                "model": {"type": "string", "description": "Optional specific model override for Aider."}
+                            },
+                            # Require at least one of query or prompt
+                        }
+                    },
+                     # Pass the ASYNC executor function directly
+                    "executor": AiderExecutors.execute_aider_interactive
+                }
+            ]
+
+            # Register Aider tools with the handler
+            registered_count = 0
+            for tool in aider_tools_to_register:
+                # Create a wrapper lambda that passes the aider_bridge instance
+                # Use default arguments to capture current values
+                executor_wrapper = lambda params, bridge=self.aider_bridge, func=tool["executor"]: func(params, bridge) # type: ignore
+
+                success = self.passthrough_handler.register_tool(tool["spec"], executor_wrapper)
+                if success:
+                    registered_count += 1
+                    logger.debug(f"Registered Aider tool: {tool['spec']['name']}")
+                else:
+                    logger.warning(f"Failed to register Aider tool: {tool['spec']['name']}")
+            logger.info(f"Registered {registered_count}/{len(aider_tools_to_register)} Aider tools.")
+
+        except Exception as e:
+            logger.exception(f"Error during Aider initialization: {e}")
+            self.aider_bridge = None # Ensure bridge is None on error
 
 
     def index_repository(self, repo_path: str, options: Optional[Dict[str, Any]] = None) -> bool:
@@ -620,4 +711,3 @@ if __name__ == "__main__":
 
     except Exception as main_e:
         logger.exception(f"Error in main execution block: {main_e}")
-

@@ -2,6 +2,9 @@
 // This interface (AiderAutomaticHandler) is deprecated as of ADR 19.
 // Automatic Aider execution is now handled via the refactored AiderBridge (acting as an MCP Client)
 // and the AiderExecutorFunctions which invoke it. Refer to those components.
+// See:
+// - src/aider_bridge/bridge_IDL.md
+// - src/executors/aider_executors_IDL.md
 // =================================
 
 /*
