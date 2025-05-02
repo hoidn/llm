@@ -13,7 +13,7 @@ except ImportError:
     AiderBridge = None # type: ignore
 
 # Import system models used in results/mocks
-from src.system.models import TaskResult, AssociativeMatchResult, MatchTuple, TaskFailureError, TaskFailureReason, ContextGenerationInput
+from src.system.models import TaskResult, AssociativeMatchResult, MatchTuple, TaskFailureError, TaskFailureReason, ContextGenerationInput, TaskFailureDetails # Added TaskFailureDetails
 
 # --- Import or Define REAL/DUMMY mcp.py types ---
 # If mcp.py IS installed, these imports should work directly.
@@ -125,7 +125,7 @@ class TestAiderBridge:
                                                  mock_client_session_cls,  # From Decorator 1 (Innermost)
                                                  mock_stdio_client_func,   # From Decorator 2
                                                  mock_stdio_params_cls,    # From Decorator 3
-                                                 mock_mcp_flag,            # From Decorator 4 (Outermost) - Added
+                                                 # mock_mcp_flag parameter removed
                                                  aider_bridge_instance):   # Fixture
         """Verify call_aider_tool invokes aider_ai_code and maps success response."""
         # Arrange
@@ -154,7 +154,6 @@ class TestAiderBridge:
         result = await aider_bridge_instance.call_aider_tool(tool_name, params)
 
         # Assert
-        # --- Assertions (Use the CORRECT mock argument names) ---
         mock_stdio_params_cls.assert_called_once_with( # Check StdioServerParameters was called
              command="dummy_aider_mcp_server", args=[], env={}
         )
@@ -177,7 +176,7 @@ class TestAiderBridge:
                                                  mock_client_session_cls,  # From Decorator 1 (Innermost)
                                                  mock_stdio_client_func,   # From Decorator 2
                                                  mock_stdio_params_cls,    # From Decorator 3
-                                                 mock_mcp_flag,            # From Decorator 4 (Outermost) - Added
+                                                 # mock_mcp_flag parameter removed
                                                  aider_bridge_instance):   # Fixture
         """Verify call_aider_tool handles application error from aider_ai_code."""
         # Arrange
@@ -205,7 +204,6 @@ class TestAiderBridge:
         result = await aider_bridge_instance.call_aider_tool(tool_name, params)
 
         # Assert
-        # --- Assertions (Use the CORRECT mock argument names) ---
         mock_stdio_params_cls.assert_called_once()
         mock_stdio_client_func.assert_called_once()
         mock_client_session_cls.assert_called_once()
@@ -218,8 +216,9 @@ class TestAiderBridge:
         assert result.get("notes", {}).get("error", {}).get("reason") == "tool_execution_error"
         # Check that the original error details are included in the notes
         # The details dict passed to _create_failed_result_dict should contain the server payload
-        assert result.get("notes", {}).get("error", {}).get("details", {}).get("error") == error_msg
-        assert result.get("notes", {}).get("error", {}).get("details", {}).get("diff") == "partial diff..."
+        # Access the nested 'notes' field within the 'details' object
+        assert result.get("notes", {}).get("error", {}).get("details", {}).get("notes", {}).get("error") == error_msg
+        assert result.get("notes", {}).get("error", {}).get("details", {}).get("notes", {}).get("diff") == "partial diff..."
         # mock_mcp_flag is unused in the test logic
 
     @pytest.mark.asyncio
@@ -231,7 +230,7 @@ class TestAiderBridge:
                                                      mock_client_session_cls,  # From Decorator 1 (Innermost)
                                                      mock_stdio_client_func,   # From Decorator 2
                                                      mock_stdio_params_cls,    # From Decorator 3
-                                                     mock_mcp_flag,            # From Decorator 4 (Outermost) - Added
+                                                     # mock_mcp_flag parameter removed
                                                      aider_bridge_instance):   # Fixture
         """Verify call_aider_tool invokes list_models and maps success response."""
         # Arrange
@@ -258,7 +257,6 @@ class TestAiderBridge:
         result = await aider_bridge_instance.call_aider_tool(tool_name, params)
 
         # Assert
-        # --- Assertions (Use the CORRECT mock argument names) ---
         mock_stdio_params_cls.assert_called_once()
         mock_stdio_client_func.assert_called_once()
         mock_client_session_cls.assert_called_once()
@@ -282,7 +280,7 @@ class TestAiderBridge:
                                                mock_client_session_cls,  # From Decorator 1 (Innermost)
                                                mock_stdio_client_func,   # From Decorator 2
                                                mock_stdio_params_cls,    # From Decorator 3
-                                               mock_mcp_flag,            # From Decorator 4 (Outermost) - Added
+                                               # mock_mcp_flag parameter removed
                                                aider_bridge_instance):   # Fixture
         """Verify call_aider_tool handles exceptions from mcp.py client."""
         # Arrange
@@ -307,7 +305,6 @@ class TestAiderBridge:
         result = await aider_bridge_instance.call_aider_tool(tool_name, params)
 
         # Assert
-        # --- Assertions (Use the CORRECT mock argument names) ---
         mock_stdio_params_cls.assert_called_once()
         mock_stdio_client_func.assert_called_once()
         mock_client_session_cls.assert_called_once()
@@ -329,7 +326,7 @@ class TestAiderBridge:
                                                   mock_client_session_cls,  # From Decorator 1 (Innermost)
                                                   mock_stdio_client_func,   # From Decorator 2
                                                   mock_stdio_params_cls,    # From Decorator 3
-                                                  mock_mcp_flag,            # From Decorator 4 (Outermost) - Added
+                                                  # mock_mcp_flag parameter removed
                                                   aider_bridge_instance):   # Fixture
         """Verify call_aider_tool handles invalid JSON from server."""
         # Arrange
@@ -355,7 +352,6 @@ class TestAiderBridge:
         result = await aider_bridge_instance.call_aider_tool(tool_name, params)
 
         # Assert
-        # --- Assertions (Use the CORRECT mock argument names) ---
         mock_stdio_params_cls.assert_called_once()
         mock_stdio_client_func.assert_called_once()
         mock_client_session_cls.assert_called_once()
@@ -365,8 +361,8 @@ class TestAiderBridge:
         assert result.get("status") == "FAILED"
         assert "Failed to parse JSON response" in result.get("content", "")
         assert result.get("notes", {}).get("error", {}).get("reason") == "output_format_failure"
-        # Check that raw response is included in details
-        assert result.get("notes", {}).get("error", {}).get("details", {}).get("raw_response") == invalid_json
+        # Check that raw response is included in details (nested in notes)
+        assert result.get("notes", {}).get("error", {}).get("details", {}).get("notes", {}).get("raw_response") == invalid_json
         # mock_mcp_flag is unused in the test logic
 
     # --- Context Helper Method Tests ---
@@ -508,3 +504,39 @@ class TestAiderBridge:
         mock_memory_system_bridge.get_relevant_context_for.assert_called_once()
         assert result_paths == [] # Should return empty list on error
         assert aider_bridge_instance._file_context == initial_context # Internal state should not change
+
+    # --- Tests for MCP_AVAILABLE = False ---
+    @pytest.mark.asyncio
+    @patch('src.aider_bridge.bridge.MCP_AVAILABLE', False) # Mock MCP as unavailable
+    async def test_call_aider_tool_mcp_unavailable(self, aider_bridge_instance): # Removed mock_mcp_flag
+        """Verify call_aider_tool returns error if MCP lib is unavailable."""
+        # Arrange
+        tool_name = "aider_ai_code"
+        params = {"ai_coding_prompt": "Test", "relative_editable_files": ["f.py"]}
+
+        # Act
+        result = await aider_bridge_instance.call_aider_tool(tool_name, params)
+
+        # Assert
+        assert result.get("status") == "FAILED"
+        assert "mcp.py library not available" in result.get("content", "")
+        assert result.get("notes", {}).get("error", {}).get("reason") == "dependency_error"
+
+    @pytest.mark.asyncio
+    @patch('src.aider_bridge.bridge.MCP_AVAILABLE', True) # Assume available for this test
+    async def test_call_aider_tool_no_command_config(self, mock_memory_system_bridge, mock_file_access_manager_bridge): # Removed mock_mcp_flag
+        """Verify call_aider_tool returns error if MCP command is not configured."""
+         # Arrange
+        tool_name = "aider_ai_code"
+        params = {"ai_coding_prompt": "Test", "relative_editable_files": ["f.py"]}
+        # Create bridge with empty config
+        bad_config = {}
+        bridge = AiderBridge(mock_memory_system_bridge, mock_file_access_manager_bridge, bad_config)
+
+        # Act
+        result = await bridge.call_aider_tool(tool_name, params)
+
+        # Assert
+        assert result.get("status") == "FAILED"
+        assert "Aider MCP server command not configured" in result.get("content", "")
+        assert result.get("notes", {}).get("error", {}).get("reason") == "configuration_error"

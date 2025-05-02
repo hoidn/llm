@@ -77,6 +77,10 @@ def app_components(mocker, tmp_path): # Add tmp_path
     mock_task_system_instance = MagicMock(spec=TaskSystem)
     mock_handler_instance = MagicMock(spec=PassthroughHandler)
     mock_fm_instance = MagicMock(spec=FileAccessManager)
+    # --- START FIX ---
+    # Configure the mock instance with the attribute needed by Application.__init__
+    mock_fm_instance.base_path = "/mocked/base/path"
+    # --- END FIX ---
     mock_llm_manager_instance = MagicMock(spec=LLMInteractionManager)
     mock_aider_bridge_instance = MagicMock(spec=AiderBridge)
     mock_indexer_instance = MagicMock(spec=GitRepositoryIndexer) # Instance for indexer

@@ -11,7 +11,7 @@ import os
 from typing import Dict, Any, Optional, List, Set
 
 # Import system models
-from src.system.models import TaskResult, TaskFailureError, TaskFailureReason, ContextGenerationInput, AssociativeMatchResult, MatchTuple
+from src.system.models import TaskResult, TaskFailureError, TaskFailureReason, ContextGenerationInput, AssociativeMatchResult, MatchTuple, TaskFailureDetails # Ensure TaskFailureDetails is imported
 
 # Import MCP components
 try:
@@ -41,10 +41,30 @@ from src.handler.file_access import FileAccessManager
 logger = logging.getLogger(__name__)
 
 # Helper function to create a standard FAILED TaskResult dictionary
-def _create_failed_result_dict(reason: TaskFailureReason, message: str, details: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+def _create_failed_result_dict(
+    reason: TaskFailureReason,
+    message: str,
+    details_dict: Optional[Dict[str, Any]] = None # Changed name and type
+) -> Dict[str, Any]:
     """Creates a dictionary representing a FAILED TaskResult."""
-    error_obj = TaskFailureError(type="TASK_FAILURE", reason=reason, message=message, details=details or {})
-    task_result = TaskResult(status="FAILED", content=message, notes={"error": error_obj})
+    # Create TaskFailureDetails object only if details_dict is provided
+    details_obj = None
+    if details_dict:
+        # Nest the arbitrary dictionary within the 'notes' field of TaskFailureDetails
+        details_obj = TaskFailureDetails(notes=details_dict)
+
+    # Create the error object, passing the TaskFailureDetails object
+    error_obj = TaskFailureError(
+        type="TASK_FAILURE",
+        reason=reason,
+        message=message,
+        details=details_obj # Pass the object here
+    )
+    task_result = TaskResult(
+        status="FAILED",
+        content=message,
+        notes={"error": error_obj} # Embed the error object in notes
+    )
     # Use exclude_none=True to avoid sending null fields if not set
     return task_result.model_dump(exclude_none=True)
 
@@ -151,16 +171,17 @@ class AiderBridge:
                     except json.JSONDecodeError as json_err:
                         logger.error(f"Failed to parse JSON response from MCP server: {json_err}")
                         logger.error(f"Invalid JSON string: {response_text}")
-                        return _create_failed_result_dict("output_format_failure", f"Failed to parse JSON response: {json_err}", {"raw_response": response_text})
+                        # Pass raw response dict as details_dict
+                        return _create_failed_result_dict("output_format_failure", f"Failed to parse JSON response: {json_err}", details_dict={"raw_response": response_text})
 
                     # Map server payload to TaskResult dictionary
                     # Check for explicit error reported by the server application
                     if server_payload.get("error"):
                         error_msg = server_payload["error"]
                         logger.warning(f"Aider MCP tool '{tool_name}' reported application error: {error_msg}")
-                        # Include other potential fields in notes
-                        notes = {k: v for k, v in server_payload.items() if k != 'error'}
-                        return _create_failed_result_dict("tool_execution_error", error_msg, notes)
+                        # Include other potential fields in notes (passed as details_dict)
+                        notes_for_details = {k: v for k, v in server_payload.items() if k != 'error'}
+                        return _create_failed_result_dict("tool_execution_error", error_msg, details_dict=notes_for_details)
 
                     # Handle specific tool formats based on aider_MCP_server.md
                     if tool_name == "aider_ai_code":
@@ -173,8 +194,9 @@ class AiderBridge:
                             # If success is false but no explicit 'error' key, use diff as error message
                             error_msg = diff_content or f"Aider tool '{tool_name}' failed without specific error message."
                             logger.warning(f"Aider MCP tool '{tool_name}' failed: {error_msg}")
-                            notes = {k: v for k, v in server_payload.items()} # Include all payload in notes
-                            return _create_failed_result_dict("tool_execution_error", error_msg, notes)
+                            # Include all payload in notes (passed as details_dict)
+                            notes_for_details = {k: v for k, v in server_payload.items()}
+                            return _create_failed_result_dict("tool_execution_error", error_msg, details_dict=notes_for_details)
                     elif tool_name == "list_models":
                         models = server_payload.get("models", [])
                         logger.info(f"Aider MCP tool '{tool_name}' listed {len(models)} models.")
@@ -189,12 +211,15 @@ class AiderBridge:
 
         except (MCPError, ConnectionClosed, TimeoutError, ConnectionRefusedError) as mcp_err:
             logger.error(f"MCP communication error calling tool '{tool_name}': {mcp_err}")
+            # No extra details needed for connection errors
             return _create_failed_result_dict("connection_error", f"MCP communication error: {mcp_err}")
         except ValueError as val_err: # Catch potential errors from StdioServerParameters or config issues
              logger.error(f"Configuration or parameter error calling tool '{tool_name}': {val_err}")
+             # No extra details needed for config errors
              return _create_failed_result_dict("configuration_error", f"Configuration error: {val_err}")
         except Exception as e:
             logger.exception(f"Unexpected error calling Aider MCP tool '{tool_name}': {e}")
+            # No extra details needed for unexpected errors
             return _create_failed_result_dict("unexpected_error", f"Unexpected error during MCP call: {e}")
 
     # --- Context Preparation Methods (Retained but role clarified) ---
