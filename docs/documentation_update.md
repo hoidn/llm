@@ -28,12 +28,13 @@ To identify and rectify inconsistencies, inaccuracies, or outdated information w
 
 2.  **List Potentially Affected Documents:** Brainstorm and list all documentation files that *might* be impacted by the change or are relevant to the area of focus. Start broadly and narrow down if needed.
     *   **Core Guides:** Always check `start_here.md`, `project_rules.md`, `implementation_rules.md`, `IDL.md`.
+    *   **Project Plan/Roadmap:** Check the main `plan.md` (or equivalent) if the technical change impacts scope, timelines, dependencies between phases, or requires adjustments to future planned work. # <-- UPDATED SECTION
     *   **Related ADRs:** Review the ADR itself and any ADRs it supersedes or relates to.
     *   **Component Docs:** Identify components directly affected by the change. Check their READMEs, specs (`spec/`), API docs (`api/`), implementation notes (`impl/`), and associated IDLs (`src/.../*_IDL.md`).
     *   **Contracts & Protocols:** Check `docs/system/contracts/` and `docs/system/protocols/` if the change impacts interfaces, types, or schemas.
     *   **Patterns:** Check `docs/system/architecture/patterns/` if the change implements or modifies a core pattern.
     *   **Search:** Use tools like `git grep` or IDE search for keywords related to the change across the `docs/` and potentially `src/` directories (for IDLs) to find less obvious references.
-    *   *Example Output for pydantic-ai pivot:* `start_here.md`, `implementation_rules.md`, `project_rules.md` (re: helpers), `base_handler_IDL.md`, `model_provider_IDL.md` (deprecate), `librarydocs/pydanticai.md` (add/review).
+    *   *Example Output for pydantic-ai pivot:* `start_here.md`, `implementation_rules.md`, `project_rules.md` (re: helpers), `base_handler_IDL.md`, `model_provider_IDL.md` (deprecate), `librarydocs/pydanticai.md` (add/review), `plan.md` (potentially update phase dependencies).
 
 **Phase 2: Review and Analyze**
 
@@ -78,4 +79,3 @@ To identify and rectify inconsistencies, inaccuracies, or outdated information w
 *   **Consistency:** Ensure terminology, formatting, and style are consistent with surrounding documentation.
 
 By following this process, we can maintain accurate, consistent, and helpful documentation that reflects the ongoing evolution of the project.
-
