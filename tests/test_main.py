@@ -100,7 +100,10 @@ def app_components(mocker, tmp_path): # Add tmp_path
 
         # Create mock instances that the mocked classes will return OR get the default return_value
         # Use autospec=True for instances to mimic the class spec
-        mock_memory_system_instance = MagicMock(spec=MemorySystem)
+        # --- START FIX ---
+        # mock_memory_system_instance = MagicMock(spec=MemorySystem) # Removed explicit creation
+        mock_memory_instance = MockMemory.return_value # Get instance from patch
+        # --- END FIX ---
         mock_task_instance = MockTask.return_value # Get the instance created by the patch
         # Configure MockTask instance methods if needed
         mock_task_instance.set_handler = MagicMock() # Add mock for set_handler
@@ -118,7 +121,7 @@ def app_components(mocker, tmp_path): # Add tmp_path
         mock_task_instance.memory_system = None # Configure the instance from MockTask.return_value
 
         # Configure the mocked classes to return the mock instances
-        MockMemory.return_value = mock_memory_system_instance
+        # MockMemory.return_value = mock_memory_system_instance # No longer needed, using default return_value
         # MockTask.return_value = mock_task_system_instance # No longer needed, using default return_value
         mock_handler_instance = MockHandler.return_value # Use updated assignment
         MockFileAccessManager.return_value = mock_fm_instance
@@ -173,7 +176,9 @@ def app_components(mocker, tmp_path): # Add tmp_path
             "MockPydanticAgent": MockPydanticAgent,
 
             # Core Component Instance Mocks
-            "mock_memory_system_instance": mock_memory_system_instance,
+            # --- START FIX ---
+            "mock_memory_system_instance": mock_memory_instance, # Provide instance
+            # --- END FIX ---
             "mock_task_system_instance": mock_task_instance, # Provide instance
             "mock_handler_instance": mock_handler_instance,
             "mock_fm_instance": mock_fm_instance,
