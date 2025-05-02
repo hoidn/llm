@@ -1,19 +1,19 @@
+import json
 import logging
 import os
-import json
-from typing import Any, Dict, List, Optional, Callable, Type
+from typing import Any, Callable, Dict, List, Optional, Type
+
+from src.handler import command_executor
 
 # Import Phase 0 components
 from src.handler.file_access import FileAccessManager
-from src.handler import command_executor
 from src.handler.file_context_manager import FileContextManager
 from src.handler.llm_interaction_manager import LLMInteractionManager
 
 # Import shared types
 from src.system.models import (
-    TaskResult,
     TaskError,
-    TaskFailureError,
+    TaskResult,
 )  # Import TaskFailureError for type hints
 
 # Forward declarations for type hinting cycles
@@ -66,6 +66,7 @@ class BaseHandler:
         self.registered_tools: Dict[str, Dict[str, Any]] = (
             {}
         )  # Key: tool name, Value: tool spec
+        self.active_tools: List[str] = []  # List of tool names to use in LLM calls
         self.conversation_history: List[Dict[str, Any]] = (
             []
         )  # Stores {"role": "user/assistant", "content": ...} dicts
@@ -201,6 +202,33 @@ class BaseHandler:
             )
             return []
 
+    def set_active_tools(self, tool_names: List[str]) -> bool:
+        """
+        Sets the list of active tools to be used in LLM calls.
+
+        Args:
+            tool_names: List of tool names to activate. Must be previously registered.
+
+        Returns:
+            True if all tools were found and activated, False otherwise.
+        """
+        self.log_debug(f"Setting active tools: {tool_names}")
+
+        # Validate that all tool names are registered
+        unknown_tools = [
+            name for name in tool_names if name not in self.registered_tools
+        ]
+        if unknown_tools:
+            logging.error(f"Cannot activate unknown tools: {unknown_tools}")
+            return False
+
+        # Set the active tools list
+        self.active_tools = (
+            tool_names.copy()
+        )  # Create a copy to avoid external modifications
+        self.log_debug(f"Active tools set to: {self.active_tools}")
+        return True
+
     def get_provider_identifier(self) -> Optional[str]:
         """
         Returns the identifier of the current LLM provider.
@@ -304,15 +332,36 @@ class BaseHandler:
                 notes={"error": error_details},
             )
 
-        # --- Prepare tools for the call if needed ---
-        # This is where dynamic tool provision could happen.
-        # If tools_override is not provided, maybe pass self.registered_tools?
-        # The format needed by pydantic-ai (specs vs functions) is crucial here.
-        # For now, we pass tools_override directly as received.
-        current_tools = tools_override
-        # Example: If pydantic-ai needs functions, map registered specs to executors
-        # if not tools_override and self.registered_tools:
-        #     current_tools = list(self.tool_executors.values()) # Simplistic example
+        # --- Prepare tools for the call with precedence logic ---
+        current_tools = None
+
+        # 1. Highest precedence: Explicit tools_override passed to this call
+        if tools_override is not None:
+            self.log_debug("Using explicitly provided tools_override for LLM call")
+            current_tools = tools_override
+
+        # 2. Second precedence: Active tools list if it's not empty
+        elif self.active_tools:
+            self.log_debug(f"Using active tools list for LLM call: {self.active_tools}")
+            # Map tool names to executor functions
+            tool_functions = []
+            for tool_name in self.active_tools:
+                executor = self.tool_executors.get(tool_name)
+                if executor:
+                    tool_functions.append(executor)
+                else:
+                    logging.warning(
+                        f"Tool {tool_name} in active_tools but no executor found"
+                    )
+            current_tools = tool_functions
+
+        # 3. Lowest precedence: No tools passed if neither above condition is met
+        # (current_tools remains None)
+
+        if current_tools:
+            self.log_debug(f"Passing {len(current_tools)} tools to LLM call")
+        else:
+            self.log_debug("No tools will be passed to LLM call")
 
         # Store history *before* the call for accurate logging/debugging if needed
         history_before_call = list(self.conversation_history)
@@ -322,7 +371,7 @@ class BaseHandler:
             prompt=prompt,
             conversation_history=history_before_call,  # Pass current history
             system_prompt_override=system_prompt_override,
-            tools_override=current_tools,  # Pass potentially prepared tools
+            tools_override=current_tools,  # Pass prepared tools with precedence logic
             output_type_override=output_type_override,
         )
 

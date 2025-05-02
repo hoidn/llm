@@ -1,18 +1,18 @@
-import pytest
-from unittest.mock import patch, MagicMock, ANY, call
 import os
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+# Import the class under test
+from src.handler.base_handler import BaseHandler
 
 # Import real classes for spec verification if needed
 from src.handler.file_access import FileAccessManager
 from src.handler.file_context_manager import FileContextManager
 from src.handler.llm_interaction_manager import LLMInteractionManager
 
-# Import the class under test
-from src.handler.base_handler import BaseHandler
-
 # Import TaskResult properly now that it's potentially patched or available
 from src.system.models import TaskResult
-
 
 # --- Fixtures ---
 
@@ -597,3 +597,220 @@ def test_get_provider_identifier_no_llm_manager(base_handler_instance):
     assert result is None
     mock_warning.assert_called_once()
     assert "LLMInteractionManager is not available" in mock_warning.call_args[0][0]
+
+
+# --- Tests for set_active_tools ---
+
+
+def test_set_active_tools_success(base_handler_instance):
+    """Test setting active tools with valid tool names."""
+    # Register some tools first
+    tool_spec1 = {"name": "tool1", "description": "Tool 1", "input_schema": {}}
+    tool_spec2 = {"name": "tool2", "description": "Tool 2", "input_schema": {}}
+
+    def executor1(inp):
+        return f"Tool 1: {inp}"
+
+    def executor2(inp):
+        return f"Tool 2: {inp}"
+
+    base_handler_instance.register_tool(tool_spec1, executor1)
+    base_handler_instance.register_tool(tool_spec2, executor2)
+
+    # Test setting active tools
+    result = base_handler_instance.set_active_tools(["tool1", "tool2"])
+
+    # Assert
+    assert result is True
+    assert base_handler_instance.active_tools == ["tool1", "tool2"]
+
+
+def test_set_active_tools_empty_list(base_handler_instance):
+    """Test setting an empty list of active tools."""
+    # Register a tool first
+    tool_spec = {"name": "some_tool", "description": "Some Tool", "input_schema": {}}
+
+    def executor(inp):
+        return f"Some Tool: {inp}"
+
+    base_handler_instance.register_tool(tool_spec, executor)
+
+    # Set active tools initially to verify they get cleared
+    base_handler_instance.active_tools = ["some_tool"]
+
+    # Test setting empty active tools list
+    result = base_handler_instance.set_active_tools([])
+
+    # Assert
+    assert result is True
+    assert base_handler_instance.active_tools == []
+
+
+def test_set_active_tools_unknown_tool(base_handler_instance):
+    """Test setting active tools with an unknown tool name."""
+    # Register a tool first
+    tool_spec = {"name": "known_tool", "description": "Known Tool", "input_schema": {}}
+
+    def executor(inp):
+        return f"Known Tool: {inp}"
+
+    base_handler_instance.register_tool(tool_spec, executor)
+
+    # Test setting active tools with unknown tool
+    with patch("logging.error") as mock_error:
+        result = base_handler_instance.set_active_tools(["known_tool", "unknown_tool"])
+
+    # Assert
+    assert result is False
+    # Active tools should not be changed if there are unknown tools
+    assert base_handler_instance.active_tools == []
+    mock_error.assert_called_once()
+    assert "unknown_tool" in mock_error.call_args[0][0]
+
+
+# --- Tests for tools precedence logic in _execute_llm_call ---
+
+
+def test_execute_llm_call_tools_override_precedence(base_handler_instance):
+    """Test that explicit tools_override takes precedence over active_tools."""
+    # Access the mocked llm_manager via the handler instance
+    mock_llm_manager = base_handler_instance.llm_manager
+    mock_llm_manager.execute_call.return_value = {
+        "success": True,
+        "content": "Response with override tools",
+    }
+
+    # Register tools and set active tools
+    tool_spec1 = {
+        "name": "active_tool",
+        "description": "Active Tool",
+        "input_schema": {},
+    }
+
+    def executor1(inp):
+        return f"Active Tool: {inp}"
+
+    base_handler_instance.register_tool(tool_spec1, executor1)
+    base_handler_instance.set_active_tools(["active_tool"])
+
+    # Create override tool
+    def override_tool(inp):
+        return f"Override Tool: {inp}"
+
+    # Call with tools_override
+    base_handler_instance._execute_llm_call(
+        "Test prompt", tools_override=[override_tool]
+    )
+
+    # Assert that llm_manager was called with tools_override, not active_tools
+    mock_llm_manager.execute_call.assert_called_once()
+    call_args = mock_llm_manager.execute_call.call_args[1]
+
+    # The tools_override param should be passed, not the active tools
+    assert call_args["tools_override"] == [override_tool]
+    assert call_args["tools_override"] != [executor1]
+
+
+def test_execute_llm_call_active_tools_used(base_handler_instance):
+    """Test that active_tools are used when no tools_override is provided."""
+    # Access the mocked llm_manager via the handler instance
+    mock_llm_manager = base_handler_instance.llm_manager
+    mock_llm_manager.execute_call.return_value = {
+        "success": True,
+        "content": "Response with active tools",
+    }
+
+    # Register tools and set active tools
+    tool_spec1 = {
+        "name": "active_tool1",
+        "description": "Active Tool 1",
+        "input_schema": {},
+    }
+    tool_spec2 = {
+        "name": "active_tool2",
+        "description": "Active Tool 2",
+        "input_schema": {},
+    }
+
+    def executor1(inp):
+        return f"Active Tool 1: {inp}"
+
+    def executor2(inp):
+        return f"Active Tool 2: {inp}"
+
+    base_handler_instance.register_tool(tool_spec1, executor1)
+    base_handler_instance.register_tool(tool_spec2, executor2)
+    base_handler_instance.set_active_tools(["active_tool1", "active_tool2"])
+
+    # Call without tools_override
+    base_handler_instance._execute_llm_call("Test prompt")
+
+    # Assert that llm_manager was called with active_tools
+    mock_llm_manager.execute_call.assert_called_once()
+    call_args = mock_llm_manager.execute_call.call_args[1]
+
+    # The tools_override param should contain the active tool executors
+    assert len(call_args["tools_override"]) == 2
+    assert call_args["tools_override"] == [executor1, executor2]
+
+
+def test_execute_llm_call_no_tools(base_handler_instance):
+    """Test that no tools are passed when neither tools_override nor active_tools are set."""
+    # Access the mocked llm_manager via the handler instance
+    mock_llm_manager = base_handler_instance.llm_manager
+    mock_llm_manager.execute_call.return_value = {
+        "success": True,
+        "content": "Response with no tools",
+    }
+
+    # Ensure no active tools are set
+    base_handler_instance.active_tools = []
+
+    # Call without tools_override
+    base_handler_instance._execute_llm_call("Test prompt")
+
+    # Assert that llm_manager was called with None for tools_override
+    mock_llm_manager.execute_call.assert_called_once()
+    call_args = mock_llm_manager.execute_call.call_args[1]
+
+    # The tools_override param should be None
+    assert call_args["tools_override"] is None
+
+
+def test_execute_llm_call_missing_executor_in_active_tools(base_handler_instance):
+    """Test handling when an active tool name has no corresponding executor."""
+    # Register one tool outside the warning patch
+    tool_spec = {"name": "real_tool", "description": "Real Tool", "input_schema": {}}
+
+    def executor(inp):
+        return f"Real Tool: {inp}"
+
+    base_handler_instance.register_tool(tool_spec, executor)
+
+    # Setup logging capture only for the tool execution part
+    with patch("logging.warning") as mock_warning:
+        # Access the mocked llm_manager via the handler instance
+        mock_llm_manager = base_handler_instance.llm_manager
+        mock_llm_manager.execute_call.return_value = {
+            "success": True,
+            "content": "Response with partial tools",
+        }
+
+        # Manually set active_tools to include a missing tool (bypassing validation)
+        base_handler_instance.active_tools = ["real_tool", "missing_tool"]
+
+        # Call without tools_override
+        base_handler_instance._execute_llm_call("Test prompt")
+
+        # Assert that llm_manager was called with only the valid tool executor
+        mock_llm_manager.execute_call.assert_called_once()
+        call_args = mock_llm_manager.execute_call.call_args[1]
+
+        # The tools_override param should contain only the valid tool executor
+        assert len(call_args["tools_override"]) == 1
+        assert call_args["tools_override"] == [executor]
+
+        # Check that a warning was logged about the missing tool
+        assert any(
+            "missing_tool" in str(args) for args, _ in mock_warning.call_args_list
+        )

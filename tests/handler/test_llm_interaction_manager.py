@@ -1,16 +1,15 @@
-import pytest
-from unittest.mock import patch, MagicMock, ANY
-import logging
+from unittest.mock import MagicMock, patch
 
-# Import the class under test
-from src.handler.llm_interaction_manager import LLMInteractionManager
+import pytest
 
 # Import pydantic_ai classes needed for type hints or mock spec verification if necessary
 # from pydantic_ai import Agent as RealAgent # Example if needed for spec
 # from pydantic_ai.models import AIResponse as RealAIResponse # Example if needed for spec
-
 # Import Pydantic BaseModel for output_type_override testing
 from pydantic import BaseModel
+
+# Import the class under test
+from src.handler.llm_interaction_manager import LLMInteractionManager
 
 
 # Define a test Pydantic model for structured output testing

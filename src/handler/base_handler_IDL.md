@@ -86,6 +86,19 @@ module src.handler.base_handler {
         // - Configures debug mode on the LLMInteractionManager if applicable.
         void set_debug_mode(boolean enabled);
 
+        // Sets the list of active tools to be used in LLM calls.
+        // Preconditions:
+        // - tool_names is a list of strings representing tool names.
+        // - Each tool name in the list must correspond to a previously registered tool.
+        // Postconditions:
+        // - If all tool names are valid (previously registered), the active_tools list is updated and returns true.
+        // - If any tool name is unknown, no change is made to active_tools and returns false.
+        // Behavior:
+        // - Validates that all tool names in the list are registered before setting.
+        // - Logs an error if any tool names are unknown.
+        // - The active_tools list affects which tools are available during LLM calls (see _execute_llm_call).
+        boolean set_active_tools(list<string> tool_names);
+        
         // Retrieves the configured LLM provider/model identifier string.
         // Preconditions:
         // - LLMInteractionManager must be initialized.
@@ -106,7 +119,12 @@ module src.handler.base_handler {
         // Behavior:
         // - Delegates the primary interaction logic to the LLMInteractionManager which manages the pydantic-ai agent.
         // - Passes the current conversation history to the manager.
-        // - If tools_override is provided, adapts registered tools to the format required by pydantic-ai.
+        // - **Tool Precedence Logic:**
+        //   1. Highest precedence: If tools_override is provided, it's used directly.
+        //   2. Second precedence: If active_tools list (set via set_active_tools) is not empty, the corresponding executors are used.
+        //   3. Lowest precedence: If neither tools_override nor active_tools are set, no tools are passed to the LLM.
+        // - For active_tools, maps each tool name to its executor function before passing to the LLM.
+        // - If a tool name in active_tools has no corresponding executor, it's skipped with a warning.
         // - Handles potential errors during the LLM call.
         // @raises_error(condition="LLMInteractionError", description="If the LLM call fails.")
         Any _execute_llm_call(

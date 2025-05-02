@@ -65,7 +65,7 @@
     *   **Readiness:** Levels 2, 3, 4: Execution & Basic UI Ready.
 
 *   **Phase 3b: Structured Output Implementation (Pydantic-AI)**
-    *   **Status:** PENDING
+    *   **Status:** IMPLEMENTED
     *   **Goal:** Implement reliable structured output (e.g., JSON parsed into Pydantic models) for atomic tasks using `pydantic-ai`'s capabilities, as per `ADR_pydantic_output.md`.
     *   **Components & Tasks:**
         1.  **Schema-to-Model Mapping:** Implement a mechanism (e.g., registry or convention-based import) within `AtomicTaskExecutor` (or an accessible helper) to resolve Pydantic model class names (strings like `"MyOutputModel"`) found in template `output_format.schema` fields into actual Python Pydantic model classes (e.g., `src.system.models.MyOutputModel`).
@@ -83,7 +83,7 @@
     *   **Readiness:** Core Feature Enhancement (Builds on Phase 3).
 
 *   **Phase 4: Specialized Features (Indexers & System Tools)**
-    *   **Status:** PENDING (NEXT)
+    *   **Status:** PARTIALLY IMPLEMENTED (Core logic done, text_extraction is placeholder)
     *   **Goal:** Implement integration with Git for indexing and add specific system-level tools callable from S-expressions. Implement generic model-agnostic tools.
     *   **Components & Tasks:**
         1.  **`GitRepositoryIndexer` (`src/memory/indexers/git_repository_indexer.py`):** Implement class based on IDL. Requires `GitPython`. Implement scanning, metadata creation (using `text_extraction` helpers and GitPython), and calling `memory_system.update_global_index`.
@@ -96,14 +96,14 @@
     *   **Readiness:** Partial Level 5: Advanced Features Enabled (Git indexing and system tools available, code editing feature deferred).
 
 *   **Phase 5: `defatom` Special Form**
-    *   **Status:** PENDING
+    *   **Status:** IMPLEMENTED
     *   **Goal:** Enhance the S-expression DSL to allow inline definition of simple atomic tasks via global registration.
     *   **Components & Tasks:** `SexpEvaluator`. Implement `defatom` special form logic and tests as per ADR.
     *   **Outcome:** DSL usability improved; simple LLM tasks can be defined inline within workflows.
     *   **Readiness:** DSL Enhancement (Builds on Phase 4).
 
 *   **Phase 6: Top-Level Integration & Dispatching (`Dispatcher`, `Application`)**
-    *   **Status:** PENDING
+    *   **Status:** IMPLEMENTED
     *   **Goal:** Create the main application entry point and the dispatcher for `/task` commands, wiring all components together.
     *   **Components & Tasks:** `Dispatcher` (`src/dispatcher.py`), `Application` (`src/main.py`). Implement `DispatcherFunctions.execute_programmatic_task` (routing S-exp vs direct ID). Implement `Application` class (`__init__` wiring components, `handle_query`, `index_repository`, `handle_task_command` using Dispatcher). Implement helper `_register_system_tools` to register generic tools from Phase 4.
     *   **Testing:** Integration tests for Dispatcher routing logic and basic `Application` functionality.
@@ -112,11 +112,17 @@
 
 *   **Phase 7: Provider-Specific Tool Integration (e.g., Anthropic Editor)**
     *   **Status:** PENDING
-    *   **Goal:** Implement and conditionally register tools specific to certain LLM providers.
-    *   **Components & Tasks:** `BaseHandler`, `LLMInteractionManager`.
-        1.  Implement Python functions for provider-specific tools (e.g., Anthropic editor tools, referencing `librarydocs/MCP_TOOL_GUIDE.md`).
-        2.  Modify `BaseHandler` or `Application` initialization: Check the configured provider via `LLMInteractionManager`.
-        3.  Conditionally register provider-specific tools using `BaseHandler.register_tool` only if the provider matches.
+    *   **Goal:** Implement and conditionally register tools specific to certain LLM providers (e.g., Anthropic Editor tools), making them available to the `pydantic-ai` agent only when the corresponding provider is active.
+    *   **Detailed Steps:**
+        1.  **Identify & Define Provider-Specific Tools:** Research and define functionality (e.g., Anthropic Editor tools).
+        2.  **Implement Tool Logic:** Create Python functions for the tools (e.g., in `src/tools/anthropic_tools.py`).
+        3.  **Define Tool Specifications (`tool_spec`):** Create `tool_spec` dictionaries (`name`, `description`, `input_schema`) compatible with the provider and `pydantic-ai`.
+        4.  **Implement Unit Tests for Tool Logic:** Write `pytest` unit tests for the new tool functions, mocking dependencies.
+        5.  **Implement Conditional Registration in `Application`:** Modify `Application.__init__` to check `handler.get_provider_identifier()` and conditionally call `handler.register_tool()` for provider-specific tools. Store the combined list of active tools (system + conditional) in an `Application` attribute.
+        6.  **Modify `BaseHandler` to Manage Active Tools:** Add `set_active_tools(tools)` method. Modify `Application` to call this after registration. Modify `BaseHandler._execute_llm_call` to retrieve the active tool list and pass it to `LLMInteractionManager`.
+        7.  **Modify `LLMInteractionManager` to Accept and Use Active Tools:** Add `active_tools` parameter to `execute_call` and pass it to `agent.run_sync(..., tools=active_tools)`.
+        8.  **Implement Integration Tests:** Verify conditional registration in `Application` based on provider config. Verify `_execute_llm_call` passes the correct tool list to the LLM manager mock.
+        9.  **Update Documentation:** Update relevant IDLs, `implementation_rules.md`, `plan.md`, and add docs for new tools.
     *   **Integration:** Leverages `pydantic-ai`'s handling of provider-specific tool schemas.
     *   **Testing:** Test conditional registration and tool availability based on provider configuration.
     *   **Outcome:** System can leverage powerful provider-specific tools when the appropriate LLM is in use.
