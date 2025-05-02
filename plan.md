@@ -118,12 +118,11 @@
         2.  **Implement Tool Logic:** Create Python functions for the tools (e.g., in `src/tools/anthropic_tools.py`).
         3.  **Define Tool Specifications (`tool_spec`):** Create `tool_spec` dictionaries (`name`, `description`, `input_schema`) compatible with the provider and `pydantic-ai`.
         4.  **Implement Unit Tests for Tool Logic:** Write `pytest` unit tests for the new tool functions, mocking dependencies.
-        5.  **Implement Conditional Registration in `Application`:** Modify `Application.__init__` to check `handler.get_provider_identifier()` and conditionally call `handler.register_tool()` for provider-specific tools. Store the combined list of active tools (system + conditional) in an `Application` attribute.
-        6.  **Modify `BaseHandler` to Manage Active Tools:** Add `set_active_tools(tools)` method. Modify `Application` to call this after registration. Modify `BaseHandler._execute_llm_call` to retrieve the active tool list and pass it to `LLMInteractionManager`.
-        7.  **Modify `LLMInteractionManager` to Accept and Use Active Tools:** Add `active_tools` parameter to `execute_call` and pass it to `agent.run_sync(..., tools=active_tools)`.
-        8.  **Implement Integration Tests:** Verify conditional registration in `Application` based on provider config. Verify `_execute_llm_call` passes the correct tool list to the LLM manager mock.
-        9.  **Update Documentation:** Update relevant IDLs, `implementation_rules.md`, `plan.md`, and add docs for new tools.
-    *   **Integration:** Leverages `pydantic-ai`'s handling of provider-specific tool schemas.
+        5.  **Implement Conditional Registration in `Application`:** Modify `Application.__init__` to check `handler.get_provider_identifier()` and conditionally call `handler.register_tool()` for provider-specific tools. This registration must happen before the LLMInteractionManager is initialized.
+        6.  **Modify `LLMInteractionManager` Initialization:** Update `LLMInteractionManager._initialize_pydantic_ai_agent` to retrieve the complete list of registered tools from the BaseHandler and pass this full list to the pydantic-ai Agent constructor (e.g., `Agent(..., tools=all_registered_tools)`).
+        7.  **Implement Integration Tests:** Verify conditional registration in `Application` based on provider config. Verify the pydantic-ai Agent is initialized with the correct complete set of tools.
+        8.  **Update Documentation:** Update relevant IDLs, `implementation_rules.md`, `plan.md`, and add docs for new tools.
+    *   **Integration:** Leverages `pydantic-ai`'s handling of provider-specific tool schemas. The AI model itself will determine which tools from the available set are appropriate to use based on their descriptions.
     *   **Testing:** Test conditional registration and tool availability based on provider configuration.
     *   **Outcome:** System can leverage powerful provider-specific tools when the appropriate LLM is in use.
     *   **Readiness:** Feature Enhancement (Builds on Level 6 & Phase 3b).
