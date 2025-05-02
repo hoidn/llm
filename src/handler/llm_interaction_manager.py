@@ -168,9 +168,13 @@ class LLMInteractionManager:
             logging.warning("Agent is already initialized.")
             return
         if not self._model_id:
-            raise RuntimeError("Cannot initialize agent: No model identifier configured.")
+            raise RuntimeError(
+                "Cannot initialize agent: No model identifier configured."
+            )
         if not Agent:
-            raise RuntimeError("Cannot initialize agent: pydantic-ai Agent class unavailable.")
+            raise RuntimeError(
+                "Cannot initialize agent: pydantic-ai Agent class unavailable."
+            )
         try:
             self.agent = Agent(
                 model=self._model_id,
@@ -243,7 +247,9 @@ class LLMInteractionManager:
         """
         logger = logging.getLogger(__name__)  # Use specific logger
         if self.agent is None:
-            logger.error("Cannot execute LLM call: Agent not initialized. Call initialize_agent first.")
+            logger.error(
+                "Cannot execute LLM call: Agent not initialized. Call initialize_agent first."
+            )
             return {
                 "success": False,
                 "content": None,
@@ -284,10 +290,14 @@ class LLMInteractionManager:
                 logger.error(f"Failed to write full LLM prompt to file: {_e}")
             if tools_override:
                 run_kwargs["tools"] = tools_override
-                logging.debug(f"Executing agent call with {len(tools_override)} tool executors.")
+                logging.debug(
+                    f"Executing agent call with {len(tools_override)} tool executors."
+                )
             elif active_tools:
                 run_kwargs["tools"] = active_tools
-                logging.debug(f"Executing agent call with {len(active_tools)} tool definitions.")
+                logging.debug(
+                    f"Executing agent call with {len(active_tools)} tool definitions."
+                )
             if output_type_override:
                 run_kwargs["output_type"] = output_type_override
                 logging.debug(
