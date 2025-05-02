@@ -137,7 +137,7 @@ class TestAiderBridge:
 
         # --- Mock Configuration (Use the CORRECT argument names now) ---
         mock_session_instance = AsyncMock(spec=RealClientSession)
-        mock_session_instance.call_tool.return_value = mock_server_response
+        mock_session_instance.call_tool.return_value = mock_server_response # Configure instance method
 
         mock_cm_session = AsyncMock()
         mock_cm_session.__aenter__.return_value = mock_session_instance
@@ -187,7 +187,7 @@ class TestAiderBridge:
 
         # --- Mock Configuration (Use the CORRECT argument names now) ---
         mock_session_instance = AsyncMock(spec=RealClientSession)
-        mock_session_instance.call_tool.return_value = mock_server_response
+        mock_session_instance.call_tool.return_value = mock_server_response # Configure instance method
         mock_cm_session = AsyncMock(); mock_cm_session.__aenter__.return_value = mock_session_instance
         # 1. Configure the ClientSession CLASS mock
         mock_client_session_cls.return_value = mock_cm_session
@@ -235,7 +235,7 @@ class TestAiderBridge:
 
         # --- Mock Configuration (Use the CORRECT argument names now) ---
         mock_session_instance = AsyncMock(spec=RealClientSession)
-        mock_session_instance.call_tool.return_value = mock_server_response
+        mock_session_instance.call_tool.return_value = mock_server_response # Configure instance method
         mock_cm_session = AsyncMock(); mock_cm_session.__aenter__.return_value = mock_session_instance
         # 1. Configure the ClientSession CLASS mock
         mock_client_session_cls.return_value = mock_cm_session
@@ -279,7 +279,7 @@ class TestAiderBridge:
 
         # --- Mock Configuration (Use the CORRECT argument names now) ---
         mock_session_instance = AsyncMock(spec=RealClientSession)
-        mock_session_instance.call_tool.side_effect = mcp_exception # Configure side_effect
+        mock_session_instance.call_tool.side_effect = mcp_exception # Configure instance method
         mock_cm_session = AsyncMock(); mock_cm_session.__aenter__.return_value = mock_session_instance
         # 1. Configure the ClientSession CLASS mock
         mock_client_session_cls.return_value = mock_cm_session
@@ -322,7 +322,7 @@ class TestAiderBridge:
 
         # --- Mock Configuration (Use the CORRECT argument names now) ---
         mock_session_instance = AsyncMock(spec=RealClientSession)
-        mock_session_instance.call_tool.return_value = mock_server_response
+        mock_session_instance.call_tool.return_value = mock_server_response # Configure instance method
         mock_cm_session = AsyncMock(); mock_cm_session.__aenter__.return_value = mock_session_instance
         # 1. Configure the ClientSession CLASS mock
         mock_client_session_cls.return_value = mock_cm_session
