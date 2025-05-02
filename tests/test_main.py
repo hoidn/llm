@@ -130,7 +130,9 @@ def app_components(mocker, tmp_path): # Add tmp_path
         mock_handler_instance.memory_system = None # Set initially, will be wired by Application
         mock_handler_instance.file_manager = mock_fm_instance # Simulate internal assignment
         mock_handler_instance.llm_manager = mock_llm_manager_instance # Simulate internal assignment
-        mock_handler_instance.get_provider_identifier.return_value = "mock:provider"
+        # --- START FIX ---
+        mock_handler_instance.get_provider_identifier.return_value = "mock_provider:default" # Updated return value
+        # --- END FIX ---
         registered_tools_storage = {} # Use a real dict to capture registrations
         tool_executors_storage = {}
         # Updated mock registration function
@@ -141,10 +143,8 @@ def app_components(mocker, tmp_path): # Add tmp_path
                 tool_executors_storage[tool_name] = executor_func
                 return True # Indicate success
             return False # Indicate failure (e.g., missing name)
-        # --- START FIX ---
         # Assign side_effect using a lambda that calls the helper function
         mock_handler_instance.register_tool = MagicMock(side_effect=lambda spec, func: mock_register_tool_side_effect(spec, func))
-        # --- END FIX ---
         mock_handler_instance.registered_tools = registered_tools_storage # Point to the dict
         mock_handler_instance.tool_executors = tool_executors_storage # Point to the dict
         # Let the real get_tools_for_agent work on the mock's storage
@@ -204,7 +204,7 @@ def test_application_init_minimal(app_components):
 def test_application_init_wiring(app_components):
     """Verify components are instantiated and wired correctly during __init__."""
     # Arrange: Set a default provider ID
-    app_components["mock_handler_instance"].get_provider_identifier.return_value = "test:provider"
+    # The fixture now sets it to "mock_provider:default"
     # Arrange: No need to mock get_tools_for_agent return value explicitly anymore.
     # Let the real registration populate the mock handler's tool_executors.
 
