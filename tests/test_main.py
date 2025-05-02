@@ -69,7 +69,7 @@ def app_components(mocker, tmp_path): # Add tmp_path
          patch('src.main.FileAccessManager', autospec=True) as MockFileAccessManager, \
          patch('src.handler.base_handler.LLMInteractionManager', autospec=True) as MockLLMInteractionManager, \
          patch('src.main.AiderBridge', autospec=True) as MockAiderBridge, \
-         patch('src.main.GitRepositoryIndexer', autospec=True) as MockGitRepositoryIndexer:
+         patch('src.main.GitRepositoryIndexer', autospec=True) as MockIndexer: # Use updated alias
 
         # --- Patch specific functions/static methods directly (using mocker) ---
         # Patch SystemExecutorFunctions methods (called within src.main)
@@ -105,11 +105,11 @@ def app_components(mocker, tmp_path): # Add tmp_path
         # Configure the mocked classes to return the mock instances
         MockMemory.return_value = mock_memory_system_instance
         MockTask.return_value = mock_task_system_instance
-        MockHandler.return_value = mock_handler_instance # Use updated alias
+        MockHandler.return_value = mock_handler_instance
         MockFileAccessManager.return_value = mock_fm_instance
         MockLLMInteractionManager.return_value = mock_llm_manager_instance # LLMManager instance mock
         MockAiderBridge.return_value = mock_aider_bridge_instance
-        MockGitRepositoryIndexer.return_value = mock_indexer_instance # Indexer instance mock
+        MockIndexer.return_value = mock_indexer_instance # Use updated alias
 
         # Configure mocks attached TO the handler instance, as they are instantiated within BaseHandler init
         mock_handler_instance.file_manager = mock_fm_instance # Simulate internal assignment
@@ -136,11 +136,11 @@ def app_components(mocker, tmp_path): # Add tmp_path
             # Core Component Class Mocks (from 'with patch')
             "MockMemorySystem": MockMemory,
             "MockTaskSystem": MockTask,
-            "MockPassthroughHandler": MockHandler, # Use updated alias
+            "MockPassthroughHandler": MockHandler,
             "MockFileAccessManager": MockFileAccessManager,
             "MockLLMInteractionManager": MockLLMInteractionManager,
             "MockAiderBridge": MockAiderBridge,
-            "MockGitRepositoryIndexer": MockGitRepositoryIndexer,
+            "MockGitRepositoryIndexer": MockIndexer, # Use updated alias
 
             # Core Component Instance Mocks
             "mock_memory_system_instance": mock_memory_system_instance,
