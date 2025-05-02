@@ -68,10 +68,10 @@ def app_components(tmp_path):
          patch('src.handler.llm_interaction_manager.Agent', autospec=True) as MockPydanticAgent, \
          patch('src.main.AiderBridge', autospec=True) as MockAiderBridge, \
          patch('src.main.AiderExecutors', autospec=True) as MockAiderExec, \
-         patch('src.tools.anthropic_tools.view', autospec=True) as mock_anthropic_view_func, \
-         patch('src.tools.anthropic_tools.create', autospec=True) as mock_anthropic_create_func, \
-         patch('src.tools.anthropic_tools.str_replace', autospec=True) as mock_anthropic_replace_func, \
-         patch('src.tools.anthropic_tools.insert', autospec=True) as mock_anthropic_insert_func: # Patch anthropic functions
+         patch('src.main.anthropic_tools.view', autospec=True) as mock_anthropic_view_func, \
+         patch('src.main.anthropic_tools.create', autospec=True) as mock_anthropic_create_func, \
+         patch('src.main.anthropic_tools.str_replace', autospec=True) as mock_anthropic_replace_func, \
+         patch('src.main.anthropic_tools.insert', autospec=True) as mock_anthropic_insert_func: # Patch anthropic functions
 
         # Configure mocks for instances returned by constructors
         mock_handler_instance = MockHandler.return_value
