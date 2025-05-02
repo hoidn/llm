@@ -168,7 +168,7 @@ def app_components(mocker, tmp_path): # Add tmp_path
             "MockLLMInteractionManager": MockLLMInteractionManager,
             "MockAiderBridge": MockAiderBridge,
             "MockIndexer": MockIndexer,
-            "MockSysExecCls": MockSysExecCls, # Use updated key
+            "MockSysExecCls": MockSysExecCls,
             "MockAiderExecutors": MockAiderExec,
             "MockPydanticAgent": MockPydanticAgent,
 
@@ -185,7 +185,7 @@ def app_components(mocker, tmp_path): # Add tmp_path
             "registered_tools_storage": registered_tools_storage,
             "tool_executors_storage": tool_executors_storage,
 
-            # Expose specific function/method mocks (now from 'with patch')
+            # Provide the individual function mocks (patched at definition):
             "mock_anthropic_view_func": mock_anthropic_view_func,
             "mock_anthropic_create_func": mock_anthropic_create_func,
             "mock_anthropic_replace_func": mock_anthropic_replace_func,
