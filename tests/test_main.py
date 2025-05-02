@@ -35,12 +35,12 @@ DUMMY_SYS_READ_FILES_SPEC = {"name": "system:read_files", "description": "Sys Re
 def app_components(tmp_path):
     """Provides mocked components for Application testing."""
     # Patch constructors/functions where they are looked up (in src.main)
-    with patch('src.main.FileAccessManager', MagicMock(spec=FileAccessManager)) as MockFM, \
-         patch('src.main.MemorySystem', MagicMock(spec=MemorySystem)) as MockMemory, \
-         patch('src.main.TaskSystem', MagicMock(spec=TaskSystem)) as MockTask, \
-         patch('src.main.PassthroughHandler', MagicMock(spec=PassthroughHandler)) as MockHandler, \
-         patch('src.main.GitRepositoryIndexer', MagicMock(spec=GitRepositoryIndexer)) as MockIndexer, \
-         patch('src.main.SystemExecutorFunctions', MagicMock(spec=system_executors_module.SystemExecutorFunctions)) as MockSysExec, \
+    with patch('src.main.FileAccessManager', spec=True) as MockFM, \
+         patch('src.main.MemorySystem', spec=True) as MockMemory, \
+         patch('src.main.TaskSystem', spec=True) as MockTask, \
+         patch('src.main.PassthroughHandler', spec=True) as MockHandler, \
+         patch('src.main.GitRepositoryIndexer', spec=True) as MockIndexer, \
+         patch('src.main.SystemExecutorFunctions') as MockSysExecCls, \
          patch('src.main.anthropic_tools', MagicMock(spec=anthropic_tools_module)) as MockAnthropicTools, \
          patch('src.handler.llm_interaction_manager.Agent') as MockPydanticAgent, \
          patch('src.main.AiderBridge') as MockAiderBridge, \
@@ -48,19 +48,32 @@ def app_components(tmp_path):
 
         # Configure mocks BEFORE Application instantiation
         mock_fm_instance = MockFM.return_value
+        # --- ADD base_path ATTRIBUTE ---
+        mock_fm_instance.base_path = str(tmp_path / "mock_base") # Example path
+        # --- END ADDITION ---
         mock_memory_instance = MockMemory.return_value
         mock_task_instance = MockTask.return_value
         mock_handler_instance = MockHandler.return_value
         mock_handler_instance.file_manager = mock_fm_instance
         mock_handler_instance.register_tool.return_value = True
         mock_handler_instance.get_provider_identifier.return_value = "default:fixture_provider" # Default for fixture
-        mock_handler_instance.set_active_tool_definitions.return_value = True
+        mock_handler_instance.set_active_tool_definitions = MagicMock(return_value=True) # Ensure method exists
         mock_llm_manager_instance = MagicMock(spec=LLMInteractionManager)
         mock_llm_manager_instance.initialize_agent = MagicMock() # Mock the init agent call
         mock_handler_instance.llm_manager = mock_llm_manager_instance
         # Store registered tools and executors on the mock handler instance
+        # These will be populated by the side_effect below
         mock_handler_instance.tool_executors = {}
         mock_handler_instance.registered_tools = {}
+
+        # --- CONFIGURE MOCKED STATIC METHODS ---
+        # Create mock functions for the static methods
+        mock_exec_get_context = MagicMock(name="mock_execute_get_context")
+        mock_exec_read_files = MagicMock(name="mock_execute_read_files")
+        # Attach them to the *mock class*
+        MockSysExecCls.execute_get_context = mock_exec_get_context
+        MockSysExecCls.execute_read_files = mock_exec_read_files
+        # --- END CONFIGURATION ---
 
         # Simulate register_tool by adding to the mock dictionaries
         registered_tools_storage = {}
@@ -74,18 +87,14 @@ def app_components(tmp_path):
                 return True
             return False
         mock_handler_instance.register_tool.side_effect = mock_register_tool_impl
+        # Allow access to the storage for assertion
+        mock_handler_instance.registered_tools = registered_tools_storage
+        mock_handler_instance.tool_executors = tool_executors_storage
 
 
         # Mock get_tools_for_agent to return based on current tool_executors
         mock_handler_instance.get_tools_for_agent.side_effect = lambda: list(tool_executors_storage.values())
 
-
-        # Configure the System tools mock module with dummy functions/specs
-        # We need these mocks for the Application's _register_system_tools call
-        mock_get_context_func = MagicMock(name="sys_get_context_func")
-        mock_read_files_func = MagicMock(name="sys_read_files_func")
-        MockSysExec.execute_get_context = mock_get_context_func
-        MockSysExec.execute_read_files = mock_read_files_func
 
         # Configure the Anthropic tools mock module with dummy functions/specs
         mock_anthropic_view_func = MagicMock(name="anthropic_view_func")
@@ -115,7 +124,7 @@ def app_components(tmp_path):
             "MockTask": MockTask,
             "MockHandler": MockHandler,
             "MockIndexer": MockIndexer,
-            "MockSysExec": MockSysExec,
+            "MockSysExecCls": MockSysExecCls, # Yield the mock class
             "MockAnthropicTools": MockAnthropicTools,
             "MockPydanticAgent": MockPydanticAgent,
             "MockAiderBridge": MockAiderBridge, # Include AiderBridge mock
@@ -124,14 +133,15 @@ def app_components(tmp_path):
             "mock_handler_instance": mock_handler_instance,
             "mock_llm_manager_instance": mock_llm_manager_instance,
             # Specific tool function mocks
-            "mock_get_context_func": mock_get_context_func,
-            "mock_read_files_func": mock_read_files_func,
+            "mock_exec_get_context": mock_exec_get_context, # Yield mock methods
+            "mock_exec_read_files": mock_exec_read_files,
             "mock_anthropic_view_func": mock_anthropic_view_func,
             "mock_anthropic_create_func": mock_anthropic_create_func,
             "mock_anthropic_replace_func": mock_anthropic_replace_func,
             "mock_anthropic_insert_func": mock_anthropic_insert_func,
             "mock_aider_auto_func": mock_aider_auto_func, # Include Aider func mocks
             "mock_aider_inter_func": mock_aider_inter_func,
+            "registered_tools_storage": registered_tools_storage, # Yield storage
         }
 
 # --- Test Cases ---
@@ -190,10 +200,12 @@ def test_application_register_system_tools(app_components):
     app_components["mock_handler_instance"].get_provider_identifier.return_value = "test:provider"
 
     # Act: Instantiate Application
-    app = Application(config={})
+    # Patch AIDER_AVAILABLE to False for this test
+    with patch(AIDER_AVAILABLE_IMPORT_PATH, False):
+        app = Application(config={})
 
-    # Assert: Check the registered_tools dictionary on the mock handler
-    registered_tools = app.passthrough_handler.registered_tools
+    # Assert: Check the registered_tools dictionary captured by the mock side effect
+    registered_tools = app_components["registered_tools_storage"] # Check the storage directly
     assert "system:get_context" in registered_tools
     assert "system:read_files" in registered_tools
 
@@ -212,12 +224,12 @@ def test_application_register_system_tools(app_components):
     get_context_lambda(get_context_params) # Execute lambda
     # Assert the underlying SystemExecutorFunctions method was called correctly
     # Access the mock function via the fixture dictionary
-    app_components["mock_get_context_func"].assert_called_once_with(get_context_params, app.memory_system)
+    app_components["mock_exec_get_context"].assert_called_once_with(get_context_params, app.memory_system)
 
     read_files_lambda = read_files_data['executor']
     read_files_params = {"file_paths": ["a.txt"]}
     read_files_lambda(read_files_params) # Execute lambda
-    app_components["mock_read_files_func"].assert_called_once_with(read_files_params, app.passthrough_handler.file_manager)
+    app_components["mock_exec_read_files"].assert_called_once_with(read_files_params, app.passthrough_handler.file_manager)
 
 
 @patch('src.main.os.path.isdir')
@@ -435,10 +447,10 @@ def test_application_initialize_aider_deferred(app_components):
     register_call_count_before = app.passthrough_handler.register_tool.call_count
 
     # Act
-    app.initialize_aider()
+    app.initialize_aider() # This should now do nothing if AIDER_AVAILABLE is False
 
     # Assert
-    assert app.aider_bridge is None
+    assert app.aider_bridge is None # Check bridge instance is None
     register_call_count_after = app.passthrough_handler.register_tool.call_count
     assert register_call_count_after == register_call_count_before
 
@@ -495,21 +507,17 @@ def test_application_init_registers_system_tools_only_for_non_anthropic_provider
         app = Application(config={})
 
     # Assert Handler Tool Registration
-    # Check the registered_tools dictionary on the mock handler instance
-    registered_tools = app.passthrough_handler.registered_tools
+    # Check the registered_tools dictionary captured by the mock side effect
+    registered_tools = app_components["registered_tools_storage"] # Check the storage directly
     registered_tool_names = set(registered_tools.keys())
 
     # Check system tools WERE registered (assert based on names)
     assert "system:get_context" in registered_tool_names
     assert "system:read_files" in registered_tool_names
     # Check Anthropic tools WERE NOT registered
-    assert "anthropic:view" not in registered_tool_names
-    assert "anthropic:create" not in registered_tool_names
-    assert "anthropic:str_replace" not in registered_tool_names
-    assert "anthropic:insert" not in registered_tool_names
+    assert not any(name.startswith("anthropic:") for name in registered_tool_names)
     # Check Aider tools WERE NOT registered
-    assert "aider:automatic" not in registered_tool_names
-    assert "aider:interactive" not in registered_tool_names
+    assert not any(name.startswith("aider:") for name in registered_tool_names)
 
 
     # Assert Agent Initialization Call
@@ -533,13 +541,16 @@ def test_application_init_registers_anthropic_and_system_tools_for_anthropic_pro
     # Arrange: Set provider ID on the handler mock *before* Application init
     app_components["mock_handler_instance"].get_provider_identifier.return_value = "anthropic:claude-3-5-sonnet-latest"
 
+    # Mock the anthropic tools module used by Application
+    # Use the mock provided by the fixture
+    MockAnthropicToolsModule = app_components["MockAnthropicTools"]
+
     # Act: Instantiate Application
-    # Patch AIDER_AVAILABLE to False for this test
     with patch(AIDER_AVAILABLE_IMPORT_PATH, False):
         app = Application(config={})
 
     # Assert Handler Tool Registration
-    registered_tools = app.passthrough_handler.registered_tools
+    registered_tools = app_components["registered_tools_storage"] # Check storage
     registered_tool_names = set(registered_tools.keys())
 
     # Check system tools WERE registered
@@ -551,8 +562,7 @@ def test_application_init_registers_anthropic_and_system_tools_for_anthropic_pro
     assert "anthropic:str_replace" in registered_tool_names
     assert "anthropic:insert" in registered_tool_names
     # Check Aider tools WERE NOT registered
-    assert "aider:automatic" not in registered_tool_names
-    assert "aider:interactive" not in registered_tool_names
+    assert not any(name.startswith("aider:") for name in registered_tool_names)
 
     # Assert Agent Initialization Call
     app.passthrough_handler.llm_manager.initialize_agent.assert_called_once()
@@ -575,6 +585,7 @@ def test_application_init_registers_anthropic_and_system_tools_for_anthropic_pro
 
     # Assert that the underlying *mocked* anthropic_tools.view function was called
     # with the file_manager as the first arg and unpacked params
+    # Access the mock function via the fixture dictionary
     app_components["mock_anthropic_view_func"].assert_called_once_with(
         app.passthrough_handler.file_manager, # Check fm was passed
         **view_params # Check params were unpacked
@@ -600,13 +611,16 @@ def mock_app_dependencies_for_aider(tmp_path):
          patch('src.main.TaskSystem', spec=True) as MockTask, \
          patch('src.main.PassthroughHandler', spec=True) as MockHandler, \
          patch('src.main.GitRepositoryIndexer', spec=True) as MockIndexer, \
-         patch('src.main.SystemExecutorFunctions', spec=True) as MockSysExec, \
+         patch('src.main.SystemExecutorFunctions') as MockSysExecCls, \
          patch('src.main.anthropic_tools', spec=True) as MockAnthropicTools, \
          patch('src.handler.llm_interaction_manager.Agent') as MockPydanticAgent, \
          patch('src.main.AiderBridge') as MockAiderBridge, \
          patch('src.main.AiderExecutors', spec=True) as MockAiderExec: # Corrected Patch Target
 
         mock_fm_instance = MockFM.return_value
+        # --- ADD base_path ATTRIBUTE ---
+        mock_fm_instance.base_path = str(tmp_path / "mock_base_aider") # Example path
+        # --- END ADDITION ---
         mock_memory_instance = MockMemory.return_value
         mock_task_instance = MockTask.return_value
         mock_handler_instance = MockHandler.return_value
@@ -620,6 +634,12 @@ def mock_app_dependencies_for_aider(tmp_path):
         mock_handler_instance.tool_executors = {}
         mock_handler_instance.registered_tools = {}
 
+        # Configure mock system executor static methods
+        mock_exec_get_context = MagicMock(name="mock_execute_get_context")
+        mock_exec_read_files = MagicMock(name="mock_execute_read_files")
+        MockSysExecCls.execute_get_context = mock_exec_get_context
+        MockSysExecCls.execute_read_files = mock_exec_read_files
+
         registered_tools_storage = {}
         tool_executors_storage = {}
         def mock_register_tool_impl(spec, executor):
@@ -630,6 +650,9 @@ def mock_app_dependencies_for_aider(tmp_path):
                 return True
             return False
         mock_handler_instance.register_tool.side_effect = mock_register_tool_impl
+        # Allow access to storage
+        mock_handler_instance.registered_tools = registered_tools_storage
+        mock_handler_instance.tool_executors = tool_executors_storage
 
         mock_handler_instance.get_tools_for_agent.side_effect = lambda: list(tool_executors_storage.values())
 
