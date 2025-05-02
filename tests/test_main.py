@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import patch, MagicMock, call, ANY # Import ANY
 import os
 import sys
-from typing import Callable # Add Callable to imports
+from typing import Callable, List, Dict, Any # Add necessary types
 
 # Ensure src is in path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -18,10 +18,20 @@ from src.memory.indexers.git_repository_indexer import GitRepositoryIndexer
 from src import dispatcher
 # Import modules for patching targets
 from src.executors import system_executors as system_executors_module
-from src.executors import aider_executors as aider_executors_module # Import aider executors
-from src.tools import anthropic_tools as anthropic_tools_module
-# Define the correct path where Application looks up AIDER_AVAILABLE
-AIDER_AVAILABLE_IMPORT_PATH = 'src.main.AIDER_AVAILABLE'
+# Import the module containing the functions to patch
+from src.tools import anthropic_tools
+
+# Mock Aider components as well
+try:
+    from src.aider_bridge.bridge import AiderBridge
+    from src.executors.aider_executors import AiderExecutorFunctions as AiderExecutors
+    AIDER_IMPORT_SUCCESS = True
+    AIDER_AVAILABLE_IMPORT_PATH = 'src.main.AIDER_AVAILABLE' # Path used in Application
+except ImportError:
+    AiderBridge = None
+    AiderExecutors = None
+    AIDER_IMPORT_SUCCESS = False
+    AIDER_AVAILABLE_IMPORT_PATH = 'src.main.AIDER_AVAILABLE' # Path still exists even if False
 
 
 # Define dummy tool specs used in Application init
@@ -34,41 +44,56 @@ DUMMY_SYS_READ_FILES_SPEC = {"name": "system:read_files", "description": "Sys Re
 @pytest.fixture
 def app_components(tmp_path):
     """Provides mocked components for Application testing using autospec."""
-    # Use autospec=True for better mocking if classes are complex
+    # Use a dictionary to store registered tools for assertion
+    registered_tools_storage = {}
+    tool_executors_storage = {} # Store executors separately
+
+    # Mock register_tool to store spec and executor
+    def mock_register_tool(self, tool_spec, executor_func):
+        tool_name = tool_spec.get("name")
+        if tool_name:
+            registered_tools_storage[tool_name] = {"spec": tool_spec, "executor": executor_func}
+            tool_executors_storage[tool_name] = executor_func # Store executor
+            return True
+        return False
+
+    # Patch necessary classes AND the anthropic tool functions
     with patch('src.main.FileAccessManager', autospec=True) as MockFM, \
          patch('src.main.MemorySystem', autospec=True) as MockMemory, \
          patch('src.main.TaskSystem', autospec=True) as MockTask, \
          patch('src.main.PassthroughHandler', autospec=True) as MockHandler, \
          patch('src.main.GitRepositoryIndexer', autospec=True) as MockIndexer, \
          patch('src.main.SystemExecutorFunctions', autospec=True) as MockSysExecCls, \
-         patch('src.main.anthropic_tools', autospec=True) as MockAnthropicTools, \
+         patch('src.main.anthropic_tools', autospec=True) as MockAnthropicToolsModule, \
          patch('src.handler.llm_interaction_manager.Agent', autospec=True) as MockPydanticAgent, \
          patch('src.main.AiderBridge', autospec=True) as MockAiderBridge, \
-         patch('src.main.AiderExecutors', autospec=True) as MockAiderExec: # Patch AiderExecutors
+         patch('src.main.AiderExecutors', autospec=True) as MockAiderExec, \
+         patch('src.tools.anthropic_tools.view', autospec=True) as mock_anthropic_view_func, \
+         patch('src.tools.anthropic_tools.create', autospec=True) as mock_anthropic_create_func, \
+         patch('src.tools.anthropic_tools.str_replace', autospec=True) as mock_anthropic_replace_func, \
+         patch('src.tools.anthropic_tools.insert', autospec=True) as mock_anthropic_insert_func: # Patch anthropic functions
 
-        # Configure mocks if needed (e.g., return values for methods called during init)
-        # Crucially, get the instance returned by the mock constructor
-        mock_fm_instance = MockFM.return_value
-        mock_memory_instance = MockMemory.return_value
-        mock_task_instance = MockTask.return_value
+        # Configure mocks for instances returned by constructors
         mock_handler_instance = MockHandler.return_value
-        mock_aider_bridge_instance = MockAiderBridge.return_value # If needed
+        mock_task_system_instance = MockTask.return_value
+        mock_memory_system_instance = MockMemory.return_value
+        mock_fm_instance = MockFM.return_value
+        mock_aider_bridge_instance = MockAiderBridge.return_value
 
-        # Mock methods called during init on the INSTANCES
+        # Mock methods called during init
         mock_fm_instance.base_path = str(tmp_path / "mock_base") # Set base_path on instance
-        mock_handler_instance.get_provider_identifier.return_value = "mock:provider"
-        mock_handler_instance.register_tool.return_value = True
-        mock_handler_instance.get_tools_for_agent.return_value = [] # Empty list of executors
+        mock_handler_instance.get_provider_identifier.return_value = "mock:provider" # Default
+        # Attach the mocked register_tool to the handler instance mock
+        mock_handler_instance.register_tool = MagicMock(side_effect=lambda spec, exec_func: mock_register_tool(mock_handler_instance, spec, exec_func))
+        # Mock get_tools_for_agent to return based on current tool_executors_storage
+        mock_handler_instance.get_tools_for_agent.side_effect = lambda: list(tool_executors_storage.values())
         mock_handler_instance.set_active_tool_definitions = MagicMock(return_value=True) # Ensure method exists
-        # Mock the llm_manager attribute if accessed directly
         mock_handler_instance.llm_manager = MagicMock(spec=LLMInteractionManager)
         mock_handler_instance.llm_manager.initialize_agent = MagicMock()
-        # Mock file_manager attribute if accessed directly
-        mock_handler_instance.file_manager = mock_fm_instance
+        mock_handler_instance.file_manager = mock_fm_instance # Ensure file_manager is set
 
-        # Mock methods on TaskSystem instance if called during init
-        # mock_task_instance.register_template = MagicMock() # Autospec should handle this if method exists
-        # mock_task_instance.set_handler = MagicMock() # Autospec should handle this
+        # Mock TaskSystem methods if needed
+        mock_task_system_instance.set_handler = MagicMock() # Ensure set_handler exists
 
         # Mock static methods on the SystemExecutorFunctions CLASS mock
         mock_exec_get_context = MagicMock(name="mock_execute_get_context")
@@ -82,35 +107,13 @@ def app_components(tmp_path):
         MockAiderExec.execute_aider_automatic = mock_aider_auto_func
         MockAiderExec.execute_aider_interactive = mock_aider_inter_func
 
-        # Simulate register_tool by adding to a dictionary (for assertion)
-        registered_tools_storage = {}
-        tool_executors_storage = {}
-        def mock_register_tool_impl(spec, executor):
-            tool_name = spec.get('name')
-            if tool_name:
-                registered_tools_storage[tool_name] = {'spec': spec, 'executor': executor}
-                tool_executors_storage[tool_name] = executor
-                return True
-            return False
-        mock_handler_instance.register_tool.side_effect = mock_register_tool_impl
-        # Allow access to the storage for assertion
-        mock_handler_instance.registered_tools_storage = registered_tools_storage # Attach for test access
-        mock_handler_instance.tool_executors_storage = tool_executors_storage # Attach for test access
+        # Configure Anthropic tools mock module specs (used by Application init)
+        MockAnthropicToolsModule.ANTHROPIC_VIEW_SPEC = {"name": "anthropic:view", "description":"View", "input_schema":{}}
+        MockAnthropicToolsModule.ANTHROPIC_CREATE_SPEC = {"name": "anthropic:create", "description":"Create", "input_schema":{}}
+        MockAnthropicToolsModule.ANTHROPIC_STR_REPLACE_SPEC = {"name": "anthropic:str_replace", "description":"Replace", "input_schema":{}}
+        MockAnthropicToolsModule.ANTHROPIC_INSERT_SPEC = {"name": "anthropic:insert", "description":"Insert", "input_schema":{}}
 
-        # Mock get_tools_for_agent to return based on current tool_executors_storage
-        mock_handler_instance.get_tools_for_agent.side_effect = lambda: list(tool_executors_storage.values())
-
-        # Configure Anthropic tools mock module (using autospec)
-        # MockAnthropicTools.view = MagicMock(name="anthropic_view_func") # Autospec creates mocks
-        # MockAnthropicTools.create = MagicMock(name="anthropic_create_func")
-        # MockAnthropicTools.str_replace = MagicMock(name="anthropic_str_replace_func")
-        # MockAnthropicTools.insert = MagicMock(name="anthropic_insert_func")
-        MockAnthropicTools.ANTHROPIC_VIEW_SPEC = {"name": "anthropic:view", "description":"View", "input_schema":{}}
-        MockAnthropicTools.ANTHROPIC_CREATE_SPEC = {"name": "anthropic:create", "description":"Create", "input_schema":{}}
-        MockAnthropicTools.ANTHROPIC_STR_REPLACE_SPEC = {"name": "anthropic:str_replace", "description":"Replace", "input_schema":{}}
-        MockAnthropicTools.ANTHROPIC_INSERT_SPEC = {"name": "anthropic:insert", "description":"Insert", "input_schema":{}}
-
-
+        # Yield dictionary including the function mocks
         yield {
             "MockFM": MockFM,
             "MockMemory": MockMemory,
@@ -118,14 +121,14 @@ def app_components(tmp_path):
             "MockHandler": MockHandler,
             "MockIndexer": MockIndexer,
             "MockSysExecCls": MockSysExecCls,
-            "MockAnthropicTools": MockAnthropicTools,
+            "MockAnthropicToolsModule": MockAnthropicToolsModule, # Yield the module mock
             "MockPydanticAgent": MockPydanticAgent,
             "MockAiderBridge": MockAiderBridge,
             "MockAiderExec": MockAiderExec,
             # Instances returned by the mock constructors
             "mock_fm_instance": mock_fm_instance,
-            "mock_memory_instance": mock_memory_instance,
-            "mock_task_instance": mock_task_instance,
+            "mock_memory_instance": mock_memory_system_instance,
+            "mock_task_instance": mock_task_system_instance,
             "mock_handler_instance": mock_handler_instance,
             "mock_aider_bridge_instance": mock_aider_bridge_instance,
             # Specific tool function mocks (static methods on class mocks)
@@ -133,8 +136,14 @@ def app_components(tmp_path):
             "mock_exec_read_files": mock_exec_read_files,
             "mock_aider_auto_func": mock_aider_auto_func,
             "mock_aider_inter_func": mock_aider_inter_func,
-            # Storage for registered tools (populated by side effect)
+            # Add the function mocks needed for assertions
+            "mock_anthropic_view_func": mock_anthropic_view_func,
+            "mock_anthropic_create_func": mock_anthropic_create_func,
+            "mock_anthropic_replace_func": mock_anthropic_replace_func,
+            "mock_anthropic_insert_func": mock_anthropic_insert_func,
+            # Add the storage dictionary
             "registered_tools_storage": registered_tools_storage,
+            "tool_executors_storage": tool_executors_storage, # Yield executor storage
         }
 
 # --- Test Cases ---
@@ -526,10 +535,10 @@ def test_application_init_registers_anthropic_and_system_tools_for_anthropic_pro
 
     # Mock the anthropic tools module used by Application
     # Use the mock provided by the fixture
-    MockAnthropicToolsModule = app_components["MockAnthropicTools"]
+    MockAnthropicToolsModule = app_components["MockAnthropicToolsModule"]
 
     # Act: Instantiate Application
-    with patch(AIDER_AVAILABLE_IMPORT_PATH, False):
+    with patch(AIDER_AVAILABLE_IMPORT_PATH, False): # Ensure Aider is disabled for this test
         app = Application(config={})
 
     # Assert Handler Tool Registration
@@ -548,8 +557,10 @@ def test_application_init_registers_anthropic_and_system_tools_for_anthropic_pro
     assert not any(name.startswith("aider:") for name in registered_tool_names)
 
     # Assert Agent Initialization Call
-    app.passthrough_handler.llm_manager.initialize_agent.assert_called_once()
-    args, kwargs = app.passthrough_handler.llm_manager.initialize_agent.call_args
+    # Access the handler instance created by the Application
+    handler_instance_in_app = app.passthrough_handler
+    handler_instance_in_app.llm_manager.initialize_agent.assert_called_once()
+    args, kwargs = handler_instance_in_app.llm_manager.initialize_agent.call_args
     assert 'tools' in kwargs
     initialized_tools_list = kwargs['tools'] # Contains wrapper lambdas
 
@@ -560,11 +571,11 @@ def test_application_init_registers_anthropic_and_system_tools_for_anthropic_pro
 
     # --- Test the Anthropic Lambda Wrappers ---
     # Get one of the registered Anthropic executors (the lambda)
-    anthropic_view_executor = registered_tools["anthropic:view"]["executor"]
-    view_params = {"file_path": "view.txt"}
+    anthropic_view_executor_lambda = registered_tools["anthropic:view"]["executor"]
+    view_params = {"file_path": "view.txt"} # Params the lambda expects
 
-    # Execute the lambda
-    anthropic_view_executor(view_params)
+    # Execute the lambda wrapper
+    anthropic_view_executor_lambda(view_params)
 
     # Assert that the underlying *mocked* anthropic_tools.view function was called
     # with the file_manager as the first arg and unpacked params
@@ -575,9 +586,9 @@ def test_application_init_registers_anthropic_and_system_tools_for_anthropic_pro
     )
 
     # Repeat for another tool, e.g., create
-    anthropic_create_executor = registered_tools["anthropic:create"]["executor"]
+    anthropic_create_executor_lambda = registered_tools["anthropic:create"]["executor"]
     create_params = {"file_path": "create.txt", "content": "hello", "overwrite": True}
-    anthropic_create_executor(create_params)
+    anthropic_create_executor_lambda(create_params)
     app_components["mock_anthropic_create_func"].assert_called_once_with(
         app.passthrough_handler.file_manager,
         **create_params
@@ -589,13 +600,24 @@ def test_application_init_registers_anthropic_and_system_tools_for_anthropic_pro
 @pytest.fixture
 def mock_app_dependencies_for_aider(tmp_path):
     """Provides mocked dependencies for Application testing, focusing on Aider."""
+    registered_tools_storage = {}
+    tool_executors_storage = {} # Store executors separately
+
+    def mock_register_tool(self, tool_spec, executor_func):
+        tool_name = tool_spec.get("name")
+        if tool_name:
+            registered_tools_storage[tool_name] = {"spec": tool_spec, "executor": executor_func}
+            tool_executors_storage[tool_name] = executor_func # Store executor
+            return True
+        return False
+
     with patch('src.main.FileAccessManager', spec=True) as MockFM, \
          patch('src.main.MemorySystem', spec=True) as MockMemory, \
          patch('src.main.TaskSystem', spec=True) as MockTask, \
          patch('src.main.PassthroughHandler', spec=True) as MockHandler, \
          patch('src.main.GitRepositoryIndexer', spec=True) as MockIndexer, \
          patch('src.main.SystemExecutorFunctions') as MockSysExecCls, \
-         patch('src.main.anthropic_tools', spec=True) as MockAnthropicTools, \
+         patch('src.main.anthropic_tools', spec=True) as MockAnthropicToolsModule, \
          patch('src.handler.llm_interaction_manager.Agent') as MockPydanticAgent, \
          patch('src.main.AiderBridge') as MockAiderBridge, \
          patch('src.main.AiderExecutors', spec=True) as MockAiderExec: # Corrected Patch Target
@@ -608,14 +630,15 @@ def mock_app_dependencies_for_aider(tmp_path):
         mock_task_instance = MockTask.return_value
         mock_handler_instance = MockHandler.return_value
         mock_handler_instance.file_manager = mock_fm_instance
-        mock_handler_instance.register_tool.return_value = True
+        # Attach the mocked register_tool to the handler instance mock
+        mock_handler_instance.register_tool = MagicMock(side_effect=lambda spec, exec_func: mock_register_tool(mock_handler_instance, spec, exec_func))
         mock_handler_instance.get_provider_identifier.return_value = "default:fixture_provider"
         mock_handler_instance.set_active_tool_definitions.return_value = True
         mock_llm_manager_instance = MagicMock(spec=LLMInteractionManager)
         mock_llm_manager_instance.initialize_agent = MagicMock()
         mock_handler_instance.llm_manager = mock_llm_manager_instance
-        mock_handler_instance.tool_executors = {}
-        mock_handler_instance.registered_tools = {}
+        # Mock get_tools_for_agent to return based on current tool_executors_storage
+        mock_handler_instance.get_tools_for_agent.side_effect = lambda: list(tool_executors_storage.values())
 
         # Configure mock system executor static methods
         mock_exec_get_context = MagicMock(name="mock_execute_get_context")
@@ -623,21 +646,11 @@ def mock_app_dependencies_for_aider(tmp_path):
         MockSysExecCls.execute_get_context = mock_exec_get_context
         MockSysExecCls.execute_read_files = mock_exec_read_files
 
-        registered_tools_storage = {}
-        tool_executors_storage = {}
-        def mock_register_tool_impl(spec, executor):
-            tool_name = spec.get('name')
-            if tool_name:
-                registered_tools_storage[tool_name] = {'spec': spec, 'executor': executor}
-                tool_executors_storage[tool_name] = executor
-                return True
-            return False
-        mock_handler_instance.register_tool.side_effect = mock_register_tool_impl
-        # Allow access to storage
-        mock_handler_instance.registered_tools = registered_tools_storage
-        mock_handler_instance.tool_executors = tool_executors_storage
-
-        mock_handler_instance.get_tools_for_agent.side_effect = lambda: list(tool_executors_storage.values())
+        # Configure Anthropic tools mock module specs (used by Application init)
+        MockAnthropicToolsModule.ANTHROPIC_VIEW_SPEC = {"name": "anthropic:view", "description":"View", "input_schema":{}}
+        MockAnthropicToolsModule.ANTHROPIC_CREATE_SPEC = {"name": "anthropic:create", "description":"Create", "input_schema":{}}
+        MockAnthropicToolsModule.ANTHROPIC_STR_REPLACE_SPEC = {"name": "anthropic:str_replace", "description":"Replace", "input_schema":{}}
+        MockAnthropicToolsModule.ANTHROPIC_INSERT_SPEC = {"name": "anthropic:insert", "description":"Insert", "input_schema":{}}
 
         mock_aider_auto_func = MagicMock(spec=Callable, name="mock_execute_aider_automatic")
         mock_aider_inter_func = MagicMock(spec=Callable, name="mock_execute_aider_interactive")
@@ -651,6 +664,7 @@ def mock_app_dependencies_for_aider(tmp_path):
             "mock_aider_auto_func": mock_aider_auto_func,
             "mock_aider_inter_func": mock_aider_inter_func,
             "registered_tools_storage": registered_tools_storage, # Expose storage for assertion
+            "tool_executors_storage": tool_executors_storage, # Expose executor storage
         }
 
 def test_application_init_registers_aider_tools(mock_app_dependencies_for_aider):

@@ -26,15 +26,17 @@ try:
 except ImportError:
     # Define dummies if mcp is not installed
     class DummyStdioClient:
+        def __init__(self, *args, **kwargs): pass # Add init to accept args
         async def __aenter__(self): return (None, None)
         async def __aexit__(self, *args): pass
-    
+
     class DummyClientSession:
+        def __init__(self, *args, **kwargs): pass # Add init to accept args
         async def __aenter__(self): return self
         async def __aexit__(self, *args): pass
         async def initialize(self): pass
         async def call_tool(self, *args, **kwargs): return []
-    
+
     class DummyTextContent:
         def __init__(self, text): self.text = text
     real_stdio_client = DummyStdioClient # type: ignore
@@ -63,9 +65,7 @@ except ImportError:
     FileAccessManager = object # Fallback type
 
 # Mock mcp.py TextContent if needed for responses
-class MockTextContent:
-    def __init__(self, text: str):
-        self.text = text
+# Class MockTextContent already defined above based on RealTextContent
 
 # --- Fixtures ---
 
@@ -75,7 +75,8 @@ def mock_memory_system_bridge(): # Renamed fixture
     # Use spec=MemorySystem if MemorySystem is importable and stable
     return MagicMock(spec=MemorySystem)
 
-def mock_file_access_manager_bridge():
+@pytest.fixture # Ensure decorator is present
+def mock_file_access_manager_bridge(): # Ensure name matches exactly
     """Provides a MagicMock for FileAccessManager for bridge tests."""
     mock_fam = MagicMock(spec=FileAccessManager)
     mock_fam.base_path = "/test_base" # Define base_path for tests
@@ -86,7 +87,7 @@ def mock_file_access_manager_bridge():
     return mock_fam
 
 @pytest.fixture
-def aider_bridge_instance(mock_memory_system_bridge, mock_file_access_manager_bridge):
+def aider_bridge_instance(mock_memory_system_bridge, mock_file_access_manager_bridge): # Check spelling here
     """Provides an instance of AiderBridge with mocked dependencies."""
     if not AiderBridge:
         pytest.skip("AiderBridge class not available for testing.")
@@ -99,7 +100,7 @@ def aider_bridge_instance(mock_memory_system_bridge, mock_file_access_manager_br
     # Pass mocks to the constructor
     return AiderBridge(
         memory_system=mock_memory_system_bridge,
-        file_access_manager=mock_file_access_manager_bridge,
+        file_access_manager=mock_file_access_manager_bridge, # Pass the correct fixture
         config=config
     )
 
