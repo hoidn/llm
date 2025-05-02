@@ -118,13 +118,15 @@ def app_components(mocker, tmp_path): # Add tmp_path
     mock_handler_instance.get_provider_identifier.return_value = "mock:provider"
     registered_tools_storage = {} # Use a real dict to capture registrations
     tool_executors_storage = {}
-    def mock_register_tool_side_effect(spec, executor):
-        name = spec.get("name")
-        if name:
-            registered_tools_storage[name] = {"spec": spec, "executor": executor}
-            tool_executors_storage[name] = executor
-            return True
-        return False
+    # --- START FIX: Updated mock registration function ---
+    def mock_register_tool_side_effect(tool_spec, executor_func):
+        tool_name = tool_spec.get("name")
+        if tool_name:
+            registered_tools_storage[tool_name] = {"spec": tool_spec, "executor": executor_func}
+            tool_executors_storage[tool_name] = executor_func
+            return True # Indicate success
+        return False # Indicate failure (e.g., missing name)
+    # --- END FIX ---
     mock_handler_instance.register_tool = MagicMock(side_effect=mock_register_tool_side_effect)
     mock_handler_instance.registered_tools = registered_tools_storage # Point to the dict
     mock_handler_instance.tool_executors = tool_executors_storage # Point to the dict
