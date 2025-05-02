@@ -104,9 +104,7 @@ def app_components(mocker, tmp_path): # Add tmp_path
         mock_task_system_instance = MagicMock(spec=TaskSystem)
         mock_handler_instance = MagicMock(spec=PassthroughHandler)
         mock_fm_instance = MagicMock(spec=FileAccessManager)
-        # --- START FIX ---
         mock_llm_manager_instance = MagicMock() # Removed spec
-        # --- END FIX ---
         mock_aider_bridge_instance = MagicMock(spec=AiderBridge)
         mock_indexer_instance = MagicMock(spec=GitRepositoryIndexer) # Instance for indexer
         # No instance needed for MockPydanticAgent as LLMInteractionManager is mocked
@@ -153,6 +151,9 @@ def app_components(mocker, tmp_path): # Add tmp_path
         mock_handler_instance.get_tools_for_agent.side_effect = lambda: list(tool_executors_storage.values()) # Return current executors
         # Add mock for set_active_tool_definitions
         mock_handler_instance.set_active_tool_definitions = MagicMock()
+        # Use AsyncMock if the method being mocked is async
+        # Mock initialize_agent as an async function if it's called with await
+        # mock_llm_manager_instance.initialize_agent = AsyncMock() # Example if it were async
 
         # Yield the dictionary of mocks within the 'with' block
         yield {
