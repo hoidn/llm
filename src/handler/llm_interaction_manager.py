@@ -64,7 +64,10 @@ class LLMInteractionManager:
             "base_system_prompt", "You are a helpful assistant."
         )
         self.debug_mode = False
-        self.agent: Optional[Any] = self._initialize_pydantic_ai_agent()
+        self._model_id = self.default_model_identifier
+        self._base_prompt = self.base_system_prompt
+        self._agent_config = self.config.get("pydantic_ai_agent_config", {})
+        self.agent: Optional[Any] = None
 
         if self.agent:
             logging.info(
@@ -156,6 +159,30 @@ class LLMInteractionManager:
                 exc_info=True,
             )
             return None
+
+    def initialize_agent(self, tools: List[Callable]) -> None:
+        """
+        Initializes the pydantic-ai Agent instance with the provided tools.
+        """
+        if self.agent is not None:
+            logging.warning("Agent is already initialized.")
+            return
+        if not self._model_id:
+            raise RuntimeError("Cannot initialize agent: No model identifier configured.")
+        if not Agent:
+            raise RuntimeError("Cannot initialize agent: pydantic-ai Agent class unavailable.")
+        try:
+            self.agent = Agent(
+                model=self._model_id,
+                system_prompt=self._base_prompt,
+                tools=tools,
+                **self._agent_config,
+            )
+            logging.info(f"pydantic-ai Agent initialized for model: {self._model_id}")
+        except Exception as e:
+            logging.exception(f"Failed to initialize agent: {e}")
+            self.agent = None
+            raise RuntimeError(f"AgentInitializationError: {e}") from e
 
     def set_debug_mode(self, enabled: bool) -> None:
         """
