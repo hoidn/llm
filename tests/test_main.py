@@ -117,7 +117,9 @@ def app_components(mocker, tmp_path): # Add tmp_path
         # Configure the mocked classes to return the mock instances
         MockMemory.return_value = mock_memory_system_instance
         MockTask.return_value = mock_task_system_instance
-        MockHandler.return_value = mock_handler_instance
+        # --- START FIX ---
+        mock_handler_instance = MockHandler.return_value # Use updated assignment
+        # --- END FIX ---
         MockFileAccessManager.return_value = mock_fm_instance
         MockLLMInteractionManager.return_value = mock_llm_manager_instance # LLMManager instance mock
         MockAiderBridge.return_value = mock_aider_bridge_instance
