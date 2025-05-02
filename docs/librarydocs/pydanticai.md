@@ -1,588 +1,493 @@
-# Pydantic-AI Developer Guide
+# PydanticAI API Guide
 
-Welcome to the Pydantic-AI developer guide! This document provides a comprehensive overview of Pydantic-AI, how to install and configure it, and how to develop applications using this powerful agent framework.
+This guide provides a comprehensive overview of the PydanticAI API, explaining core concepts, components, and usage patterns.
 
-## Table of Contents
+## Core Components
 
-1. [Introduction](#introduction)
-2. [Installation and Setup](#installation-and-setup)
-3. [Core Concepts](#core-concepts)
-4. [Agents](#agents)
-5. [Models](#models)
-6. [System Prompts and Instructions](#system-prompts-and-instructions)
-7. [Function Tools](#function-tools)
-8. [Structured Output](#structured-output)
-9. [Dependencies](#dependencies)
-10. [Streaming Responses](#streaming-responses)
-11. [Testing](#testing)
-12. [Debugging with Logfire](#debugging-with-logfire)
-13. [Advanced Use Cases](#advanced-use-cases)
-14. [Contributing to Pydantic-AI](#contributing-to-pydantic-ai)
+### Agent
 
-## Introduction
-
-Pydantic-AI is a Python agent framework designed to make it less painful to build production-grade applications with Generative AI. It was built by the team behind [Pydantic](https://docs.pydantic.dev) with the goal of bringing the "FastAPI feeling" to GenAI app development.
-
-Key features include:
-
-- **Model-agnostic**: Built-in support for OpenAI, Anthropic, Gemini, Deepseek, Ollama, Groq, Cohere, Mistral, and more
-- **Type-safe**: Designed for optimal type checking and validation
-- **Python-centric**: Leverages familiar Python control flow and agent composition
-- **Structured Responses**: Uses Pydantic to validate and structure model outputs
-- **Dependency Injection**: Provides a clean system for providing data and services to agents
-- **Streamed Responses**: Stream LLM outputs continuously with immediate validation
-- **Graph Support**: Define complex flows using typing hints
-
-## Installation and Setup
-
-### Basic Installation
-
-```bash
-pip install pydantic-ai
-```
-
-This installs the core package with all dependencies needed for the included models.
-
-### Slim Installation
-
-For a leaner installation targeting specific models:
-
-```bash
-pip install "pydantic-ai-slim[openai]"  # For OpenAI models only
-```
-
-Available extras include: `openai`, `anthropic`, `vertexai`, `groq`, `mistral`, `cohere`, `bedrock`, `logfire`, `evals`, `duckduckgo`, `tavily`
-
-### Logfire Integration (Optional)
-
-For debugging and monitoring:
-
-```bash
-pip install "pydantic-ai[logfire]"
-```
-
-### Examples
-
-To install and run examples:
-
-```bash
-pip install "pydantic-ai[examples]"
-```
-
-## Core Concepts
-
-Pydantic-AI revolves around a few core concepts:
-
-- **Agents**: The primary interface for interacting with LLMs
-- **Models**: Interface to specific LLM providers (OpenAI, Anthropic, etc.)
-- **System Prompts**: Instructions provided to the LLM
-- **Function Tools**: Functions that the LLM can call to retrieve information
-- **Structured Output**: Type-safe response formats using Pydantic models
-- **Dependencies**: Dependency injection system for providing data to agents
-
-## Agents
-
-Agents are the primary interface for interacting with LLMs. They serve as containers for:
-
-- System prompts and instructions
-- Function tools
-- Structured output types
-- Dependency types
-- LLM model settings
-
-### Creating an Agent
+The `Agent` class is the central component for LLM interactions.
 
 ```python
 from pydantic_ai import Agent
 
-# Simple agent with default text output
+# Basic instantiation
+agent = Agent('openai:gpt-4o')
+
+# With system prompt
 agent = Agent(
-    'openai:gpt-4o',
-    system_prompt='Be concise, reply with one sentence.'
+    'anthropic:claude-3-5-sonnet-latest',
+    system_prompt='Be helpful and concise.'
 )
 
-# Run the agent
-result = agent.run_sync('Where does "hello world" come from?')
-print(result.output)
-# Output: "The first known use of "hello, world" was in a 1974 textbook about the C programming language."
+# With typed output
+agent = Agent(
+    'gemini:gemini-1.5-flash',
+    output_type=MyOutputModel
+)
+
+# With dependency injection
+agent = Agent(
+    'openai:gpt-4o',
+    deps_type=MyDependencies
+)
 ```
 
-### Running Agents
+#### Key Methods
 
-There are four ways to run an agent:
+- `run(prompt, deps=None)`: Run the agent asynchronously
+- `run_sync(prompt, deps=None)`: Run the agent synchronously 
+- `run_stream(prompt, deps=None)`: Run the agent with streaming output
 
-1. `agent.run()` - Asynchronous, returns a complete response
-2. `agent.run_sync()` - Synchronous, returns a complete response
-3. `agent.run_stream()` - Asynchronous, returns a streamable response
-4. `agent.iter()` - Asynchronous, returns an iterator over the agent's graph nodes
+### Models
 
-### Continuing Conversations
-
-To maintain context across multiple runs:
+PydanticAI supports multiple LLM providers through a unified interface.
 
 ```python
+# Select models by provider:model format
+agent = Agent('openai:gpt-4o')  # OpenAI
+agent = Agent('anthropic:claude-3-5-sonnet-latest')  # Anthropic
+agent = Agent('google-gla:gemini-1.5-flash')  # Google
+agent = Agent('mistral:mistral-large-latest')  # Mistral
+agent = Agent('groq:llama3-70b-8192')  # Groq
+agent = Agent('cohere:command-r-plus')  # Cohere
+agent = Agent('bedrock:anthropic.claude-3-5-sonnet-20240620-v1:0')  # AWS Bedrock
+```
+
+### Tools
+
+Tools are functions the agent can call during its execution.
+
+```python
+@agent.tool
+async def get_weather(ctx: RunContext[Deps], location: str) -> dict:
+    """Get the current weather for a location."""
+    # Implementation
+    return {"temperature": 21, "condition": "Sunny"}
+```
+
+### System Prompts
+
+System prompts can be static or dynamic.
+
+```python
+# Static system prompt
+agent = Agent(
+    'openai:gpt-4o',
+    system_prompt='You are a helpful assistant.'
+)
+
+# Dynamic system prompt
+@agent.system_prompt
+async def personalized_prompt(ctx: RunContext[UserDeps]) -> str:
+    return f"You are helping {ctx.deps.user_name}. Be friendly and helpful."
+```
+
+### Dependency Injection
+
+PydanticAI provides a robust dependency injection system for tools and system prompts.
+
+```python
+from dataclasses import dataclass
+from httpx import AsyncClient
+
+@dataclass
+class Dependencies:
+    client: AsyncClient
+    api_key: str
+    user_id: int
+
+agent = Agent('openai:gpt-4o', deps_type=Dependencies)
+
+# Provide dependencies when running
+result = await agent.run(
+    "What's the weather?", 
+    deps=Dependencies(
+        client=AsyncClient(),
+        api_key="your-api-key",
+        user_id=123
+    )
+)
+```
+
+### Structured Output
+
+Define output structures using Pydantic models.
+
+```python
+from pydantic import BaseModel, Field
+
+class WeatherReport(BaseModel):
+    location: str
+    temperature: float = Field(description="Temperature in Celsius")
+    condition: str
+    humidity: float = Field(description="Humidity percentage", ge=0, le=100)
+
+agent = Agent('openai:gpt-4o', output_type=WeatherReport)
+
+result = await agent.run("What's the weather in London?")
+print(f"Temperature: {result.output.temperature}°C")
+```
+
+### Message History
+
+Access and manipulate conversation history.
+
+```python
+from pydantic_ai.messages import UserMessage, ModelMessage
+
+# Add messages explicitly
+history = [
+    UserMessage(content="Hello"),
+    ModelMessage(content="Hi there! How can I help you?")
+]
+
+result = await agent.run("What did I say first?", history=history)
+```
+
+## Agent.run_sync
+
+`Agent.run_sync` is a synchronous method for running an agent with a user prompt. This method provides a synchronous interface to the underlying asynchronous Agent architecture, returning a complete response.
+
+### Signature
+
+```python
+def run_sync(
+    self,
+    user_prompt: str | Sequence[UserContent] | None = None,
+    *,
+    output_type: type[RunOutputDataT] | ToolOutput[RunOutputDataT] | None = None,
+    message_history: list[ModelMessage] | None = None,
+    model: Model | KnownModelName | str | None = None,
+    deps: AgentDepsT = None,
+    model_settings: ModelSettings | None = None,
+    usage_limits: UsageLimits | None = None,
+    usage: Usage | None = None,
+    infer_name: bool = True,
+) -> AgentRunResult[Any]
+```
+
+### Description
+
+This method executes the agent by wrapping the async `run()` method with `loop.run_until_complete()`. It runs the agent synchronously with the provided user prompt, model, and other parameters, and returns a result containing the model's final output.
+
+You should use this method when:
+- You need a synchronous interface to the agent
+- You're working in a non-async context
+- You need a simple way to get a complete result from the agent
+
+### Parameters
+
+- `user_prompt`: User input to start/continue the conversation. Can be a string or sequence of UserContent objects.
+- `output_type`: Optional custom output type to use for this run. May only be used if the agent has no output validators.
+- `message_history`: Optional list of ModelMessage objects representing previous conversation history.
+- `model`: Optional model to use for this run. Required if no model was set when creating the agent.
+- `deps`: Optional dependencies to use for this run.
+- `model_settings`: Optional settings to use for this model's request.
+- `usage_limits`: Optional limits on model request count or token usage.
+- `usage`: Optional usage to start with. Useful for resuming a conversation or agents used in tools.
+- `infer_name`: Whether to try to infer the agent name from the call frame if it's not set.
+
+### Returns
+
+- `AgentRunResult[OutputDataT]`: The result of the run, containing the model's output and metadata.
+
+### Examples
+
+**Basic usage:**
+
+```python
+from pydantic_ai import Agent
+
+agent = Agent('openai:gpt-4o')
+result = agent.run_sync('What is the capital of France?')
+print(result.output)
+#> Paris
+```
+
+**With custom output type:**
+
+```python
+from pydantic import BaseModel
+from pydantic_ai import Agent
+
+class Location(BaseModel):
+    city: str
+    country: str
+
+agent = Agent('openai:gpt-4o')
+result = agent.run_sync(
+    'What is the capital of France?',
+    output_type=Location
+)
+print(result.output)
+#> Location(city='Paris', country='France')
+```
+
+**With message history:**
+
+```python
+from pydantic_ai import Agent
+
+agent = Agent('openai:gpt-4o')
+
 # First run
 result1 = agent.run_sync('Who was Albert Einstein?')
+print(result1.output)
+#> Albert Einstein was a German-born theoretical physicist...
 
-# Second run, passing previous messages
+# Second run, continuing the conversation
 result2 = agent.run_sync(
     'What was his most famous equation?',
     message_history=result1.new_messages()
 )
+print(result2.output)
+#> E = mc²
 ```
 
-## Models
-
-Pydantic-AI supports multiple model providers and makes it easy to switch between them:
-
-### Supported Models
-
-- OpenAI (and compatible providers)
-- Anthropic
-- Gemini
-- Bedrock
-- Groq
-- Mistral
-- Cohere
-- And more
-
-### Specifying Models
-
-Models can be specified directly by name with a provider prefix:
+**With model settings and usage limits:**
 
 ```python
-agent = Agent('openai:gpt-4o')  # OpenAI's GPT-4o
-agent = Agent('anthropic:claude-3-5-sonnet-latest')  # Anthropic's Claude
-agent = Agent('google-gla:gemini-1.5-flash')  # Google's Gemini
-```
+from pydantic_ai import Agent
+from pydantic_ai.usage import UsageLimits
 
-### Fallback Models
-
-You can use `FallbackModel` to try multiple models in sequence:
-
-```python
-from pydantic_ai.models.fallback import FallbackModel
-from pydantic_ai.models.openai import OpenAIModel
-from pydantic_ai.models.anthropic import AnthropicModel
-
-openai_model = OpenAIModel('gpt-4o')
-anthropic_model = AnthropicModel('claude-3-5-sonnet-latest')
-fallback_model = FallbackModel(openai_model, anthropic_model)
-
-agent = Agent(fallback_model)
-```
-
-## System Prompts and Instructions
-
-There are two ways to provide instructions to LLMs in Pydantic-AI:
-
-### Static System Prompts
-
-```python
-agent = Agent(
-    'openai:gpt-4o',
-    system_prompt="Use the customer's name while replying to them."
+agent = Agent('openai:gpt-4o')
+result = agent.run_sync(
+    'Summarize the history of France in one paragraph.',
+    model_settings={'temperature': 0.2, 'max_tokens': 100},
+    usage_limits=UsageLimits(response_tokens_limit=120)
 )
-```
-
-### Dynamic System Prompts
-
-System prompts can be defined as functions that access runtime context:
-
-```python
-from pydantic_ai import Agent, RunContext
-
-agent = Agent(
-    'openai:gpt-4o',
-    deps_type=str,
-)
-
-@agent.system_prompt
-def add_user_name(ctx: RunContext[str]) -> str:
-    return f"The user's name is {ctx.deps}."
-
-@agent.system_prompt
-def add_the_date() -> str:
-    from datetime import date
-    return f'The date is {date.today()}.'
-
-result = agent.run_sync('What is the date?', deps='Frank')
-```
-
-### Instructions vs. System Prompts
-
-- Use `instructions` when you want your request to only include system prompts for the current agent
-- Use `system_prompt` when you want to retain system prompts from previous requests
-
-```python
-agent = Agent(
-    'openai:gpt-4o',
-    instructions='You are a helpful assistant that can answer questions and help with tasks.'
-)
-```
-
-## Function Tools
-
-Function tools allow models to call external functions to retrieve information.
-
-### Registering Tools
-
-Tools can be registered using decorators:
-
-```python
-@agent.tool  # For tools that need access to context
-async def get_weather(ctx: RunContext[WeatherAPI], location: str) -> str:
-    """Get the current weather for a location."""
-    return await ctx.deps.fetch_weather(location)
-
-@agent.tool_plain  # For tools that don't need context
-def roll_die() -> str:
-    """Roll a six-sided die and return the result."""
-    import random
-    return str(random.randint(1, 6))
-```
-
-Or via constructor parameters:
-
-```python
-agent = Agent(
-    'openai:gpt-4o',
-    tools=[get_weather, roll_die]
-)
-```
-
-### Tool Schema and Parameters
-
-Function parameters are extracted from signatures and docstrings:
-
-```python
-@agent.tool_plain(docstring_format='google', require_parameter_descriptions=True)
-def search_database(query: str, limit: int = 10, offset: int = 0) -> list[dict]:
-    """Search the database for matching records.
-    
-    Args:
-        query: The search query string
-        limit: Maximum number of results to return
-        offset: Number of results to skip
-    """
-    # Implementation...
-```
-
-### Dynamic Tools
-
-Tools can be dynamically included or modified using a `prepare` function:
-
-```python
-async def only_if_admin(ctx: RunContext[User], tool_def: ToolDefinition) -> Union[ToolDefinition, None]:
-    if ctx.deps.is_admin:
-        return tool_def
-    return None
-
-@agent.tool(prepare=only_if_admin)
-def admin_action(ctx: RunContext[User], action: str) -> str:
-    return f"Admin action '{action}' performed by {ctx.deps.username}"
-```
-
-## Structured Output
-
-Pydantic-AI can ensure LLMs return structured, validated data:
-
-```python
-from pydantic import BaseModel
-
-class UserProfile(BaseModel):
-    name: str
-    age: int
-    bio: str
-
-agent = Agent(
-    'openai:gpt-4o',
-    output_type=UserProfile,
-    system_prompt='Extract a user profile from the input'
-)
-
-result = agent.run_sync('My name is Sarah, I am 29, and I love hiking and photography.')
 print(result.output)
-# Output: name='Sarah' age=29 bio='I love hiking and photography.'
 ```
 
-### Output Validators
+### Notes
 
-You can add custom validation logic:
+- This method cannot be used inside async code or if there's an active event loop.
+- If you need to stream the response or access individual steps of the execution, use `agent.run_stream()` or `agent.iter()` instead.
+- The method will infer the agent name from the call frame if `infer_name=True` and `name` wasn't set when creating the agent.
+
+## Advanced Features
+
+### Streaming
+
+Stream agent outputs in real-time.
 
 ```python
-@agent.output_validator
-async def validate_sql(ctx: RunContext[DatabaseConn], output: SQLQuery) -> SQLQuery:
-    try:
-        await ctx.deps.execute(f'EXPLAIN {output.query}')
-    except QueryError as e:
-        raise ModelRetry(f'Invalid query: {e}')
-    return output
+async for chunk in agent.run_stream("Tell me a story"):
+    print(chunk.output, end="", flush=True)
 ```
 
-### Union Types
+### Multi-Modal Content
 
-You can define multiple possible output types:
+Handle images and other media.
 
 ```python
-from typing import Union
+from pydantic_ai.messages import UserMessage, Image
 
-agent: Agent[None, Union[list[str], list[int]]] = Agent(
-    'openai:gpt-4o-mini',
-    output_type=Union[list[str], list[int]],  # type: ignore
-    system_prompt='Extract either colors or sizes from the input.',
-)
+# Send image to model
+image = Image(url="https://example.com/cat.jpg")
+message = UserMessage(content=[
+    "What's in this image?",
+    image
+])
+
+result = await agent.run(message)
 ```
 
-## Dependencies
+### Error Handling
 
-Pydantic-AI uses dependency injection to provide data to agents:
+Handle errors in tool execution.
 
 ```python
-from dataclasses import dataclass
-import httpx
-
-@dataclass
-class WeatherDeps:
-    api_key: str
-    http_client: httpx.AsyncClient
-    
-agent = Agent(
-    'openai:gpt-4o',
-    deps_type=WeatherDeps,
-)
-
 @agent.tool
-async def get_weather(ctx: RunContext[WeatherDeps], location: str) -> str:
-    """Get the weather for a location."""
-    response = await ctx.deps.http_client.get(
-        'https://api.weather.com/current',
-        params={'location': location, 'apikey': ctx.deps.api_key}
-    )
-    return response.json()['description']
-
-# Using the agent
-async def main():
-    async with httpx.AsyncClient() as client:
-        deps = WeatherDeps('your-api-key', client)
-        result = await agent.run('What's the weather like in London?', deps=deps)
-        print(result.output)
+async def risky_operation(ctx: RunContext) -> str:
+    try:
+        # Some operation that might fail
+        return "Success"
+    except Exception as e:
+        # Report error to the model
+        raise ToolError(f"Operation failed: {str(e)}")
 ```
 
-### Overriding Dependencies for Testing
+### Agent Graphs
+
+Define complex agent workflows using Pydantic Graph.
 
 ```python
-@dataclass
-class TestWeatherDeps(WeatherDeps):
-    async def get_weather(self, location: str) -> str:
-        return "Sunny and 22°C"
+from pydantic_graph import Graph
+from pydantic_ai import Agent
 
-# In tests
-test_deps = TestWeatherDeps('test-key', None)
-with agent.override(deps=test_deps):
-    result = application_code('What's the weather like in London?')
+# Define node types
+class WeatherNode(BaseNode):
+    location: str
+    
+    async def run(self, ctx: GraphContext) -> WeatherResult:
+        # Implementation
+        return WeatherResult(temperature=21)
+
+# Define graph
+class MyGraph(Graph):
+    start: WeatherNode
+    
+    class Config:
+        starting_node = "start"
+
+# Run graph
+graph = MyGraph(start=WeatherNode(location="London"))
+result = await graph.run()
 ```
 
-## Streaming Responses
+## Settings and Configuration
 
-Pydantic-AI supports streaming responses for both text and structured data:
-
-### Streaming Text
+Configure PydanticAI with environment variables or programmatically.
 
 ```python
-async def main():
-    async with agent.run_stream('Tell me about quantum computing') as result:
-        async for message in result.stream_text():
-            print(message, end='', flush=True)
-```
+from pydantic_ai.settings import Settings
 
-### Streaming Deltas
+# Configure programmatically
+settings = Settings(
+    openai_api_key="your-api-key",
+    anthropic_api_key="your-api-key",
+)
 
-```python
-async def main():
-    async with agent.run_stream('Tell me about quantum computing') as result:
-        async for delta in result.stream_text(delta=True):
-            print(delta, end='', flush=True)
-```
-
-### Streaming Structured Data
-
-```python
-from typing_extensions import TypedDict
-
-class UserProfile(TypedDict, total=False):
-    name: str
-    age: int
-    bio: str
-
-agent = Agent('openai:gpt-4o', output_type=UserProfile)
-
-async def main():
-    async with agent.run_stream(user_input) as result:
-        async for profile in result.stream():
-            print(profile)
+# Or use environment variables
+# PYDANTIC_AI_OPENAI_API_KEY=your-api-key
+# PYDANTIC_AI_ANTHROPIC_API_KEY=your-api-key
 ```
 
 ## Testing
 
-Pydantic-AI includes test utilities to help write unit tests:
-
-### Using TestModel
+Test agents with test models.
 
 ```python
-from pydantic_ai.models.test import TestModel
+from pydantic_ai.models import TestModel
 
-test_model = TestModel()
+# Create test model with predefined responses
+test_model = TestModel(responses=[
+    "This is a test response",
+    "This is another test response",
+])
+
+# Use test model in agent
 agent = Agent(test_model)
-result = agent.run_sync("What's 2+2?")
-print(result.output)  # Will return a predefined response
+
+# Run tests
+result = await agent.run("Test query")
+assert result.output == "This is a test response"
 ```
 
-### Capturing Run Messages
+## Common Patterns
+
+### Validation and Retry
+
+PydanticAI automatically retries failed validations.
 
 ```python
-from pydantic_ai import capture_run_messages
+class StrictOutput(BaseModel):
+    answer: str = Field(min_length=10, max_length=100)
+    confidence: float = Field(ge=0.0, le=1.0)
 
-with capture_run_messages() as messages:
-    try:
-        result = agent.run_sync('Please perform calculation')
-    except Exception as e:
-        print('Error:', e)
-        print('Messages:', messages)
+agent = Agent('openai:gpt-4o', output_type=StrictOutput)
 ```
 
-## Debugging with Logfire
+### Composing Agents
 
-Pydantic-AI integrates with [Pydantic Logfire](https://pydantic.dev/logfire) for observability:
-
-### Setup
-
-```bash
-pip install "pydantic-ai[logfire]"
-py-cli logfire auth
-py-cli logfire projects new
-```
+Build complex applications by composing multiple agents.
 
 ```python
-import logfire
-logfire.configure()
+research_agent = Agent('anthropic:claude-3-5-sonnet-latest')
+summarization_agent = Agent('openai:gpt-4o')
 
-from pydantic_ai import Agent
-agent = Agent('openai:gpt-4o', instrument=True)
-# Or instrument all agents
-Agent.instrument_all()
-```
-
-### HTTPX Monitoring
-
-To monitor API calls:
-
-```python
-import logfire
-logfire.configure()
-logfire.instrument_httpx(capture_all=True)
-```
-
-## Advanced Use Cases
-
-### RAG (Retrieval-Augmented Generation)
-
-Build a question answering system over your documentation:
-
-```python
-@dataclass
-class RAGDeps:
-    search_db: SearchDatabase
+async def process_query(query: str) -> str:
+    # Research with first agent
+    research_result = await research_agent.run(f"Research: {query}")
     
-agent = Agent('openai:gpt-4o', deps_type=RAGDeps)
+    # Summarize with second agent
+    summary_result = await summarization_agent.run(
+        f"Summarize this research: {research_result.output}"
+    )
+    
+    return summary_result.output
+```
 
+### Tool Function Return Types
+
+Tools can return various types of data.
+
+```python
+# Return dictionary
 @agent.tool
-async def search_docs(ctx: RunContext[RAGDeps], query: str, limit: int = 3) -> list[str]:
-    """Search the documentation for relevant information."""
-    return await ctx.deps.search_db.search(query, limit)
+async def get_data(ctx: RunContext) -> dict:
+    return {"key": "value"}
 
-# Usage
-deps = RAGDeps(SearchDatabase())
-result = await agent.run("How do I configure logging?", deps=deps)
+# Return Pydantic model
+@agent.tool
+async def get_user(ctx: RunContext, user_id: int) -> User:
+    return User(id=user_id, name="John")
+
+# Return image
+from pydantic_ai.messages import Image
+@agent.tool
+async def generate_image(ctx: RunContext, prompt: str) -> Image:
+    return Image(url="https://example.com/generated.jpg")
 ```
 
-### Multi-Agent Applications
+## Best Practices
 
-Create specialized agents that collaborate:
+1. **Type Annotations**: Always use type annotations for better IDE support and runtime validation.
+
+2. **Docstrings**: Add detailed docstrings to tools to help the LLM understand their purpose.
+
+3. **Error Handling**: Use appropriate error handling in tools to provide meaningful feedback.
+
+4. **Dependency Management**: Use dependency injection for external resources to simplify testing.
+
+5. **Output Validation**: Define structured outputs with validation rules to ensure consistent responses.
+
+6. **Streaming**: Use streaming for long-running operations to provide real-time feedback.
+
+7. **Testing**: Create test models to verify agent behavior deterministically.
+
+## Common Tools
+
+PydanticAI includes common tools for web search, RAG, and other frequent use cases.
 
 ```python
-# Define agents for different tasks
-research_agent = Agent('anthropic:claude-3-5-sonnet-latest', output_type=ResearchFindings)
-writing_agent = Agent('openai:gpt-4o', output_type=ArticleSection)
+from pydantic_ai.common_tools.duckduckgo import add_duckduckgo_search
 
-# Compose them in your application
-async def generate_article(topic: str) -> Article:
-    # Get research data
-    research = await research_agent.run(f"Research: {topic}")
+# Add DuckDuckGo search tool to your agent
+add_duckduckgo_search(agent)
+
+# Use in a query
+result = await agent.run("What is the latest news about Pydantic?")
+```
+
+## Logging and Monitoring
+
+Integrate with Pydantic Logfire for comprehensive monitoring.
+
+```python
+import logfire
+from pydantic_ai import Agent
+
+# Initialize logfire
+logfire.configure()
+
+# Create agent - all interactions will be logged
+agent = Agent('openai:gpt-4o')
+```
+
+## Error Handling and Debugging
+
+Handle common errors and debug agent interactions.
+
+```python
+try:
+    result = await agent.run("Query")
+except Exception as e:
+    print(f"Error: {e}")
     
-    # Generate sections based on research
-    intro = await writing_agent.run(
-        f"Write introduction for {topic}",
-        deps=WritingDeps(research=research.output)
-    )
-    
-    body = await writing_agent.run(
-        f"Write main content for {topic}",
-        deps=WritingDeps(research=research.output)
-    )
-    
-    conclusion = await writing_agent.run(
-        f"Write conclusion for {topic}",
-        deps=WritingDeps(research=research.output)
-    )
-    
-    return Article(
-        title=topic,
-        intro=intro.output,
-        body=body.output,
-        conclusion=conclusion.output
-    )
+# Access full conversation history
+for message in result.history:
+    print(f"{message.role}: {message.content}")
 ```
-
-## Contributing to Pydantic-AI
-
-### Installation and Setup
-
-```bash
-git clone git@github.com:<your username>/pydantic-ai.git
-cd pydantic-ai
-```
-
-Install `uv`, `pre-commit` and `deno`:
-
-```bash
-# Install uv (see https://docs.astral.sh/uv/getting-started/installation/)
-# Install pre-commit
-uv tool install pre-commit
-# Install deno (see https://docs.deno.com/runtime/getting_started/installation/)
-```
-
-Install dependencies and pre-commit hooks:
-
-```bash
-make install
-```
-
-### Running Tests
-
-```bash
-# Run all checks (formatting, linting, type checking, tests)
-make
-
-# Run documentation server
-uv run mkdocs serve
-```
-
-### Adding New Models
-
-To contribute a new model to Pydantic-AI, check the rules in the [contributing guidelines](https://ai.pydantic.dev/contributing/#new-model-rules).
-
-- For models with dependencies: needs >500k monthly PyPI downloads consistently
-- For models using other model's logic internally: GitHub org needs >20k stars
-- For URL/API key models: can add documentation paragraph with instructions
-- Otherwise: consider releasing `pydantic-ai-xxx` that depends on `pydantic-ai-slim`
