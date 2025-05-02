@@ -224,27 +224,46 @@ class AiderBridge:
         skipped_nonexistent = 0
         skipped_unsafe = 0
 
-        for path in file_paths:
-            processed_count += 1
-            try:
-                abs_path = self.file_access_manager._resolve_path(path)
-                if not self.file_access_manager._is_path_safe(abs_path):
-                    logger.warning(f"Skipping unsafe path: {path} (resolved to {abs_path})")
-                    skipped_unsafe += 1
-                    continue
-                # Check existence using os.path (FAM doesn't have exists method)
-                if not os.path.exists(abs_path) or not os.path.isfile(abs_path):
-                    logger.warning(f"Skipping non-existent or non-file path: {path} (resolved to {abs_path})")
-                    skipped_nonexistent += 1
-                    continue
-                valid_abs_paths.add(abs_path)
-            except ValueError as e: # Catch errors from _resolve_path
-                logger.warning(f"Skipping invalid path '{path}': {e}")
-                skipped_unsafe += 1
-            except Exception as e:
-                 logger.exception(f"Error processing path '{path}' in set_file_context: {e}")
-                 # Decide how to count this, maybe as unsafe?
+        for path_str in file_paths: # Rename variable to avoid confusion
+             processed_count += 1
+             try:
+                 # --- START FIX: Handle absolute vs relative ---
+                 if os.path.isabs(path_str):
+                     # If already absolute, normalize it directly
+                     abs_path = os.path.abspath(path_str)
+                     # Still need to check safety relative to base_path
+                     if not self.file_access_manager._is_path_safe(abs_path):
+                         logger.warning(f"Skipping unsafe absolute path: {path_str} (resolved to {abs_path})")
+                         skipped_unsafe += 1
+                         continue
+                 else:
+                     # If relative, resolve using FAM's method (which includes safety check)
+                     abs_path = self.file_access_manager._resolve_path(path_str)
+                     # Double-check safety (resolve_path might not raise on failure)
+                     if not self.file_access_manager._is_path_safe(abs_path):
+                         logger.warning(f"Skipping unsafe resolved path: {path_str} (resolved to {abs_path})")
+                         skipped_unsafe += 1
+                         continue
+                 # --- END FIX ---
+
+                 # Check existence using os.path
+                 if not os.path.exists(abs_path):
+                     logger.warning(f"Skipping non-existent path: {path_str} (resolved to {abs_path})")
+                     skipped_nonexistent += 1
+                     continue
+                 # Check if it's a file
+                 if not os.path.isfile(abs_path):
+                     logger.warning(f"Skipping non-file path: {path_str} (resolved to {abs_path})")
+                     skipped_nonexistent += 1 # Count as non-existent for simplicity
+                     continue
+
+                 valid_abs_paths.add(abs_path)
+             except ValueError as e: # Catch errors from _resolve_path or safety checks
+                 logger.warning(f"Skipping invalid path '{path_str}': {e}")
                  skipped_unsafe += 1
+             except Exception as e:
+                  logger.exception(f"Error processing path '{path_str}' in set_file_context: {e}")
+                  skipped_unsafe += 1
 
 
         self._file_context = valid_abs_paths
@@ -252,7 +271,7 @@ class AiderBridge:
         logger.info(f"Set file context: {len(valid_abs_paths)} valid files added. Source: {source}. (Processed: {processed_count}, Skipped Non-existent: {skipped_nonexistent}, Skipped Unsafe: {skipped_unsafe})")
 
         status_msg = f"Added {len(valid_abs_paths)} files."
-        if skipped_nonexistent > 0: status_msg += f" Skipped {skipped_nonexistent} non-existent."
+        if skipped_nonexistent > 0: status_msg += f" Skipped {skipped_nonexistent} non-existent/non-file." # Clarify message
         if skipped_unsafe > 0: status_msg += f" Skipped {skipped_unsafe} unsafe/invalid."
 
         return {"status": "success", "file_count": len(valid_abs_paths), "context_source": source, "message": status_msg}
