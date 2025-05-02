@@ -226,9 +226,13 @@ class TestAiderBridge:
         assert error_msg in result.get("content", "")
         assert result.get("notes", {}).get("error", {}).get("reason") == "tool_execution_error"
         # --- START FIX: Check nested details ---
-        # Check that the original error details are included in the nested notes within details
-        assert result.get("notes", {}).get("error", {}).get("details", {}).get("notes", {}).get("error") == error_msg
-        assert result.get("notes", {}).get("error", {}).get("details", {}).get("notes", {}).get("diff") == "partial diff..."
+        # Check that the original error details (excluding the 'error' key itself)
+        # are included in the nested notes within details
+        nested_notes = result.get("notes", {}).get("error", {}).get("details", {}).get("notes", {})
+        assert isinstance(nested_notes, dict) # Ensure nested notes is a dict
+        assert nested_notes.get("success") is False # Check the 'success' field from original payload
+        assert nested_notes.get("diff") == "partial diff..." # Check the 'diff' field from original payload
+        assert "error" not in nested_notes # Explicitly check that the 'error' key was removed as expected
         # --- END FIX ---
         # mock_mcp_flag is unused in the test logic
 
