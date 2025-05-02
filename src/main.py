@@ -247,8 +247,11 @@ Select the best matching paths *from the provided metadata* and output the JSON.
                         # Create a wrapper lambda that captures the handler's file_manager
                         # and passes it as the first argument to the actual tool function.
                         # It receives the tool_input dict from the handler's _execute_tool.
+                        # --- START FIX: Rename first arg to 'params' and unpack correctly ---
                         # Use default arguments in lambda to capture current values of func and fm
-                        executor_wrapper = lambda tool_input, func=tool_func, fm=self.passthrough_handler.file_manager: func(fm, **tool_input) # type: ignore
+                        # Rename first arg to 'params' for consistency
+                        executor_wrapper = lambda params, func=tool_func, fm=self.passthrough_handler.file_manager: func(fm, **params) # type: ignore # Pass fm first, then unpack params dict
+                        # --- END FIX ---
 
                         success = self.passthrough_handler.register_tool(tool_spec, executor_wrapper)
                         if success:
