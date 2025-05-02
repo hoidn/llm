@@ -117,16 +117,16 @@ class TestAiderBridge:
     # --- call_aider_tool Tests ---
 
     @pytest.mark.asyncio
-    @patch('src.aider_bridge.bridge.MCP_AVAILABLE', True)
-    @patch('src.aider_bridge.bridge.StdioServerParameters', spec=RealStdioServerParameters) # Patch the CLASS NAME
-    @patch('src.aider_bridge.bridge.stdio_client', spec=real_stdio_client)
-    @patch('src.aider_bridge.bridge.ClientSession', spec=RealClientSession)
+    @patch('src.aider_bridge.bridge.MCP_AVAILABLE', True)           # Decorator 4 (Outermost)
+    @patch('src.aider_bridge.bridge.StdioServerParameters', spec=RealStdioServerParameters) # Decorator 3
+    @patch('src.aider_bridge.bridge.stdio_client', spec=real_stdio_client) # Decorator 2
+    @patch('src.aider_bridge.bridge.ClientSession', spec=RealClientSession) # Decorator 1 (Innermost)
     async def test_call_aider_tool_ai_code_success(self,
-                                                 mock_client_session_cls,  # From @patch ClientSession
-                                                 mock_stdio_client_func,   # From @patch stdio_client
-                                                 mock_stdio_params_cls,    # From @patch StdioServerParameters
-                                                 mock_mcp_flag,            # From @patch MCP_AVAILABLE (unused but needed for order)
-                                                 aider_bridge_instance):
+                                                 mock_client_session_cls,  # From Decorator 1 (Innermost)
+                                                 mock_stdio_client_func,   # From Decorator 2
+                                                 mock_stdio_params_cls,    # From Decorator 3
+                                                 # mock_mcp_flag,          # From Decorator 4 (Omitted)
+                                                 aider_bridge_instance):   # Fixture
         """Verify call_aider_tool invokes aider_ai_code and maps success response."""
         # Arrange
         tool_name = "aider_ai_code"
@@ -164,16 +164,16 @@ class TestAiderBridge:
         assert result.get("notes", {}).get("success") is True
 
     @pytest.mark.asyncio
-    @patch('src.aider_bridge.bridge.MCP_AVAILABLE', True)
-    @patch('src.aider_bridge.bridge.StdioServerParameters', spec=RealStdioServerParameters)
-    @patch('src.aider_bridge.bridge.stdio_client', spec=real_stdio_client)
-    @patch('src.aider_bridge.bridge.ClientSession', spec=RealClientSession)
+    @patch('src.aider_bridge.bridge.MCP_AVAILABLE', True)           # Decorator 4 (Outermost)
+    @patch('src.aider_bridge.bridge.StdioServerParameters', spec=RealStdioServerParameters) # Decorator 3
+    @patch('src.aider_bridge.bridge.stdio_client', spec=real_stdio_client) # Decorator 2
+    @patch('src.aider_bridge.bridge.ClientSession', spec=RealClientSession) # Decorator 1 (Innermost)
     async def test_call_aider_tool_ai_code_failure(self,
-                                                 mock_client_session_cls,
-                                                 mock_stdio_client_func,
-                                                 mock_stdio_params_cls,
-                                                 mock_mcp_flag,
-                                                 aider_bridge_instance):
+                                                 mock_client_session_cls,  # From Decorator 1 (Innermost)
+                                                 mock_stdio_client_func,   # From Decorator 2
+                                                 mock_stdio_params_cls,    # From Decorator 3
+                                                 # mock_mcp_flag,          # From Decorator 4 (Omitted)
+                                                 aider_bridge_instance):   # Fixture
         """Verify call_aider_tool handles application error from aider_ai_code."""
         # Arrange
         tool_name = "aider_ai_code"
@@ -211,16 +211,16 @@ class TestAiderBridge:
         assert result.get("notes", {}).get("error", {}).get("details", {}).get("diff") == "partial diff..."
 
     @pytest.mark.asyncio
-    @patch('src.aider_bridge.bridge.MCP_AVAILABLE', True)
-    @patch('src.aider_bridge.bridge.StdioServerParameters', spec=RealStdioServerParameters)
-    @patch('src.aider_bridge.bridge.stdio_client', spec=real_stdio_client)
-    @patch('src.aider_bridge.bridge.ClientSession', spec=RealClientSession)
+    @patch('src.aider_bridge.bridge.MCP_AVAILABLE', True)           # Decorator 4 (Outermost)
+    @patch('src.aider_bridge.bridge.StdioServerParameters', spec=RealStdioServerParameters) # Decorator 3
+    @patch('src.aider_bridge.bridge.stdio_client', spec=real_stdio_client) # Decorator 2
+    @patch('src.aider_bridge.bridge.ClientSession', spec=RealClientSession) # Decorator 1 (Innermost)
     async def test_call_aider_tool_list_models_success(self,
-                                                     mock_client_session_cls,
-                                                     mock_stdio_client_func,
-                                                     mock_stdio_params_cls,
-                                                     mock_mcp_flag,
-                                                     aider_bridge_instance):
+                                                     mock_client_session_cls,  # From Decorator 1 (Innermost)
+                                                     mock_stdio_client_func,   # From Decorator 2
+                                                     mock_stdio_params_cls,    # From Decorator 3
+                                                     # mock_mcp_flag,          # From Decorator 4 (Omitted)
+                                                     aider_bridge_instance):   # Fixture
         """Verify call_aider_tool invokes list_models and maps success response."""
         # Arrange
         tool_name = "list_models"
@@ -255,16 +255,16 @@ class TestAiderBridge:
         assert result.get("notes", {}).get("models") == model_list
 
     @pytest.mark.asyncio
-    @patch('src.aider_bridge.bridge.MCP_AVAILABLE', True)
-    @patch('src.aider_bridge.bridge.StdioServerParameters', spec=RealStdioServerParameters)
-    @patch('src.aider_bridge.bridge.stdio_client', spec=real_stdio_client)
-    @patch('src.aider_bridge.bridge.ClientSession', spec=RealClientSession)
+    @patch('src.aider_bridge.bridge.MCP_AVAILABLE', True)           # Decorator 4 (Outermost)
+    @patch('src.aider_bridge.bridge.StdioServerParameters', spec=RealStdioServerParameters) # Decorator 3
+    @patch('src.aider_bridge.bridge.stdio_client', spec=real_stdio_client) # Decorator 2
+    @patch('src.aider_bridge.bridge.ClientSession', spec=RealClientSession) # Decorator 1 (Innermost)
     async def test_call_aider_tool_mcp_exception(self,
-                                               mock_client_session_cls,
-                                               mock_stdio_client_func,
-                                               mock_stdio_params_cls,
-                                               mock_mcp_flag,
-                                               aider_bridge_instance):
+                                               mock_client_session_cls,  # From Decorator 1 (Innermost)
+                                               mock_stdio_client_func,   # From Decorator 2
+                                               mock_stdio_params_cls,    # From Decorator 3
+                                               # mock_mcp_flag,          # From Decorator 4 (Omitted)
+                                               aider_bridge_instance):   # Fixture
         """Verify call_aider_tool handles exceptions from mcp.py client."""
         # Arrange
         tool_name = "aider_ai_code"
@@ -295,16 +295,16 @@ class TestAiderBridge:
         assert result.get("notes", {}).get("error", {}).get("reason") == "connection_error"
 
     @pytest.mark.asyncio
-    @patch('src.aider_bridge.bridge.MCP_AVAILABLE', True)
-    @patch('src.aider_bridge.bridge.StdioServerParameters', spec=RealStdioServerParameters)
-    @patch('src.aider_bridge.bridge.stdio_client', spec=real_stdio_client)
-    @patch('src.aider_bridge.bridge.ClientSession', spec=RealClientSession)
+    @patch('src.aider_bridge.bridge.MCP_AVAILABLE', True)           # Decorator 4 (Outermost)
+    @patch('src.aider_bridge.bridge.StdioServerParameters', spec=RealStdioServerParameters) # Decorator 3
+    @patch('src.aider_bridge.bridge.stdio_client', spec=real_stdio_client) # Decorator 2
+    @patch('src.aider_bridge.bridge.ClientSession', spec=RealClientSession) # Decorator 1 (Innermost)
     async def test_call_aider_tool_json_parse_error(self,
-                                                  mock_client_session_cls,
-                                                  mock_stdio_client_func,
-                                                  mock_stdio_params_cls,
-                                                  mock_mcp_flag,
-                                                  aider_bridge_instance):
+                                                  mock_client_session_cls,  # From Decorator 1 (Innermost)
+                                                  mock_stdio_client_func,   # From Decorator 2
+                                                  mock_stdio_params_cls,    # From Decorator 3
+                                                  # mock_mcp_flag,          # From Decorator 4 (Omitted)
+                                                  aider_bridge_instance):   # Fixture
         """Verify call_aider_tool handles invalid JSON from server."""
         # Arrange
         tool_name = "aider_ai_code"
