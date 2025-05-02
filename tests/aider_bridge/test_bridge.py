@@ -191,7 +191,7 @@ class TestAiderBridge:
         mock_cm_session = AsyncMock() # Context manager for the session
         mock_cm_session.__aenter__.return_value = mock_session_instance # __aenter__ returns the session instance
         # 1. Configure the ClientSession CLASS mock
-        mock_client_session_cls.return_value = mock_cm_session
+        mock_client_session_cls.return_value = mock_cm_session # Session CLASS returns the context manager
         mock_stdio_cm = AsyncMock(); mock_stdio_cm.__aenter__.return_value = (AsyncMock(), AsyncMock())
         mock_stdio_client_func.return_value = mock_stdio_cm
 
@@ -240,7 +240,7 @@ class TestAiderBridge:
         mock_cm_session = AsyncMock() # Context manager for the session
         mock_cm_session.__aenter__.return_value = mock_session_instance # __aenter__ returns the session instance
         # 1. Configure the ClientSession CLASS mock
-        mock_client_session_cls.return_value = mock_cm_session
+        mock_client_session_cls.return_value = mock_cm_session # Session CLASS returns the context manager
         mock_stdio_cm = AsyncMock(); mock_stdio_cm.__aenter__.return_value = (AsyncMock(), AsyncMock())
         mock_stdio_client_func.return_value = mock_stdio_cm
 
@@ -285,7 +285,7 @@ class TestAiderBridge:
         mock_cm_session = AsyncMock() # Context manager for the session
         mock_cm_session.__aenter__.return_value = mock_session_instance # __aenter__ returns the session instance
         # 1. Configure the ClientSession CLASS mock
-        mock_client_session_cls.return_value = mock_cm_session
+        mock_client_session_cls.return_value = mock_cm_session # Session CLASS returns the context manager
         mock_stdio_cm = AsyncMock(); mock_stdio_cm.__aenter__.return_value = (AsyncMock(), AsyncMock())
         mock_stdio_client_func.return_value = mock_stdio_cm
 
@@ -329,7 +329,7 @@ class TestAiderBridge:
         mock_cm_session = AsyncMock() # Context manager for the session
         mock_cm_session.__aenter__.return_value = mock_session_instance # __aenter__ returns the session instance
         # 1. Configure the ClientSession CLASS mock
-        mock_client_session_cls.return_value = mock_cm_session
+        mock_client_session_cls.return_value = mock_cm_session # Session CLASS returns the context manager
         mock_stdio_cm = AsyncMock(); mock_stdio_cm.__aenter__.return_value = (AsyncMock(), AsyncMock())
         mock_stdio_client_func.return_value = mock_stdio_cm
 
