@@ -117,9 +117,7 @@ def app_components(mocker, tmp_path): # Add tmp_path
         # Configure the mocked classes to return the mock instances
         MockMemory.return_value = mock_memory_system_instance
         MockTask.return_value = mock_task_system_instance
-        # --- START FIX ---
         mock_handler_instance = MockHandler.return_value # Use updated assignment
-        # --- END FIX ---
         MockFileAccessManager.return_value = mock_fm_instance
         MockLLMInteractionManager.return_value = mock_llm_manager_instance # LLMManager instance mock
         MockAiderBridge.return_value = mock_aider_bridge_instance
@@ -143,7 +141,10 @@ def app_components(mocker, tmp_path): # Add tmp_path
                 tool_executors_storage[tool_name] = executor_func
                 return True # Indicate success
             return False # Indicate failure (e.g., missing name)
-        mock_handler_instance.register_tool = MagicMock(side_effect=mock_register_tool_side_effect)
+        # --- START FIX ---
+        # Assign side_effect using a lambda that calls the helper function
+        mock_handler_instance.register_tool = MagicMock(side_effect=lambda spec, func: mock_register_tool_side_effect(spec, func))
+        # --- END FIX ---
         mock_handler_instance.registered_tools = registered_tools_storage # Point to the dict
         mock_handler_instance.tool_executors = tool_executors_storage # Point to the dict
         # Let the real get_tools_for_agent work on the mock's storage
