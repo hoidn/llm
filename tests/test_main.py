@@ -18,6 +18,11 @@ from src.handler.llm_interaction_manager import LLMInteractionManager
 from src.memory.indexers.git_repository_indexer import GitRepositoryIndexer
 # Import the class being patched for autospec
 from src.executors.system_executors import SystemExecutorFunctions
+# Import AiderExecutors for autospec
+try:
+    from src.executors.aider_executors import AiderExecutorFunctions
+except ImportError:
+    AiderExecutorFunctions = object # type: ignore
 # Import Agent for autospec if pydantic-ai is installed
 try:
     from pydantic_ai import Agent as RealPydanticAgent
@@ -79,14 +84,12 @@ def app_components(mocker, tmp_path): # Add tmp_path
          patch('src.main.AiderBridge', autospec=True) as MockAiderBridge, \
          patch('src.main.GitRepositoryIndexer', autospec=True) as MockIndexer, \
          patch('src.main.SystemExecutorFunctions', autospec=True) as MockSysExecCls, \
-         patch('src.handler.llm_interaction_manager.Agent', autospec=True) as MockPydanticAgent: # Added patch for pydantic_ai.Agent
+         patch('src.main.AiderExecutors', autospec=True) as MockAiderExec, \
+         patch('src.handler.llm_interaction_manager.Agent', autospec=True) as MockPydanticAgent:
 
         # --- Patch specific functions/static methods directly (using mocker) ---
         # SystemExecutorFunctions methods are now mocked via the class patch above
-
-        # Patch AiderExecutorFunctions methods (called within src.main)
-        mock_aider_auto_func = mocker.patch('src.main.AiderExecutors.execute_aider_automatic', new_callable=AsyncMock, name="mock_execute_aider_automatic")
-        mock_aider_inter_func = mocker.patch('src.main.AiderExecutors.execute_aider_interactive', new_callable=AsyncMock, name="mock_execute_aider_interactive")
+        # AiderExecutorFunctions methods are now mocked via the class patch above
 
         # Patch Anthropic tool functions WHERE DEFINED
         mock_anthropic_view_func = mocker.patch('src.tools.anthropic_tools.view', name="mock_anthropic_view")
@@ -120,6 +123,7 @@ def app_components(mocker, tmp_path): # Add tmp_path
         MockAiderBridge.return_value = mock_aider_bridge_instance
         MockIndexer.return_value = mock_indexer_instance
         # MockSysExecCls does not need a return_value as it only has static methods
+        # MockAiderExec does not need a return_value as it only has static methods
         # MockPydanticAgent does not need a return_value as LLMInteractionManager is mocked
 
         # Configure mocks attached TO the handler instance, as they are instantiated within BaseHandler init
@@ -153,7 +157,8 @@ def app_components(mocker, tmp_path): # Add tmp_path
             "MockAiderBridge": MockAiderBridge,
             "MockGitRepositoryIndexer": MockIndexer,
             "MockSystemExecutorFunctions": MockSysExecCls,
-            "MockPydanticAgent": MockPydanticAgent, # Added pydantic_ai.Agent mock
+            "MockAiderExecutors": MockAiderExec, # Added AiderExecutors class mock
+            "MockPydanticAgent": MockPydanticAgent,
 
             # Core Component Instance Mocks
             "mock_memory_system_instance": mock_memory_system_instance,
@@ -170,8 +175,7 @@ def app_components(mocker, tmp_path): # Add tmp_path
 
             # Expose specific function/method mocks (from mocker.patch)
             # Removed mock_exec_get_context, mock_exec_read_files
-            "mock_aider_auto_func": mock_aider_auto_func,
-            "mock_aider_inter_func": mock_aider_inter_func,
+            # Removed mock_aider_auto_func, mock_aider_inter_func
             "mock_anthropic_view_func": mock_anthropic_view_func,
             "mock_anthropic_create_func": mock_anthropic_create_func,
             "mock_anthropic_replace_func": mock_anthropic_replace_func,
@@ -358,8 +362,9 @@ def test_handle_task_command_dispatcher_error(app_components):
 def test_application_init_with_aider(app_components):
     """Verify AiderBridge is initialized and tools registered when available."""
     # Arrange (Mocks are already configured in the fixture)
-    mock_aider_auto_func = app_components['mock_aider_auto_func']
-    mock_aider_inter_func = app_components['mock_aider_inter_func']
+    # Access the mocked class methods
+    mock_aider_auto_func = app_components['MockAiderExecutors'].execute_aider_automatic
+    mock_aider_inter_func = app_components['MockAiderExecutors'].execute_aider_interactive
 
     # Act
     app = Application(config={"aider_config": {"mcp_stdio_command": "aider_server"}})
