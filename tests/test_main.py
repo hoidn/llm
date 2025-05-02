@@ -169,12 +169,12 @@ def app_components(mocker, tmp_path): # Add tmp_path
             "MockAiderBridge": MockAiderBridge,
             "MockIndexer": MockIndexer,
             "MockSysExecCls": MockSysExecCls,
-            "MockAiderExec": MockAiderExec, # Use updated key
+            "MockAiderExec": MockAiderExec,
             "MockPydanticAgent": MockPydanticAgent,
 
             # Core Component Instance Mocks
             "mock_memory_system_instance": mock_memory_system_instance,
-            "mock_task_system_instance": mock_task_instance, # Return the instance from MockTask.return_value
+            "mock_task_system_instance": mock_task_instance, # Provide instance
             "mock_handler_instance": mock_handler_instance,
             "mock_fm_instance": mock_fm_instance,
             "mock_llm_manager_instance": mock_llm_manager_instance,
@@ -373,8 +373,8 @@ def test_application_init_with_aider(app_components):
     """Verify AiderBridge is initialized and tools registered when available."""
     # Arrange (Mocks are already configured in the fixture)
     # Access the mocked class methods
-    mock_aider_auto_func = app_components['MockAiderExec'].execute_aider_automatic # Use updated key
-    mock_aider_inter_func = app_components['MockAiderExec'].execute_aider_interactive # Use updated key
+    mock_aider_auto_func = app_components['MockAiderExec'].execute_aider_automatic
+    mock_aider_inter_func = app_components['MockAiderExec'].execute_aider_interactive
 
     # Act
     app = Application(config={"aider_config": {"mcp_stdio_command": "aider_server"}})
