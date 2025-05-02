@@ -61,9 +61,9 @@ def app_components(mocker, tmp_path): # Add tmp_path
     # Mock AiderBridge conditionally based on environment or keep it simple
     mock_aider_bridge_cls = mocker.patch('src.main.AiderBridge', spec=AiderBridge)
     # Mock AiderExecutors if needed
-    mock_aider_exec_cls = mocker.patch('src.main.AiderExecutors', spec=AiderExecutorFunctions)
+    mock_aider_exec_cls = mocker.patch('src.main.AiderExecutors', spec=AiderExecutors) # FIX: Use imported name
     # Mock Anthropic tools module if needed for registration verification
-    mock_anthropic_tools = mocker.patch('src.main.anthropic_tools', spec=anthropic_tools)
+    mock_anthropic_tools = mocker.patch('src.main.anthropic_tools', spec=src.tools.anthropic_tools) # FIX: Use full module path
     # Mock GitRepositoryIndexer
     mock_indexer_cls = mocker.patch('src.main.GitRepositoryIndexer', spec=GitRepositoryIndexer)
     # Mock SystemExecutorFunctions
