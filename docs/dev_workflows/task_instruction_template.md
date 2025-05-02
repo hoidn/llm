@@ -210,6 +210,9 @@
     *   `[Tip 2: e.g., "Set breakpoints using `breakpoint()` before critical calls like `handler._execute_llm_call` or `resolve_model_class` to inspect inputs."]`
     *   `[Tip 3: e.g., "If tests fail on assertions about mock calls (`assert_called_once_with`), print the `mock_handler.method_calls` attribute to see exactly how the mock was called."]`
     *   `[Tip 4: e.g., "Common Issue: Ensure Pydantic models referenced by schema names actually exist in `src/system/models.py`."]`
+    *   `[Tip 5: Mock AttributeError]: If you get "Mock object has no attribute 'x'", the code tried to use attribute 'x' on a mock. Make sure your test setup gives the mock that attribute (e.g., `mock_instance.x = some_value`).`
+    *   `[Tip 6: Mock Call Assertion Failure]: If `assert_called_with` fails, print `mock_object.mock_calls` before the assert to see exactly how it was called.`
+    *   `[Tip 7: Mock Fixture Not Found]: If a test fails with "fixture not found" for a mock name, check if you need that mock parameter in the test signature (see project rules on `@patch`).`
     *   **Asking for Help:** If you are stuck for more than `[e.g., 30-60 minutes]` after trying to debug, please reach out. Explain what you are trying to achieve, what you have tried, and what error you are seeing.
 
 **7. Definition of Done:**

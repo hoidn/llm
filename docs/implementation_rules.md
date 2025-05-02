@@ -245,7 +245,14 @@ This document outlines the standard conventions, patterns, and rules for impleme
         # Optionally assert specific attributes of the caught exception
         assert "specific detail" in str(exc_info.value)
         ```
+    *   **[NEW] Testing Serialized/Dumped Structures:** When asserting the structure of complex return values, especially dictionaries derived from Pydantic models (like `TaskResult` containing nested error objects), be mindful of how serialization (`.model_dump(exclude_none=True)`, `json.dumps()`) affects the output. **Assert against the actual structure and keys present in the *returned dictionary*, not just the conceptual object structure.** Nested models might result in nested dictionaries. If assertions fail unexpectedly on structure, use debugging (`print()`, `breakpoint()`) to inspect the actual dictionary returned by the code under test before the assertion.
 *   **Unit Test Complex Logic:** While integration tests are prioritized, complex internal algorithms or utility functions (e.g., parameter substitution, complex parsing, intricate validation logic) should have dedicated unit tests with broad coverage of inputs and edge cases.
+
+**[NEW] Debugging Mock Failures**
+
+*   **`AttributeError: Mock object has no attribute 'x'`**: The code under test tried to access attribute `x` on a mock instance. Ensure your test fixture or setup configures the mock instance with `mock_instance.x = ...` *before* the code under test runs. Use `spec=OriginalClass` when creating mocks (`MagicMock(spec=...)`) to help catch attribute typos.
+*   **`AssertionError` on `assert_called_with(...)` or `assert_called_once()`**: Print `mock_object.mock_calls` just before the assertion to see the *actual* calls made with their arguments and counts. Compare this list carefully to your expectation.
+*   **`fixture not found` for a mock parameter**: Check if the parameter name in the test signature matches the one injected by `@patch`. Ensure you actually *need* that mock object in your test logic (see Guideline 6: Managing `@patch` Parameters).
 
 **Debugging Test Failures**
 
