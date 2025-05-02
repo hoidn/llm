@@ -17,14 +17,24 @@ module src.main {
         // Preconditions:
         // - config is an optional configuration dictionary.
         // Postconditions:
-        // - Initializes FileAccessManager, MemorySystem, TaskSystem, and PassthroughHandler instances.
-        // - Establishes necessary dependencies between core components (e.g., MemorySystem gets TaskSystem/Handler/FileManager refs, TaskSystem gets Handler ref).
-        // - Registers core task templates with TaskSystem, including **two** associative matching templates: "internal:associative_matching_content" and "internal:associative_matching_metadata".
-        //   (Note: The 'internal:associative_matching_content' template uses a simple `{{file_contents}}` placeholder due to limitations in the AtomicTaskExecutor's substitution mechanism).
-        // - Calls `initialize_aider` to set up AiderBridge and register Aider tools/executors.
-        //   (Note: Aider registration might depend on Handler initialization).
-        // - Calls internal `_register_system_tools` to register 'system:get_context' and 'system:read_files' tools and their executor functions using `handler.register_tool(...)`.
-        // - Initializes `indexed_repositories` list.
+        // - Core components (FileAccessManager, TaskSystem, PassthroughHandler, MemorySystem) are instantiated and dependencies wired.
+        // - Crucially, the internal `pydantic-ai Agent` within the LLMInteractionManager (inside the Handler)
+        //   is **only initialized at the end of this constructor**, after all tools are registered.
+        // - Core task templates (e.g., associative matching) are registered with TaskSystem.
+        // - System tools (e.g., system:get_context) are registered with the Handler.
+        // - Provider-specific tools (e.g., Anthropic Editor) are conditionally registered with the Handler.
+        // - `indexed_repositories` list is initialized.
+        // Behavior: Follows this specific initialization sequence:
+        //   1. Instantiate `FileAccessManager`.
+        //   2. Instantiate `TaskSystem`.
+        //   3. Instantiate `PassthroughHandler` (passing TaskSystem, MemorySystem=None, FileManager). Handler internally instantiates `LLMInteractionManager` (agent=None).
+        //   4. Instantiate `MemorySystem` (passing Handler, TaskSystem, FileManager).
+        //   5. Wire dependencies: Set `handler.memory_system = memory_system`, `task_system.memory_system = memory_system`, `task_system.set_handler(handler)`.
+        //   6. Register core templates with `task_system`.
+        //   7. Call internal `_register_system_tools` which registers tools with `handler`.
+        //   8. **(Phase 7 Logic Placeholder)** Check `handler.get_provider_identifier()` and conditionally register provider-specific tools with `handler`.
+        //   9. Retrieve the complete list of tools for the agent: `agent_tools = handler.get_tools_for_agent()`.
+        //   10. **Trigger agent initialization**: Call `handler.llm_manager.initialize_agent(tools=agent_tools)`.
         void __init__(optional dict<string, Any> config);
 
         // Indexes a local Git repository and updates the MemorySystem's global index.
@@ -51,6 +61,7 @@ module src.main {
 
         // Handles a user query using the PassthroughHandler.
         // Preconditions:
+        // - `__init__` must have completed successfully (including agent initialization).
         // - query is a non-empty string from the user.
         // Postconditions:
         // - Returns a TaskResult dictionary containing the response from the PassthroughHandler.
@@ -69,19 +80,6 @@ module src.main {
         // - Calls `passthrough_handler.reset_conversation()`.
         void reset_conversation();
 
-        // Initializes the AiderBridge component and registers associated tools and executors.
-        // Preconditions:
-        // - Core components (MemorySystem, PassthroughHandler) must be initialized.
-        // Postconditions:
-        // - Instantiates `AiderBridge` if not already done and stores it in `aider_bridge`.
-        // - If AiderBridge initializes successfully (Aider is available):
-        //   - Registers Aider tools ('aiderInteractive', 'aiderAutomatic') and their corresponding executor functions (wrapping `execute_aider_automatic`, `execute_aider_interactive` to pass the `aider_bridge` instance) with the PassthroughHandler using `handler.register_tool(...)`.
-        // - Logs success or failure messages related to Aider initialization and registration.
-        // Behavior:
-        // - Performs lazy initialization of `aider_bridge` (MCP Client).
-        // - Uses helper functions from `executors.aider_executors` for the executor part of registration.
-        // - Connects to the external Aider MCP Server as configured.
-        void initialize_aider();
 
         // Note: The main() function and private methods like _register_system_tools
         // are part of the application's execution logic, not its public interface contract,

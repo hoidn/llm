@@ -17,7 +17,9 @@ module src.handler.base_handler {
         // - config is an optional dictionary for configuration settings (e.g., base_system_prompt, API keys for pydantic-ai).
         // Postconditions:
         // - Handler is initialized with references to core systems (TaskSystem, MemorySystem).
-        // - LLMInteractionManager is instantiated with the default_model_identifier and config, which internally configures a pydantic-ai Agent.
+        // - LLMInteractionManager is instantiated with the default_model_identifier and config.
+        //   The underlying `pydantic-ai Agent` within the manager is **not** created at this time;
+        //   its initialization is deferred until triggered by `Application` after tool registration.
         // - FileContextManager is instantiated with the memory_system.
         // - FileAccessManager is instantiated.
         // - Tool registries (registered_tools, tool_executors) are initialized as empty dictionaries.
@@ -86,18 +88,6 @@ module src.handler.base_handler {
         // - Configures debug mode on the LLMInteractionManager if applicable.
         void set_debug_mode(boolean enabled);
 
-        // Sets the list of active tools to be used in LLM calls.
-        // Preconditions:
-        // - tool_names is a list of strings representing tool names.
-        // - Each tool name in the list must correspond to a previously registered tool.
-        // Postconditions:
-        // - If all tool names are valid (previously registered), the active_tools list is updated and returns true.
-        // - If any tool name is unknown, no change is made to active_tools and returns false.
-        // Behavior:
-        // - Validates that all tool names in the list are registered before setting.
-        // - Logs an error if any tool names are unknown.
-        // - The active_tools list affects which tools are available during LLM calls (see _execute_llm_call).
-        boolean set_active_tools(list<string> tool_names);
         
         // Retrieves the configured LLM provider/model identifier string.
         // Preconditions:
@@ -108,9 +98,32 @@ module src.handler.base_handler {
         // Behavior:
         // - Delegates the call to the internal LLMInteractionManager instance.
         optional string get_provider_identifier();
+        
+    // Sets the list of *active tool definitions* (specifications) to be used by the LLM.
+    // This is typically called once by the Application after determining the appropriate tools
+    // based on the configured provider.
+    // Preconditions:
+    // - tool_definitions is a list of dictionaries, where each dictionary represents a tool
+    //   specification compatible with the underlying LLM provider and pydantic-ai library.
+    // Postconditions:
+    // - The internal list `active_tool_definitions` is replaced with the provided list.
+    // - Returns true (or void, depending on implementation choice).
+    // Behavior:
+    // - Stores the provided list of tool specifications. This list will be passed to the
+    //   LLMInteractionManager during LLM calls.
+    boolean set_active_tool_definitions(list<dict<string, Any>> tool_definitions);
+    
+    // Retrieves the registered tools in the format required by the pydantic-ai Agent constructor.
+    // Preconditions: Tools should have been registered via `register_tool`.
+    // Postconditions: Returns a list representing the registered tools.
+    // Behavior: Retrieves tools from internal storage (e.g., `self.tool_executors.values()` or `self.registered_tools.values()`)
+    //           formatted as expected by `Agent(tools=...)`.
+    //           (**Note:** Assumed format is list of callables, needs verification.)
+    list<Any> get_tools_for_agent();
 
         // Internal method to execute a call via the LLMInteractionManager.
         // Preconditions:
+        // - LLMInteractionManager's `initialize_agent` must have been called.
         // - prompt is the user's input string.
         // - Optional overrides for system prompt, tools, and output type can be provided.
         // Postconditions:
@@ -119,12 +132,10 @@ module src.handler.base_handler {
         // Behavior:
         // - Delegates the primary interaction logic to the LLMInteractionManager which manages the pydantic-ai agent.
         // - Passes the current conversation history to the manager.
-        // - **Tool Precedence Logic:**
-        //   1. Highest precedence: If tools_override is provided, it's used directly.
-        //   2. Second precedence: If active_tools list (set via set_active_tools) is not empty, the corresponding executors are used.
-        //   3. Lowest precedence: If neither tools_override nor active_tools are set, no tools are passed to the LLM.
-        // - For active_tools, maps each tool name to its executor function before passing to the LLM.
-        // - If a tool name in active_tools has no corresponding executor, it's skipped with a warning.
+        // - **Tool Passing Logic:**
+        //   - If `tools_override` (list of callables/specs) is provided, it takes precedence and is passed to the LLMInteractionManager.
+        //   - Otherwise, the list of tool *definitions* stored internally by `set_active_tool_definitions` (i.e., `self.active_tool_definitions`) is retrieved and passed to the LLMInteractionManager's `execute_call` via the `active_tools` parameter.
+        //   - If neither is available, `None` is passed for tools.
         // - Handles potential errors during the LLM call.
         // @raises_error(condition="LLMInteractionError", description="If the LLM call fails.")
         Any _execute_llm_call(
