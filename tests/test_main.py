@@ -130,9 +130,7 @@ def app_components(mocker, tmp_path): # Add tmp_path
         mock_handler_instance.memory_system = None # Set initially, will be wired by Application
         mock_handler_instance.file_manager = mock_fm_instance # Simulate internal assignment
         mock_handler_instance.llm_manager = mock_llm_manager_instance # Simulate internal assignment
-        # --- START FIX ---
         mock_handler_instance.get_provider_identifier.return_value = "mock_provider:default" # Updated return value
-        # --- END FIX ---
         registered_tools_storage = {} # Use a real dict to capture registrations
         tool_executors_storage = {}
         # Updated mock registration function
