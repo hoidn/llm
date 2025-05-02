@@ -8,6 +8,8 @@ and provides top-level methods for interacting with the system.
 import os
 import sys
 import logging
+import functools # Add functools import
+import asyncio # Add asyncio import
 from typing import Dict, Any, Optional, List
 
 # Add project root to path for src imports
@@ -233,9 +235,24 @@ Select the best matching paths *from the provided metadata* and output the JSON.
             if provider_id and provider_id.startswith("anthropic:"):
                 logger.info("Anthropic provider detected. Registering Anthropic Editor tools...")
                 registered_anthropic_count = 0
-                # Ensure anthropic_tools module and its components are imported
                 try:
-                    # List of tuples: (spec_dict, function_callable)
+                    # --- START Anthropic Wrapper Refactor ---
+                    # Define the wrapper function factory OUTSIDE the loop
+                    def create_anthropic_wrapper(tool_func, fm_instance):
+                        # This inner function is what gets registered
+                        def _anthropic_tool_wrapper(params: Dict[str, Any]) -> str: # Assuming Anthropic tools return str
+                            if not fm_instance: return "Error: File manager not available"
+                            try:
+                                # Call the original tool func, passing fm and unpacking params
+                                return tool_func(fm_instance, **params)
+                            except Exception as e:
+                                logger.exception(f"Error executing Anthropic tool {tool_func.__name__}: {e}")
+                                return f"Error executing tool: {e}" # Return error string
+                        # Copy metadata for better introspection if needed (optional)
+                        functools.update_wrapper(_anthropic_tool_wrapper, tool_func)
+                        return _anthropic_tool_wrapper
+                    # --- END Anthropic Wrapper Refactor ---
+
                     anthropic_tool_pairs = [
                         (anthropic_tools.ANTHROPIC_VIEW_SPEC, anthropic_tools.view),
                         (anthropic_tools.ANTHROPIC_CREATE_SPEC, anthropic_tools.create),
@@ -244,14 +261,10 @@ Select the best matching paths *from the provided metadata* and output the JSON.
                     ]
 
                     for tool_spec, tool_func in anthropic_tool_pairs:
-                        # Create a wrapper lambda that captures the handler's file_manager
-                        # and passes it as the first argument to the actual tool function.
-                        # It receives the tool_input dict from the handler's _execute_tool.
-                        # --- START FIX: Rename first arg to 'params' and unpack correctly ---
-                        # Use default arguments in lambda to capture current values of func and fm
-                        # Rename first arg to 'params' for consistency
-                        executor_wrapper = lambda params, func=tool_func, fm=self.passthrough_handler.file_manager: func(fm, **params) # type: ignore # Pass fm first, then unpack params dict
-                        # --- END FIX ---
+                        # --- START Anthropic Wrapper Refactor ---
+                        # Create the specific wrapper for this tool_func and the current file_manager
+                        executor_wrapper = create_anthropic_wrapper(tool_func, self.passthrough_handler.file_manager)
+                        # --- END Anthropic Wrapper Refactor ---
 
                         success = self.passthrough_handler.register_tool(tool_spec, executor_wrapper)
                         if success:
@@ -373,6 +386,25 @@ Select the best matching paths *from the provided metadata* and output the JSON.
              logger.error("Cannot register system:get_context tool: MemorySystem not initialized.")
              # Decide whether to continue or raise
              # return # Or raise an error
+        if not self.passthrough_handler.file_manager: # Check file manager dependency
+            logger.error("Cannot register system:read_files tool: FileAccessManager not initialized.")
+            # return # Or raise an error
+
+        # --- START System Wrapper Refactor ---
+        # --- Wrapper for get_context ---
+        def _get_context_wrapper(params: Dict[str, Any], mem_sys=self.memory_system) -> Dict[str, Any]:
+            """Wrapper for SystemExecutorFunctions.execute_get_context."""
+            if not mem_sys: return {"status": "FAILED", "content": "Memory system not available"}
+            # Assuming execute_get_context is synchronous
+            return SystemExecutorFunctions.execute_get_context(params, mem_sys)
+
+        # --- Wrapper for read_files ---
+        def _read_files_wrapper(params: Dict[str, Any], fm=self.passthrough_handler.file_manager) -> Dict[str, Any]:
+            """Wrapper for SystemExecutorFunctions.execute_read_files."""
+            if not fm: return {"status": "FAILED", "content": "File manager not available"}
+            # Assuming execute_read_files is synchronous
+            return SystemExecutorFunctions.execute_read_files(params, fm)
+        # --- END System Wrapper Refactor ---
 
         tools_to_register = [
             {
@@ -388,9 +420,9 @@ Select the best matching paths *from the provided metadata* and output the JSON.
                         "required": ["query"]
                     }
                 },
-                # Use lambda to pass the correct dependency instance
-                # Ensure memory_system is available when lambda is defined
-                "executor": lambda params, mem_sys=self.memory_system: SystemExecutorFunctions.execute_get_context(params, mem_sys) if mem_sys else {"status": "FAILED", "content": "Memory system not available"}
+                # --- START System Wrapper Refactor ---
+                "executor": _get_context_wrapper # Pass the defined function
+                # --- END System Wrapper Refactor ---
             },
             {
                 "spec": {
@@ -409,9 +441,9 @@ Select the best matching paths *from the provided metadata* and output the JSON.
                         "required": ["file_paths"]
                     }
                 },
-                # Use lambda to pass the handler's file manager
-                # Ensure file_manager is available when lambda is defined
-                "executor": lambda params, fm=self.passthrough_handler.file_manager: SystemExecutorFunctions.execute_read_files(params, fm) if fm else {"status": "FAILED", "content": "File manager not available"}
+                # --- START System Wrapper Refactor ---
+                "executor": _read_files_wrapper # Pass the defined function
+                # --- END System Wrapper Refactor ---
             }
         ]
 
@@ -468,7 +500,48 @@ Select the best matching paths *from the provided metadata* and output the JSON.
             )
             logger.info("AiderBridge (MCP Client) instantiated.")
 
-            # Define Aider tool specifications
+            # --- START Aider Wrapper Refactor ---
+            # --- Wrapper for Aider automatic ---
+            def _aider_auto_wrapper(params: Dict[str, Any], bridge=self.aider_bridge) -> Dict[str, Any]:
+                 """Wrapper for AiderExecutors.execute_aider_automatic."""
+                 # Use asyncio.run() if the executor is async and called from sync context
+                 # If initialize_aider is async, just await it. Assuming sync for now.
+                 # Check if bridge is valid before calling
+                 if not bridge: return _create_failed_result_dict("dependency_error", "Aider bridge not available.")
+                 try:
+                     # Assuming execute_aider_automatic is async
+                     # Check if an event loop is already running
+                     try:
+                         loop = asyncio.get_running_loop()
+                         # If a loop is running, schedule the coroutine and wait for it
+                         # This is a simplified approach; complex scenarios might need better handling
+                         logger.warning("Running async Aider tool from existing event loop. Consider refactoring caller to be async.")
+                         future = asyncio.run_coroutine_threadsafe(AiderExecutors.execute_aider_automatic(params, bridge), loop)
+                         return future.result() # Blocking wait
+                     except RuntimeError: # No running event loop
+                         return asyncio.run(AiderExecutors.execute_aider_automatic(params, bridge))
+                 except Exception as e:
+                      logger.exception(f"Error running aider automatic wrapper: {e}")
+                      return _create_failed_result_dict("unexpected_error", f"Error running Aider tool: {e}")
+
+            # --- Wrapper for Aider interactive ---
+            def _aider_inter_wrapper(params: Dict[str, Any], bridge=self.aider_bridge) -> Dict[str, Any]:
+                 """Wrapper for AiderExecutors.execute_aider_interactive."""
+                 if not bridge: return _create_failed_result_dict("dependency_error", "Aider bridge not available.")
+                 try:
+                     # Assuming execute_aider_interactive is async
+                     try:
+                         loop = asyncio.get_running_loop()
+                         logger.warning("Running async Aider tool from existing event loop. Consider refactoring caller to be async.")
+                         future = asyncio.run_coroutine_threadsafe(AiderExecutors.execute_aider_interactive(params, bridge), loop)
+                         return future.result()
+                     except RuntimeError: # No running event loop
+                         return asyncio.run(AiderExecutors.execute_aider_interactive(params, bridge))
+                 except Exception as e:
+                      logger.exception(f"Error running aider interactive wrapper: {e}")
+                      return _create_failed_result_dict("unexpected_error", f"Error running Aider tool: {e}")
+            # --- END Aider Wrapper Refactor ---
+
             aider_tools_to_register = [
                 {
                     "spec": {
@@ -484,8 +557,9 @@ Select the best matching paths *from the provided metadata* and output the JSON.
                             "required": ["prompt"]
                         }
                     },
-                    # Pass the ASYNC executor function directly
-                    "executor": AiderExecutors.execute_aider_automatic
+                    # --- START Aider Wrapper Refactor ---
+                    "executor": _aider_auto_wrapper # Pass defined function
+                    # --- END Aider Wrapper Refactor ---
                 },
                 {
                     "spec": {
@@ -502,8 +576,9 @@ Select the best matching paths *from the provided metadata* and output the JSON.
                             # Require at least one of query or prompt
                         }
                     },
-                     # Pass the ASYNC executor function directly
-                    "executor": AiderExecutors.execute_aider_interactive
+                     # --- START Aider Wrapper Refactor ---
+                    "executor": _aider_inter_wrapper # Pass defined function
+                     # --- END Aider Wrapper Refactor ---
                 }
             ]
 
@@ -512,11 +587,10 @@ Select the best matching paths *from the provided metadata* and output the JSON.
             # Ensure AiderExecutors was imported successfully before using its methods
             if AiderExecutors:
                 for tool in aider_tools_to_register:
-                    # Create a wrapper lambda that passes the aider_bridge instance
-                    # Use default arguments to capture current values
-                    executor_wrapper = lambda params, bridge=self.aider_bridge, func=tool["executor"]: func(params, bridge) # type: ignore
-
-                    success = self.passthrough_handler.register_tool(tool["spec"], executor_wrapper)
+                    # --- START Aider Wrapper Refactor ---
+                    # Register the explicit wrapper directly
+                    success = self.passthrough_handler.register_tool(tool["spec"], tool["executor"])
+                    # --- END Aider Wrapper Refactor ---
                     if success:
                         registered_count += 1
                         logger.debug(f"Registered Aider tool: {tool['spec']['name']}")
