@@ -153,7 +153,9 @@ def app_components(mocker, tmp_path): # Add tmp_path
         mock_handler_instance.set_active_tool_definitions = MagicMock()
         # Use AsyncMock if the method being mocked is async
         # Mock initialize_agent as an async function if it's called with await
-        # mock_llm_manager_instance.initialize_agent = AsyncMock() # Example if it were async
+        # --- START FIX ---
+        mock_llm_manager_instance.initialize_agent = MagicMock() # Use MagicMock if synchronous
+        # --- END FIX ---
 
         # Yield the dictionary of mocks within the 'with' block
         yield {
