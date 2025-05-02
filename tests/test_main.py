@@ -64,7 +64,6 @@ def app_components(tmp_path):
          patch('src.main.PassthroughHandler', autospec=True) as MockHandler, \
          patch('src.main.GitRepositoryIndexer', autospec=True) as MockIndexer, \
          patch('src.main.SystemExecutorFunctions', autospec=True) as MockSysExecCls, \
-         patch('src.main.anthropic_tools', autospec=True) as MockAnthropicToolsModule, \
          patch('src.handler.llm_interaction_manager.Agent', autospec=True) as MockPydanticAgent, \
          patch('src.main.AiderBridge', autospec=True) as MockAiderBridge, \
          patch('src.main.AiderExecutors', autospec=True) as MockAiderExec, \
