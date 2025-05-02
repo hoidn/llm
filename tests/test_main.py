@@ -129,9 +129,8 @@ def app_components(mocker, tmp_path): # Add tmp_path
         # Configure the mock PassthroughHandler instance
         mock_handler_instance.memory_system = None # Set initially, will be wired by Application
         # Mock the file_manager attribute on the handler instance, using the MockFM's return_value
-        # --- START FIX ---
         mock_handler_instance.file_manager = MockFileAccessManager.return_value # Simulate internal assignment
-        # --- END FIX ---
+        # Mock the LLMInteractionManager instance nested within the handler instance
         mock_handler_instance.llm_manager = mock_llm_manager_instance # Simulate internal assignment
         mock_handler_instance.get_provider_identifier.return_value = "mock_provider:default" # Updated return value
         registered_tools_storage = {} # Use a real dict to capture registrations
