@@ -67,16 +67,27 @@ class LLMInteractionManager:
         self._model_id = self.default_model_identifier
         self._base_prompt = self.base_system_prompt
         self._agent_config = self.config.get("pydantic_ai_agent_config", {})
-        self.agent: Optional[Any] = None
-
-        if self.agent:
-            logging.info(
-                f"LLMInteractionManager initialized with agent for model: {self.default_model_identifier}"
-            )
+        # Initialize pydantic-ai Agent immediately if available
+        if Agent:
+            try:
+                self.agent = Agent(
+                    model=self._model_id,
+                    system_prompt=self._base_prompt,
+                    **self._agent_config,
+                )
+                logging.info(
+                    f"LLMInteractionManager initialized with agent for model: {self.default_model_identifier}"
+                )
+            except Exception as e:
+                logging.error(
+                    f"Failed to initialize pydantic-ai Agent in __init__: {e}", exc_info=True
+                )
+                self.agent = None
         else:
             logging.warning(
-                "LLMInteractionManager initialized, but pydantic-ai agent creation failed."
+                "LLMInteractionManager initialized without Agent: pydantic-ai Agent unavailable."
             )
+            self.agent = None
 
     def _initialize_pydantic_ai_agent(self) -> Optional[Any]:
         """
