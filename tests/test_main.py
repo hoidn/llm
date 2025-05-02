@@ -104,7 +104,9 @@ def app_components(mocker, tmp_path): # Add tmp_path
         mock_task_system_instance = MagicMock(spec=TaskSystem)
         mock_handler_instance = MagicMock(spec=PassthroughHandler)
         mock_fm_instance = MagicMock(spec=FileAccessManager)
-        mock_llm_manager_instance = MagicMock(spec=LLMInteractionManager)
+        # --- START FIX ---
+        mock_llm_manager_instance = MagicMock() # Removed spec
+        # --- END FIX ---
         mock_aider_bridge_instance = MagicMock(spec=AiderBridge)
         mock_indexer_instance = MagicMock(spec=GitRepositoryIndexer) # Instance for indexer
         # No instance needed for MockPydanticAgent as LLMInteractionManager is mocked
