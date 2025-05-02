@@ -112,7 +112,6 @@ def app_components(mocker, tmp_path): # Add tmp_path
         # Configure mock instances with attributes accessed during Application.__init__
         mock_fm_instance.base_path = "/mocked/base/path" # For logging
         # Add the memory_system attribute so hasattr checks pass in Application.__init__
-        mock_handler_instance.memory_system = None
         mock_task_system_instance.memory_system = None
 
         # Configure the mocked classes to return the mock instances
@@ -127,7 +126,8 @@ def app_components(mocker, tmp_path): # Add tmp_path
         # MockAiderExec does not need a return_value as it only has static methods
         # MockPydanticAgent does not need a return_value as LLMInteractionManager is mocked
 
-        # Configure mocks attached TO the handler instance, as they are instantiated within BaseHandler init
+        # Configure the mock PassthroughHandler instance
+        mock_handler_instance.memory_system = None # Set initially, will be wired by Application
         mock_handler_instance.file_manager = mock_fm_instance # Simulate internal assignment
         mock_handler_instance.llm_manager = mock_llm_manager_instance # Simulate internal assignment
         mock_handler_instance.get_provider_identifier.return_value = "mock:provider"
