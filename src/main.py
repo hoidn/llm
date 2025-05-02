@@ -13,6 +13,10 @@ from typing import Dict, Any, Optional, List
 # Add project root to path for src imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
+# Configure logging early
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__) # Define logger before first use
+
 from src.memory.memory_system import MemorySystem
 from src.task_system.task_system import TaskSystem
 from src.handler.passthrough_handler import PassthroughHandler
@@ -38,10 +42,6 @@ except ImportError:
     AiderExecutors = None # type: ignore
     AIDER_AVAILABLE = False
 
-
-# Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
 
 # Helper function to create a standard FAILED TaskResult dictionary
 def _create_failed_result_dict(reason: TaskFailureReason, message: str, details: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
