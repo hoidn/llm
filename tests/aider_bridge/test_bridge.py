@@ -13,7 +13,8 @@ except ImportError:
     AiderBridge = None # type: ignore
 
 # Import system models used in results/mocks
-from src.system.models import TaskResult, AssociativeMatchResult, MatchTuple, TaskFailureError, TaskFailureReason, ContextGenerationInput
+# Fix: Import TaskFailureDetails from models
+from src.system.models import TaskResult, AssociativeMatchResult, MatchTuple, TaskFailureError, TaskFailureReason, ContextGenerationInput, TaskFailureDetails
 
 # --- Import or Define REAL/DUMMY mcp.py types ---
 # If mcp.py IS installed, these imports should work directly.
@@ -224,10 +225,11 @@ class TestAiderBridge:
         # Check that the original error message from the server is in the content set by _create_failed_result_dict
         assert error_msg in result.get("content", "")
         assert result.get("notes", {}).get("error", {}).get("reason") == "tool_execution_error"
-        # Check that the original error details are included in the notes
-        # The details dict passed to _create_failed_result_dict should contain the server payload
-        assert result.get("notes", {}).get("error", {}).get("details", {}).get("error") == error_msg
-        assert result.get("notes", {}).get("error", {}).get("details", {}).get("diff") == "partial diff..."
+        # --- START FIX: Check nested details ---
+        # Check that the original error details are included in the nested notes within details
+        assert result.get("notes", {}).get("error", {}).get("details", {}).get("notes", {}).get("error") == error_msg
+        assert result.get("notes", {}).get("error", {}).get("details", {}).get("notes", {}).get("diff") == "partial diff..."
+        # --- END FIX ---
         # mock_mcp_flag is unused in the test logic
 
     @pytest.mark.asyncio
@@ -385,8 +387,10 @@ class TestAiderBridge:
         assert result.get("status") == "FAILED"
         assert "Failed to parse JSON response" in result.get("content", "")
         assert result.get("notes", {}).get("error", {}).get("reason") == "output_format_failure"
-        # Check that raw response is included in details
-        assert result.get("notes", {}).get("error", {}).get("details", {}).get("raw_response") == invalid_json
+        # --- START FIX: Check nested details ---
+        # Check that raw response is included in the nested notes within details
+        assert result.get("notes", {}).get("error", {}).get("details", {}).get("notes", {}).get("raw_response") == invalid_json
+        # --- END FIX ---
         # mock_mcp_flag is unused in the test logic
 
     # --- Context Helper Method Tests ---
