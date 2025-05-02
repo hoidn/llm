@@ -18,7 +18,11 @@ from src.memory.indexers.git_repository_indexer import GitRepositoryIndexer
 from src import dispatcher
 # Import modules for patching targets
 from src.executors import system_executors as system_executors_module
+from src.executors import aider_executors as aider_executors_module # Import aider executors
 from src.tools import anthropic_tools as anthropic_tools_module
+# Define the correct path where Application looks up AIDER_AVAILABLE
+AIDER_AVAILABLE_IMPORT_PATH = 'src.main.AIDER_AVAILABLE'
+
 
 # Define dummy tool specs used in Application init
 # Aider specs removed as Aider integration is deferred
@@ -38,7 +42,9 @@ def app_components(tmp_path):
          patch('src.main.GitRepositoryIndexer', MagicMock(spec=GitRepositoryIndexer)) as MockIndexer, \
          patch('src.main.SystemExecutorFunctions', MagicMock(spec=system_executors_module.SystemExecutorFunctions)) as MockSysExec, \
          patch('src.main.anthropic_tools', MagicMock(spec=anthropic_tools_module)) as MockAnthropicTools, \
-         patch('src.handler.llm_interaction_manager.Agent') as MockPydanticAgent: # Mock Agent used by manager
+         patch('src.handler.llm_interaction_manager.Agent') as MockPydanticAgent, \
+         patch('src.main.AiderBridge') as MockAiderBridge, \
+         patch('src.main.AiderExecutorFunctions', MagicMock(spec=aider_executors_module.AiderExecutorFunctions)) as MockAiderExec: # Patch Aider Executors
 
         # Configure mocks BEFORE Application instantiation
         mock_fm_instance = MockFM.return_value
@@ -50,24 +56,28 @@ def app_components(tmp_path):
         mock_handler_instance.get_provider_identifier.return_value = "default:fixture_provider" # Default for fixture
         mock_handler_instance.set_active_tool_definitions.return_value = True
         mock_llm_manager_instance = MagicMock(spec=LLMInteractionManager)
+        mock_llm_manager_instance.initialize_agent = MagicMock() # Mock the init agent call
         mock_handler_instance.llm_manager = mock_llm_manager_instance
         # Store registered tools and executors on the mock handler instance
         mock_handler_instance.tool_executors = {}
         mock_handler_instance.registered_tools = {}
 
         # Simulate register_tool by adding to the mock dictionaries
-        def mock_register_tool(spec, executor):
+        registered_tools_storage = {}
+        tool_executors_storage = {}
+        def mock_register_tool_impl(spec, executor):
             tool_name = spec.get('name')
             if tool_name:
-                mock_handler_instance.registered_tools[tool_name] = {'spec': spec, 'executor': executor}
-                mock_handler_instance.tool_executors[tool_name] = executor
+                registered_tools_storage[tool_name] = {'spec': spec, 'executor': executor}
+                tool_executors_storage[tool_name] = executor
+                # print(f"DEBUG: Mock register_tool called for {tool_name}") # Debug print
                 return True
             return False
-        mock_handler_instance.register_tool.side_effect = mock_register_tool
+        mock_handler_instance.register_tool.side_effect = mock_register_tool_impl
 
 
         # Mock get_tools_for_agent to return based on current tool_executors
-        mock_handler_instance.get_tools_for_agent.side_effect = lambda: list(mock_handler_instance.tool_executors.values())
+        mock_handler_instance.get_tools_for_agent.side_effect = lambda: list(tool_executors_storage.values())
 
 
         # Configure the System tools mock module with dummy functions/specs
@@ -91,6 +101,13 @@ def app_components(tmp_path):
         MockAnthropicTools.ANTHROPIC_STR_REPLACE_SPEC = {"name": "anthropic:str_replace", "description":"Replace", "input_schema":{}}
         MockAnthropicTools.ANTHROPIC_INSERT_SPEC = {"name": "anthropic:insert", "description":"Insert", "input_schema":{}}
 
+        # Configure Aider executor mocks (needed by Application.initialize_aider)
+        # Make them identifiable for assertion
+        mock_aider_auto_func = MagicMock(spec=Callable, name="mock_execute_aider_automatic")
+        mock_aider_inter_func = MagicMock(spec=Callable, name="mock_execute_aider_interactive")
+        MockAiderExec.execute_aider_automatic = mock_aider_auto_func
+        MockAiderExec.execute_aider_interactive = mock_aider_inter_func
+
         # Yield a dictionary containing the key mocks needed for tests
         yield {
             "MockFM": MockFM,
@@ -101,6 +118,8 @@ def app_components(tmp_path):
             "MockSysExec": MockSysExec,
             "MockAnthropicTools": MockAnthropicTools,
             "MockPydanticAgent": MockPydanticAgent,
+            "MockAiderBridge": MockAiderBridge, # Include AiderBridge mock
+            "MockAiderExec": MockAiderExec, # Include AiderExec mock
             # Instances that might be useful
             "mock_handler_instance": mock_handler_instance,
             "mock_llm_manager_instance": mock_llm_manager_instance,
@@ -111,6 +130,8 @@ def app_components(tmp_path):
             "mock_anthropic_create_func": mock_anthropic_create_func,
             "mock_anthropic_replace_func": mock_anthropic_replace_func,
             "mock_anthropic_insert_func": mock_anthropic_insert_func,
+            "mock_aider_auto_func": mock_aider_auto_func, # Include Aider func mocks
+            "mock_aider_inter_func": mock_aider_inter_func,
         }
 
 # --- Test Cases ---
@@ -406,7 +427,9 @@ def test_application_initialize_aider_deferred(app_components):
     """Verify initialize_aider is a placeholder and does not register tools."""
     # Arrange
     app_components["mock_handler_instance"].get_provider_identifier.return_value = "test:provider"
-    app = Application(config={})
+    # Patch AIDER_AVAILABLE to False where Application looks it up
+    with patch(AIDER_AVAILABLE_IMPORT_PATH, False):
+        app = Application(config={})
     # Reset mock calls made during init
     app.passthrough_handler.register_tool.reset_mock()
     register_call_count_before = app.passthrough_handler.register_tool.call_count
@@ -437,7 +460,9 @@ def test_application_init_passes_correct_tool_format_to_agent(app_components):
     # The fixture now correctly sets up the mocks and handler state after Application init
 
     # Act: Instantiate Application to trigger the sequence
-    app = Application()
+    # Patch AIDER_AVAILABLE to False for this test
+    with patch(AIDER_AVAILABLE_IMPORT_PATH, False):
+        app = Application()
 
     # Assert: Check the arguments passed to the *mocked* initialize_agent
     # This assertion happens implicitly during the fixture setup when Application is created
@@ -465,7 +490,9 @@ def test_application_init_registers_system_tools_only_for_non_anthropic_provider
     app_components["mock_handler_instance"].get_provider_identifier.return_value = "openai:gpt-4"
 
     # Act: Instantiate Application - this triggers the __init__ logic
-    app = Application(config={})
+    # Patch AIDER_AVAILABLE to False for this test
+    with patch(AIDER_AVAILABLE_IMPORT_PATH, False):
+        app = Application(config={})
 
     # Assert Handler Tool Registration
     # Check the registered_tools dictionary on the mock handler instance
@@ -480,6 +507,10 @@ def test_application_init_registers_system_tools_only_for_non_anthropic_provider
     assert "anthropic:create" not in registered_tool_names
     assert "anthropic:str_replace" not in registered_tool_names
     assert "anthropic:insert" not in registered_tool_names
+    # Check Aider tools WERE NOT registered
+    assert "aider:automatic" not in registered_tool_names
+    assert "aider:interactive" not in registered_tool_names
+
 
     # Assert Agent Initialization Call
     # Check the call made to the *mocked* initialize_agent
@@ -503,7 +534,9 @@ def test_application_init_registers_anthropic_and_system_tools_for_anthropic_pro
     app_components["mock_handler_instance"].get_provider_identifier.return_value = "anthropic:claude-3-5-sonnet-latest"
 
     # Act: Instantiate Application
-    app = Application(config={})
+    # Patch AIDER_AVAILABLE to False for this test
+    with patch(AIDER_AVAILABLE_IMPORT_PATH, False):
+        app = Application(config={})
 
     # Assert Handler Tool Registration
     registered_tools = app.passthrough_handler.registered_tools
@@ -517,6 +550,9 @@ def test_application_init_registers_anthropic_and_system_tools_for_anthropic_pro
     assert "anthropic:create" in registered_tool_names
     assert "anthropic:str_replace" in registered_tool_names
     assert "anthropic:insert" in registered_tool_names
+    # Check Aider tools WERE NOT registered
+    assert "aider:automatic" not in registered_tool_names
+    assert "aider:interactive" not in registered_tool_names
 
     # Assert Agent Initialization Call
     app.passthrough_handler.llm_manager.initialize_agent.assert_called_once()
@@ -552,3 +588,101 @@ def test_application_init_registers_anthropic_and_system_tools_for_anthropic_pro
         app.passthrough_handler.file_manager,
         **create_params
     )
+
+# --- NEW Test for Aider Tool Registration ---
+
+# Fixture specifically for the Aider registration test
+@pytest.fixture
+def mock_app_dependencies_for_aider(tmp_path):
+    """Provides mocked dependencies for Application testing, focusing on Aider."""
+    with patch('src.main.FileAccessManager', spec=True) as MockFM, \
+         patch('src.main.MemorySystem', spec=True) as MockMemory, \
+         patch('src.main.TaskSystem', spec=True) as MockTask, \
+         patch('src.main.PassthroughHandler', spec=True) as MockHandler, \
+         patch('src.main.GitRepositoryIndexer', spec=True) as MockIndexer, \
+         patch('src.main.SystemExecutorFunctions', spec=True) as MockSysExec, \
+         patch('src.main.anthropic_tools', spec=True) as MockAnthropicTools, \
+         patch('src.handler.llm_interaction_manager.Agent') as MockPydanticAgent, \
+         patch('src.main.AiderBridge') as MockAiderBridge, \
+         patch('src.main.AiderExecutorFunctions', spec=True) as MockAiderExec:
+
+        mock_fm_instance = MockFM.return_value
+        mock_memory_instance = MockMemory.return_value
+        mock_task_instance = MockTask.return_value
+        mock_handler_instance = MockHandler.return_value
+        mock_handler_instance.file_manager = mock_fm_instance
+        mock_handler_instance.register_tool.return_value = True
+        mock_handler_instance.get_provider_identifier.return_value = "default:fixture_provider"
+        mock_handler_instance.set_active_tool_definitions.return_value = True
+        mock_llm_manager_instance = MagicMock(spec=LLMInteractionManager)
+        mock_llm_manager_instance.initialize_agent = MagicMock()
+        mock_handler_instance.llm_manager = mock_llm_manager_instance
+        mock_handler_instance.tool_executors = {}
+        mock_handler_instance.registered_tools = {}
+
+        registered_tools_storage = {}
+        tool_executors_storage = {}
+        def mock_register_tool_impl(spec, executor):
+            tool_name = spec.get('name')
+            if tool_name:
+                registered_tools_storage[tool_name] = {'spec': spec, 'executor': executor}
+                tool_executors_storage[tool_name] = executor
+                return True
+            return False
+        mock_handler_instance.register_tool.side_effect = mock_register_tool_impl
+
+        mock_handler_instance.get_tools_for_agent.side_effect = lambda: list(tool_executors_storage.values())
+
+        mock_aider_auto_func = MagicMock(spec=Callable, name="mock_execute_aider_automatic")
+        mock_aider_inter_func = MagicMock(spec=Callable, name="mock_execute_aider_interactive")
+        MockAiderExec.execute_aider_automatic = mock_aider_auto_func
+        MockAiderExec.execute_aider_interactive = mock_aider_inter_func
+
+        yield {
+            "MockHandler": MockHandler,
+            "mock_handler_instance": mock_handler_instance,
+            "MockAiderExec": MockAiderExec,
+            "mock_aider_auto_func": mock_aider_auto_func,
+            "mock_aider_inter_func": mock_aider_inter_func,
+            "registered_tools_storage": registered_tools_storage, # Expose storage for assertion
+        }
+
+def test_application_init_registers_aider_tools(mock_app_dependencies_for_aider):
+    """Verify Application.__init__ registers aider tools with the handler when AIDER_AVAILABLE is True."""
+    # Arrange
+    mock_handler_instance = mock_app_dependencies_for_aider["mock_handler_instance"]
+    expected_auto_executor = mock_app_dependencies_for_aider["mock_aider_auto_func"]
+    expected_inter_executor = mock_app_dependencies_for_aider["mock_aider_inter_func"]
+    registered_tools_storage = mock_app_dependencies_for_aider["registered_tools_storage"]
+
+    # Act
+    # Initialize Application. Patch AIDER_AVAILABLE where Application looks it up.
+    with patch(AIDER_AVAILABLE_IMPORT_PATH, True):
+         app = Application()
+
+    # Assert
+    # Check the storage populated by the mock register_tool side effect
+    assert "aider:automatic" in registered_tools_storage
+    assert "aider:interactive" in registered_tools_storage
+
+    # Verify the executor functions stored are the mocked ones
+    assert registered_tools_storage["aider:automatic"]["executor"] is expected_auto_executor
+    assert registered_tools_storage["aider:interactive"]["executor"] is expected_inter_executor
+
+    # Verify the specs passed (basic check)
+    assert isinstance(registered_tools_storage["aider:automatic"]["spec"], dict)
+    assert registered_tools_storage["aider:automatic"]["spec"].get('name') == 'aider:automatic'
+    assert isinstance(registered_tools_storage["aider:interactive"]["spec"], dict)
+    assert registered_tools_storage["aider:interactive"]["spec"].get('name') == 'aider:interactive'
+
+    # Check agent initialization includes these tools
+    app.passthrough_handler.llm_manager.initialize_agent.assert_called_once()
+    args, kwargs = app.passthrough_handler.llm_manager.initialize_agent.call_args
+    assert 'tools' in kwargs
+    initialized_tools_list = kwargs['tools']
+    # Expect 2 system tools + 2 aider tools = 4 total
+    assert len(initialized_tools_list) == 4
+    # Check that the aider executors are present in the list passed to the agent
+    # Note: These are the raw mock functions, not wrapped lambdas in this case
+    assert expected_auto_executor in initialized_tools_list
+    assert expected_inter_executor in initialized_tools_list
