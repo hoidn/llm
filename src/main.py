@@ -91,6 +91,18 @@ class Application:
             )
             logger.info("PassthroughHandler initialized.")
 
+            # Get provider identifier for tool determination
+            provider_id = self.passthrough_handler.get_provider_identifier()
+            logger.info(f"Provider identifier: {provider_id}")
+            
+            # Determine active tools based on provider
+            active_tools = self._determine_active_tools(provider_id)
+            
+            # Set active tools on the handler
+            if active_tools:
+                self.passthrough_handler.set_active_tool_definitions(active_tools)
+                logger.info(f"Set {len(active_tools)} active tool definitions on handler")
+                
             # 3. Instantiate MemorySystem (needs Handler, TaskSystem, FileManager)
             self.memory_system = MemorySystem(
                 handler=self.passthrough_handler, # Pass Handler instance
@@ -211,6 +223,46 @@ Select the best matching paths *from the provided metadata* and output the JSON.
             logger.exception(f"FATAL: Application initialization failed: {e}")
             # Depending on context, might re-raise or handle differently
             raise
+
+    def _determine_active_tools(self, provider_identifier: Optional[str]) -> List[Dict[str, Any]]:
+        """
+        Determines which tools should be active based on the provider identifier.
+        
+        Args:
+            provider_identifier: String identifying the LLM provider (e.g., "openai:gpt-4o", "anthropic:claude-3-5-sonnet-latest")
+            
+        Returns:
+            List of tool specification dictionaries to be set as active.
+        """
+        logger.info(f"Determining active tools for provider: {provider_identifier}")
+        
+        # Start with system tools that work with all providers
+        system_tools = []
+        
+        # Add system tools from registered_tools if they exist
+        if self.passthrough_handler and hasattr(self.passthrough_handler, 'registered_tools'):
+            for tool_name, tool_spec in self.passthrough_handler.registered_tools.items():
+                if tool_name.startswith('system:'):
+                    system_tools.append(tool_spec)
+                    logger.debug(f"Including system tool: {tool_name}")
+        
+        # Provider-specific tools would be added here based on the provider_identifier
+        provider_tools = []
+        
+        if provider_identifier:
+            # Example: Add OpenAI-specific tools
+            if provider_identifier.startswith('openai:'):
+                # Add OpenAI-specific tools here if needed
+                pass
+            # Example: Add Anthropic-specific tools
+            elif provider_identifier.startswith('anthropic:'):
+                # Add Anthropic-specific tools here if needed
+                pass
+            
+        # Combine all tools
+        active_tools = system_tools + provider_tools
+        logger.info(f"Determined {len(active_tools)} active tools: {[t.get('name', 'unnamed') for t in active_tools]}")
+        return active_tools
 
     def _register_system_tools(self):
         """Registers system-level tools with the handler."""

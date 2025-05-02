@@ -1,5 +1,6 @@
 import os
 from unittest.mock import MagicMock, patch
+import warnings
 
 import pytest
 
@@ -814,3 +815,82 @@ def test_execute_llm_call_missing_executor_in_active_tools(base_handler_instance
         assert any(
             "missing_tool" in str(args) for args, _ in mock_warning.call_args_list
         )
+
+
+# --- Tests for set_active_tool_definitions and passing active tool definitions ---
+
+def test_set_active_tool_definitions(base_handler_instance):
+    """Test setting active tool definitions."""
+    # Create tool definitions
+    tool_def1 = {"name": "tool1", "description": "Tool 1", "input_schema": {}}
+    tool_def2 = {"name": "tool2", "description": "Tool 2", "input_schema": {}}
+    
+    # Set active tool definitions
+    base_handler_instance.set_active_tool_definitions([tool_def1, tool_def2])
+    
+    # Verify the tool definitions were stored
+    assert hasattr(base_handler_instance, 'active_tool_definitions')
+    assert base_handler_instance.active_tool_definitions == [tool_def1, tool_def2]
+
+
+def test_set_active_tools_deprecation_warning(base_handler_instance):
+    """Test that set_active_tools shows deprecation warning."""
+    # Register a tool
+    tool_spec = {"name": "test_tool", "description": "Test Tool", "input_schema": {}}
+    
+    def executor(inp):
+        return f"Test Tool: {inp}"
+    
+    base_handler_instance.register_tool(tool_spec, executor)
+    
+    # Call set_active_tools with warning patching
+    with warnings.catch_warnings(record=True) as w:
+        # Cause all warnings to always be triggered
+        warnings.simplefilter("always")
+        
+        base_handler_instance.set_active_tools(["test_tool"])
+        
+        # Verify we got a DeprecationWarning
+        assert len(w) == 1
+        assert issubclass(w[0].category, DeprecationWarning)
+        assert "deprecated" in str(w[0].message).lower()
+
+
+def test__execute_llm_call_passes_active_tools(base_handler_instance):
+    """Test that active tool definitions are correctly passed to LLMInteractionManager.execute_call."""
+    # Register two tools with specifications and executor functions
+    tool_spec1 = {"name": "tool1", "description": "Tool 1", "input_schema": {}}
+    tool_spec2 = {"name": "tool2", "description": "Tool 2", "input_schema": {}}
+
+    def executor1(inp):
+        return f"Tool 1: {inp}"
+
+    def executor2(inp):
+        return f"Tool 2: {inp}"
+
+    base_handler_instance.register_tool(tool_spec1, executor1)
+    base_handler_instance.register_tool(tool_spec2, executor2)
+    
+    # Set active tool definitions
+    base_handler_instance.set_active_tool_definitions([tool_spec1, tool_spec2])
+    
+    # Configure mock LLMInteractionManager
+    mock_llm_manager = base_handler_instance.llm_manager
+    mock_llm_manager.execute_call.return_value = {
+        "success": True,
+        "content": "Response with active tool definitions",
+    }
+    
+    # Call _execute_llm_call without tools_override
+    base_handler_instance._execute_llm_call("Test prompt")
+    
+    # Assert LLMInteractionManager.execute_call was called with the active tool definitions
+    mock_llm_manager.execute_call.assert_called_once()
+    call_args = mock_llm_manager.execute_call.call_args[1]
+    
+    # Verify active_tools parameter contains both tool definitions
+    assert "active_tools" in call_args
+    assert len(call_args["active_tools"]) == 2
+    
+    # Verify tool specifications (not executor functions) were passed
+    assert call_args["active_tools"] == [tool_spec1, tool_spec2]

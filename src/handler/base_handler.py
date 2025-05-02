@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import warnings
 from typing import Any, Callable, Dict, List, Optional, Type
 
 from src.handler import command_executor
@@ -67,6 +68,7 @@ class BaseHandler:
             {}
         )  # Key: tool name, Value: tool spec
         self.active_tools: List[str] = []  # List of tool names to use in LLM calls
+        self.active_tool_definitions: List[Dict[str, Any]] = []  # List of tool specs to pass to LLM calls
         self.conversation_history: List[Dict[str, Any]] = (
             []
         )  # Stores {"role": "user/assistant", "content": ...} dicts
@@ -202,9 +204,28 @@ class BaseHandler:
             )
             return []
 
+    def set_active_tool_definitions(self, tool_definitions: List[Dict[str, Any]]) -> bool:
+        """
+        Sets the list of active tool definitions to be passed directly to the LLM.
+        
+        Args:
+            tool_definitions: List of tool specification dictionaries.
+            
+        Returns:
+            True if successful, False otherwise.
+        """
+        self.log_debug(f"Setting active tool definitions: {[t.get('name', 'unnamed') for t in tool_definitions]}")
+        
+        # Store tool definitions
+        self.active_tool_definitions = tool_definitions.copy()
+        self.log_debug(f"Active tool definitions set to: {[t.get('name', 'unnamed') for t in self.active_tool_definitions]}")
+        return True
+    
     def set_active_tools(self, tool_names: List[str]) -> bool:
         """
         Sets the list of active tools to be used in LLM calls.
+        
+        DEPRECATED: Use set_active_tool_definitions() instead.
 
         Args:
             tool_names: List of tool names to activate. Must be previously registered.
@@ -212,6 +233,12 @@ class BaseHandler:
         Returns:
             True if all tools were found and activated, False otherwise.
         """
+        warnings.warn(
+            "set_active_tools is deprecated. Use set_active_tool_definitions() instead.",
+            DeprecationWarning,
+            stacklevel=2
+        )
+        
         self.log_debug(f"Setting active tools: {tool_names}")
 
         # Validate that all tool names are registered
@@ -367,13 +394,22 @@ class BaseHandler:
         history_before_call = list(self.conversation_history)
 
         # Delegate the call to the manager
-        manager_result = self.llm_manager.execute_call(
-            prompt=prompt,
-            conversation_history=history_before_call,  # Pass current history
-            system_prompt_override=system_prompt_override,
-            tools_override=current_tools,  # Pass prepared tools with precedence logic
-            output_type_override=output_type_override,
-        )
+        # Prepare kwargs for execute_call
+        call_kwargs = {
+            "prompt": prompt,
+            "conversation_history": history_before_call,
+            "system_prompt_override": system_prompt_override,
+            "tools_override": current_tools,  # Always pass tools_override for compatibility with existing tests
+            "output_type_override": output_type_override,
+        }
+            
+        # Pass active tool definitions if available and tools_override is not specified
+        if tools_override is None and self.active_tool_definitions:
+            call_kwargs["active_tools"] = self.active_tool_definitions
+            self.log_debug(f"Passing {len(self.active_tool_definitions)} active tool definitions to LLM call")
+            
+        # Execute the call
+        manager_result = self.llm_manager.execute_call(**call_kwargs)
 
         logging.debug(f"LLM Manager Raw Result: {manager_result}")
 

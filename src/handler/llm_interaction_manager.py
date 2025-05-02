@@ -190,10 +190,9 @@ class LLMInteractionManager:
         prompt: str,
         conversation_history: List[Dict[str, Any]],  # Pass history in
         system_prompt_override: Optional[str] = None,
-        tools_override: Optional[
-            List[Callable]
-        ] = None,  # Or tool specs? Check pydantic-ai docs
+        tools_override: Optional[List[Callable]] = None,  # Executors
         output_type_override: Optional[Type] = None,
+        active_tools: Optional[List[Dict[str, Any]]] = None,  # Tool definitions
     ) -> Dict[str, Any]:
         """
         Executes a call to the configured pydantic-ai agent.
@@ -249,7 +248,10 @@ class LLMInteractionManager:
                 logger.error(f"Failed to write full LLM prompt to file: {_e}")
             if tools_override:
                 run_kwargs["tools"] = tools_override
-                logging.debug(f"Executing agent call with {len(tools_override)} tools.")
+                logging.debug(f"Executing agent call with {len(tools_override)} tool executors.")
+            elif active_tools:
+                run_kwargs["tools"] = active_tools
+                logging.debug(f"Executing agent call with {len(active_tools)} tool definitions.")
             if output_type_override:
                 run_kwargs["output_type"] = output_type_override
                 logging.debug(

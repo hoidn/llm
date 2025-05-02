@@ -51,6 +51,15 @@ def app_instance(tmp_path):
         mock_handler_instance = MockHandler.return_value
         mock_handler_instance.file_manager = mock_fm_instance # Handler uses FM
         mock_handler_instance.register_tool.return_value = True
+        # Add mock for get_provider_identifier
+        mock_handler_instance.get_provider_identifier.return_value = "anthropic:claude-3-5-sonnet-latest"
+        # Add mock for set_active_tool_definitions
+        mock_handler_instance.set_active_tool_definitions.return_value = True
+        
+        # Register at least one system tool so _determine_active_tools returns something
+        mock_handler_instance.registered_tools = {
+            "system:test_tool": {"name": "system:test_tool", "description": "Test Tool"}
+        }
 
         # Instantiate Application - this will call __init__
         # __init__ should no longer call initialize_aider()
@@ -101,19 +110,20 @@ def test_application_init_wiring(app_instance):
         assert 'file_access_manager' in mem_call_kwargs
         assert mem_call_kwargs['file_access_manager'] == mock_fm_instance_test # Check FM passed
 
-        # Assert TaskSystem received MemorySystem instance
+        # Assert TaskSystem was called (no arguments expected in the new flow)
         MockTask_test.assert_called_once()
+        # No arguments expected for TaskSystem in the new flow
         task_call_args, task_call_kwargs = MockTask_test.call_args
-        assert 'memory_system' in task_call_kwargs
-        assert task_call_kwargs['memory_system'] == MockMemory_test.return_value
+        assert len(task_call_kwargs) == 0
 
-        # Assert Handler received TaskSystem and MemorySystem
+        # Assert Handler received TaskSystem (MemorySystem is set later in the new flow)
         MockHandler_test.assert_called_once()
         handler_call_args, handler_call_kwargs = MockHandler_test.call_args
         assert 'task_system' in handler_call_kwargs
         assert handler_call_kwargs['task_system'] == MockTask_test.return_value
+        # In the new flow, memory_system is None initially and set later
         assert 'memory_system' in handler_call_kwargs
-        assert handler_call_kwargs['memory_system'] == MockMemory_test.return_value
+        assert handler_call_kwargs['memory_system'] is None
 
     # Check wiring using the fixture instance (already done in __init__)
     assert app_instance.memory_system == app_instance.mock_memory
@@ -121,11 +131,12 @@ def test_application_init_wiring(app_instance):
     assert app_instance.passthrough_handler == app_instance.mock_handler
     assert app_instance.file_access_manager == app_instance.mock_fm # Check FM stored
 
-    # Check cross-dependency wiring (done by __init__)
-    assert app_instance.mock_memory.handler == app_instance.mock_handler
-    assert app_instance.mock_memory.task_system == app_instance.mock_task
-    # Check handler injection into TaskSystem
+    # Check task system has handler set
     app_instance.mock_task.set_handler.assert_called_once_with(app_instance.mock_handler)
+    
+    # Check active tool definitions were set
+    app_instance.mock_handler.get_provider_identifier.assert_called_once()
+    app_instance.mock_handler.set_active_tool_definitions.assert_called_once()
 
     # Check Aider initialization was NOT called in __init__
     # (Assuming initialize_aider is now commented out or removed from __init__)
