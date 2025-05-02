@@ -18,6 +18,12 @@ from src.handler.llm_interaction_manager import LLMInteractionManager
 from src.memory.indexers.git_repository_indexer import GitRepositoryIndexer
 # Import the class being patched for autospec
 from src.executors.system_executors import SystemExecutorFunctions
+# Import Agent for autospec if pydantic-ai is installed
+try:
+    from pydantic_ai import Agent as RealPydanticAgent
+except ImportError:
+    RealPydanticAgent = object # type: ignore
+
 from src import dispatcher
 # Import modules for patching targets
 # No longer needed for spec, but keep for potential type hints if desired
@@ -72,7 +78,8 @@ def app_components(mocker, tmp_path): # Add tmp_path
          patch('src.handler.base_handler.LLMInteractionManager', autospec=True) as MockLLMInteractionManager, \
          patch('src.main.AiderBridge', autospec=True) as MockAiderBridge, \
          patch('src.main.GitRepositoryIndexer', autospec=True) as MockIndexer, \
-         patch('src.main.SystemExecutorFunctions', autospec=True) as MockSysExecCls: # Added patch for the class
+         patch('src.main.SystemExecutorFunctions', autospec=True) as MockSysExecCls, \
+         patch('src.handler.llm_interaction_manager.Agent', autospec=True) as MockPydanticAgent: # Added patch for pydantic_ai.Agent
 
         # --- Patch specific functions/static methods directly (using mocker) ---
         # SystemExecutorFunctions methods are now mocked via the class patch above
@@ -96,6 +103,7 @@ def app_components(mocker, tmp_path): # Add tmp_path
         mock_llm_manager_instance = MagicMock(spec=LLMInteractionManager)
         mock_aider_bridge_instance = MagicMock(spec=AiderBridge)
         mock_indexer_instance = MagicMock(spec=GitRepositoryIndexer) # Instance for indexer
+        # No instance needed for MockPydanticAgent as LLMInteractionManager is mocked
 
         # Configure mock instances with attributes accessed during Application.__init__
         mock_fm_instance.base_path = "/mocked/base/path" # For logging
@@ -112,6 +120,7 @@ def app_components(mocker, tmp_path): # Add tmp_path
         MockAiderBridge.return_value = mock_aider_bridge_instance
         MockIndexer.return_value = mock_indexer_instance
         # MockSysExecCls does not need a return_value as it only has static methods
+        # MockPydanticAgent does not need a return_value as LLMInteractionManager is mocked
 
         # Configure mocks attached TO the handler instance, as they are instantiated within BaseHandler init
         mock_handler_instance.file_manager = mock_fm_instance # Simulate internal assignment
@@ -143,7 +152,8 @@ def app_components(mocker, tmp_path): # Add tmp_path
             "MockLLMInteractionManager": MockLLMInteractionManager,
             "MockAiderBridge": MockAiderBridge,
             "MockGitRepositoryIndexer": MockIndexer,
-            "MockSystemExecutorFunctions": MockSysExecCls, # Added class mock
+            "MockSystemExecutorFunctions": MockSysExecCls,
+            "MockPydanticAgent": MockPydanticAgent, # Added pydantic_ai.Agent mock
 
             # Core Component Instance Mocks
             "mock_memory_system_instance": mock_memory_system_instance,
