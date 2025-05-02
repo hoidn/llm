@@ -206,7 +206,8 @@ class LLMInteractionManager:
         if not self.agent:
             logging.warning("Cannot get provider identifier: Agent is not initialized.")
             # Fallback to the configured default if agent isn't ready yet
-            return self.default_model_identifier
+            # FIX: Return None immediately if agent is not initialized
+            return None
 
         # Return the model identifier since that contains provider information
         # Accessing agent.model might be more direct if available and reliable

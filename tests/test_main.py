@@ -147,10 +147,16 @@ def test_application_init_wiring(app_instance):
         assert handler_call_kwargs['memory_system'] is None
 
         # Assert LLM Manager's initialize_agent was called
-        mock_llm_manager_instance_test.initialize_agent.assert_called_once_with(tools=[dummy_tool_exec_test])
+        # Check keyword arguments used in the call
+        mock_llm_manager_instance_test.initialize_agent.assert_called_once()
+        init_call_args, init_call_kwargs = mock_llm_manager_instance_test.initialize_agent.call_args
+        assert not init_call_args # No positional args expected
+        assert 'tools' in init_call_kwargs
+        assert init_call_kwargs['tools'] == [dummy_tool_exec_test]
+
 
         # Assert the underlying Pydantic Agent was initialized by the manager
-        MockPydanticAgent_test.assert_called_once()
+        # MockPydanticAgent_test.assert_called_once() # REMOVED: Manager is mocked, doesn't call Agent constructor here.
 
 
     # Check wiring using the fixture instance (already done in __init__)
@@ -451,10 +457,10 @@ def test_application_init_passes_correct_tool_format_to_agent(tmp_path):
         call_args, call_kwargs = app.passthrough_handler.llm_manager.initialize_agent.call_args
 
         # Check the 'tools' keyword argument passed to initialize_agent
-        # The call is positional, so check args[0]
-        # assert 'tools' in call_kwargs # Incorrect, it's positional
-        assert len(call_args) > 0 # Ensure positional args exist
-        passed_tools = call_args[0] # Tools are the first positional argument
+        # Check kwargs as the call uses tools=...
+        assert not call_args # Should have no positional args
+        assert 'tools' in call_kwargs
+        passed_tools = call_kwargs['tools']
         assert isinstance(passed_tools, list)
         assert len(passed_tools) == 2
         # Verify it's the list of callables we configured get_tools_for_agent to return

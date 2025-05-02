@@ -12,8 +12,8 @@ from pydantic import BaseModel
 from src.handler.llm_interaction_manager import LLMInteractionManager
 
 
-# Define a test Pydantic model for structured output testing
-class TestOutputModel(BaseModel):
+# Define a test Pydantic model (prefixed with underscore to avoid collection)
+class _SampleOutputModel(BaseModel):
     result: str
     score: float
 
@@ -345,15 +345,15 @@ def test_execute_call_with_output_type_override(
 
     # Act
     result = initialized_llm_manager.execute_call(
-        prompt, history, output_type_override=TestOutputModel
+        prompt, history, output_type_override=_SampleOutputModel # Use renamed model
     )
 
     # Assert
     assert result["success"] is True
-    # Verify that agent.run_sync was called with output_type=TestOutputModel
+    # Verify that agent.run_sync was called with output_type=_SampleOutputModel
     mock_agent_instance.run_sync.assert_called_once()
     _, kwargs = mock_agent_instance.run_sync.call_args
-    assert kwargs.get("output_type") == TestOutputModel
+    assert kwargs.get("output_type") == _SampleOutputModel # Use renamed model
 
 
 # Use the new fixture
@@ -362,8 +362,8 @@ def test_execute_call_with_pydantic_model_result(
 ):
     """Test that Pydantic model in agent response is included in parsed_content."""
     # Arrange
-    # Create an instance of our TestOutputModel to simulate agent response
-    model_instance = TestOutputModel(result="test result", score=0.95)
+    # Create an instance of our _SampleOutputModel to simulate agent response
+    model_instance = _SampleOutputModel(result="test result", score=0.95) # Use renamed model
 
     # Access the mock agent instance created within the fixture
     mock_agent_instance = initialized_llm_manager._mock_agent_instance

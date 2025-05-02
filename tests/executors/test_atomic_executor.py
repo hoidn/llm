@@ -12,8 +12,8 @@ from pydantic import BaseModel # For testing output_type_override
 # If BaseHandler is importable and stable, use spec for better mocking
 # from src.handler.base_handler import BaseHandler
 
-# Define a test Pydantic model for output schema testing
-class TestOutputModel(BaseModel):
+# Define a test Pydantic model (prefixed with underscore to avoid collection)
+class _SampleOutputModel(BaseModel):
     name: str
     value: int
 
@@ -258,23 +258,23 @@ def test_execute_body_with_valid_output_format_schema(mock_resolve_model_class, 
     task_def = {
         "name": "test_valid_schema",
         "instructions": "Return structured data",
-        "output_format": {"type": "json", "schema": "TestOutputModel"}
+        "output_format": {"type": "json", "schema": "_SampleOutputModel"} # Use renamed model
     }
     params = {}
-    
+
     # Mock resolve_model_class to return our test model
-    mock_resolve_model_class.return_value = TestOutputModel
-    
+    mock_resolve_model_class.return_value = _SampleOutputModel # Use renamed model
+
     # Act
     executor.execute_body(task_def, params, mock_handler)
-    
+
     # Assert
     # Verify resolve_model_class was called with correct schema name
-    mock_resolve_model_class.assert_called_once_with("TestOutputModel")
-    # Verify handler was called with output_type_override=TestOutputModel
+    mock_resolve_model_class.assert_called_once_with("_SampleOutputModel") # Use renamed model
+    # Verify handler was called with output_type_override=_SampleOutputModel
     mock_handler._execute_llm_call.assert_called_once()
     _, kwargs = mock_handler._execute_llm_call.call_args
-    assert kwargs.get('output_type_override') == TestOutputModel
+    assert kwargs.get('output_type_override') == _SampleOutputModel # Use renamed model
 
 @patch('src.executors.atomic_executor.resolve_model_class')
 def test_execute_body_with_handler_returning_parsed_content(mock_resolve_model_class, executor, mock_handler):
@@ -283,28 +283,30 @@ def test_execute_body_with_handler_returning_parsed_content(mock_resolve_model_c
     task_def = {
         "name": "test_parsed_content",
         "instructions": "Return structured data",
-        "output_format": {"type": "json", "schema": "TestOutputModel"}
+        "output_format": {"type": "json", "schema": "_SampleOutputModel"} # Use renamed model
     }
     params = {}
-    
+
     # Mock resolve_model_class to return our test model
-    mock_resolve_model_class.return_value = TestOutputModel
-    
+    mock_resolve_model_class.return_value = _SampleOutputModel # Use renamed model
+
     # Create a parsed Pydantic model instance that handler would return
-    model_instance = TestOutputModel(name="test", value=42)
-    
+    model_instance = _SampleOutputModel(name="test", value=42) # Use renamed model
+
     # Configure mock handler to return both raw content and parsed_content
+    # Note: The mock handler's _execute_llm_call needs to return a dict, not a TaskResult object directly
+    # because the executor expects a dict from the handler call.
     mock_handler._execute_llm_call.return_value = {
         "success": True,
-        "status": "COMPLETE", 
+        "status": "COMPLETE",
         "content": '{"name": "test", "value": 42}',
         "parsed_content": model_instance,  # This would come from pydantic-ai
         "notes": {}
     }
-    
+
     # Act
     result_dict = executor.execute_body(task_def, params, mock_handler)
-    
+
     # Assert
     # Verify the parsed_content was moved to parsedContent in the result
     assert "parsedContent" in result_dict
@@ -322,27 +324,28 @@ def test_execute_body_with_model_not_found_error(mock_resolve_model_class, execu
         "output_format": {"type": "json", "schema": "NonExistentModel"}
     }
     params = {}
-    
+
     # Mock resolve_model_class to raise ModelNotFoundError
     error_msg = "Model class NonExistentModel not found in module src.system.models"
     mock_resolve_model_class.side_effect = ModelNotFoundError(error_msg)
-    
-    # Configure mock handler to return a basic success response
-    mock_handler._execute_llm_call.return_value = TaskResult(
-        status="COMPLETE", 
-        content="Some content",
-        notes={}
-    )
-    
+
+    # Configure mock handler to return a basic success response (as a dict)
+    mock_handler._execute_llm_call.return_value = {
+        "success": True,
+        "status": "COMPLETE",
+        "content": "Some content",
+        "notes": {}
+    }
+
     # Act
     result_dict = executor.execute_body(task_def, params, mock_handler)
-    
+
     # Assert
     # Verify handler was still called with output_type_override=None
     mock_handler._execute_llm_call.assert_called_once()
     _, kwargs = mock_handler._execute_llm_call.call_args
     assert kwargs.get('output_type_override') is None
-    
+
     # Verify the task completed successfully despite the schema resolution error
     assert result_dict["status"] == "COMPLETE"
     # Verify a warning note was added to the result
@@ -356,24 +359,25 @@ def test_execute_body_with_handler_failure(mock_resolve_model_class, executor, m
     task_def = {
         "name": "test_handler_failure",
         "instructions": "This will fail",
-        "output_format": {"type": "json", "schema": "TestOutputModel"}
+        "output_format": {"type": "json", "schema": "_SampleOutputModel"} # Use renamed model
     }
     params = {}
-    
+
     # Mock resolve_model_class to return our test model
-    mock_resolve_model_class.return_value = TestOutputModel
-    
-    # Configure mock handler to return a failure response
+    mock_resolve_model_class.return_value = _SampleOutputModel # Use renamed model
+
+    # Configure mock handler to return a failure response (as a dict)
     error_details = TaskFailureError(type="TASK_FAILURE", reason="llm_error", message="LLM call failed")
-    mock_handler._execute_llm_call.return_value = TaskResult(
-        status="FAILED", 
-        content="Error: LLM call failed",
-        notes={"error": error_details.model_dump()}
-    )
-    
+    mock_handler._execute_llm_call.return_value = {
+        "success": False, # Indicate failure
+        "status": "FAILED",
+        "content": "Error: LLM call failed",
+        "notes": {"error": error_details.model_dump()}
+    }
+
     # Act
     result_dict = executor.execute_body(task_def, params, mock_handler)
-    
+
     # Assert
     # Verify result has FAILED status
     assert result_dict["status"] == "FAILED"

@@ -1,7 +1,7 @@
 import json
 import logging
 import os
-import warnings
+import warnings # Ensure imported
 from typing import Any, Callable, Dict, List, Optional, Type
 
 from src.handler import command_executor
@@ -207,20 +207,20 @@ class BaseHandler:
     def set_active_tool_definitions(self, tool_definitions: List[Dict[str, Any]]) -> bool:
         """
         Sets the list of active tool definitions to be passed directly to the LLM.
-        
+
         Args:
             tool_definitions: List of tool specification dictionaries.
-            
+
         Returns:
             True if successful, False otherwise.
         """
         self.log_debug(f"Setting active tool definitions: {[t.get('name', 'unnamed') for t in tool_definitions]}")
-        
+
         # Store tool definitions
         self.active_tool_definitions = tool_definitions.copy()
         self.log_debug(f"Active tool definitions set to: {[t.get('name', 'unnamed') for t in self.active_tool_definitions]}")
         return True
-    
+
     def get_tools_for_agent(self) -> List[Callable]:
         """
         Retrieves the registered tool executor functions required by the Agent constructor.
@@ -231,7 +231,7 @@ class BaseHandler:
     def set_active_tools(self, tool_names: List[str]) -> bool:
         """
         Sets the list of active tools to be used in LLM calls.
-        
+
         DEPRECATED: Use set_active_tool_definitions() instead.
 
         Args:
@@ -244,8 +244,7 @@ class BaseHandler:
             "set_active_tools is deprecated. Use set_active_tool_definitions() instead.",
             DeprecationWarning,
             stacklevel=2
-        )
-        
+        ) # ADDED WARNING
         self.log_debug(f"Setting active tools: {tool_names}")
 
         # Validate that all tool names are registered
@@ -409,12 +408,12 @@ class BaseHandler:
             "tools_override": current_tools,  # Always pass tools_override for compatibility with existing tests
             "output_type_override": output_type_override,
         }
-            
+
         # Pass active tool definitions if available and tools_override is not specified
         if tools_override is None and self.active_tool_definitions:
             call_kwargs["active_tools"] = self.active_tool_definitions
             self.log_debug(f"Passing {len(self.active_tool_definitions)} active tool definitions to LLM call")
-            
+
         # Execute the call
         manager_result = self.llm_manager.execute_call(**call_kwargs)
 
