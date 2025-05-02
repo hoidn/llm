@@ -59,7 +59,7 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 # --- Test Fixture ---
 @pytest.fixture
 def app_components(mocker, tmp_path): # Add tmp_path
-    """Fixture to mock all major dependencies of Application."""
+    """Provides mocked components for Application testing using autospec."""
     # Mock the core component classes themselves
     mock_memory_system_cls = mocker.patch('src.main.MemorySystem', spec=MemorySystem)
     mock_task_system_cls = mocker.patch('src.main.TaskSystem', spec=TaskSystem)
