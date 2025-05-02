@@ -86,6 +86,16 @@ module src.handler.base_handler {
         // - Configures debug mode on the LLMInteractionManager if applicable.
         void set_debug_mode(boolean enabled);
 
+        // Retrieves the configured LLM provider/model identifier string.
+        // Preconditions:
+        // - LLMInteractionManager must be initialized.
+        // Postconditions:
+        // - Returns the identifier string (e.g., "anthropic:claude-3-5-sonnet-latest") stored in the LLMInteractionManager.
+        // - Returns None if the manager is not available or no identifier was configured.
+        // Behavior:
+        // - Delegates the call to the internal LLMInteractionManager instance.
+        optional string get_provider_identifier();
+
         // Internal method to execute a call via the LLMInteractionManager.
         // Preconditions:
         // - prompt is the user's input string.
