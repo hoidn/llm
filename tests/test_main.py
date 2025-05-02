@@ -100,10 +100,7 @@ def app_components(mocker, tmp_path): # Add tmp_path
 
         # Create mock instances that the mocked classes will return OR get the default return_value
         # Use autospec=True for instances to mimic the class spec
-        # --- START FIX ---
-        # mock_memory_system_instance = MagicMock(spec=MemorySystem) # Removed explicit creation
         mock_memory_instance = MockMemory.return_value # Get instance from patch
-        # --- END FIX ---
         mock_task_instance = MockTask.return_value # Get the instance created by the patch
         # Configure MockTask instance methods if needed
         mock_task_instance.set_handler = MagicMock() # Add mock for set_handler
@@ -161,8 +158,9 @@ def app_components(mocker, tmp_path): # Add tmp_path
         # Mock initialize_agent as an async function if it's called with await
         mock_llm_manager_instance.initialize_agent = MagicMock() # Use MagicMock if synchronous
 
-        # Yield the dictionary of necessary mocks
-        yield {
+        # --- START FIX ---
+        # Assign the dictionary to a variable
+        mocks = {
             # Core Component Class Mocks (from 'with patch')
             "MockMemorySystem": MockMemory,
             "MockTaskSystem": MockTask,
@@ -176,9 +174,7 @@ def app_components(mocker, tmp_path): # Add tmp_path
             "MockPydanticAgent": MockPydanticAgent,
 
             # Core Component Instance Mocks
-            # --- START FIX ---
             "mock_memory_system_instance": mock_memory_instance, # Provide instance
-            # --- END FIX ---
             "mock_task_system_instance": mock_task_instance, # Provide instance
             "mock_handler_instance": mock_handler_instance,
             "mock_fm_instance": mock_fm_instance,
@@ -196,6 +192,9 @@ def app_components(mocker, tmp_path): # Add tmp_path
             "mock_anthropic_replace_func": mock_anthropic_replace_func,
             "mock_anthropic_insert_func": mock_anthropic_insert_func,
         }
+        # Yield the dictionary of necessary mocks
+        yield mocks
+        # --- END FIX ---
 
 # --- Tests ---
 
