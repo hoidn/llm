@@ -147,6 +147,10 @@ def app_components(mocker, tmp_path): # Add tmp_path
         mock_handler_instance.tool_executors = tool_executors_storage # Point to the dict
         # Let the real get_tools_for_agent work on the mock's storage
         mock_handler_instance.get_tools_for_agent.side_effect = lambda: list(tool_executors_storage.values()) # Return current executors
+        # --- START FIX ---
+        # Add mock for set_active_tool_definitions
+        mock_handler_instance.set_active_tool_definitions = MagicMock()
+        # --- END FIX ---
 
         # Yield the dictionary of mocks within the 'with' block
         yield {
