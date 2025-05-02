@@ -491,3 +491,37 @@ except Exception as e:
 for message in result.history:
     print(f"{message.role}: {message.content}")
 ```
+Okay, let's analyze the provided `pydantic-ai` source code snippets to answer the questions about the `tools` parameter format.
+
+**Analysis:**
+
+1.  **`Agent.__init__` (`pydantic_ai/agent.py`):**
+    *   The constructor accepts `tools: Sequence[Tool[AgentDepsT] | ToolFuncEither[AgentDepsT, ...]] = ()`.
+    *   It iterates through this sequence. If an item is *not* already a `Tool` instance, it wraps it using `Tool(tool)`.
+    *   It then calls `self._register_tool(tool_instance)` for each processed tool.
+    *   This confirms `Agent.__init__` accepts a sequence containing either `Tool` instances or raw callables (`ToolFuncEither`).
+
+2.  **`Tool.__init__` (`pydantic_ai/tools.py`):**
+    *   Accepts `function: ToolFuncEither[AgentDepsT]`.
+    *   Accepts optional explicit `name`, `description`, `max_retries`, `prepare`, `docstring_format`, `require_parameter_descriptions`, `schema_generator`, `strict`.
+    *   Crucially, it calls `f = _pydantic.function_schema(...)` using the provided `function`.
+    *   It uses the *explicitly passed* `name` and `description` if provided, otherwise it falls back to the values inferred by `function_schema` (`f['description']`, `function.__name__`).
+
+3.  **`_pydantic.function_schema` (`pydantic_ai/_pydantic.py`):**
+    *   This function is responsible for introspection.
+    *   Uses `inspect.signature`, `_typing_extra.get_function_type_hints` to get signature and types.
+    *   Uses `_griffe.doc_descriptions` to parse the function's docstring (handling Google, Numpy, Sphinx, or Auto-detecting format) to get the main description and parameter descriptions.
+    *   Uses Pydantic internals (`_generate_schema.GenerateSchema`) to build the `core_schema` from type hints.
+    *   Uses the passed `schema_generator` (defaulting to `GenerateToolJsonSchema`) to convert the `core_schema` to a JSON schema dictionary (`ObjectJsonSchema`).
+    *   Handles the `takes_ctx` flag to potentially ignore the first `RunContext` parameter.
+
+4.  **Provider-Specific Tool Mapping (`pydantic_ai/models/*.py`):**
+    *   Classes like `OpenAIModel`, `AnthropicModel`, `CohereModel`, etc., have methods like `_get_tools` or `_map_tool_definition`.
+    *   These methods receive `ModelRequestParameters`, which contains a list of the *standardized* `ToolDefinition` objects.
+    *   They then translate these `ToolDefinition` objects into the specific format required by that provider's API (e.g., `openai.types.chat.ChatCompletionToolParam`, `anthropic.types.ToolParam`, `cohere.ToolV2`).
+
+5.  **Runtime Tool Handling (`Agent.run`/`iter`):**
+    *   Looking at the signatures for `Agent.run`, `Agent.run_sync`, and `Agent.iter` in `pydantic_ai/agent.py`, **none of them accept a `tools` parameter.**
+    *   Tools are configured at the `Agent` level during initialization or via decorators.
+    *   Dynamic tool availability per run is handled via the `Tool.prepare` mechanism, which allows a `Tool` instance to decide whether it should be included or how its `ToolDefinition` should be modified based on the `RunContext`.
+
