@@ -163,12 +163,12 @@ def app_components(mocker, tmp_path): # Add tmp_path
             # Core Component Class Mocks (from 'with patch')
             "MockMemorySystem": MockMemory,
             "MockTaskSystem": MockTask,
-            "MockHandler": MockHandler, # Use updated key
+            "MockHandler": MockHandler,
             "MockFM": MockFileAccessManager,
             "MockLLMInteractionManager": MockLLMInteractionManager,
             "MockAiderBridge": MockAiderBridge,
-            "MockIndexer": MockIndexer, # Use updated key
-            "MockSystemExecutorFunctions": MockSysExecCls,
+            "MockIndexer": MockIndexer,
+            "MockSysExecCls": MockSysExecCls, # Use updated key
             "MockAiderExecutors": MockAiderExec,
             "MockPydanticAgent": MockPydanticAgent,
 
@@ -199,9 +199,9 @@ def test_application_init_minimal(app_components):
     app = Application()
     assert isinstance(app, Application)
     # Check components were instantiated (mocks were called)
-    app_components["MockFM"].assert_called_once() # Use updated key
+    app_components["MockFM"].assert_called_once()
     app_components["MockTaskSystem"].assert_called_once()
-    app_components["MockHandler"].assert_called_once() # Use updated key
+    app_components["MockHandler"].assert_called_once()
     app_components["MockMemorySystem"].assert_called_once()
     # Check internal instances are set
     assert app.file_access_manager is not None
@@ -260,7 +260,7 @@ def test_index_repository_success(app_components, tmp_path):
     git_dir.mkdir()
     repo_path = str(tmp_path)
 
-    MockIndexerClass = app_components["MockIndexer"] # Use updated key
+    MockIndexerClass = app_components["MockIndexer"]
     mock_indexer_instance = app_components["mock_indexer_instance"]
     mock_indexer_instance.index_repository.return_value = {"file1.py": "metadata1"}
 
