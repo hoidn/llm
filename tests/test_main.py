@@ -91,7 +91,7 @@ def app_components(mocker, tmp_path): # Add tmp_path
          patch('src.tools.anthropic_tools.view', autospec=True) as mock_anthropic_view_func, \
          patch('src.tools.anthropic_tools.create', autospec=True) as mock_anthropic_create_func, \
          patch('src.tools.anthropic_tools.str_replace', autospec=True) as mock_anthropic_replace_func, \
-         patch('src.tools.anthropic_tools.insert', autospec=True) as mock_anthropic_insert_func:
+         patch('src.tools.anthropic_tools.insert', autospec=True) as mock_anthropic_insert_func: # Patch definition location
 
         # --- Patch specific functions/static methods directly (using mocker) ---
         # SystemExecutorFunctions methods are now mocked via the class patch above
