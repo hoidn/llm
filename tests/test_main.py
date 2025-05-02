@@ -20,7 +20,7 @@ from src import dispatcher
 # Import modules for patching targets
 # No longer needed for spec, but keep for potential type hints if desired
 # from src.executors import system_executors as system_executors_module
-# from src.tools import anthropic_tools as anthropic_tools_module
+# from src.tools import anthropic_tools as anthropic_tools_module # Keep for spec import below
 # from src.executors import aider_executors as aider_executors_module
 
 # Import Aider components conditionally
@@ -72,20 +72,20 @@ def app_components(mocker, tmp_path): # Add tmp_path
     # Mock GitRepositoryIndexer
     mock_indexer_cls = mocker.patch('src.main.GitRepositoryIndexer', spec=GitRepositoryIndexer)
 
-    # --- START FIX: Patch specific functions/static methods directly ---
-    # Patch SystemExecutorFunctions methods
+    # --- Patch specific functions/static methods directly ---
+    # Patch SystemExecutorFunctions methods (called within src.main)
     mock_exec_get_context = mocker.patch('src.main.SystemExecutorFunctions.execute_get_context', name="mock_execute_get_context")
     mock_exec_read_files = mocker.patch('src.main.SystemExecutorFunctions.execute_read_files', name="mock_execute_read_files")
 
-    # Patch AiderExecutorFunctions methods
+    # Patch AiderExecutorFunctions methods (called within src.main)
     mock_aider_auto_func = mocker.patch('src.main.AiderExecutors.execute_aider_automatic', new_callable=AsyncMock, name="mock_execute_aider_automatic")
     mock_aider_inter_func = mocker.patch('src.main.AiderExecutors.execute_aider_interactive', new_callable=AsyncMock, name="mock_execute_aider_interactive")
 
-    # Patch Anthropic tool functions
-    mock_anthropic_view_func = mocker.patch('src.main.anthropic_tools.view', name="mock_anthropic_view")
-    mock_anthropic_create_func = mocker.patch('src.main.anthropic_tools.create', name="mock_anthropic_create")
-    mock_anthropic_replace_func = mocker.patch('src.main.anthropic_tools.str_replace', name="mock_anthropic_replace")
-    mock_anthropic_insert_func = mocker.patch('src.main.anthropic_tools.insert', name="mock_anthropic_insert")
+    # --- START FIX: Patch Anthropic tool functions WHERE DEFINED ---
+    mock_anthropic_view_func = mocker.patch('src.tools.anthropic_tools.view', name="mock_anthropic_view")
+    mock_anthropic_create_func = mocker.patch('src.tools.anthropic_tools.create', name="mock_anthropic_create")
+    mock_anthropic_replace_func = mocker.patch('src.tools.anthropic_tools.str_replace', name="mock_anthropic_replace")
+    mock_anthropic_insert_func = mocker.patch('src.tools.anthropic_tools.insert', name="mock_anthropic_insert")
     # --- END FIX ---
 
     # Create mock instances that the mocked classes will return
