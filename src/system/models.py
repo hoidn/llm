@@ -81,6 +81,9 @@ TaskFailureReason = Literal[
     'tool_execution_error', # Added common failure reason
     'llm_error', # Added common failure reason
     'dependency_error', # Added for handler/dependency issues
+    'connection_error', # Added for MCP/network issues
+    'protocol_error', # Added for MCP protocol issues
+    'configuration_error', # Added for config issues (e.g., MCP command)
     'unexpected_error'
 ]
 """
@@ -115,7 +118,7 @@ class TaskFailureDetails(BaseModel):
     context_metrics: Optional[Any] = None
     violations: Optional[List[str]] = None
     subtaskRequest: Optional[Any] = None # Using Any until SubtaskRequest is fully defined below
-    subtaskError: Optional[Any] = None # Recursive TaskError structure, use Any for now
+    subtaskError: Optional['TaskError'] = None # Recursive TaskError structure, use string forward reference
     nestingDepth: Optional[NonNegativeInt] = None
     s_expression_environment: Optional[Dict[str, Any]] = None
     failing_expression: Optional[str] = None

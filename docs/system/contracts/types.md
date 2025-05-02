@@ -75,6 +75,10 @@ type TaskFailureReason =
     | 'template_not_found' // Added common failure reason
     | 'tool_execution_error' // Added common failure reason
     | 'llm_error' // Added common failure reason
+    | 'dependency_error' // Added for handler/dependency issues
+    | 'connection_error' // Added for MCP/network issues
+    | 'protocol_error' // Added for MCP protocol issues
+    | 'configuration_error' // Added for config issues (e.g., MCP command)
     | 'unexpected_error';
 
 // Forward declaration for TaskError used within TaskFailureDetails
@@ -89,7 +93,7 @@ interface TaskFailureDetails {
     context_metrics?: any;
     violations?: string[];
     subtaskRequest?: any; // Type: SubtaskRequest (defined below) - Use Any for simplicity if nesting is complex
-    subtaskError?: TaskErrorBase; // Recursive TaskError structure
+    subtaskError?: TaskError; // Recursive TaskError structure (updated)
     nestingDepth?: number; // NonNegativeInt
     s_expression_environment?: Record<string, any>;
     failing_expression?: string;

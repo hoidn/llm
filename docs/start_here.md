@@ -107,7 +107,7 @@ When assigned to implement or modify a component specified by an IDL (or tacklin
 *   **Type Hinting:** **Mandatory** for all signatures. Use standard `typing` types. Be specific.
 *   **Docstrings:** **Mandatory** for all modules, classes, functions, methods. Use **Google Style**.
 *   **Imports:** Use **absolute imports** from `src`. Group imports correctly. Top-level only unless exceptional reason exists (document it).
-*   **Naming:** PEP 8 (snake_case for functions/variables, CamelCase for classes).
+*   **Naming:** PEP 8 (snake_case for functions/variables, CamelCase for classes). Use descriptive names.
 
 > **Further Reading:** See `docs/implementation_rules.md` and `docs/project_rules.md` for complete details.
 
@@ -128,12 +128,16 @@ When assigned to implement or modify a component specified by an IDL (or tacklin
     *   **Standard:** The project uses the `pydantic-ai` library for interacting with LLMs.
     *   **Practice:** `BaseHandler` uses an internal `LLMInteractionManager` to manage the `pydantic-ai` `Agent`. Implementations within `BaseHandler` delegate LLM calls to this manager. Tool registration (`register_tool`) stores tool definitions, and making them available to the live agent requires careful integration (see `implementation_rules.md`).
     *   **Reference:** See Section 6 in `docs/implementation_rules.md` and `docs/librarydocs/pydanticai.md`.
+*   **Aider Integration (via MCP):**
+    *   **Standard:** Interaction with the Aider coding assistant is handled via the Model Context Protocol (MCP).
+    *   **Practice:** The `AiderBridge` component (`src/aider_bridge/bridge.py`) acts as an **MCP client**, using the `mcp.py` library to communicate with an external Aider MCP Server process. `AiderBridge` does **not** contain direct Aider library calls or manage Aider subprocesses itself. Executor functions (`src/executors/aider_executors.py`) call methods on the `AiderBridge` instance.
+    *   **Reference:** See `src/aider_bridge/bridge_IDL.md`, `src/executors/aider_executors_IDL.md`, and `docs/librarydocs/aider_MCP_server.md` (for the server's expected interface).
 
 **6. Testing Strategy**
 
 *   **Framework:** `pytest`.
 *   **Focus:** Prioritize **Integration and Functional/End-to-End tests** over isolated unit tests. Verify components work together correctly according to their IDL contracts, testing realistic "vertical slices" of functionality.
-*   **Mocking:** **Minimize mocking.** Mock primarily at external boundaries (LLM APIs, external services) or where strictly necessary. Prefer using real instances of internal components in integration tests.
+*   **Mocking:** **Minimize mocking.** Mock primarily at external boundaries (LLM APIs, external services like the Aider MCP server boundary) or where strictly necessary. Prefer using real instances of internal components in integration tests.
 *   **Error Path Testing:** Explicitly test error handling and propagation between components. Use robust assertion techniques for error conditions (checking type/reason over exact messages where possible).
 *   **Fixtures:** Use `pytest` fixtures (`tests/conftest.py`) for test setup (e.g., creating component instances with test configurations or mocked boundaries).
 *   **Structure:** Follow the `Arrange-Act-Assert` pattern. Mirror the `src` directory structure in `tests`.

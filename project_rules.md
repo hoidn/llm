@@ -5,25 +5,28 @@
 ```
 project_root/
 ├── src/                     # Main source code
-│   ├── aider_bridge/        # Aider integration components
+│   ├── aider_bridge/        # Aider integration components (MCP Client)
 │   │   ├── __init__.py
-│   │   ├── automatic.py     # Automatic Aider handler
-│   │   ├── bridge.py        # Bridge component for Aider integration
-│   │   ├── interactive.py   # Interactive Aider session manager
-│   │   ├── result_formatter.py # Formats Aider operation results
-│   │   └── tools.py         # Aider tool specifications
+│   │   └── bridge.py        # MCP Client bridge to external Aider server
 │   │
-│   ├── evaluator/           # Evaluator components
+│   ├── evaluator/           # Evaluator components (S-expression)
 │   │   ├── __init__.py
-│   │   ├── evaluator.py     # Main Evaluator implementation
-│   │   └── interfaces.py    # Evaluator interfaces
+│   │   ├── evaluator.py     # Main SexpEvaluator implementation
+│   │   └── environment.py   # SexpEnvironment implementation
 │   │
-│   ├── handler/             # Handler components
+│   ├── executors/           # Task/Tool executor functions
+│   │   ├── __init__.py
+│   │   ├── aider_executors.py # Executors for Aider tools (using bridge)
+│   │   ├── atomic_executor.py # Executes atomic task templates
+│   │   └── system_executors.py # Executors for system tools (get_context, read_files)
+│   │
+│   ├── handler/             # Handler components (LLM interaction, file access)
 │   │   ├── __init__.py
 │   │   ├── base_handler.py  # Base handler implementation
 │   │   ├── command_executor.py # Command execution utilities
 │   │   ├── file_access.py   # File access manager
-│   │   ├── model_provider.py # Model provider adapters
+│   │   ├── file_context_manager.py # Manages file context retrieval/creation
+│   │   ├── llm_interaction_manager.py # Manages pydantic-ai agent interaction
 │   │   └── passthrough_handler.py # Passthrough mode handler
 │   │
 │   ├── memory/              # Memory system components
@@ -34,56 +37,103 @@ project_root/
 │   │       ├── git_repository_indexer.py
 │   │       └── text_extraction.py
 │   │
-│   ├── repl/                # REPL interface
+│   ├── repl/                # REPL interface (If applicable)
 │   │   ├── __init__.py
 │   │   └── repl.py
 │   │
-│   ├── scripts/             # Utility scripts
-│   │   ├── test_aider_flow.py
-│   │   └── test_handler_manual.py
+│   ├── scripts/             # Utility scripts (demos, tests)
+│   │   ├── phase6.py        # Example script using SexpEvaluator
+│   │   └── ...
 │   │
-│   ├── system/              # System-wide utilities
+│   ├── sexp_evaluator/      # S-expression evaluator components (Duplicate? Consolidate with evaluator/)
 │   │   ├── __init__.py
-│   │   └── errors.py        # Error handling utilities
+│   │   ├── sexp_environment.py
+│   │   └── sexp_evaluator.py
 │   │
-│   ├── task_system/         # Task system components
+│   ├── sexp_parser/         # S-expression parser components
 │   │   ├── __init__.py
-│   │   ├── ast_nodes.py     # AST node definitions
-│   │   ├── mock_handler.py  # Mock handler for testing
+│   │   └── sexp_parser.py
+│   │
+│   ├── system/              # System-wide utilities and models
+│   │   ├── __init__.py
+│   │   ├── errors.py        # Custom error classes
+│   │   └── models.py        # Shared Pydantic models (TaskResult, etc.)
+│   │
+│   ├── task_system/         # Task system components (template management)
+│   │   ├── __init__.py
+│   │   ├── file_path_resolver.py # Resolves file paths in templates
 │   │   ├── task_system.py   # Main Task System implementation
-│   │   ├── template_processor.py # Template processing utilities
-│   │   ├── template_utils.py # Template utility functions
-│   │   └── templates/       # Task templates
-│   │       ├── __init__.py
-│   │       ├── associative_matching.py
-│   │       └── function_examples.py # Function template examples
+│   │   └── template_registry.py # Stores task templates
 │   │
-│   └── main.py              # Application entry point
+│   ├── tools/               # Provider-specific tool implementations
+│   │   ├── __init__.py
+│   │   └── anthropic_tools.py # Anthropic editor tools
+│   │
+│   ├── dispatcher.py        # Top-level task dispatcher
+│   └── main.py              # Application entry point & orchestration
 │
 ├── tests/                   # Test directory (mirrors src structure)
 │   ├── __init__.py
 │   ├── conftest.py          # Common test fixtures
-│   ├── evaluator/           # Evaluator tests
-│   │   └── test_evaluator.py
-│   ├── handler/             # Handler tests
+│   ├── aider_bridge/        # Tests for Aider bridge
+│   │   └── test_bridge.py
+│   ├── executors/           # Tests for executors
+│   │   ├── test_aider_executors.py
+│   │   ├── test_atomic_executor.py
+│   │   └── test_system_executors.py
+│   ├── handler/             # Tests for handler components
+│   │   ├── test_base_handler.py
 │   │   ├── test_command_executor.py
-│   │   └── test_handler_passthrough.py
-│   ├── integration/         # Integration tests
-│   │   └── test_enhanced_file_paths.py
-│   ├── memory/              # Memory system tests
-│   │   └── test_memory_system_indexing.py
-│   ├── task_system/         # Task system tests
-│   │   ├── test_file_path_resolution.py
-│   │   ├── test_function_call_integration.py
-│   │   └── test_integration.py
-│   └── test_tool_invocation.py
+│   │   ├── test_file_access.py
+│   │   ├── test_file_context_manager.py
+│   │   ├── test_llm_interaction_manager.py
+│   │   └── test_passthrough_handler.py
+│   ├── memory/              # Tests for memory system
+│   │   ├── test_memory_system.py
+│   │   └── indexers/
+│   │       └── test_git_repository_indexer.py
+│   ├── sexp_evaluator/      # Tests for S-expression evaluator
+│   │   ├── test_sexp_environment.py
+│   │   └── test_sexp_evaluator.py
+│   ├── sexp_parser/         # Tests for S-expression parser
+│   │   └── test_sexp_parser.py
+│   ├── system/              # Tests for system utilities/models
+│   │   └── test_models.py
+│   ├── task_system/         # Tests for task system
+│   │   ├── test_file_path_resolver.py
+│   │   ├── test_task_system.py
+│   │   └── test_template_registry.py
+│   ├── tools/               # Tests for tools
+│   │   └── test_anthropic_tools.py
+│   ├── test_dispatcher.py   # Tests for the dispatcher
+│   └── test_main.py         # Tests for the main application setup
 │
-├── devdocs/                 # Development documentation
+├── devdocs/                 # Development documentation (non-spec)
 │   └── examples/
 │       └── sysprompt.py
 │
-├── test_aider_integration.py # Aider integration tests
-├── test_matching.py         # Associative matching tests
+├── docs/                    # Project documentation (specs, guides)
+│   ├── IDL.md
+│   ├── implementation_rules.md
+│   ├── project_rules.md     # This file
+│   ├── start_here.md
+│   ├── memory.md            # Developer working memory log
+│   ├── documentation_update.md # Guide for updating docs
+│   ├── librarydocs/         # Docs related to external libraries
+│   │   ├── aider_MCP_server.md
+│   │   ├── mcp_client_developer_guide.md
+│   │   ├── pydanticai.md
+│   │   └── ...
+│   ├── system/              # System architecture, contracts, protocols
+│   │   ├── README.md
+│   │   ├── architecture/
+│   │   │   └── overview.md
+│   │   └── contracts/
+│   │       └── types.md     # Shared type definitions (source for src/system/models.py)
+│   └── ...                  # Other guides, ADRs, etc.
+│
+├── test_aider_integration.py # Old Aider integration tests (potentially remove/refactor)
+├── test_matching.py         # Old matching tests (potentially remove/refactor)
 ├── pytest.ini               # pytest configuration
 └── README.md                # Project documentation
 ```
