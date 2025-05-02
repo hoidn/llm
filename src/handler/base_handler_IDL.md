@@ -124,10 +124,11 @@ module src.handler.base_handler {
     
     // Retrieves the registered tools in the format required by the pydantic-ai Agent constructor.
     // Preconditions: Tools should have been registered via `register_tool`.
-    // Postconditions: Returns a list representing the registered tools.
-    // Behavior: Retrieves tools from internal storage (e.g., `self.tool_executors.values()` or `self.registered_tools.values()`)
-    //           formatted as expected by `Agent(tools=...)`.
-    //           (**Note:** Assumed format is list of callables, needs verification.)
+    // Postconditions:
+    // - Returns a list of callables corresponding to each registered tool executor,
+    //   suitable for passing to the `pydantic-ai Agent` constructor.
+    // Behavior:
+    // - Extracts executor functions (callables) from the internal `tool_executors` dictionary.
     list<Any> get_tools_for_agent();
 
         // Internal method to execute a call via the LLMInteractionManager.

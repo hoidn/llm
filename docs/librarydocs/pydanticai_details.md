@@ -6,117 +6,101 @@ This document provides detailed information about the tool system in Pydantic AI
 
 ### Agent(tools=...) Parameter Format
 
-The `tools` parameter for `pydantic_ai.Agent` constructor accepts several formats:
+The `tools` parameter for the `pydantic_ai.Agent` constructor accepts:
 
-1. **List of functions (`list[Callable]`)**: You can pass regular Python functions or async functions.
-   ```python
-   def my_tool(a: int, b: str) -> str:
-       return f"{a} {b}"
-   
-   agent = Agent(model='...',  tools=[my_tool])
-   ```
+1.  **List of functions/methods (`Sequence[Callable]`)**: You can pass regular Python functions or async functions directly. `pydantic-ai` will automatically introspect them.
+    ```python
+    def my_tool(a: int, b: str) -> str:
+        """My tool description."""
+        return f"{a} {b}"
 
-2. **List of `Tool` objects (`list[Tool]`)**: More detailed way to define tools with additional options.
-   ```python
-   tool = Tool(my_tool, name="custom_name", description="Custom description")
-   agent = Agent(model='...', tools=[tool])
-   ```
+    agent = Agent(model='...', tools=[my_tool])
+    ```
 
-3. **The expected format does NOT depend on the specific LLM provider** - pydantic-ai handles conversion to provider-specific formats.
+2.  **List of `Tool` objects (`Sequence[Tool]`)**: Use the `pydantic_ai.tools.Tool` class to wrap callables when you need more control (e.g., overriding name/description, using `prepare` function).
+    ```python
+    from pydantic_ai import Tool
+
+    tool_obj = Tool(my_tool, name="custom_name", description="Custom description")
+    agent = Agent(model='...', tools=[tool_obj])
+    ```
+
+3.  **Mixed List**: A sequence containing both callables and `Tool` objects.
+
+4.  **Not Accepted**: It does **not** directly accept a `list[dict]` containing tool specifications in the constructor.
 
 ### Automatic Schema/Description Extraction
 
-Yes, pydantic-ai automatically inspects function signatures and docstrings to generate schemas, regardless of whether you use the decorator or pass functions directly:
+Yes, `pydantic-ai` **automatically** inspects function signatures and docstrings to generate schemas and descriptions when you pass callables directly *or* when you use the `Tool` class without explicitly providing `name` or `description`.
 
-- Type hints are used to generate JSON schema parameters
-- Function docstrings are parsed to extract descriptions (including parameter descriptions)
-- Pydantic models in arguments are properly converted to their corresponding schema
-- This works with both `@agent.tool` decorator and when passing functions to the `tools` parameter
+-   Type hints (including Pydantic models, `Optional`, `Union`, etc.) are used for the JSON schema.
+-   Docstrings are parsed (Google, Numpy, Sphinx, Auto) for the main description and parameter descriptions. Ensure your docstrings are well-formatted.
+-   The optional `RunContext` parameter is correctly handled and excluded from the LLM schema.
 
 ### Specification Schema
 
-The tool specification follows a consistent schema internally represented by the `ToolDefinition` class:
-```python
-@dataclass
-class ToolDefinition:
-    name: str
-    description: str
-    parameters_json_schema: ObjectJsonSchema  # dict[str, Any] with JSON schema
-    outer_typed_dict_key: str | None = None
-    strict: bool | None = None
-```
-
-The schema is automatically generated from the function's type hints and docstring, and pydantic-ai handles converting this to provider-specific formats when communicating with different LLMs.
+Internally, `pydantic-ai` uses a standardized `ToolDefinition` dataclass. This internal representation is then translated by the specific `Model` class (e.g., `OpenAIModel`) into the format required by the target LLM provider's API. You generally don't interact with `ToolDefinition` directly unless customizing schema generation.
 
 ## Dynamic Tool Handling
 
 ### Per-Run Tool Specification
 
-Yes, tools can be provided dynamically per-call using the `tools` parameter:
-```python
-# During initialization
-agent = Agent(model='...', tools=[tool1, tool2])
-
-# During a specific run
-result = await agent.run(prompt="...", tools=[tool3, tool4])
-```
+The `agent.run()`, `agent.run_sync()`, and `agent.iter()` methods **do not accept a `tools` parameter**. You cannot override or add tools dynamically for a specific run using a parameter to these methods.
 
 ### Per-Run vs. Init Tools
 
-The documentation and code suggest that tools passed during a run are used *in addition to* tools provided during initialization, not replacing them. This allows for a flexible combination of default tools plus context-specific ones.
+Tools are defined at the `Agent` initialization level. The set of tools available during a run is determined by the tools provided during `Agent` creation.
 
-### Recommended Pattern for Dynamic Loading
+### Recommended Pattern for Dynamic Loading/Availability
 
-For scenarios where tools might change between calls:
+If you need tools to be dynamically available or modified based on runtime context (e.g., user permissions, current state):
 
-1. **For mostly static tools with occasional additions**: Initialize the agent with common tools, then pass additional tools during `run()` or `run_sync()` calls.
+1.  **Use `Tool.prepare`:** Register your tool using the `pydantic_ai.Tool` class and provide a `prepare` async function. This function receives the `RunContext` and the default `ToolDefinition` and can return `None` (to exclude the tool for that run) or a modified `ToolDefinition`.
+    ```python
+    from pydantic_ai import Tool, RunContext
+    from pydantic_ai.tools import ToolDefinition # Import needed
 
-2. **For significantly different tool sets**: Create separate agent instances for different contexts, each with its own set of tools.
+    async def prepare_admin_tool(ctx: RunContext[MyDeps], tool_def: ToolDefinition) -> ToolDefinition | None:
+        if ctx.deps.is_admin: # Check context from dependencies
+            return tool_def # Include tool for admins
+        return None # Exclude tool for non-admins
 
-3. **For tool filtering based on context**: Use the `prepare` function capability to dynamically include/exclude tools based on context:
-   ```python
-   async def only_include_if_condition(ctx: RunContext, tool_def: ToolDefinition) -> ToolDefinition | None:
-       if condition_met(ctx.deps):  # Check condition using dependencies
-           return tool_def  # Include tool
-       return None  # Don't include tool
-   
-   my_tool = Tool(function, prepare=only_include_if_condition)
-   ```
+    admin_callable = ... # Your tool function
+    admin_tool = Tool(admin_callable, prepare=prepare_admin_tool)
+    agent = Agent(model='...', tools=[admin_tool])
+    ```
+
+2.  **Separate Agent Instances:** For fundamentally different toolsets, consider creating and using separate `Agent` instances configured for specific contexts.
 
 ## Tool Definition & Registration
 
 ### Manual Registration Equivalence
 
-To achieve the equivalent of the `@agent.tool` decorator when registering tools manually, use the `Tool` class:
+To achieve the equivalent of the `@agent.tool` decorator when registering tools manually for the `Agent` constructor, you primarily pass the callable directly:
 
 ```python
-from pydantic_ai import Tool, RunContext
-from pydantic import BaseModel
-
-class QueryParams(BaseModel):
-    query: str
-    limit: int = 10
-
-def search_database(ctx: RunContext[Dependencies], params: QueryParams) -> list:
+# Tool function
+def search_database(ctx: RunContext[Dependencies], query: str) -> list:
+    """Searches the database."""
     # Implementation
     return []
 
-# Register manually - equivalent to @agent.tool
-search_tool = Tool(
-    search_database,
-    takes_ctx=True,  # Explicitly indicate it takes context
-    max_retries=3,
-    name="search_database",  # Optional, defaults to function name
-    description="Search the database with parameters",  # Optional, defaults to docstring
-    docstring_format='google',  # Optional, defaults to 'auto'
-    require_parameter_descriptions=False  # Optional
-)
-
-# Use in agent
-agent = Agent(model='...', tools=[search_tool])
+# Pass callable directly to Agent constructor
+agent = Agent(model='...', tools=[search_database])
+# pydantic-ai handles wrapping in Tool and introspection automatically.
 ```
 
-The schema generation for Pydantic models in parameters will work automatically just like with the decorator.
+If you need to override the name/description or use advanced features (like prepare), wrap the callable with the Tool class:
+```python
+from pydantic_ai import Tool
+
+search_tool_obj = Tool(
+    search_database,
+    name="database_query_tool", # Override name
+    description="Performs a query against the main product database." # Override description
+)
+agent = Agent(model='...', tools=[search_tool_obj])
+```
 
 ## Error Handling
 

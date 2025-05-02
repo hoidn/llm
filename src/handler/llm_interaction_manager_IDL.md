@@ -25,9 +25,8 @@ module src.handler.llm_interaction_manager {
         // have been registered with the handler, before any execution calls are made.
         // Preconditions:
         // - Manager is initialized (`__init__` called).
-        // - `tools` is a list representing the tools to be passed to the Agent constructor.
-        //   (**Note:** The exact required format - list of callables, list of specs (dicts) -
-        //   depends on the `pydantic-ai` library version and needs verification).
+        // - `tools` is a list of **callables** (Python functions/methods) representing the tools
+        //   to be made available to the Agent. `pydantic-ai` will introspect these callables.
         // Postconditions:
         // - The internal `self.agent` attribute holds an initialized `pydantic-ai Agent` instance.
         // - If called again, may log a warning or re-initialize based on implementation.
@@ -36,7 +35,7 @@ module src.handler.llm_interaction_manager {
         // - Instantiates the `pydantic-ai Agent`.
         // - Stores the created agent instance in `self.agent`.
         // @raises_error(condition="AgentInitializationError", description="Raised if the pydantic-ai Agent fails to initialize (e.g., invalid config, missing API key).")
-        void initialize_agent(list<Any> tools); // Type 'Any' pending verification of required tool format
+        void initialize_agent(list<function> tools);
 
         // Executes an LLM call with the given prompt and optional overrides.
         // Preconditions:
