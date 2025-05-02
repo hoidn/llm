@@ -25,9 +25,18 @@ try:
     MCP_INSTALLED = True
 except ImportError:
     # Define dummies if mcp is not installed
-    class DummyStdioClient: async def __aenter__(self): return (None, None); async def __aexit__(self, *args): pass
-    class DummyClientSession: async def __aenter__(self): return self; async def __aexit__(self, *args): pass; async def initialize(self): pass; async def call_tool(self, *args, **kwargs): return []
-    class DummyTextContent: def __init__(self, text): self.text = text
+    class DummyStdioClient:
+        async def __aenter__(self): return (None, None)
+        async def __aexit__(self, *args): pass
+    
+    class DummyClientSession:
+        async def __aenter__(self): return self
+        async def __aexit__(self, *args): pass
+        async def initialize(self): pass
+        async def call_tool(self, *args, **kwargs): return []
+    
+    class DummyTextContent:
+        def __init__(self, text): self.text = text
     real_stdio_client = DummyStdioClient # type: ignore
     RealClientSession = DummyClientSession # type: ignore
     RealTextContent = DummyTextContent # type: ignore
@@ -82,10 +91,6 @@ def aider_bridge_instance(mock_memory_system_bridge, mock_file_access_manager_br
     if not AiderBridge:
         pytest.skip("AiderBridge class not available for testing.")
     # Provide minimal config for MCP STDIO
-    return {
-        "mcp_transport": "stdio", # Assuming stdio based on aider_MCP_server.md
-        "mcp_stdio_command": "dummy_aider_mcp_server_command",
-        "mcp_stdio_args": ["--port", "1234"],
     config = {
         "mcp_stdio_command": "dummy_aider_mcp_server",
         "mcp_stdio_args": [],
