@@ -101,11 +101,9 @@ def app_components(mocker, tmp_path): # Add tmp_path
         # Create mock instances that the mocked classes will return OR get the default return_value
         # Use autospec=True for instances to mimic the class spec
         mock_memory_system_instance = MagicMock(spec=MemorySystem)
-        # --- START FIX ---
-        # mock_task_system_instance = MagicMock(spec=TaskSystem) # Removed explicit creation
         mock_task_instance = MockTask.return_value # Get the instance created by the patch
         # Configure MockTask instance methods if needed
-        # --- END FIX ---
+        mock_task_instance.set_handler = MagicMock() # Add mock for set_handler
         mock_handler_instance = MagicMock(spec=PassthroughHandler)
         mock_fm_instance = MagicMock(spec=FileAccessManager)
         mock_llm_manager_instance = MagicMock() # Removed spec
@@ -116,9 +114,7 @@ def app_components(mocker, tmp_path): # Add tmp_path
         # Configure mock instances with attributes accessed during Application.__init__
         mock_fm_instance.base_path = "/mocked/base/path" # For logging
         # Add the memory_system attribute so hasattr checks pass in Application.__init__
-        # --- START FIX ---
         mock_task_instance.memory_system = None # Configure the instance from MockTask.return_value
-        # --- END FIX ---
 
         # Configure the mocked classes to return the mock instances
         MockMemory.return_value = mock_memory_system_instance
@@ -177,9 +173,7 @@ def app_components(mocker, tmp_path): # Add tmp_path
 
             # Core Component Instance Mocks
             "mock_memory_system_instance": mock_memory_system_instance,
-            # --- START FIX ---
             "mock_task_system_instance": mock_task_instance, # Return the instance from MockTask.return_value
-            # --- END FIX ---
             "mock_handler_instance": mock_handler_instance,
             "mock_fm_instance": mock_fm_instance,
             "mock_llm_manager_instance": mock_llm_manager_instance,
