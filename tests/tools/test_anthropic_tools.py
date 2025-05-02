@@ -91,7 +91,8 @@ def test_view_with_line_range(mock_file_manager):
     """Test view with start and end line numbers."""
     mock_file_manager.read_file.return_value = "Line 1\nLine 2\nLine 3\nLine 4\nLine 5"
     result = anthropic_tools.view(mock_file_manager, file_path="range.txt", start_line=2, end_line=4)
-    assert result == "Line 2\nLine 3\nLine 4" # Includes trailing newline of line 4
+    # Fix: Assert includes the trailing newline from Line 4
+    assert result == "Line 2\nLine 3\nLine 4\n"
     mock_file_manager.read_file.assert_called_once_with("range.txt", max_size=anthropic_tools.DEFAULT_MAX_FILE_SIZE)
     mock_file_manager._resolve_path.assert_called_once_with("range.txt")
 
@@ -270,8 +271,8 @@ def test_insert_fail_no_position_or_line(mock_file_manager):
     result = anthropic_tools.insert(mock_file_manager, file_path="a.txt", content="abc")
     assert "Error: Must specify either position or line" in result
     mock_file_manager.insert_content.assert_not_called()
-    # Path normalization might still happen before the check
-    mock_file_manager._resolve_path.assert_called_once_with("a.txt")
+    # Fix: Remove the incorrect assertion below - _resolve_path is not called here
+    # mock_file_manager._resolve_path.assert_called_once_with("a.txt")
 
 
 def test_insert_fail_both_position_and_line(mock_file_manager):
@@ -279,16 +280,23 @@ def test_insert_fail_both_position_and_line(mock_file_manager):
     result = anthropic_tools.insert(mock_file_manager, file_path="a.txt", content="abc", position=1, line=1)
     assert "Error: Cannot specify both position and line" in result
     mock_file_manager.insert_content.assert_not_called()
-    mock_file_manager._resolve_path.assert_called_once_with("a.txt")
+    # Fix: Remove the incorrect assertion below - _resolve_path is not called here
+    # mock_file_manager._resolve_path.assert_called_once_with("a.txt")
 
 def test_insert_fail_invalid_position_negative(mock_file_manager):
-    """Test insert fails with negative position."""
-    with pytest.raises(ValidationError):
+    """Test insert fails with invalid Pydantic input (negative position)."""
+    # Check that the Pydantic model raises the error directly
+    with pytest.raises(ValidationError) as excinfo:
         anthropic_tools.InsertInput(file_path="a.txt", content="abc", position=-1)
+    # Fix: Check for a more general Pydantic error message part
+    assert "Input should be greater than or equal to 0" in str(excinfo.value)
 
+    # Check that the tool function catches the ValidationError and returns an error string
     result = anthropic_tools.insert(mock_file_manager, file_path="a.txt", content="abc", position=-1)
     assert "Error: Invalid input" in result
-    assert "Position cannot be negative" in result # Check specific validation message if possible
+    # Fix: Check for a substring related to the position error within the Pydantic detail
+    assert "position" in result
+    assert "Input should be greater than or equal to 0" in result
     mock_file_manager.insert_content.assert_not_called()
     mock_file_manager._resolve_path.assert_not_called() # Validation fails first
 

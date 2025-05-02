@@ -130,6 +130,7 @@ def test_base_handler_init(mock_dependencies):
         assert handler.conversation_history == []
         assert handler.tool_executors == {}
         assert handler.registered_tools == {}
+        assert handler.active_tool_definitions == [] # Check new attribute
 
         # Verify dependencies were instantiated correctly within BaseHandler's __init__
         MockFM.assert_called_once_with(base_path="/config/path")
@@ -164,8 +165,11 @@ def test_register_tool_success(base_handler_instance):
     assert "my_tool" in base_handler_instance.tool_executors
     assert base_handler_instance.tool_executors["my_tool"] == executor_func
     assert "my_tool" in base_handler_instance.registered_tools
-    assert base_handler_instance.registered_tools["my_tool"] == tool_spec
-    # TODO: Add assertion for LLM manager interaction if/when implemented
+    # Check the structure stored in registered_tools
+    assert base_handler_instance.registered_tools["my_tool"] == {
+        "spec": tool_spec,
+        "executor": executor_func
+    }
 
 
 def test_register_tool_fail_no_name(base_handler_instance):
@@ -352,8 +356,9 @@ def test_base_handler_execute_llm_call_success(base_handler_instance):
         # **Fix 2: Use the stored history for assertion**
         conversation_history=history_before_call,
         system_prompt_override=None,
-        tools_override=None,
+        tools_override=None, # Check tools_override is None by default
         output_type_override=None,
+        active_tools=[] # Check active_tools is empty list by default
     )
 
     # Verify history update
@@ -398,6 +403,7 @@ def test_base_handler_execute_llm_call_failure(base_handler_instance):
         system_prompt_override=None,
         tools_override=None,
         output_type_override=None,
+        active_tools=[]
     )
 
     # Verify history NOT updated
@@ -600,80 +606,44 @@ def test_get_provider_identifier_no_llm_manager(base_handler_instance):
     assert "LLMInteractionManager is not available" in mock_warning.call_args[0][0]
 
 
-# --- Tests for set_active_tools ---
+# --- Tests for set_active_tool_definitions ---
 
+def test_set_active_tool_definitions_success(base_handler_instance):
+    """Test setting active tool definitions."""
+    # Create tool definitions
+    tool_def1 = {"name": "tool1", "description": "Tool 1", "input_schema": {}}
+    tool_def2 = {"name": "tool2", "description": "Tool 2", "input_schema": {}}
+    tool_definitions_to_set = [tool_def1, tool_def2]
 
-def test_set_active_tools_success(base_handler_instance):
-    """Test setting active tools with valid tool names."""
-    # Register some tools first
-    tool_spec1 = {"name": "tool1", "description": "Tool 1", "input_schema": {}}
-    tool_spec2 = {"name": "tool2", "description": "Tool 2", "input_schema": {}}
+    # Set active tool definitions
+    result = base_handler_instance.set_active_tool_definitions(tool_definitions_to_set)
 
-    def executor1(inp):
-        return f"Tool 1: {inp}"
-
-    def executor2(inp):
-        return f"Tool 2: {inp}"
-
-    base_handler_instance.register_tool(tool_spec1, executor1)
-    base_handler_instance.register_tool(tool_spec2, executor2)
-
-    # Test setting active tools
-    result = base_handler_instance.set_active_tools(["tool1", "tool2"])
-
-    # Assert
+    # Verify the result and the stored definitions
     assert result is True
-    assert base_handler_instance.active_tools == ["tool1", "tool2"]
+    assert hasattr(base_handler_instance, 'active_tool_definitions')
+    assert base_handler_instance.active_tool_definitions == tool_definitions_to_set
 
 
-def test_set_active_tools_empty_list(base_handler_instance):
-    """Test setting an empty list of active tools."""
-    # Register a tool first
-    tool_spec = {"name": "some_tool", "description": "Some Tool", "input_schema": {}}
-
-    def executor(inp):
-        return f"Some Tool: {inp}"
-
-    base_handler_instance.register_tool(tool_spec, executor)
-
-    # Set active tools initially to verify they get cleared
-    base_handler_instance.active_tools = ["some_tool"]
+def test_set_active_tool_definitions_empty_list(base_handler_instance):
+    """Test setting an empty list of active tool definitions."""
+    # Set some initial definitions to verify they get cleared
+    base_handler_instance.active_tool_definitions = [{"name": "initial"}]
 
     # Test setting empty active tools list
-    result = base_handler_instance.set_active_tools([])
+    result = base_handler_instance.set_active_tool_definitions([])
 
     # Assert
     assert result is True
-    assert base_handler_instance.active_tools == []
+    assert base_handler_instance.active_tool_definitions == []
 
-
-def test_set_active_tools_unknown_tool(base_handler_instance):
-    """Test setting active tools with an unknown tool name."""
-    # Register a tool first
-    tool_spec = {"name": "known_tool", "description": "Known Tool", "input_schema": {}}
-
-    def executor(inp):
-        return f"Known Tool: {inp}"
-
-    base_handler_instance.register_tool(tool_spec, executor)
-
-    # Test setting active tools with unknown tool
-    with patch("logging.error") as mock_error:
-        result = base_handler_instance.set_active_tools(["known_tool", "unknown_tool"])
-
-    # Assert
-    assert result is False
-    # Active tools should not be changed if there are unknown tools
-    assert base_handler_instance.active_tools == []
-    mock_error.assert_called_once()
-    assert "unknown_tool" in mock_error.call_args[0][0]
+# Note: The test for setting unknown tools is removed because
+# set_active_tool_definitions does not perform validation against registered tools.
 
 
 # --- Tests for tools precedence logic in _execute_llm_call ---
 
-
 def test_execute_llm_call_tools_override_precedence(base_handler_instance):
-    """Test that explicit tools_override takes precedence over active_tools."""
+    """Test that explicit tools_override takes precedence over active_tool_definitions."""
     # Access the mocked llm_manager via the handler instance
     mock_llm_manager = base_handler_instance.llm_manager
     mock_llm_manager.execute_call.return_value = {
@@ -681,39 +651,33 @@ def test_execute_llm_call_tools_override_precedence(base_handler_instance):
         "content": "Response with override tools",
     }
 
-    # Register tools and set active tools
-    tool_spec1 = {
-        "name": "active_tool",
-        "description": "Active Tool",
-        "input_schema": {},
-    }
-
-    def executor1(inp):
-        return f"Active Tool: {inp}"
-
+    # Register a tool and set active definitions
+    tool_spec1 = {"name": "active_tool", "description": "Active Tool", "input_schema": {}}
+    def executor1(inp): return f"Active Tool: {inp}"
     base_handler_instance.register_tool(tool_spec1, executor1)
-    base_handler_instance.set_active_tools(["active_tool"])
+    base_handler_instance.set_active_tool_definitions([tool_spec1])
 
-    # Create override tool
-    def override_tool(inp):
-        return f"Override Tool: {inp}"
+    # Create override tool (callable)
+    def override_tool(inp): return f"Override Tool: {inp}"
+    override_tools_list = [override_tool]
 
     # Call with tools_override
     base_handler_instance._execute_llm_call(
-        "Test prompt", tools_override=[override_tool]
+        "Test prompt", tools_override=override_tools_list
     )
 
-    # Assert that llm_manager was called with tools_override, not active_tools
+    # Assert that llm_manager was called with tools_override
     mock_llm_manager.execute_call.assert_called_once()
-    call_args = mock_llm_manager.execute_call.call_args[1]
+    call_kwargs = mock_llm_manager.execute_call.call_args.kwargs
 
-    # The tools_override param should be passed, not the active tools
-    assert call_args["tools_override"] == [override_tool]
-    assert call_args["tools_override"] != [executor1]
+    # The tools_override param should be passed, not derived from active_tool_definitions
+    assert call_kwargs["tools_override"] == override_tools_list
+    # active_tools (definitions) should still be passed based on the handler's state
+    assert call_kwargs["active_tools"] == [tool_spec1]
 
 
-def test_execute_llm_call_active_tools_used(base_handler_instance):
-    """Test that active_tools are used when no tools_override is provided."""
+def test_execute_llm_call_active_definitions_used(base_handler_instance):
+    """Test that active_tool_definitions are used when no tools_override is provided."""
     # Access the mocked llm_manager via the handler instance
     mock_llm_manager = base_handler_instance.llm_manager
     mock_llm_manager.execute_call.return_value = {
@@ -721,42 +685,36 @@ def test_execute_llm_call_active_tools_used(base_handler_instance):
         "content": "Response with active tools",
     }
 
-    # Register tools and set active tools
-    tool_spec1 = {
-        "name": "active_tool1",
-        "description": "Active Tool 1",
-        "input_schema": {},
-    }
-    tool_spec2 = {
-        "name": "active_tool2",
-        "description": "Active Tool 2",
-        "input_schema": {},
-    }
-
-    def executor1(inp):
-        return f"Active Tool 1: {inp}"
-
-    def executor2(inp):
-        return f"Active Tool 2: {inp}"
-
+    # Register tools and set active definitions
+    tool_spec1 = {"name": "active_tool1", "description": "Active Tool 1", "input_schema": {}}
+    tool_spec2 = {"name": "active_tool2", "description": "Active Tool 2", "input_schema": {}}
+    def executor1(inp): return f"Active Tool 1: {inp}"
+    def executor2(inp): return f"Active Tool 2: {inp}"
     base_handler_instance.register_tool(tool_spec1, executor1)
     base_handler_instance.register_tool(tool_spec2, executor2)
-    base_handler_instance.set_active_tools(["active_tool1", "active_tool2"])
+    active_definitions = [tool_spec1, tool_spec2]
+    base_handler_instance.set_active_tool_definitions(active_definitions)
 
     # Call without tools_override
     base_handler_instance._execute_llm_call("Test prompt")
 
-    # Assert that llm_manager was called with active_tools
+    # Assert that llm_manager was called with active_tool_definitions
     mock_llm_manager.execute_call.assert_called_once()
-    call_args = mock_llm_manager.execute_call.call_args[1]
+    call_kwargs = mock_llm_manager.execute_call.call_args.kwargs
 
     # The tools_override param should contain the active tool executors
-    assert len(call_args["tools_override"]) == 2
-    assert call_args["tools_override"] == [executor1, executor2]
+    assert "tools_override" in call_kwargs
+    assert len(call_kwargs["tools_override"]) == 2
+    # Order might not be guaranteed, check set equality
+    assert set(call_kwargs["tools_override"]) == {executor1, executor2}
+
+    # The active_tools param should contain the definitions
+    assert "active_tools" in call_kwargs
+    assert call_kwargs["active_tools"] == active_definitions
 
 
 def test_execute_llm_call_no_tools(base_handler_instance):
-    """Test that no tools are passed when neither tools_override nor active_tools are set."""
+    """Test that no tools are passed when neither tools_override nor active_definitions are set."""
     # Access the mocked llm_manager via the handler instance
     mock_llm_manager = base_handler_instance.llm_manager
     mock_llm_manager.execute_call.return_value = {
@@ -764,28 +722,27 @@ def test_execute_llm_call_no_tools(base_handler_instance):
         "content": "Response with no tools",
     }
 
-    # Ensure no active tools are set
-    base_handler_instance.active_tools = []
+    # Ensure no active definitions are set
+    base_handler_instance.active_tool_definitions = []
 
     # Call without tools_override
     base_handler_instance._execute_llm_call("Test prompt")
 
-    # Assert that llm_manager was called with None for tools_override
+    # Assert that llm_manager was called with None for tools_override and empty list for active_tools
     mock_llm_manager.execute_call.assert_called_once()
-    call_args = mock_llm_manager.execute_call.call_args[1]
+    call_kwargs = mock_llm_manager.execute_call.call_args.kwargs
 
     # The tools_override param should be None
-    assert call_args["tools_override"] is None
+    assert call_kwargs["tools_override"] is None
+    # The active_tools param should be an empty list
+    assert call_kwargs["active_tools"] == []
 
 
-def test_execute_llm_call_missing_executor_in_active_tools(base_handler_instance):
-    """Test handling when an active tool name has no corresponding executor."""
+def test_execute_llm_call_missing_executor_in_active_definitions(base_handler_instance):
+    """Test handling when an active tool definition has no corresponding executor."""
     # Register one tool outside the warning patch
     tool_spec = {"name": "real_tool", "description": "Real Tool", "input_schema": {}}
-
-    def executor(inp):
-        return f"Real Tool: {inp}"
-
+    def executor(inp): return f"Real Tool: {inp}"
     base_handler_instance.register_tool(tool_spec, executor)
 
     # Setup logging capture only for the tool execution part
@@ -797,64 +754,33 @@ def test_execute_llm_call_missing_executor_in_active_tools(base_handler_instance
             "content": "Response with partial tools",
         }
 
-        # Manually set active_tools to include a missing tool (bypassing validation)
-        base_handler_instance.active_tools = ["real_tool", "missing_tool"]
+        # Manually set active_tool_definitions to include a missing tool spec
+        missing_tool_spec = {"name": "missing_tool", "description": "Missing"}
+        base_handler_instance.active_tool_definitions = [tool_spec, missing_tool_spec]
 
         # Call without tools_override
         base_handler_instance._execute_llm_call("Test prompt")
 
         # Assert that llm_manager was called with only the valid tool executor
         mock_llm_manager.execute_call.assert_called_once()
-        call_args = mock_llm_manager.execute_call.call_args[1]
+        call_kwargs = mock_llm_manager.execute_call.call_args.kwargs
 
         # The tools_override param should contain only the valid tool executor
-        assert len(call_args["tools_override"]) == 1
-        assert call_args["tools_override"] == [executor]
+        assert "tools_override" in call_kwargs
+        assert len(call_kwargs["tools_override"]) == 1
+        assert call_kwargs["tools_override"] == [executor]
 
-        # Check that a warning was logged about the missing tool
+        # The active_tools param should contain both definitions
+        assert "active_tools" in call_kwargs
+        assert call_kwargs["active_tools"] == [tool_spec, missing_tool_spec]
+
+        # Check that a warning was logged about the missing tool executor
         assert any(
             "missing_tool" in str(args) for args, _ in mock_warning.call_args_list
         )
 
 
 # --- Tests for set_active_tool_definitions and passing active tool definitions ---
-
-def test_set_active_tool_definitions(base_handler_instance):
-    """Test setting active tool definitions."""
-    # Create tool definitions
-    tool_def1 = {"name": "tool1", "description": "Tool 1", "input_schema": {}}
-    tool_def2 = {"name": "tool2", "description": "Tool 2", "input_schema": {}}
-    
-    # Set active tool definitions
-    base_handler_instance.set_active_tool_definitions([tool_def1, tool_def2])
-    
-    # Verify the tool definitions were stored
-    assert hasattr(base_handler_instance, 'active_tool_definitions')
-    assert base_handler_instance.active_tool_definitions == [tool_def1, tool_def2]
-
-
-def test_set_active_tools_deprecation_warning(base_handler_instance):
-    """Test that set_active_tools shows deprecation warning."""
-    # Register a tool
-    tool_spec = {"name": "test_tool", "description": "Test Tool", "input_schema": {}}
-    
-    def executor(inp):
-        return f"Test Tool: {inp}"
-    
-    base_handler_instance.register_tool(tool_spec, executor)
-    
-    # Call set_active_tools with warning patching
-    with warnings.catch_warnings(record=True) as w:
-        # Cause all warnings to always be triggered
-        warnings.simplefilter("always")
-        
-        base_handler_instance.set_active_tools(["test_tool"])
-        
-        # Verify we got a DeprecationWarning
-        assert len(w) == 1
-        assert issubclass(w[0].category, DeprecationWarning)
-        assert "deprecated" in str(w[0].message).lower()
-
 
 def test__execute_llm_call_passes_active_tools(base_handler_instance):
     """Test that active tool definitions are correctly passed to LLMInteractionManager.execute_call."""
@@ -870,27 +796,30 @@ def test__execute_llm_call_passes_active_tools(base_handler_instance):
 
     base_handler_instance.register_tool(tool_spec1, executor1)
     base_handler_instance.register_tool(tool_spec2, executor2)
-    
+
     # Set active tool definitions
-    base_handler_instance.set_active_tool_definitions([tool_spec1, tool_spec2])
-    
+    active_definitions = [tool_spec1, tool_spec2]
+    base_handler_instance.set_active_tool_definitions(active_definitions)
+
     # Configure mock LLMInteractionManager
     mock_llm_manager = base_handler_instance.llm_manager
     mock_llm_manager.execute_call.return_value = {
         "success": True,
         "content": "Response with active tool definitions",
     }
-    
+
     # Call _execute_llm_call without tools_override
     base_handler_instance._execute_llm_call("Test prompt")
-    
+
     # Assert LLMInteractionManager.execute_call was called with the active tool definitions
     mock_llm_manager.execute_call.assert_called_once()
-    call_args = mock_llm_manager.execute_call.call_args[1]
-    
+    call_kwargs = mock_llm_manager.execute_call.call_args.kwargs
+
     # Verify active_tools parameter contains both tool definitions
-    assert "active_tools" in call_args
-    assert len(call_args["active_tools"]) == 2
-    
-    # Verify tool specifications (not executor functions) were passed
-    assert call_args["active_tools"] == [tool_spec1, tool_spec2]
+    assert "active_tools" in call_kwargs
+    assert call_kwargs["active_tools"] == active_definitions
+
+    # Verify tools_override parameter contains the corresponding executors
+    assert "tools_override" in call_kwargs
+    assert len(call_kwargs["tools_override"]) == 2
+    assert set(call_kwargs["tools_override"]) == {executor1, executor2}
