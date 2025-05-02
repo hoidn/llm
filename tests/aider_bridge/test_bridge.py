@@ -163,6 +163,7 @@ class TestAiderBridge:
         # Check ClientSession class mock was called
         mock_client_session_cls.assert_called_once()
         mock_session_instance.initialize.assert_awaited_once()
+        # Check call_tool on session instance was awaited with correct args
         mock_session_instance.call_tool.assert_awaited_once_with(name=tool_name, arguments=params)
 
         assert result.get("status") == "COMPLETE"
@@ -214,6 +215,7 @@ class TestAiderBridge:
         # Check ClientSession class mock was called
         mock_client_session_cls.assert_called_once()
         mock_session_instance.initialize.assert_awaited_once()
+        # Check call_tool on session instance was awaited with correct args
         mock_session_instance.call_tool.assert_awaited_once_with(name=tool_name, arguments=params)
 
         assert result.get("status") == "FAILED"
@@ -269,6 +271,7 @@ class TestAiderBridge:
         # Check ClientSession class mock was called
         mock_client_session_cls.assert_called_once()
         mock_session_instance.initialize.assert_awaited_once()
+        # Check call_tool on session instance was awaited with correct args
         mock_session_instance.call_tool.assert_awaited_once_with(name=tool_name, arguments=params)
 
         assert isinstance(result, dict)
@@ -320,6 +323,7 @@ class TestAiderBridge:
         # Check ClientSession class mock was called
         mock_client_session_cls.assert_called_once()
         mock_session_instance.initialize.assert_awaited_once()
+        # Check call_tool on session instance was awaited with correct args
         mock_session_instance.call_tool.assert_awaited_once_with(name=tool_name, arguments=params)
 
         assert result.get("status") == "FAILED"
@@ -370,6 +374,7 @@ class TestAiderBridge:
         # Check ClientSession class mock was called
         mock_client_session_cls.assert_called_once()
         mock_session_instance.initialize.assert_awaited_once()
+        # Check call_tool on session instance was awaited with correct args
         mock_session_instance.call_tool.assert_awaited_once_with(name=tool_name, arguments=params)
 
         assert result.get("status") == "FAILED"
