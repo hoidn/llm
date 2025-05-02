@@ -2,6 +2,7 @@ import pytest
 import os
 import sys
 from unittest.mock import MagicMock, patch, call, ANY
+from typing import Callable # Add Callable to imports
 
 # Ensure src is in path for imports if running tests directly
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -42,7 +43,8 @@ def app_instance(tmp_path):
          patch('src.main.TaskSystem', MagicMock(spec=TaskSystem)) as MockTask, \
          patch('src.main.PassthroughHandler', MagicMock(spec=PassthroughHandler)) as MockHandler, \
          patch('src.main.GitRepositoryIndexer', MagicMock(spec=GitRepositoryIndexer)) as MockIndexer, \
-         patch('src.main.SystemExecutorFunctions', MagicMock(spec=system_executors_module.SystemExecutorFunctions)) as MockSysExec:
+         patch('src.main.SystemExecutorFunctions', MagicMock(spec=system_executors_module.SystemExecutorFunctions)) as MockSysExec, \
+         patch('src.handler.llm_interaction_manager.Agent') as MockPydanticAgent: # Mock Agent used by manager
 
         # Configure mocks BEFORE Application instantiation
         mock_fm_instance = MockFM.return_value # Get FM instance
@@ -55,7 +57,14 @@ def app_instance(tmp_path):
         mock_handler_instance.get_provider_identifier.return_value = "anthropic:claude-3-5-sonnet-latest"
         # Add mock for set_active_tool_definitions
         mock_handler_instance.set_active_tool_definitions.return_value = True
-        
+        # Mock the LLM manager instance on the handler
+        mock_llm_manager_instance = MagicMock()
+        mock_handler_instance.llm_manager = mock_llm_manager_instance
+        # Mock get_tools_for_agent to return a list of callables
+        def dummy_tool_exec(): pass
+        mock_handler_instance.get_tools_for_agent.return_value = [dummy_tool_exec]
+
+
         # Register at least one system tool so _determine_active_tools returns something
         mock_handler_instance.registered_tools = {
             "system:test_tool": {"name": "system:test_tool", "description": "Test Tool"}
@@ -72,6 +81,7 @@ def app_instance(tmp_path):
         app.mock_handler = mock_handler_instance
         app.mock_indexer_cls = MockIndexer # Store the class mock
         app.mock_sys_exec = MockSysExec
+        app.mock_pydantic_agent_cls = MockPydanticAgent # Store Agent class mock
 
 
         yield app # Provide the configured app instance to the test
@@ -95,7 +105,18 @@ def test_application_init_wiring(app_instance):
     with patch('src.main.FileAccessManager') as MockFM_test, \
          patch('src.main.MemorySystem') as MockMemory_test, \
          patch('src.main.TaskSystem') as MockTask_test, \
-         patch('src.main.PassthroughHandler') as MockHandler_test:
+         patch('src.main.PassthroughHandler') as MockHandler_test, \
+         patch('src.handler.llm_interaction_manager.Agent') as MockPydanticAgent_test: # Mock Agent used by manager
+
+        # Configure mocks for this specific test run
+        mock_handler_instance_test = MockHandler_test.return_value
+        mock_llm_manager_instance_test = MagicMock()
+        mock_handler_instance_test.llm_manager = mock_llm_manager_instance_test
+        mock_handler_instance_test.get_provider_identifier.return_value = "test:provider"
+        def dummy_tool_exec_test(): pass
+        mock_handler_instance_test.get_tools_for_agent.return_value = [dummy_tool_exec_test]
+        mock_handler_instance_test.registered_tools = {"system:test_tool": {"name": "system:test_tool"}}
+
 
         # Re-instantiate within this test's patch context
         app_test = Application(config={"handler_config": {"some_key": "val"}})
@@ -125,6 +146,13 @@ def test_application_init_wiring(app_instance):
         assert 'memory_system' in handler_call_kwargs
         assert handler_call_kwargs['memory_system'] is None
 
+        # Assert LLM Manager's initialize_agent was called
+        mock_llm_manager_instance_test.initialize_agent.assert_called_once_with(tools=[dummy_tool_exec_test])
+
+        # Assert the underlying Pydantic Agent was initialized by the manager
+        MockPydanticAgent_test.assert_called_once()
+
+
     # Check wiring using the fixture instance (already done in __init__)
     assert app_instance.memory_system == app_instance.mock_memory
     assert app_instance.task_system == app_instance.mock_task
@@ -133,7 +161,7 @@ def test_application_init_wiring(app_instance):
 
     # Check task system has handler set
     app_instance.mock_task.set_handler.assert_called_once_with(app_instance.mock_handler)
-    
+
     # Check active tool definitions were set
     app_instance.mock_handler.get_provider_identifier.assert_called_once()
     app_instance.mock_handler.set_active_tool_definitions.assert_called_once()
@@ -381,3 +409,64 @@ def test_application_init_failure():
     with patch('src.main.MemorySystem', side_effect=Exception("Memory init failed")):
         with pytest.raises(Exception, match="Memory init failed"):
             Application() # Instantiation should fail and raise
+
+# --- NEW Test for Tool Format ---
+def test_application_init_passes_correct_tool_format_to_agent(tmp_path):
+    """
+    Verify the correct tool format (list[Callable]) is passed to LLMInteractionManager.initialize_agent.
+    IDL Quotes:
+    - Application.__init__: Trigger agent initialization: Call `handler.llm_manager.initialize_agent(tools=agent_tools)`.
+    - BaseHandler.get_tools_for_agent: Retrieves the registered tool executor functions... Returns a list of callables...
+    - LLMInteractionManager.initialize_agent: Instantiates the `pydantic-ai Agent`, passing the provided `tools` list.
+    """
+    # Arrange: Patch dependencies thoroughly for init sequence
+    with patch('src.main.FileAccessManager', MagicMock(spec=FileAccessManager)) as MockFM, \
+         patch('src.main.MemorySystem', MagicMock(spec=MemorySystem)) as MockMemory, \
+         patch('src.main.TaskSystem', MagicMock(spec=TaskSystem)) as MockTask, \
+         patch('src.main.PassthroughHandler', MagicMock(spec=PassthroughHandler)) as MockHandler, \
+         patch('src.main.GitRepositoryIndexer', MagicMock(spec=GitRepositoryIndexer)), \
+         patch('src.main.SystemExecutorFunctions', MagicMock(spec=system_executors_module.SystemExecutorFunctions)), \
+         patch('src.handler.llm_interaction_manager.Agent') as MockPydanticAgent: # Mock the actual Agent class used by manager
+
+        # Configure handler mock specifically for this test
+        mock_handler_instance = MockHandler.return_value
+        mock_llm_manager_instance = MagicMock() # Mock the manager instance itself
+        mock_handler_instance.llm_manager = mock_llm_manager_instance
+        mock_handler_instance.get_provider_identifier.return_value = "test:provider"
+
+        # Define dummy executor functions to be returned by get_tools_for_agent
+        def sys_tool_exec(): pass
+        def provider_tool_exec(): pass
+        mock_handler_instance.get_tools_for_agent.return_value = [sys_tool_exec, provider_tool_exec]
+        # Ensure registered_tools has something for _determine_active_tools
+        mock_handler_instance.registered_tools = {"system:test": {"name": "system:test"}}
+
+
+        # Act: Instantiate Application to trigger the sequence
+        app = Application()
+
+        # Assert: Check the arguments passed to the *mocked* initialize_agent
+        # This mock is on the handler's manager instance
+        app.passthrough_handler.llm_manager.initialize_agent.assert_called_once()
+        call_args, call_kwargs = app.passthrough_handler.llm_manager.initialize_agent.call_args
+
+        # Check the 'tools' keyword argument passed to initialize_agent
+        # The call is positional, so check args[0]
+        # assert 'tools' in call_kwargs # Incorrect, it's positional
+        assert len(call_args) > 0 # Ensure positional args exist
+        passed_tools = call_args[0] # Tools are the first positional argument
+        assert isinstance(passed_tools, list)
+        assert len(passed_tools) == 2
+        # Verify it's the list of callables we configured get_tools_for_agent to return
+        assert passed_tools[0] is sys_tool_exec
+        assert passed_tools[1] is provider_tool_exec
+        assert all(callable(t) for t in passed_tools)
+
+        # Also assert that the underlying pydantic Agent constructor (MockPydanticAgent)
+        # was called *by initialize_agent* with this list.
+        # This requires initialize_agent to actually call Agent(tools=...)
+        # Assuming initialize_agent implementation calls Agent correctly:
+        MockPydanticAgent.assert_called_once()
+        agent_call_args, agent_call_kwargs = MockPydanticAgent.call_args
+        assert 'tools' in agent_call_kwargs
+        assert agent_call_kwargs['tools'] == [sys_tool_exec, provider_tool_exec]

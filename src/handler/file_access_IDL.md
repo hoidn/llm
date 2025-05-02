@@ -40,6 +40,20 @@ module src.handler.file_access {
         // Expected JSON format for success return value: { "path": "string", "size": "string", "modified": "string" }
         // Expected JSON format for error return value: { "error": "string" }
         dict<string, string> get_file_info(string file_path);
+
+        // Writes content to a file, optionally overwriting. Constrained by base_path.
+        // Preconditions: content is a string. file_path is relative to base_path.
+        // Postconditions: Returns true on success, false on failure (e.g., path outside base, permissions, file exists and overwrite=False). Errors logged internally.
+        // Behavior: Performs path safety check. Creates parent directories if needed. Handles overwrite logic.
+        // @raises_error(None) // Errors handled internally by returning False
+        boolean write_file(string file_path, string content, boolean overwrite=False);
+
+        // Inserts content into a file at a specific byte offset. Constrained by base_path.
+        // Preconditions: file_path exists and is a file. position is a non-negative integer within the file's bounds.
+        // Postconditions: Returns true on success, false on failure (e.g., path outside base, file not found, invalid position, permissions). Errors logged internally.
+        // Behavior: Performs path safety check. Reads existing content, inserts new content at position, writes back the modified content.
+        // @raises_error(None) // Errors handled internally by returning False
+        boolean insert_content(string file_path, string content, int position);
     };
 };
 // == !! END IDL TEMPLATE !! ===

@@ -168,6 +168,8 @@ class LLMInteractionManager:
                 "Cannot initialize agent: pydantic-ai Agent class unavailable."
             )
         try:
+            # CONFIRMED (2024-07-29): pydantic-ai v0.1.18 accepts tools as list[Callable]
+            # and automatically generates schemas from type hints/docstrings.
             self.agent = Agent(
                 model=self._model_id,
                 system_prompt=self._base_prompt,
@@ -203,10 +205,16 @@ class LLMInteractionManager:
         # First check if we have a valid agent
         if not self.agent:
             logging.warning("Cannot get provider identifier: Agent is not initialized.")
-            return None
+            # Fallback to the configured default if agent isn't ready yet
+            return self.default_model_identifier
 
         # Return the model identifier since that contains provider information
+        # Accessing agent.model might be more direct if available and reliable
+        if hasattr(self.agent, 'model') and isinstance(self.agent.model, str):
+             return self.agent.model
+        # Fallback to the initially configured identifier
         return self.default_model_identifier
+
 
     def execute_call(
         self,
