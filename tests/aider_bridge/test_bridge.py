@@ -196,7 +196,7 @@ class TestAiderBridge:
         mock_stdio_cm = AsyncMock() # Context manager for stdio
         mock_stdio_cm.__aenter__.return_value = (AsyncMock(), AsyncMock()) # Dummy streams
         # 2. Configure the stdio_client FUNCTION mock
-        mock_stdio_client_func.return_value = mock_stdio_cm
+        mock_stdio_client_func.return_value = mock_stdio_cm # stdio_client FUNCTION returns the context manager
 
         # Act
         result = await aider_bridge_instance.call_aider_tool(tool_name, params)
@@ -247,7 +247,7 @@ class TestAiderBridge:
         mock_stdio_cm = AsyncMock() # Context manager for stdio
         mock_stdio_cm.__aenter__.return_value = (AsyncMock(), AsyncMock()) # Dummy streams
         # 2. Configure the stdio_client FUNCTION mock
-        mock_stdio_client_func.return_value = mock_stdio_cm
+        mock_stdio_client_func.return_value = mock_stdio_cm # stdio_client FUNCTION returns the context manager
 
         # Act
         result = await aider_bridge_instance.call_aider_tool(tool_name, params)
@@ -294,7 +294,7 @@ class TestAiderBridge:
         mock_stdio_cm = AsyncMock() # Context manager for stdio
         mock_stdio_cm.__aenter__.return_value = (AsyncMock(), AsyncMock()) # Dummy streams
         # 2. Configure the stdio_client FUNCTION mock
-        mock_stdio_client_func.return_value = mock_stdio_cm
+        mock_stdio_client_func.return_value = mock_stdio_cm # stdio_client FUNCTION returns the context manager
 
         # Act
         result = await aider_bridge_instance.call_aider_tool(tool_name, params)
@@ -340,7 +340,7 @@ class TestAiderBridge:
         mock_stdio_cm = AsyncMock() # Context manager for stdio
         mock_stdio_cm.__aenter__.return_value = (AsyncMock(), AsyncMock()) # Dummy streams
         # 2. Configure the stdio_client FUNCTION mock
-        mock_stdio_client_func.return_value = mock_stdio_cm
+        mock_stdio_client_func.return_value = mock_stdio_cm # stdio_client FUNCTION returns the context manager
 
         # Act
         result = await aider_bridge_instance.call_aider_tool(tool_name, params)
