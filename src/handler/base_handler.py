@@ -15,7 +15,7 @@ from src.handler.llm_interaction_manager import LLMInteractionManager
 from src.system.models import (
     TaskError,
     TaskResult,
-)  # Import TaskFailureError for type hints
+)  # Import TaskResult for type hints
 
 # Forward declarations for type hinting cycles
 # from src.task_system.task_system import TaskSystem
@@ -67,7 +67,7 @@ class BaseHandler:
         self.registered_tools: Dict[str, Dict[str, Any]] = (
             {}
         )  # Key: tool name, Value: tool spec
-        self.active_tools: List[str] = []  # List of tool names to use in LLM calls
+        self.active_tools: List[str] = []  # List of tool names to use in LLM calls (DEPRECATED)
         self.active_tool_definitions: List[Dict[str, Any]] = []  # List of tool specs to pass to LLM calls
         self.conversation_history: List[Dict[str, Any]] = (
             []
@@ -315,22 +315,11 @@ class BaseHandler:
         self,
         prompt: str,
         system_prompt_override: Optional[str] = None,
-        tools_override: Optional[
-            List[Callable]
-        ] = None,  # Or tool specs? Check pydantic-ai
+        tools_override: Optional[List[Callable]] = None, # Explicitly list of callables
         output_type_override: Optional[Type] = None,
     ) -> TaskResult:
         """
         Internal method to execute a call via the LLMInteractionManager and update history.
-
-        Args:
-            prompt: The user's input prompt.
-            system_prompt_override: Optional override for the system prompt.
-            tools_override: Optional override for tools available to the LLM.
-            output_type_override: Optional override for the expected output structure.
-
-        Returns:
-            A TaskResult object representing the outcome.
         """
         self.log_debug(f"Executing LLM call for prompt: '{prompt[:100]}...'")
 
@@ -339,9 +328,10 @@ class BaseHandler:
             payload_log = {
                 "prompt": prompt,
                 "system_prompt_override": system_prompt_override,
-                "tools_override": tools_override,
+                "tools_override": [t.__name__ if hasattr(t, '__name__') else str(t) for t in tools_override] if tools_override else None, # Log names
                 "output_type_override": str(output_type_override),
                 "conversation_history": self.conversation_history,
+                "active_tool_definitions": self.active_tool_definitions, # Log active defs
             }
             with open("basehandler_llm_payload.log", "w") as _f:
                 _f.write(json.dumps(payload_log, indent=2))
@@ -350,6 +340,7 @@ class BaseHandler:
             )
         except Exception as _e:
             logging.error(f"BaseHandler: Failed to write LLM payload log: {_e}")
+
         if not self.llm_manager:
             logging.error(
                 "LLMInteractionManager not initialized, cannot execute LLM call."
@@ -365,61 +356,71 @@ class BaseHandler:
                 notes={"error": error_details},
             )
 
-        # --- Prepare tools for the call with precedence logic ---
-        current_tools = None
+        # --- START FIX: Prepare tools correctly ---
+        executors_for_agent: Optional[List[Callable]] = None
+        definitions_for_agent: Optional[List[Dict[str, Any]]] = None
 
-        # 1. Highest precedence: Explicit tools_override passed to this call
         if tools_override is not None:
-            self.log_debug("Using explicitly provided tools_override for LLM call")
-            current_tools = tools_override
-
-        # 2. Second precedence: Active tools list if it's not empty
-        elif self.active_tools:
-            self.log_debug(f"Using active tools list for LLM call: {self.active_tools}")
-            # Map tool names to executor functions
-            tool_functions = []
-            for tool_name in self.active_tools:
-                executor = self.tool_executors.get(tool_name)
+            # Highest precedence: Explicit tools_override (must be callables)
+            self.log_debug("Using explicitly provided tools_override (executors) for LLM call")
+            executors_for_agent = tools_override
+            # We don't have the specs if only executors were passed in override
+            # If specs are needed by the manager, the caller must provide them somehow
+            # or the manager needs to adapt. Assuming manager primarily needs executors for now.
+            definitions_for_agent = None # Or try to find specs based on function objects if needed? Complex.
+        elif self.active_tool_definitions:
+            # Second precedence: Use active_tool_definitions
+            self.log_debug(f"Using active tool definitions ({len(self.active_tool_definitions)}) for LLM call")
+            definitions_for_agent = self.active_tool_definitions
+            # Look up the corresponding executors
+            executors_found: List[Callable] = []
+            missing_executors = []
+            for spec in definitions_for_agent:
+                tool_name = spec.get("name")
+                executor = self.tool_executors.get(tool_name) if tool_name else None
                 if executor:
-                    tool_functions.append(executor)
-                else:
-                    logging.warning(
-                        f"Tool {tool_name} in active_tools but no executor found"
-                    )
-            current_tools = tool_functions
+                    executors_found.append(executor)
+                elif tool_name:
+                    missing_executors.append(tool_name)
 
-        # 3. Lowest precedence: No tools passed if neither above condition is met
-        # (current_tools remains None)
-
-        if current_tools:
-            self.log_debug(f"Passing {len(current_tools)} tools to LLM call")
+            if missing_executors:
+                logging.warning(
+                    f"Executor(s) not found for active tool definition(s): {missing_executors}. "
+                    "These tools will not be passed to the agent."
+                )
+            executors_for_agent = executors_found # Pass only the executors found
         else:
-            self.log_debug("No tools will be passed to LLM call")
+            # Lowest precedence: No tools active or specified
+            self.log_debug("No tools_override or active_tool_definitions provided. No tools passed to agent.")
+            executors_for_agent = None # Explicitly None
+            definitions_for_agent = None # Explicitly None
 
-        # Store history *before* the call for accurate logging/debugging if needed
+        if executors_for_agent:
+            self.log_debug(f"Passing {len(executors_for_agent)} tool executors to LLM manager")
+        if definitions_for_agent:
+             self.log_debug(f"Passing {len(definitions_for_agent)} tool definitions to LLM manager")
+        # --- END FIX ---
+
+        # Store history *before* the call
         history_before_call = list(self.conversation_history)
 
         # Delegate the call to the manager
-        # Prepare kwargs for execute_call
         call_kwargs = {
             "prompt": prompt,
             "conversation_history": history_before_call,
             "system_prompt_override": system_prompt_override,
-            "tools_override": current_tools,  # Always pass tools_override for compatibility with existing tests
+            # Pass the resolved executors here, matching pydantic-ai's expected format
+            "tools_override": executors_for_agent,
             "output_type_override": output_type_override,
+            # Pass the definitions separately if the manager needs them
+            "active_tools": definitions_for_agent
         }
 
-        # Pass active tool definitions if available and tools_override is not specified
-        if tools_override is None and self.active_tool_definitions:
-            call_kwargs["active_tools"] = self.active_tool_definitions
-            self.log_debug(f"Passing {len(self.active_tool_definitions)} active tool definitions to LLM call")
-
-        # Execute the call
         manager_result = self.llm_manager.execute_call(**call_kwargs)
 
+        # Process the result from the manager
         logging.debug(f"LLM Manager Raw Result: {manager_result}")
 
-        # Process the result from the manager
         # Fix: Use .get() for safer access
         if isinstance(manager_result, dict) and manager_result.get(
             "success"
@@ -428,14 +429,17 @@ class BaseHandler:
             assistant_content = manager_result.get("content", "")
             usage_data = manager_result.get("usage")
             tool_calls = manager_result.get("tool_calls")
+            parsed_content = manager_result.get("parsed_content") # Get parsed content if available
 
-            # ... (rest of success path: logging, history update, tool call check, return TaskResult) ...
             self.log_debug(
                 f"LLM call successful. Response: '{str(assistant_content)[:100]}...'"
             )
+            # Update history correctly
             self.conversation_history.append({"role": "user", "content": prompt})
+            # Ensure assistant content added is a string
+            assistant_content_str = str(assistant_content) if assistant_content is not None else ""
             self.conversation_history.append(
-                {"role": "assistant", "content": str(assistant_content)}
+                {"role": "assistant", "content": assistant_content_str}
             )
             self.log_debug(
                 f"Conversation history updated. New length: {len(self.conversation_history)}"
@@ -444,9 +448,11 @@ class BaseHandler:
                 logging.warning(
                     f"LLM agent returned tool calls, but handling is not implemented: {tool_calls}"
                 )
+            # Create TaskResult object, including parsedContent
             return TaskResult(
                 status="COMPLETE",
-                content=str(assistant_content),
+                content=assistant_content_str,
+                parsedContent=parsed_content, # Add parsed content here
                 notes={"usage": usage_data} if usage_data else {},
             )
 
