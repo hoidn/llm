@@ -15,34 +15,36 @@ except ImportError:
 # Import system models used in results/mocks
 from src.system.models import TaskResult, AssociativeMatchResult, MatchTuple, TaskFailureError, TaskFailureReason, ContextGenerationInput
 
-# Import exceptions potentially raised by mcp.py
+# --- Import or Define REAL/DUMMY mcp.py types ---
+# If mcp.py IS installed, these imports should work directly.
+# If NOT, define simple dummy classes for the patch 'spec'.
 try:
-    # Assuming mcp.py might raise these - adjust if library uses different ones
-    from mcp.exceptions import MCPError, ConnectionClosed, TimeoutError, ConnectionRefusedError
+    from mcp.client.stdio import stdio_client as real_stdio_client, StdioServerParameters as RealStdioServerParameters
     from mcp.client.session import ClientSession as RealClientSession
-    from mcp.client.stdio import stdio_client as real_stdio_client
     from mcp.types import TextContent as RealTextContent
+    from mcp.exceptions import MCPError, ConnectionClosed, TimeoutError, ConnectionRefusedError
     MCP_INSTALLED = True
 except ImportError:
-    # Define dummies if mcp is not installed
+    MCP_INSTALLED = False
+    # Define dummy classes just for type hinting/spec in patches if needed
     class DummyStdioClient:
-        def __init__(self, *args, **kwargs): pass # Add init to accept args
-        async def __aenter__(self): return (None, None)
+        def __init__(self, *args, **kwargs): pass
+        async def __aenter__(self): return (AsyncMock(), AsyncMock()) # Return mocks for streams
         async def __aexit__(self, *args): pass
-
+    class DummyStdioParams:
+        def __init__(self, *args, **kwargs): pass
     class DummyClientSession:
-        def __init__(self, *args, **kwargs): pass # Add init to accept args
+        def __init__(self, *args, **kwargs): pass
         async def __aenter__(self): return self
-        async def __aexit__(self, *args): pass
+        async def __aexit__(self,*args): pass
         async def initialize(self): pass
         async def call_tool(self, *args, **kwargs): return []
-
     class DummyTextContent:
-        def __init__(self, text): self.text = text
+        def __init__(self, text=""): self.text = text
     real_stdio_client = DummyStdioClient # type: ignore
+    RealStdioServerParameters = DummyStdioParams # type: ignore
     RealClientSession = DummyClientSession # type: ignore
     RealTextContent = DummyTextContent # type: ignore
-    MCP_INSTALLED = False
     # Define dummy exceptions if needed
     MCPError = ConnectionClosed = ConnectionRefusedError = Exception
     # TimeoutError might come from asyncio or mcp.exceptions
@@ -50,8 +52,9 @@ except ImportError:
         from asyncio import TimeoutError # Fallback to asyncio version
     except ImportError:
         TimeoutError = Exception # Further fallback
+# --- End REAL/DUMMY types ---
 
-# Use the potentially dummied TextContent for creating mock responses
+# Use the real or dummy TextContent for mocking the response
 MockTextContent = RealTextContent
 
 # Import MemorySystem and FileAccessManager for specing mocks
@@ -64,8 +67,6 @@ try:
 except ImportError:
     FileAccessManager = object # Fallback type
 
-# Mock mcp.py TextContent if needed for responses
-# Class MockTextContent already defined above based on RealTextContent
 
 # --- Fixtures ---
 
@@ -81,7 +82,7 @@ def mock_file_access_manager_bridge(): # Ensure name matches exactly
     mock_fam = MagicMock(spec=FileAccessManager)
     mock_fam.base_path = "/test_base" # Define base_path for tests
     # Mock _resolve_path to simulate its behavior based on base_path
-    mock_fam._resolve_path.side_effect = lambda p: os.path.abspath(os.path.join(mock_fam.base_path, p))
+    mock_fam._resolve_path.side_effect = lambda p: os.path.abspath(os.path.join(mock_fam.base_path, p)) if p else os.path.abspath(mock_fam.base_path) # Handle empty path case
     # Mock _is_path_safe to assume paths resolved are safe unless test overrides
     mock_fam._is_path_safe.return_value = True
     return mock_fam
@@ -116,51 +117,46 @@ class TestAiderBridge:
     # --- call_aider_tool Tests ---
 
     @pytest.mark.asyncio
-    # Patch MCP_AVAILABLE to True to prevent early return
-    @patch('src.aider_bridge.bridge.MCP_AVAILABLE', True)           # Decorator 3 (Outermost)
-    # Patch the specific transport client used *within* call_aider_tool
-    # Patch where it's looked up: 'src.aider_bridge.bridge.stdio_client'
-    @patch('src.aider_bridge.bridge.stdio_client', spec=real_stdio_client) # Decorator 2
-    # Patch where it's looked up: 'src.aider_bridge.bridge.ClientSession'
-    @patch('src.aider_bridge.bridge.ClientSession', spec=RealClientSession) # Decorator 1 (Innermost)
-    # Signature reverted: MockClientSession (inner patch) before mock_stdio_client (middle patch)
-    async def test_call_aider_tool_ai_code_success(self, MockClientSession, mock_stdio_client, aider_bridge_instance):
+    @patch('src.aider_bridge.bridge.MCP_AVAILABLE', True)
+    @patch('src.aider_bridge.bridge.StdioServerParameters', spec=RealStdioServerParameters) # Patch the CLASS NAME
+    @patch('src.aider_bridge.bridge.stdio_client', spec=real_stdio_client)
+    @patch('src.aider_bridge.bridge.ClientSession', spec=RealClientSession)
+    async def test_call_aider_tool_ai_code_success(self,
+                                                 mock_client_session_cls,  # From @patch ClientSession
+                                                 mock_stdio_client_func,   # From @patch stdio_client
+                                                 mock_stdio_params_cls,    # From @patch StdioServerParameters
+                                                 mock_mcp_flag,            # From @patch MCP_AVAILABLE (unused but needed for order)
+                                                 aider_bridge_instance):
         """Verify call_aider_tool invokes aider_ai_code and maps success response."""
         # Arrange
         tool_name = "aider_ai_code"
         params = {"ai_coding_prompt": "Implement fibonacci", "relative_editable_files": ["math.py"]}
         mock_diff = "--- a/math.py\n+++ b/math.py\n@@ ..."
         server_response_json = json.dumps({"success": True, "diff": mock_diff})
-        # Use the local mock or real TextContent if import works
         mock_server_response = [MockTextContent(server_response_json)]
 
-        # --- CORRECTED MOCK CONFIGURATION ---
-        # 1. Create the mock for the session instance returned by __aenter__
+        # Configure mocks
         mock_session_instance = AsyncMock(spec=RealClientSession)
         mock_session_instance.call_tool.return_value = mock_server_response
 
-        # 2. Configure the patched CLASS's context manager behavior
-        # MockClientSession() returns an AsyncMock context manager
         mock_cm_session = AsyncMock()
-        mock_cm_session.__aenter__.return_value = mock_session_instance # __aenter__ returns the instance
-        MockClientSession.return_value = mock_cm_session # MockClientSession() returns the context manager
+        mock_cm_session.__aenter__.return_value = mock_session_instance
+        mock_client_session_cls.return_value = mock_cm_session # Session CLASS returns the context manager
 
-        # 3. Configure stdio_client mock similarly
-        mock_stdio_instance = AsyncMock()
-        # Dummy read/write streams (can be AsyncMocks if methods need mocking)
-        mock_stdio_instance.__aenter__.return_value = (AsyncMock(), AsyncMock())
-        mock_stdio_client.return_value = mock_stdio_instance
-        # --- END CORRECTION ---
+        mock_stdio_cm = AsyncMock()
+        mock_stdio_cm.__aenter__.return_value = (AsyncMock(), AsyncMock()) # Dummy streams
+        mock_stdio_client_func.return_value = mock_stdio_cm # stdio_client FUNCTION returns the context manager
 
         # Act
         result = await aider_bridge_instance.call_aider_tool(tool_name, params)
 
         # Assert
-        mock_stdio_client.assert_called_once() # Check transport was used
-        # Check transport args if config stores them directly
-        # Example: Check command passed to StdioServerParameters if bridge creates it inside
-        MockClientSession.assert_called_once() # Check session class was used
-        mock_session_instance.initialize.assert_awaited_once() # Check session methods
+        mock_stdio_params_cls.assert_called_once_with( # Check StdioServerParameters was called
+             command="dummy_aider_mcp_server", args=[], env={}
+        )
+        mock_stdio_client_func.assert_called_once()
+        mock_client_session_cls.assert_called_once()
+        mock_session_instance.initialize.assert_awaited_once()
         mock_session_instance.call_tool.assert_awaited_once_with(name=tool_name, arguments=params)
 
         assert result.get("status") == "COMPLETE"
@@ -168,53 +164,63 @@ class TestAiderBridge:
         assert result.get("notes", {}).get("success") is True
 
     @pytest.mark.asyncio
-    @patch('src.aider_bridge.bridge.MCP_AVAILABLE', True)           # Decorator 3 (Outermost)
-    @patch('src.aider_bridge.bridge.stdio_client', spec=real_stdio_client) # Decorator 2
-    @patch('src.aider_bridge.bridge.ClientSession', spec=RealClientSession) # Decorator 1 (Innermost)
-    # Signature reverted: MockClientSession (inner patch) before mock_stdio_client (middle patch)
-    async def test_call_aider_tool_ai_code_failure(self, MockClientSession, mock_stdio_client, aider_bridge_instance):
+    @patch('src.aider_bridge.bridge.MCP_AVAILABLE', True)
+    @patch('src.aider_bridge.bridge.StdioServerParameters', spec=RealStdioServerParameters)
+    @patch('src.aider_bridge.bridge.stdio_client', spec=real_stdio_client)
+    @patch('src.aider_bridge.bridge.ClientSession', spec=RealClientSession)
+    async def test_call_aider_tool_ai_code_failure(self,
+                                                 mock_client_session_cls,
+                                                 mock_stdio_client_func,
+                                                 mock_stdio_params_cls,
+                                                 mock_mcp_flag,
+                                                 aider_bridge_instance):
         """Verify call_aider_tool handles application error from aider_ai_code."""
         # Arrange
         tool_name = "aider_ai_code"
         params = {"ai_coding_prompt": "Bad prompt", "relative_editable_files": ["file.py"]}
         error_msg = "Aider execution failed due to invalid syntax"
-        # Simulate server response indicating application error
         server_payload = {"success": False, "error": error_msg, "diff": "partial diff..."}
         server_response_json = json.dumps(server_payload)
         mock_server_response = [MockTextContent(server_response_json)]
 
-        # --- CORRECTED MOCK CONFIGURATION ---
+        # Configure mocks
         mock_session_instance = AsyncMock(spec=RealClientSession)
         mock_session_instance.call_tool.return_value = mock_server_response
-
-        mock_cm_session = AsyncMock()
-        mock_cm_session.__aenter__.return_value = mock_session_instance
-        MockClientSession.return_value = mock_cm_session
-
-        mock_stdio_instance = AsyncMock()
-        mock_stdio_instance.__aenter__.return_value = (AsyncMock(), AsyncMock())
-        mock_stdio_client.return_value = mock_stdio_instance
-        # --- END CORRECTION ---
+        mock_cm_session = AsyncMock(); mock_cm_session.__aenter__.return_value = mock_session_instance
+        mock_client_session_cls.return_value = mock_cm_session
+        mock_stdio_cm = AsyncMock(); mock_stdio_cm.__aenter__.return_value = (AsyncMock(), AsyncMock())
+        mock_stdio_client_func.return_value = mock_stdio_cm
 
         # Act
         result = await aider_bridge_instance.call_aider_tool(tool_name, params)
 
         # Assert
+        mock_stdio_params_cls.assert_called_once()
+        mock_stdio_client_func.assert_called_once()
+        mock_client_session_cls.assert_called_once()
+        mock_session_instance.initialize.assert_awaited_once()
         mock_session_instance.call_tool.assert_awaited_once_with(name=tool_name, arguments=params)
+
         assert result.get("status") == "FAILED"
-        # Check that the original error message from the server is in the content
+        # Check that the original error message from the server is in the content set by _create_failed_result_dict
         assert error_msg in result.get("content", "")
         assert result.get("notes", {}).get("error", {}).get("reason") == "tool_execution_error"
         # Check that the original error details are included in the notes
+        # The details dict passed to _create_failed_result_dict should contain the server payload
         assert result.get("notes", {}).get("error", {}).get("details", {}).get("error") == error_msg
         assert result.get("notes", {}).get("error", {}).get("details", {}).get("diff") == "partial diff..."
 
     @pytest.mark.asyncio
-    @patch('src.aider_bridge.bridge.MCP_AVAILABLE', True)           # Decorator 3 (Outermost)
-    @patch('src.aider_bridge.bridge.stdio_client', spec=real_stdio_client) # Decorator 2
-    @patch('src.aider_bridge.bridge.ClientSession', spec=RealClientSession) # Decorator 1 (Innermost)
-    # Signature reverted: MockClientSession (inner patch) before mock_stdio_client (middle patch)
-    async def test_call_aider_tool_list_models_success(self, MockClientSession, mock_stdio_client, aider_bridge_instance):
+    @patch('src.aider_bridge.bridge.MCP_AVAILABLE', True)
+    @patch('src.aider_bridge.bridge.StdioServerParameters', spec=RealStdioServerParameters)
+    @patch('src.aider_bridge.bridge.stdio_client', spec=real_stdio_client)
+    @patch('src.aider_bridge.bridge.ClientSession', spec=RealClientSession)
+    async def test_call_aider_tool_list_models_success(self,
+                                                     mock_client_session_cls,
+                                                     mock_stdio_client_func,
+                                                     mock_stdio_params_cls,
+                                                     mock_mcp_flag,
+                                                     aider_bridge_instance):
         """Verify call_aider_tool invokes list_models and maps success response."""
         # Arrange
         tool_name = "list_models"
@@ -223,24 +229,24 @@ class TestAiderBridge:
         server_response_json = json.dumps({"models": model_list})
         mock_server_response = [MockTextContent(server_response_json)]
 
-        # --- CORRECTED MOCK CONFIGURATION ---
+        # Configure mocks
         mock_session_instance = AsyncMock(spec=RealClientSession)
         mock_session_instance.call_tool.return_value = mock_server_response
-
-        mock_cm_session = AsyncMock()
-        mock_cm_session.__aenter__.return_value = mock_session_instance
-        MockClientSession.return_value = mock_cm_session
-
-        mock_stdio_instance = AsyncMock()
-        mock_stdio_instance.__aenter__.return_value = (AsyncMock(), AsyncMock())
-        mock_stdio_client.return_value = mock_stdio_instance
-        # --- END CORRECTION ---
+        mock_cm_session = AsyncMock(); mock_cm_session.__aenter__.return_value = mock_session_instance
+        mock_client_session_cls.return_value = mock_cm_session
+        mock_stdio_cm = AsyncMock(); mock_stdio_cm.__aenter__.return_value = (AsyncMock(), AsyncMock())
+        mock_stdio_client_func.return_value = mock_stdio_cm
 
         # Act
         result = await aider_bridge_instance.call_aider_tool(tool_name, params)
 
         # Assert
+        mock_stdio_params_cls.assert_called_once()
+        mock_stdio_client_func.assert_called_once()
+        mock_client_session_cls.assert_called_once()
+        mock_session_instance.initialize.assert_awaited_once()
         mock_session_instance.call_tool.assert_awaited_once_with(name=tool_name, arguments=params)
+
         assert isinstance(result, dict)
         assert result.get("status") == "COMPLETE"
         # Content should be the JSON string of the list
@@ -249,47 +255,56 @@ class TestAiderBridge:
         assert result.get("notes", {}).get("models") == model_list
 
     @pytest.mark.asyncio
-    @patch('src.aider_bridge.bridge.MCP_AVAILABLE', True)           # Decorator 3 (Outermost)
-    @patch('src.aider_bridge.bridge.stdio_client', spec=real_stdio_client) # Decorator 2
-    @patch('src.aider_bridge.bridge.ClientSession', spec=RealClientSession) # Decorator 1 (Innermost)
-    # Signature reverted: MockClientSession (inner patch) before mock_stdio_client (middle patch)
-    async def test_call_aider_tool_mcp_exception(self, MockClientSession, mock_stdio_client, aider_bridge_instance):
+    @patch('src.aider_bridge.bridge.MCP_AVAILABLE', True)
+    @patch('src.aider_bridge.bridge.StdioServerParameters', spec=RealStdioServerParameters)
+    @patch('src.aider_bridge.bridge.stdio_client', spec=real_stdio_client)
+    @patch('src.aider_bridge.bridge.ClientSession', spec=RealClientSession)
+    async def test_call_aider_tool_mcp_exception(self,
+                                               mock_client_session_cls,
+                                               mock_stdio_client_func,
+                                               mock_stdio_params_cls,
+                                               mock_mcp_flag,
+                                               aider_bridge_instance):
         """Verify call_aider_tool handles exceptions from mcp.py client."""
         # Arrange
         tool_name = "aider_ai_code"
         params = {"ai_coding_prompt": "Test", "relative_editable_files": ["f.py"]}
         mcp_exception = TimeoutError("MCP call timed out") # Use specific or generic Exception
 
-        # --- CORRECTED MOCK CONFIGURATION ---
+        # Configure mocks
         mock_session_instance = AsyncMock(spec=RealClientSession)
-        # Configure side_effect on the instance's method
         mock_session_instance.call_tool.side_effect = mcp_exception # Configure side_effect
-
-        mock_cm_session = AsyncMock()
-        mock_cm_session.__aenter__.return_value = mock_session_instance
-        MockClientSession.return_value = mock_cm_session
-
-        mock_stdio_instance = AsyncMock()
-        mock_stdio_instance.__aenter__.return_value = (AsyncMock(), AsyncMock())
-        mock_stdio_client.return_value = mock_stdio_instance
-        # --- END CORRECTION ---
+        mock_cm_session = AsyncMock(); mock_cm_session.__aenter__.return_value = mock_session_instance
+        mock_client_session_cls.return_value = mock_cm_session
+        mock_stdio_cm = AsyncMock(); mock_stdio_cm.__aenter__.return_value = (AsyncMock(), AsyncMock())
+        mock_stdio_client_func.return_value = mock_stdio_cm
 
         # Act
         result = await aider_bridge_instance.call_aider_tool(tool_name, params)
 
         # Assert
+        mock_stdio_params_cls.assert_called_once()
+        mock_stdio_client_func.assert_called_once()
+        mock_client_session_cls.assert_called_once()
+        mock_session_instance.initialize.assert_awaited_once()
         mock_session_instance.call_tool.assert_awaited_once_with(name=tool_name, arguments=params)
+
         assert result.get("status") == "FAILED"
         assert "MCP communication error" in result.get("content", "")
         assert "MCP call timed out" in result.get("content", "") # Check specific error message
         assert result.get("notes", {}).get("error", {}).get("reason") == "connection_error"
 
     @pytest.mark.asyncio
-    @patch('src.aider_bridge.bridge.MCP_AVAILABLE', True)           # Decorator 3 (Outermost)
-    @patch('src.aider_bridge.bridge.stdio_client', spec=real_stdio_client) # Decorator 2
-    @patch('src.aider_bridge.bridge.ClientSession', spec=RealClientSession) # Decorator 1 (Innermost)
-    # Signature reverted: MockClientSession (inner patch) before mock_stdio_client (middle patch)
-    async def test_call_aider_tool_json_parse_error(self, MockClientSession, mock_stdio_client, aider_bridge_instance):
+    @patch('src.aider_bridge.bridge.MCP_AVAILABLE', True)
+    @patch('src.aider_bridge.bridge.StdioServerParameters', spec=RealStdioServerParameters)
+    @patch('src.aider_bridge.bridge.stdio_client', spec=real_stdio_client)
+    @patch('src.aider_bridge.bridge.ClientSession', spec=RealClientSession)
+    async def test_call_aider_tool_json_parse_error(self,
+                                                  mock_client_session_cls,
+                                                  mock_stdio_client_func,
+                                                  mock_stdio_params_cls,
+                                                  mock_mcp_flag,
+                                                  aider_bridge_instance):
         """Verify call_aider_tool handles invalid JSON from server."""
         # Arrange
         tool_name = "aider_ai_code"
@@ -297,24 +312,24 @@ class TestAiderBridge:
         invalid_json = "This is not JSON {"
         mock_server_response = [MockTextContent(invalid_json)] # Server sends bad JSON string
 
-        # --- CORRECTED MOCK CONFIGURATION ---
+        # Configure mocks
         mock_session_instance = AsyncMock(spec=RealClientSession)
         mock_session_instance.call_tool.return_value = mock_server_response
-
-        mock_cm_session = AsyncMock()
-        mock_cm_session.__aenter__.return_value = mock_session_instance
-        MockClientSession.return_value = mock_cm_session
-
-        mock_stdio_instance = AsyncMock()
-        mock_stdio_instance.__aenter__.return_value = (AsyncMock(), AsyncMock())
-        mock_stdio_client.return_value = mock_stdio_instance
-        # --- END CORRECTION ---
+        mock_cm_session = AsyncMock(); mock_cm_session.__aenter__.return_value = mock_session_instance
+        mock_client_session_cls.return_value = mock_cm_session
+        mock_stdio_cm = AsyncMock(); mock_stdio_cm.__aenter__.return_value = (AsyncMock(), AsyncMock())
+        mock_stdio_client_func.return_value = mock_stdio_cm
 
         # Act
         result = await aider_bridge_instance.call_aider_tool(tool_name, params)
 
         # Assert
+        mock_stdio_params_cls.assert_called_once()
+        mock_stdio_client_func.assert_called_once()
+        mock_client_session_cls.assert_called_once()
+        mock_session_instance.initialize.assert_awaited_once()
         mock_session_instance.call_tool.assert_awaited_once_with(name=tool_name, arguments=params)
+
         assert result.get("status") == "FAILED"
         assert "Failed to parse JSON response" in result.get("content", "")
         assert result.get("notes", {}).get("error", {}).get("reason") == "output_format_failure"
