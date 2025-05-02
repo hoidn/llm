@@ -132,14 +132,6 @@ def test_initialize_agent_exception_handling(MockAgentClass, mock_log_error, llm
     assert "Agent init failed inside initialize_agent" in args[0]
     assert kwargs.get("exc_info") is True
 
-        # Check log call more robustly
-        mock_log_error.assert_called_once()  # Verify it was called
-        args, kwargs = mock_log_error.call_args
-        # Check the main message content
-        expected_msg_part = f"Failed to initialize pydantic-ai Agent for model 'fail:model': {test_exception}"
-        assert expected_msg_part in args[0]
-        # Check exc_info was passed
-        assert kwargs.get("exc_info") is True
 
 
 # No patch needed here as we are testing the manager's internal state
