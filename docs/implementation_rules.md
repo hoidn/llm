@@ -101,6 +101,28 @@ This document outlines the standard conventions, patterns, and rules for impleme
     *   **Tools:** Tools intended for LLM use must be registered. The `BaseHandler.register_tool` method stores the tool specification and executor.
         *   **Integration Complexity:** Dynamically registering tools with an already active `pydantic-ai` Agent can be complex. The current `register_tool` implementation stores the necessary information. Further work may be needed within `LLMInteractionManager` or `BaseHandler` to make these dynamically registered tools available to the `pydantic-ai` Agent during its execution run (e.g., potentially passing them as part of the `run_sync`/`run` call if supported, or requiring agent re-initialization). Consult `pydantic-ai` documentation for best practices.
     *   **Structured Output:** Leverage `pydantic-ai`'s `output_type` parameter in the agent's `run`/`run_sync` methods (passed via `LLMInteractionManager`) when structured output (defined by a Pydantic model) is required.
+        *   **Schema-to-Model Resolution:** When an atomic task template includes an `output_format` field with a `schema` property, use the `resolve_model_class` helper function to dynamically load the referenced Pydantic model. This function accepts a string in the format `"module.submodule.ModelName"` or just `"ModelName"` and returns the corresponding Pydantic model class. If only a model name is provided (no module path), the function will look in `src.system.models` by default.
+        ```python
+        # Example template using a schema reference
+        template = {
+            "name": "example_task",
+            "instructions": "...",
+            "output_format": {
+                "type": "json",
+                "schema": "TaskResult"  # Will resolve to src.system.models.TaskResult
+            }
+        }
+        
+        # Example using a fully qualified path
+        template = {
+            "name": "example_task",
+            "instructions": "...",
+            "output_format": {
+                "type": "json",
+                "schema": "custom.models.CustomResponseModel"  # Will resolve to custom.models.CustomResponseModel
+            }
+        }
+        ```
 *   **Reference:** Familiarize yourself with the `pydantic-ai` library documentation, potentially summarized or linked in `docs/librarydocs/pydanticai.md`.
 *   **Verify Library Usage:** When integrating *any* significant third-party library (like `pydantic-ai`), carefully verify API usage (e.g., function signatures, required arguments, expected data formats) against the library's official documentation and examples for the specific version being used. Do not rely solely on code examples from other sources or previous versions.
 *   **Test Wrapper Interactions:** Wrapper classes (like `LLMInteractionManager`) that directly interact with external libraries should have targeted integration tests. These tests should verify the interaction (mocking the external network endpoint if necessary) and ensure data is passed to the library and results are received/processed correctly according to the library's expected behavior.

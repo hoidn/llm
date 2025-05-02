@@ -2,10 +2,15 @@
 System-wide Pydantic models based on docs/system/contracts/types.md
 """
 
+import importlib
+import logging
 from datetime import datetime
-from typing import Any, Dict, List, Literal, Optional, Union # Record is not standard, using Dict instead
+from typing import Any, Dict, List, Literal, Optional, Type, Union # Record is not standard, using Dict instead
 
 from pydantic import BaseModel, Field, PositiveInt, NonNegativeInt, conint, confloat
+
+# Configure logger
+logger = logging.getLogger(__name__)
 
 # --- Resource Management Types ---
 
@@ -278,3 +283,62 @@ class EvaluationResult(TaskResult):
     # success: bool
     # feedback: str
     # details: Optional[Dict[str, Any]] = None # e.g., {'metrics': {...}, 'violations': [...]}
+
+# --- Model Resolution for Pydantic Output ---
+
+class ModelNotFoundError(Exception):
+    """Exception raised when a specified Pydantic model cannot be found."""
+    pass
+
+def resolve_model_class(schema_name: str) -> Type[BaseModel]:
+    """
+    Resolves a schema name string to an actual Pydantic model class.
+    
+    Args:
+        schema_name: A string in the format "module.submodule.ModelName" or just "ModelName"
+                     If just "ModelName" is provided, defaults to looking in src.system.models.
+    
+    Returns:
+        The Pydantic model class.
+    
+    Raises:
+        ModelNotFoundError: If the model cannot be found or is not a valid Pydantic BaseModel.
+        ImportError: If the specified module cannot be imported.
+    """
+    logger.debug(f"Attempting to resolve model class for schema: {schema_name}")
+    
+    # Check if schema_name includes module path
+    if '.' in schema_name:
+        # Extract module path and class name
+        module_path, class_name = schema_name.rsplit('.', 1)
+        try:
+            module = importlib.import_module(module_path)
+            logger.debug(f"Successfully imported module: {module_path}")
+        except ImportError as e:
+            logger.error(f"Failed to import module {module_path}: {e}")
+            raise ModelNotFoundError(f"Failed to import module {module_path}: {e}")
+    else:
+        # Default to looking in src.system.models
+        module_path = "src.system.models"
+        class_name = schema_name
+        try:
+            module = importlib.import_module(module_path)
+            logger.debug(f"Using default module: {module_path}")
+        except ImportError as e:
+            logger.error(f"Failed to import default module {module_path}: {e}")
+            raise ModelNotFoundError(f"Failed to import default module {module_path}: {e}")
+    
+    # Try to get the model class from the module
+    if not hasattr(module, class_name):
+        logger.error(f"Model class {class_name} not found in module {module_path}")
+        raise ModelNotFoundError(f"Model class {class_name} not found in module {module_path}")
+    
+    model_class = getattr(module, class_name)
+    
+    # Verify it's a Pydantic BaseModel
+    if not isinstance(model_class, type) or not issubclass(model_class, BaseModel):
+        logger.error(f"{module_path}.{class_name} is not a Pydantic BaseModel subclass")
+        raise ModelNotFoundError(f"{module_path}.{class_name} is not a Pydantic BaseModel subclass")
+    
+    logger.debug(f"Successfully resolved model class: {model_class.__name__}")
+    return model_class

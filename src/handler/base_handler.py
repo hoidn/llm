@@ -10,7 +10,11 @@ from src.handler.file_context_manager import FileContextManager
 from src.handler.llm_interaction_manager import LLMInteractionManager
 
 # Import shared types
-from src.system.models import TaskResult, TaskError, TaskFailureError # Import TaskFailureError for type hints
+from src.system.models import (
+    TaskResult,
+    TaskError,
+    TaskFailureError,
+)  # Import TaskFailureError for type hints
 
 # Forward declarations for type hinting cycles
 # from src.task_system.task_system import TaskSystem
@@ -110,7 +114,12 @@ class BaseHandler:
         # This remains complex. Tools might need to be passed per-call via _execute_llm_call
         # using the stored specs/executors, or the agent might need re-initialization.
         # Check more safely if llm_manager and its agent attribute exist
-        if hasattr(self, 'llm_manager') and self.llm_manager and hasattr(self.llm_manager, 'agent') and self.llm_manager.agent:
+        if (
+            hasattr(self, "llm_manager")
+            and self.llm_manager
+            and hasattr(self.llm_manager, "agent")
+            and self.llm_manager.agent
+        ):
             logging.warning(
                 f"Tool '{tool_name}' spec/executor stored. Dynamic registration with the live "
                 "pydantic-ai Agent is complex. Tools may need to be passed explicitly during LLM calls."
@@ -156,31 +165,56 @@ class BaseHandler:
             if self.debug_mode:
                 self.log_debug(f"Parsed file paths: {file_paths}")
             # Ensure paths are absolute relative to the execution CWD
-            abs_paths = [os.path.abspath(os.path.join(cwd or os.getcwd(), p)) for p in file_paths]
+            abs_paths = [
+                os.path.abspath(os.path.join(cwd or os.getcwd(), p)) for p in file_paths
+            ]
             # Filter for existence using FileAccessManager's resolved path logic
             existing_paths = []
             for p in abs_paths:
                 try:
                     # Use file_manager's internal logic to check existence within its scope
-                    resolved = self.file_manager._resolve_path(p) # Use internal method carefully
-                    if os.path.exists(resolved): # Check existence of resolved path
-                         existing_paths.append(resolved) # Return the resolved, absolute path
+                    resolved = self.file_manager._resolve_path(
+                        p
+                    )  # Use internal method carefully
+                    if os.path.exists(resolved):  # Check existence of resolved path
+                        existing_paths.append(
+                            resolved
+                        )  # Return the resolved, absolute path
                     elif self.debug_mode:
-                         self.log_debug(f"Path '{p}' (resolved to '{resolved}') does not exist or is outside base path.")
-                except ValueError: # Path outside base path
-                     if self.debug_mode:
-                         self.log_debug(f"Path '{p}' is outside the allowed base path.")
-                except Exception as e: # Other errors
-                     logging.warning(f"Error checking path existence for '{p}': {e}")
+                        self.log_debug(
+                            f"Path '{p}' (resolved to '{resolved}') does not exist or is outside base path."
+                        )
+                except ValueError:  # Path outside base path
+                    if self.debug_mode:
+                        self.log_debug(f"Path '{p}' is outside the allowed base path.")
+                except Exception as e:  # Other errors
+                    logging.warning(f"Error checking path existence for '{p}': {e}")
 
             if self.debug_mode:
-                self.log_debug(f"Filtered existing absolute file paths: {existing_paths}")
+                self.log_debug(
+                    f"Filtered existing absolute file paths: {existing_paths}"
+                )
             return existing_paths
         else:
             logging.error(
                 f"Command execution failed (Exit Code: {result['exit_code']}): {command}. Error: {result['error']}"
             )
             return []
+
+    def get_provider_identifier(self) -> Optional[str]:
+        """
+        Returns the identifier of the current LLM provider.
+
+        Returns:
+            Optional string identifying the provider (e.g., "openai:gpt-4o") or None if not available.
+        """
+        if not self.llm_manager:
+            logging.warning(
+                "LLMInteractionManager is not available - cannot get provider identifier."
+            )
+            return None
+
+        return self.llm_manager.get_provider_identifier()
 
     def reset_conversation(self) -> None:
         """
@@ -210,9 +244,7 @@ class BaseHandler:
         self.debug_mode = enabled
         status = "enabled" if enabled else "disabled"
         logging.info(f"Debug mode {status}.")
-        self.log_debug(
-            "Debug logging is now active."
-        )
+        self.log_debug("Debug logging is now active.")
 
         # Pass debug state to LLMInteractionManager
         if self.llm_manager:
@@ -222,7 +254,9 @@ class BaseHandler:
         self,
         prompt: str,
         system_prompt_override: Optional[str] = None,
-        tools_override: Optional[List[Callable]] = None, # Or tool specs? Check pydantic-ai
+        tools_override: Optional[
+            List[Callable]
+        ] = None,  # Or tool specs? Check pydantic-ai
         output_type_override: Optional[Type] = None,
     ) -> TaskResult:
         """
@@ -246,21 +280,29 @@ class BaseHandler:
                 "system_prompt_override": system_prompt_override,
                 "tools_override": tools_override,
                 "output_type_override": str(output_type_override),
-                "conversation_history": self.conversation_history
+                "conversation_history": self.conversation_history,
             }
             with open("basehandler_llm_payload.log", "w") as _f:
                 _f.write(json.dumps(payload_log, indent=2))
-            logging.info("BaseHandler: full LLM payload written to basehandler_llm_payload.log")
+            logging.info(
+                "BaseHandler: full LLM payload written to basehandler_llm_payload.log"
+            )
         except Exception as _e:
             logging.error(f"BaseHandler: Failed to write LLM payload log: {_e}")
         if not self.llm_manager:
-            logging.error("LLMInteractionManager not initialized, cannot execute LLM call.")
-            error_details: TaskError = { # type: ignore # Trusting dict structure matches TaskError union
+            logging.error(
+                "LLMInteractionManager not initialized, cannot execute LLM call."
+            )
+            error_details: TaskError = {  # type: ignore # Trusting dict structure matches TaskError union
                 "type": "TASK_FAILURE",
                 "reason": "dependency_error",
                 "message": "LLMInteractionManager not available.",
             }
-            return TaskResult(status="FAILED", content="LLM Manager not initialized.", notes={"error": error_details})
+            return TaskResult(
+                status="FAILED",
+                content="LLM Manager not initialized.",
+                notes={"error": error_details},
+            )
 
         # --- Prepare tools for the call if needed ---
         # This is where dynamic tool provision could happen.
@@ -278,66 +320,98 @@ class BaseHandler:
         # Delegate the call to the manager
         manager_result = self.llm_manager.execute_call(
             prompt=prompt,
-            conversation_history=history_before_call, # Pass current history
+            conversation_history=history_before_call,  # Pass current history
             system_prompt_override=system_prompt_override,
-            tools_override=current_tools, # Pass potentially prepared tools
+            tools_override=current_tools,  # Pass potentially prepared tools
             output_type_override=output_type_override,
         )
-        
+
         logging.debug(f"LLM Manager Raw Result: {manager_result}")
 
         # Process the result from the manager
         # Fix: Use .get() for safer access
-        if isinstance(manager_result, dict) and manager_result.get("success"): # Check type and use get()
+        if isinstance(manager_result, dict) and manager_result.get(
+            "success"
+        ):  # Check type and use get()
             logging.debug("  Processing LLM call as SUCCESS.")
             assistant_content = manager_result.get("content", "")
             usage_data = manager_result.get("usage")
             tool_calls = manager_result.get("tool_calls")
 
             # ... (rest of success path: logging, history update, tool call check, return TaskResult) ...
-            self.log_debug(f"LLM call successful. Response: '{str(assistant_content)[:100]}...'")
+            self.log_debug(
+                f"LLM call successful. Response: '{str(assistant_content)[:100]}...'"
+            )
             self.conversation_history.append({"role": "user", "content": prompt})
-            self.conversation_history.append({"role": "assistant", "content": str(assistant_content)})
-            self.log_debug(f"Conversation history updated. New length: {len(self.conversation_history)}")
-            if tool_calls: logging.warning(f"LLM agent returned tool calls, but handling is not implemented: {tool_calls}")
-            return TaskResult(status="COMPLETE", content=str(assistant_content), notes={"usage": usage_data} if usage_data else {})
+            self.conversation_history.append(
+                {"role": "assistant", "content": str(assistant_content)}
+            )
+            self.log_debug(
+                f"Conversation history updated. New length: {len(self.conversation_history)}"
+            )
+            if tool_calls:
+                logging.warning(
+                    f"LLM agent returned tool calls, but handling is not implemented: {tool_calls}"
+                )
+            return TaskResult(
+                status="COMPLETE",
+                content=str(assistant_content),
+                notes={"usage": usage_data} if usage_data else {},
+            )
 
         else:
             # Handle failure or unexpected result structure
             logging.debug("  Processing LLM call as FAILURE.")
-            error_message = "Unknown LLM interaction error." # Default
+            error_message = "Unknown LLM interaction error."  # Default
 
             # Robust Error Message Extraction
             if isinstance(manager_result, dict):
                 # 1. Check 'error' key (could be string or dict)
                 extracted_error = manager_result.get("error")
                 if extracted_error:
-                    if isinstance(extracted_error, dict) and "message" in extracted_error:
+                    if (
+                        isinstance(extracted_error, dict)
+                        and "message" in extracted_error
+                    ):
                         error_message = extracted_error["message"]
                     elif isinstance(extracted_error, str):
                         error_message = extracted_error
                 # 2. If no message from 'error', check 'content' key
-                elif "content" in manager_result and isinstance(manager_result["content"], str):
-                     error_message = manager_result["content"]
+                elif "content" in manager_result and isinstance(
+                    manager_result["content"], str
+                ):
+                    error_message = manager_result["content"]
                 # 3. If still no message, check 'notes.error.message'
-                elif "notes" in manager_result and isinstance(manager_result["notes"], dict):
-                     notes_error = manager_result["notes"].get("error")
-                     if isinstance(notes_error, dict) and "message" in notes_error:
-                         error_message = notes_error["message"]
-                     # Also check error_details in notes
-                     elif "error_details" in manager_result["notes"] and isinstance(manager_result["notes"]["error_details"], dict):
-                         error_details_dict = manager_result["notes"]["error_details"]
-                         if "message" in error_details_dict:
-                             error_message = error_details_dict["message"]
-            elif hasattr(manager_result, 'error') and manager_result.error: # Check object attribute
-                 error_message = str(manager_result.error)
+                elif "notes" in manager_result and isinstance(
+                    manager_result["notes"], dict
+                ):
+                    notes_error = manager_result["notes"].get("error")
+                    if isinstance(notes_error, dict) and "message" in notes_error:
+                        error_message = notes_error["message"]
+                    # Also check error_details in notes
+                    elif "error_details" in manager_result["notes"] and isinstance(
+                        manager_result["notes"]["error_details"], dict
+                    ):
+                        error_details_dict = manager_result["notes"]["error_details"]
+                        if "message" in error_details_dict:
+                            error_message = error_details_dict["message"]
+            elif (
+                hasattr(manager_result, "error") and manager_result.error
+            ):  # Check object attribute
+                error_message = str(manager_result.error)
 
-            logging.error(f"LLM call failed or returned unexpected result: {error_message}")
+            logging.error(
+                f"LLM call failed or returned unexpected result: {error_message}"
+            )
             # Use the extracted error_message when creating the TaskResult
             error_details: Dict[str, Any] = {
-                "type": "TASK_FAILURE", "reason": "llm_error", "message": error_message,
+                "type": "TASK_FAILURE",
+                "reason": "llm_error",
+                "message": error_message,
             }
-            return TaskResult(status="FAILED", content=error_message, notes={"error": error_details})
+            return TaskResult(
+                status="FAILED", content=error_message, notes={"error": error_details}
+            )
 
     def _build_system_prompt(
         self, template: Optional[str] = None, file_context: Optional[str] = None
@@ -359,10 +433,14 @@ class BaseHandler:
 
         if file_context:
             # **Fix 3: Append context block without leading newline**
-            final_prompt_parts.append(f"Relevant File Context:\n```\n{file_context}\n```")
+            final_prompt_parts.append(
+                f"Relevant File Context:\n```\n{file_context}\n```"
+            )
 
         final_prompt = "\n\n".join(final_prompt_parts).strip()
-        self.log_debug(f"Built system prompt (length {len(final_prompt)}): '{final_prompt[:200]}...'")
+        self.log_debug(
+            f"Built system prompt (length {len(final_prompt)}): '{final_prompt[:200]}...'"
+        )
         return final_prompt
 
     def _get_relevant_files(self, query: str) -> List[str]:
@@ -375,9 +453,7 @@ class BaseHandler:
         self.log_debug(f"Creating file context for paths: {file_paths}")
         return self.file_context_manager.create_file_context(file_paths)
 
-    def _execute_tool(
-        self, tool_name: str, tool_input: Dict[str, Any]
-    ) -> TaskResult:
+    def _execute_tool(self, tool_name: str, tool_input: Dict[str, Any]) -> TaskResult:
         """
         Executes a registered tool directly by name.
 
@@ -394,55 +470,75 @@ class BaseHandler:
         if not executor_func:
             error_message = f"Tool '{tool_name}' not found in registered executors."
             logging.error(error_message)
-            error_details: TaskError = { # type: ignore
+            error_details: TaskError = {  # type: ignore
                 "type": "TASK_FAILURE",
-                "reason": "template_not_found", # Closest reason? Or add 'tool_not_found'?
+                "reason": "template_not_found",  # Closest reason? Or add 'tool_not_found'?
                 "message": error_message,
             }
-            return TaskResult(status="FAILED", content=error_message, notes={"error": error_details})
+            return TaskResult(
+                status="FAILED", content=error_message, notes={"error": error_details}
+            )
 
         try:
             # Execute the tool function
             result = executor_func(tool_input)
-            self.log_debug(f"Tool '{tool_name}' executed successfully. Result: {result}")
+            self.log_debug(
+                f"Tool '{tool_name}' executed successfully. Result: {result}"
+            )
 
             # Check if the result is already a TaskResult dictionary
             # (More robust check might be needed depending on TaskResult structure)
             if isinstance(result, TaskResult):
-                 # If it's already a TaskResult object, return it directly
-                 return result
-            elif isinstance(result, dict) and "status" in result and "content" in result:
+                # If it's already a TaskResult object, return it directly
+                return result
+            elif (
+                isinstance(result, dict) and "status" in result and "content" in result
+            ):
                 # Attempt to reconstruct TaskResult if it looks like one
                 try:
                     # Ensure notes is a dict, handle potential missing keys gracefully
                     notes = result.get("notes", {})
                     if not isinstance(notes, dict):
-                        notes = {"original_notes": notes} # Wrap if not a dict
+                        notes = {"original_notes": notes}  # Wrap if not a dict
 
                     # Reconstruct TaskResult, handling potential missing optional fields
                     return TaskResult(
-                        status=result.get("status", "COMPLETE"), # Default status if missing
-                        content=result.get("content", ""), # Default content if missing
+                        status=result.get(
+                            "status", "COMPLETE"
+                        ),  # Default status if missing
+                        content=result.get("content", ""),  # Default content if missing
                         criteria=result.get("criteria"),
                         parsedContent=result.get("parsedContent"),
-                        notes=notes
+                        notes=notes,
                     )
                 except Exception as parse_exc:
-                     logging.warning(f"Tool '{tool_name}' returned a dict, but failed to parse as TaskResult: {parse_exc}. Wrapping raw result.")
-                     # Fallback to wrapping raw result if parsing fails
-                     return TaskResult(status="COMPLETE", content=str(result), notes={"tool_output": result})
+                    logging.warning(
+                        f"Tool '{tool_name}' returned a dict, but failed to parse as TaskResult: {parse_exc}. Wrapping raw result."
+                    )
+                    # Fallback to wrapping raw result if parsing fails
+                    return TaskResult(
+                        status="COMPLETE",
+                        content=str(result),
+                        notes={"tool_output": result},
+                    )
 
             else:
                 # Wrap raw result in a TaskResult
-                return TaskResult(status="COMPLETE", content=str(result), notes={"tool_output": result})
+                return TaskResult(
+                    status="COMPLETE",
+                    content=str(result),
+                    notes={"tool_output": result},
+                )
 
         except Exception as e:
             error_message = f"Error executing tool '{tool_name}': {e}"
             logging.error(error_message, exc_info=True)
-            error_details: TaskError = { # type: ignore
+            error_details: TaskError = {  # type: ignore
                 "type": "TASK_FAILURE",
                 "reason": "tool_execution_error",
                 "message": error_message,
-                "details": {"tool_name": tool_name, "input": tool_input}
+                "details": {"tool_name": tool_name, "input": tool_input},
             }
-            return TaskResult(status="FAILED", content=error_message, notes={"error": error_details})
+            return TaskResult(
+                status="FAILED", content=error_message, notes={"error": error_details}
+            )

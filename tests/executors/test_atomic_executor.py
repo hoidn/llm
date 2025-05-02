@@ -4,12 +4,18 @@ Unit tests for the AtomicTaskExecutor.
 
 import pytest
 import logging # Add import
-from unittest.mock import MagicMock, call # Use MagicMock for flexibility
+from unittest.mock import MagicMock, call, patch # Use MagicMock for flexibility
 from src.executors.atomic_executor import AtomicTaskExecutor, ParameterMismatchError
-from src.system.models import TaskResult, TaskFailureError # Assuming TaskResult model
+from src.system.models import TaskResult, TaskFailureError, ModelNotFoundError # Assuming TaskResult model
+from pydantic import BaseModel # For testing output_type_override
 
 # If BaseHandler is importable and stable, use spec for better mocking
 # from src.handler.base_handler import BaseHandler
+
+# Define a test Pydantic model for output schema testing
+class TestOutputModel(BaseModel):
+    name: str
+    value: int
 
 @pytest.fixture
 def mock_handler(mocker):
@@ -220,3 +226,158 @@ def test_substitute_large_string_param(executor, mock_handler, caplog):
     assert long_string in call_kwargs['prompt']
     # Assert log message was generated
     assert f"Substituting 'long_meta': Type=<class 'str'>, Size/Len={len(long_string)}" in caplog.text
+
+# ----- New Tests for Pydantic Schema Output -----
+
+@patch('src.executors.atomic_executor.resolve_model_class')
+def test_execute_body_without_output_format_schema(mock_resolve_model_class, executor, mock_handler):
+    """Test execute_body with template that has no output_format.schema."""
+    # Arrange
+    task_def = {
+        "name": "test_no_schema",
+        "instructions": "Just a basic task",
+        "output_format": {"type": "json"}  # No schema defined
+    }
+    params = {}
+
+    # Act
+    executor.execute_body(task_def, params, mock_handler)
+
+    # Assert
+    # Verify resolve_model_class was NOT called (no schema to resolve)
+    mock_resolve_model_class.assert_not_called()
+    # Verify handler was called with output_type_override=None
+    mock_handler._execute_llm_call.assert_called_once()
+    _, kwargs = mock_handler._execute_llm_call.call_args
+    assert kwargs.get('output_type_override') is None
+
+@patch('src.executors.atomic_executor.resolve_model_class')
+def test_execute_body_with_valid_output_format_schema(mock_resolve_model_class, executor, mock_handler):
+    """Test execute_body with template that has a valid output_format.schema."""
+    # Arrange
+    task_def = {
+        "name": "test_valid_schema",
+        "instructions": "Return structured data",
+        "output_format": {"type": "json", "schema": "TestOutputModel"}
+    }
+    params = {}
+    
+    # Mock resolve_model_class to return our test model
+    mock_resolve_model_class.return_value = TestOutputModel
+    
+    # Act
+    executor.execute_body(task_def, params, mock_handler)
+    
+    # Assert
+    # Verify resolve_model_class was called with correct schema name
+    mock_resolve_model_class.assert_called_once_with("TestOutputModel")
+    # Verify handler was called with output_type_override=TestOutputModel
+    mock_handler._execute_llm_call.assert_called_once()
+    _, kwargs = mock_handler._execute_llm_call.call_args
+    assert kwargs.get('output_type_override') == TestOutputModel
+
+@patch('src.executors.atomic_executor.resolve_model_class')
+def test_execute_body_with_handler_returning_parsed_content(mock_resolve_model_class, executor, mock_handler):
+    """Test execute_body when handler returns parsed_content from pydantic-ai."""
+    # Arrange
+    task_def = {
+        "name": "test_parsed_content",
+        "instructions": "Return structured data",
+        "output_format": {"type": "json", "schema": "TestOutputModel"}
+    }
+    params = {}
+    
+    # Mock resolve_model_class to return our test model
+    mock_resolve_model_class.return_value = TestOutputModel
+    
+    # Create a parsed Pydantic model instance that handler would return
+    model_instance = TestOutputModel(name="test", value=42)
+    
+    # Configure mock handler to return both raw content and parsed_content
+    mock_handler._execute_llm_call.return_value = {
+        "success": True,
+        "status": "COMPLETE", 
+        "content": '{"name": "test", "value": 42}',
+        "parsed_content": model_instance,  # This would come from pydantic-ai
+        "notes": {}
+    }
+    
+    # Act
+    result_dict = executor.execute_body(task_def, params, mock_handler)
+    
+    # Assert
+    # Verify the parsed_content was moved to parsedContent in the result
+    assert "parsedContent" in result_dict
+    assert result_dict["parsedContent"] == model_instance
+    # Verify parsed_content is removed from the result
+    assert "parsed_content" not in result_dict
+
+@patch('src.executors.atomic_executor.resolve_model_class')
+def test_execute_body_with_model_not_found_error(mock_resolve_model_class, executor, mock_handler):
+    """Test execute_body when resolve_model_class raises ModelNotFoundError."""
+    # Arrange
+    task_def = {
+        "name": "test_model_not_found",
+        "instructions": "Return structured data",
+        "output_format": {"type": "json", "schema": "NonExistentModel"}
+    }
+    params = {}
+    
+    # Mock resolve_model_class to raise ModelNotFoundError
+    error_msg = "Model class NonExistentModel not found in module src.system.models"
+    mock_resolve_model_class.side_effect = ModelNotFoundError(error_msg)
+    
+    # Configure mock handler to return a basic success response
+    mock_handler._execute_llm_call.return_value = TaskResult(
+        status="COMPLETE", 
+        content="Some content",
+        notes={}
+    )
+    
+    # Act
+    result_dict = executor.execute_body(task_def, params, mock_handler)
+    
+    # Assert
+    # Verify handler was still called with output_type_override=None
+    mock_handler._execute_llm_call.assert_called_once()
+    _, kwargs = mock_handler._execute_llm_call.call_args
+    assert kwargs.get('output_type_override') is None
+    
+    # Verify the task completed successfully despite the schema resolution error
+    assert result_dict["status"] == "COMPLETE"
+    # Verify a warning note was added to the result
+    assert "schema_warning" in result_dict["notes"]
+    assert error_msg in result_dict["notes"]["schema_warning"]
+
+@patch('src.executors.atomic_executor.resolve_model_class')
+def test_execute_body_with_handler_failure(mock_resolve_model_class, executor, mock_handler):
+    """Test execute_body when handler returns a failure response."""
+    # Arrange
+    task_def = {
+        "name": "test_handler_failure",
+        "instructions": "This will fail",
+        "output_format": {"type": "json", "schema": "TestOutputModel"}
+    }
+    params = {}
+    
+    # Mock resolve_model_class to return our test model
+    mock_resolve_model_class.return_value = TestOutputModel
+    
+    # Configure mock handler to return a failure response
+    error_details = TaskFailureError(type="TASK_FAILURE", reason="llm_error", message="LLM call failed")
+    mock_handler._execute_llm_call.return_value = TaskResult(
+        status="FAILED", 
+        content="Error: LLM call failed",
+        notes={"error": error_details.model_dump()}
+    )
+    
+    # Act
+    result_dict = executor.execute_body(task_def, params, mock_handler)
+    
+    # Assert
+    # Verify result has FAILED status
+    assert result_dict["status"] == "FAILED"
+    # Verify error details were preserved
+    assert "error" in result_dict["notes"]
+    assert result_dict["notes"]["error"]["reason"] == "llm_error"
+    assert "LLM call failed" in result_dict["notes"]["error"]["message"]

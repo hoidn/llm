@@ -108,3 +108,15 @@
 - Phase 4 Stream 2 implemented system-level tool executors (`system:get_context`, `system:read_files`) used for direct invocation, potentially by the Dispatcher or SexpEvaluator.
 - `AtomicTaskExecutor` uses simple regex substitution, incompatible with template filters (`|`). Placeholders must be simple `{{variable}}` or `{{variable.attribute}}`.
 - Indexing scope is controlled by passing the Git repository root to `Application.index_repository` and using `include_patterns` in the options.
+- **Phase 3b: Implemented Pydantic-AI Integration for Structured Output**
+  - Added `resolve_model_class` helper in `src/system/models.py` to dynamically load Pydantic models from strings
+  - Enhanced `LLMInteractionManager.execute_call` to return Pydantic model instances in `parsed_content`
+  - Updated `AtomicTaskExecutor.execute_body` to use output_format.schema with resolve_model_class
+  - Verified `BaseHandler._execute_llm_call` correctly passes output_type_override parameter
+  - Added comprehensive tests and updated documentation in implementation_rules.md
+  - This enables atomic task templates to specify structured output models via the schema property
+- **Phase 3b: Added Provider Identifier Support**
+  - Added `get_provider_identifier()` method to `LLMInteractionManager` to access model identifier
+  - Added `get_provider_identifier()` method to `BaseHandler` to delegate to LLM manager
+  - Added comprehensive tests for both implementation methods with various cases
+  - Commit `<current_commit_hash>`

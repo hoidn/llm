@@ -10,7 +10,7 @@ from typing import Any, Dict, Optional, Type # Added Type for output_type_overri
 
 # Assuming BaseHandler and TaskResult types are available for hinting
 # from src.handler.base_handler import BaseHandler # Import actual when available
-from src.system.models import TaskResult, TaskFailureReason, TaskFailureError
+from src.system.models import TaskResult, TaskFailureReason, TaskFailureError, resolve_model_class, ModelNotFoundError
 from pydantic import ValidationError
 
 # Regex to find {{parameter.name.access}} placeholders
@@ -147,23 +147,42 @@ class AtomicTaskExecutor:
             # Determine model override, if any (passed to handler's call)
             model_override = atomic_task_def.get("model") # TODO: Confirm handler._execute_llm_call supports this
 
-            # Determine output type override, if any
+            # Initialize task notes that we might add to
+            task_notes = {}
+            
+            # Determine output type override based on output_format.schema if provided
             output_format = atomic_task_def.get("output_format", {})
             output_type_override: Optional[Type] = None
-            # TODO: Implement robust mapping from output_format schema (e.g., {"type": "json", "schema": {...}})
-            # to actual Pydantic models or standard types (Dict, List, etc.) for pydantic-ai.
-            # Placeholder:
-            # if output_format.get("type") == "json":
-            #     # Basic check, needs schema mapping for real use
-            #     output_type_override = Dict[str, Any]
-
+            
+            # Check if output_format.schema is provided
+            schema_name = output_format.get("schema")
+            if schema_name:
+                try:
+                    # Try to resolve the model class from the schema name
+                    logging.debug(f"Attempting to resolve model class for schema: {schema_name}")
+                    output_type_override = resolve_model_class(schema_name)
+                    logging.info(f"Using output_type_override {output_type_override.__name__} for task: {task_name}")
+                except ModelNotFoundError as e:
+                    # Log the error but don't fail the task yet - let handler try to execute without the type
+                    logging.warning(f"Failed to resolve model class for schema {schema_name}: {e}")
+                    # Add a warning note to the task result (will be created later)
+                    task_notes["schema_warning"] = f"Failed to resolve model class for schema {schema_name}: {e}"
+                except Exception as e:
+                    # Log unexpected errors during model resolution
+                    logging.error(f"Unexpected error resolving model class for schema {schema_name}: {e}")
+                    # Add an error note to the task result (will be created later)
+                    task_notes["schema_error"] = f"Unexpected error resolving model class: {e}"
+            
             # --- 3. Invoke Handler ---
             logging.debug(f"Invoking handler._execute_llm_call for task: {task_name}")
             # Add debug logging for prompt
             logging.debug(f"Passing prompt to handler (type: {type(main_prompt)}, length: {len(main_prompt)}): '{main_prompt[:200]}...'")
-            # Assuming _execute_llm_call returns a TaskResult object or raises errors
-            # Pass necessary overrides.
-            handler_result_obj: TaskResult = handler._execute_llm_call(
+            # Log if we're using an output_type_override
+            if output_type_override:
+                logging.debug(f"Using output_type_override: {output_type_override.__name__}")
+            
+            # Pass necessary overrides to the handler
+            handler_result = handler._execute_llm_call(
                 prompt=main_prompt,
                 system_prompt_override=final_system_prompt,
                 tools_override=None, # Atomic executor doesn't handle tool registration itself
@@ -171,31 +190,45 @@ class AtomicTaskExecutor:
                 # model_override=model_override # Pass if handler supports it
             )
 
-            # Ensure result is a TaskResult object (handler should guarantee this or raise)
-            if not isinstance(handler_result_obj, TaskResult):
-                 logging.error(f"Handler._execute_llm_call returned unexpected type: {type(handler_result_obj)}")
-                 # This indicates a bug in the handler or its manager
-                 raise TypeError("Handler call did not return a TaskResult object.")
+            # Ensure result is a dict or TaskResult object
+            if isinstance(handler_result, dict):
+                # For the handler result dict case, convert to TaskResult for validation
+                handler_result_obj = TaskResult.model_validate(handler_result)
+                task_result_dict = handler_result  # Use the original dict
+            elif isinstance(handler_result, TaskResult):
+                handler_result_obj = handler_result
+                task_result_dict = handler_result.model_dump(exclude_none=True)
+            else:
+                logging.error(f"Handler._execute_llm_call returned unexpected type: {type(handler_result)}")
+                # This indicates a bug in the handler or its manager
+                raise TypeError("Handler call did not return a TaskResult object or dict.")
 
-            task_result_dict = handler_result_obj.model_dump(exclude_none=True)
-
-            # --- 4. Output Parsing/Validation (If specified and COMPLETE) ---
-            if task_result_dict.get("status") == "COMPLETE" and output_format.get("type") == "json":
-                logging.debug(f"Attempting JSON parsing for task: {task_name}")
+            # --- 4. Handle Parsed Content ---
+            # Merge task_notes into the task result notes
+            if task_notes:
+                task_result_dict.setdefault("notes", {}).update(task_notes)
+            
+            # Check if parsed_content was returned by the handler (from pydantic-ai)
+            if "parsed_content" in task_result_dict and task_result_dict["status"] == "COMPLETE":
+                # Use the parsed_content from the handler if it exists
+                logging.debug(f"Using parsed_content from handler for task: {task_name}")
+                task_result_dict["parsedContent"] = task_result_dict.pop("parsed_content")
+            # Otherwise, try the old JSON parsing approach if needed
+            elif task_result_dict.get("status") == "COMPLETE" and output_format.get("type") == "json" and "parsedContent" not in task_result_dict:
+                logging.debug(f"Attempting legacy JSON parsing for task: {task_name}")
                 content_to_parse = task_result_dict.get("content")
                 if isinstance(content_to_parse, str):
                     try:
                         parsed_content = json.loads(content_to_parse)
                         task_result_dict["parsedContent"] = parsed_content
-                        # TODO: Add schema validation if output_format.schema is provided
-                        logging.debug(f"JSON parsing successful for task: {task_name}")
+                        logging.debug(f"Legacy JSON parsing successful for task: {task_name}")
                     except json.JSONDecodeError as e:
                         logging.warning(f"Failed to parse JSON output for task '{task_name}': {e}")
                         # Add parse error note, keep status COMPLETE as LLM finished
                         task_result_dict.setdefault("notes", {})["parseError"] = f"JSONDecodeError: {e}"
                     except Exception as e:
-                         logging.exception(f"Unexpected error during output parsing for task '{task_name}': {e}")
-                         task_result_dict.setdefault("notes", {})["parseError"] = f"Unexpected parsing error: {e}"
+                        logging.exception(f"Unexpected error during output parsing for task '{task_name}': {e}")
+                        task_result_dict.setdefault("notes", {})["parseError"] = f"Unexpected parsing error: {e}"
                 else:
                     logging.warning(f"Cannot parse non-string content of type {type(content_to_parse)} as JSON for task '{task_name}'.")
                     task_result_dict.setdefault("notes", {})["parseError"] = f"Cannot parse non-string content ({type(content_to_parse)}) as JSON."
