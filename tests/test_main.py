@@ -98,11 +98,14 @@ def app_components(mocker, tmp_path): # Add tmp_path
         # AiderExecutorFunctions methods are now mocked via the class patch above
         # Anthropic tool functions are now mocked via the 'with patch' block above
 
-        # Create mock instances that the mocked classes will return
+        # Create mock instances that the mocked classes will return OR get the default return_value
         # Use autospec=True for instances to mimic the class spec
         mock_memory_system_instance = MagicMock(spec=MemorySystem)
-        mock_task_system_instance = MagicMock(spec=TaskSystem)
+        # --- START FIX ---
+        # mock_task_system_instance = MagicMock(spec=TaskSystem) # Removed explicit creation
+        mock_task_instance = MockTask.return_value # Get the instance created by the patch
         # Configure MockTask instance methods if needed
+        # --- END FIX ---
         mock_handler_instance = MagicMock(spec=PassthroughHandler)
         mock_fm_instance = MagicMock(spec=FileAccessManager)
         mock_llm_manager_instance = MagicMock() # Removed spec
@@ -113,11 +116,13 @@ def app_components(mocker, tmp_path): # Add tmp_path
         # Configure mock instances with attributes accessed during Application.__init__
         mock_fm_instance.base_path = "/mocked/base/path" # For logging
         # Add the memory_system attribute so hasattr checks pass in Application.__init__
-        mock_task_system_instance.memory_system = None
+        # --- START FIX ---
+        mock_task_instance.memory_system = None # Configure the instance from MockTask.return_value
+        # --- END FIX ---
 
         # Configure the mocked classes to return the mock instances
         MockMemory.return_value = mock_memory_system_instance
-        MockTask.return_value = mock_task_system_instance
+        # MockTask.return_value = mock_task_system_instance # No longer needed, using default return_value
         mock_handler_instance = MockHandler.return_value # Use updated assignment
         MockFileAccessManager.return_value = mock_fm_instance
         MockLLMInteractionManager.return_value = mock_llm_manager_instance # LLMManager instance mock
@@ -172,7 +177,9 @@ def app_components(mocker, tmp_path): # Add tmp_path
 
             # Core Component Instance Mocks
             "mock_memory_system_instance": mock_memory_system_instance,
-            "mock_task_system_instance": mock_task_system_instance,
+            # --- START FIX ---
+            "mock_task_system_instance": mock_task_instance, # Return the instance from MockTask.return_value
+            # --- END FIX ---
             "mock_handler_instance": mock_handler_instance,
             "mock_fm_instance": mock_fm_instance,
             "mock_llm_manager_instance": mock_llm_manager_instance,
