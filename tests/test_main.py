@@ -164,7 +164,7 @@ def app_components(mocker, tmp_path): # Add tmp_path
             "MockMemorySystem": MockMemory,
             "MockTaskSystem": MockTask,
             "MockPassthroughHandler": MockHandler,
-            "MockFileAccessManager": MockFileAccessManager,
+            "MockFM": MockFileAccessManager, # Use updated key
             "MockLLMInteractionManager": MockLLMInteractionManager,
             "MockAiderBridge": MockAiderBridge,
             "MockGitRepositoryIndexer": MockIndexer,
@@ -199,7 +199,7 @@ def test_application_init_minimal(app_components):
     app = Application()
     assert isinstance(app, Application)
     # Check components were instantiated (mocks were called)
-    app_components["MockFileAccessManager"].assert_called_once()
+    app_components["MockFM"].assert_called_once() # Use updated key
     app_components["MockTaskSystem"].assert_called_once()
     app_components["MockPassthroughHandler"].assert_called_once()
     app_components["MockMemorySystem"].assert_called_once()
