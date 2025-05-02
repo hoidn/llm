@@ -221,6 +221,13 @@ class BaseHandler:
         self.log_debug(f"Active tool definitions set to: {[t.get('name', 'unnamed') for t in self.active_tool_definitions]}")
         return True
     
+    def get_tools_for_agent(self) -> List[Callable]:
+        """
+        Retrieves the registered tool executor functions required by the Agent constructor.
+        """
+        logging.debug(f"Retrieving tool executors for Agent initialization: {list(self.tool_executors.keys())}")
+        return list(self.tool_executors.values())
+
     def set_active_tools(self, tool_names: List[str]) -> bool:
         """
         Sets the list of active tools to be used in LLM calls.

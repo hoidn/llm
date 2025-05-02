@@ -213,6 +213,18 @@ Select the best matching paths *from the provided metadata* and output the JSON.
             self._register_system_tools()
             logger.info("System tools registered.")
 
+            # Retrieve tools for agent initialization
+            agent_tools = self.passthrough_handler.get_tools_for_agent()
+            logger.info(f"Retrieved {len(agent_tools)} tools for agent initialization.")
+
+            # Trigger agent initialization in the manager
+            if self.passthrough_handler.llm_manager:
+                self.passthrough_handler.llm_manager.initialize_agent(tools=agent_tools)
+                logger.info("Triggered LLMInteractionManager agent initialization.")
+            else:
+                logger.error("LLMInteractionManager not available for agent initialization.")
+                raise RuntimeError("LLMInteractionManager not available for agent initialization.")
+
             # Initialize Aider integration (if available) - DEFERRED to Phase 8
             # self.initialize_aider()
             # logger.info(f"Aider integration initialized (Available: {AIDER_AVAILABLE}).")

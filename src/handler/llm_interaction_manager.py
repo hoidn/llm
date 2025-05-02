@@ -215,6 +215,15 @@ class LLMInteractionManager:
             }
         """
         logger = logging.getLogger(__name__)  # Use specific logger
+        if self.agent is None:
+            logger.error("Cannot execute LLM call: Agent not initialized. Call initialize_agent first.")
+            return {
+                "success": False,
+                "content": None,
+                "tool_calls": None,
+                "usage": None,
+                "error": "AgentNotInitializedError: LLM Agent not initialized.",
+            }
 
         if not self.agent:
             logger.error("Cannot execute LLM call: Agent is not initialized.")
