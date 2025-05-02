@@ -102,6 +102,7 @@ def app_components(mocker, tmp_path): # Add tmp_path
         # Use autospec=True for instances to mimic the class spec
         mock_memory_system_instance = MagicMock(spec=MemorySystem)
         mock_task_system_instance = MagicMock(spec=TaskSystem)
+        # Configure MockTask instance methods if needed
         mock_handler_instance = MagicMock(spec=PassthroughHandler)
         mock_fm_instance = MagicMock(spec=FileAccessManager)
         mock_llm_manager_instance = MagicMock() # Removed spec
@@ -153,9 +154,7 @@ def app_components(mocker, tmp_path): # Add tmp_path
         mock_handler_instance.set_active_tool_definitions = MagicMock()
         # Use AsyncMock if the method being mocked is async
         # Mock initialize_agent as an async function if it's called with await
-        # --- START FIX ---
         mock_llm_manager_instance.initialize_agent = MagicMock() # Use MagicMock if synchronous
-        # --- END FIX ---
 
         # Yield the dictionary of mocks within the 'with' block
         yield {
