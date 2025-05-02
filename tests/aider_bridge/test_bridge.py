@@ -154,6 +154,7 @@ class TestAiderBridge:
         result = await aider_bridge_instance.call_aider_tool(tool_name, params)
 
         # Assert
+        # --- Assertions (Use the CORRECT mock argument names) ---
         mock_stdio_params_cls.assert_called_once_with( # Check StdioServerParameters was called
              command="dummy_aider_mcp_server", args=[], env={}
         )
@@ -204,6 +205,7 @@ class TestAiderBridge:
         result = await aider_bridge_instance.call_aider_tool(tool_name, params)
 
         # Assert
+        # --- Assertions (Use the CORRECT mock argument names) ---
         mock_stdio_params_cls.assert_called_once()
         mock_stdio_client_func.assert_called_once()
         mock_client_session_cls.assert_called_once()
@@ -256,6 +258,7 @@ class TestAiderBridge:
         result = await aider_bridge_instance.call_aider_tool(tool_name, params)
 
         # Assert
+        # --- Assertions (Use the CORRECT mock argument names) ---
         mock_stdio_params_cls.assert_called_once()
         mock_stdio_client_func.assert_called_once()
         mock_client_session_cls.assert_called_once()
@@ -304,6 +307,7 @@ class TestAiderBridge:
         result = await aider_bridge_instance.call_aider_tool(tool_name, params)
 
         # Assert
+        # --- Assertions (Use the CORRECT mock argument names) ---
         mock_stdio_params_cls.assert_called_once()
         mock_stdio_client_func.assert_called_once()
         mock_client_session_cls.assert_called_once()
@@ -351,6 +355,7 @@ class TestAiderBridge:
         result = await aider_bridge_instance.call_aider_tool(tool_name, params)
 
         # Assert
+        # --- Assertions (Use the CORRECT mock argument names) ---
         mock_stdio_params_cls.assert_called_once()
         mock_stdio_client_func.assert_called_once()
         mock_client_session_cls.assert_called_once()
