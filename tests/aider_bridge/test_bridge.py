@@ -21,13 +21,27 @@ try:
     from mcp.exceptions import MCPError, ConnectionClosed, TimeoutError, ConnectionRefusedError
     from mcp.client.session import ClientSession as RealClientSession
     from mcp.client.stdio import stdio_client as real_stdio_client
-    # Use TextContent from common if available, otherwise mock it
-    from mcp.types import TextContent as RealTextContent # Corrected import path
+    from mcp.types import TextContent as RealTextContent
+    MCP_INSTALLED = True
 except ImportError:
-    MCPError = ConnectionClosed = TimeoutError = ConnectionRefusedError = Exception # Fallback
-    RealClientSession = object # Fallback type
-    real_stdio_client = object
-    RealTextContent = object
+    # Define dummies if mcp is not installed
+    class DummyStdioClient: async def __aenter__(self): return (None, None); async def __aexit__(self, *args): pass
+    class DummyClientSession: async def __aenter__(self): return self; async def __aexit__(self, *args): pass; async def initialize(self): pass; async def call_tool(self, *args, **kwargs): return []
+    class DummyTextContent: def __init__(self, text): self.text = text
+    real_stdio_client = DummyStdioClient # type: ignore
+    RealClientSession = DummyClientSession # type: ignore
+    RealTextContent = DummyTextContent # type: ignore
+    MCP_INSTALLED = False
+    # Define dummy exceptions if needed
+    MCPError = ConnectionClosed = ConnectionRefusedError = Exception
+    # TimeoutError might come from asyncio or mcp.exceptions
+    try:
+        from asyncio import TimeoutError # Fallback to asyncio version
+    except ImportError:
+        TimeoutError = Exception # Further fallback
+
+# Use the potentially dummied TextContent for creating mock responses
+MockTextContent = RealTextContent
 
 # Import MemorySystem and FileAccessManager for specing mocks
 try:
