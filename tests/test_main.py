@@ -16,6 +16,8 @@ from src.handler.passthrough_handler import PassthroughHandler
 from src.handler.file_access import FileAccessManager
 from src.handler.llm_interaction_manager import LLMInteractionManager
 from src.memory.indexers.git_repository_indexer import GitRepositoryIndexer
+# Import the class being patched for autospec
+from src.executors.system_executors import SystemExecutorFunctions
 from src import dispatcher
 # Import modules for patching targets
 # No longer needed for spec, but keep for potential type hints if desired
@@ -62,19 +64,18 @@ def app_components(mocker, tmp_path): # Add tmp_path
     """Provides mocked components for Application testing using autospec."""
     # Patch classes and INDIVIDUAL functions at their DEFINITION location
 
-    # --- START FIX: Use 'with patch' for core component classes ---
+    # --- Use 'with patch' for core component classes ---
     with patch('src.main.MemorySystem', autospec=True) as MockMemory, \
          patch('src.main.TaskSystem', autospec=True) as MockTask, \
          patch('src.main.PassthroughHandler', autospec=True) as MockHandler, \
          patch('src.main.FileAccessManager', autospec=True) as MockFileAccessManager, \
          patch('src.handler.base_handler.LLMInteractionManager', autospec=True) as MockLLMInteractionManager, \
          patch('src.main.AiderBridge', autospec=True) as MockAiderBridge, \
-         patch('src.main.GitRepositoryIndexer', autospec=True) as MockIndexer: # Use updated alias
+         patch('src.main.GitRepositoryIndexer', autospec=True) as MockIndexer, \
+         patch('src.main.SystemExecutorFunctions', autospec=True) as MockSysExecCls: # Added patch for the class
 
         # --- Patch specific functions/static methods directly (using mocker) ---
-        # Patch SystemExecutorFunctions methods (called within src.main)
-        mock_exec_get_context = mocker.patch('src.main.SystemExecutorFunctions.execute_get_context', name="mock_execute_get_context")
-        mock_exec_read_files = mocker.patch('src.main.SystemExecutorFunctions.execute_read_files', name="mock_execute_read_files")
+        # SystemExecutorFunctions methods are now mocked via the class patch above
 
         # Patch AiderExecutorFunctions methods (called within src.main)
         mock_aider_auto_func = mocker.patch('src.main.AiderExecutors.execute_aider_automatic', new_callable=AsyncMock, name="mock_execute_aider_automatic")
@@ -109,7 +110,8 @@ def app_components(mocker, tmp_path): # Add tmp_path
         MockFileAccessManager.return_value = mock_fm_instance
         MockLLMInteractionManager.return_value = mock_llm_manager_instance # LLMManager instance mock
         MockAiderBridge.return_value = mock_aider_bridge_instance
-        MockIndexer.return_value = mock_indexer_instance # Use updated alias
+        MockIndexer.return_value = mock_indexer_instance
+        # MockSysExecCls does not need a return_value as it only has static methods
 
         # Configure mocks attached TO the handler instance, as they are instantiated within BaseHandler init
         mock_handler_instance.file_manager = mock_fm_instance # Simulate internal assignment
@@ -140,7 +142,8 @@ def app_components(mocker, tmp_path): # Add tmp_path
             "MockFileAccessManager": MockFileAccessManager,
             "MockLLMInteractionManager": MockLLMInteractionManager,
             "MockAiderBridge": MockAiderBridge,
-            "MockGitRepositoryIndexer": MockIndexer, # Use updated alias
+            "MockGitRepositoryIndexer": MockIndexer,
+            "MockSystemExecutorFunctions": MockSysExecCls, # Added class mock
 
             # Core Component Instance Mocks
             "mock_memory_system_instance": mock_memory_system_instance,
@@ -156,8 +159,7 @@ def app_components(mocker, tmp_path): # Add tmp_path
             "tool_executors_storage": tool_executors_storage,
 
             # Expose specific function/method mocks (from mocker.patch)
-            "mock_exec_get_context": mock_exec_get_context,
-            "mock_exec_read_files": mock_exec_read_files,
+            # Removed mock_exec_get_context, mock_exec_read_files
             "mock_aider_auto_func": mock_aider_auto_func,
             "mock_aider_inter_func": mock_aider_inter_func,
             "mock_anthropic_view_func": mock_anthropic_view_func,
@@ -165,7 +167,6 @@ def app_components(mocker, tmp_path): # Add tmp_path
             "mock_anthropic_replace_func": mock_anthropic_replace_func,
             "mock_anthropic_insert_func": mock_anthropic_insert_func,
         }
-    # --- END FIX ---
 
 # --- Tests ---
 
