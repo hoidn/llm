@@ -60,16 +60,17 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 @pytest.fixture
 def app_components(mocker, tmp_path): # Add tmp_path
     """Provides mocked components for Application testing using autospec."""
-    # Mock the core component classes themselves
+    # Patch classes and INDIVIDUAL functions at their DEFINITION location
+    # Mock the core component classes themselves (used by src.main)
     mock_memory_system_cls = mocker.patch('src.main.MemorySystem', spec=MemorySystem)
     mock_task_system_cls = mocker.patch('src.main.TaskSystem', spec=TaskSystem)
     mock_handler_cls = mocker.patch('src.main.PassthroughHandler', spec=PassthroughHandler)
     mock_fm_cls = mocker.patch('src.main.FileAccessManager', spec=FileAccessManager)
     # Mock the LLMInteractionManager *inside* the handler module where it's likely used
     mock_llm_manager_cls = mocker.patch('src.handler.base_handler.LLMInteractionManager', spec=LLMInteractionManager)
-    # Mock AiderBridge conditionally based on environment or keep it simple
+    # Mock AiderBridge (used by src.main)
     mock_aider_bridge_cls = mocker.patch('src.main.AiderBridge', spec=AiderBridge)
-    # Mock GitRepositoryIndexer
+    # Mock GitRepositoryIndexer (used by src.main)
     mock_indexer_cls = mocker.patch('src.main.GitRepositoryIndexer', spec=GitRepositoryIndexer)
 
     # --- Patch specific functions/static methods directly ---
@@ -81,12 +82,11 @@ def app_components(mocker, tmp_path): # Add tmp_path
     mock_aider_auto_func = mocker.patch('src.main.AiderExecutors.execute_aider_automatic', new_callable=AsyncMock, name="mock_execute_aider_automatic")
     mock_aider_inter_func = mocker.patch('src.main.AiderExecutors.execute_aider_interactive', new_callable=AsyncMock, name="mock_execute_aider_interactive")
 
-    # --- START FIX: Patch Anthropic tool functions WHERE DEFINED ---
+    # Patch Anthropic tool functions WHERE DEFINED
     mock_anthropic_view_func = mocker.patch('src.tools.anthropic_tools.view', name="mock_anthropic_view")
     mock_anthropic_create_func = mocker.patch('src.tools.anthropic_tools.create', name="mock_anthropic_create")
     mock_anthropic_replace_func = mocker.patch('src.tools.anthropic_tools.str_replace', name="mock_anthropic_replace")
     mock_anthropic_insert_func = mocker.patch('src.tools.anthropic_tools.insert', name="mock_anthropic_insert")
-    # --- END FIX ---
 
     # Create mock instances that the mocked classes will return
     mock_memory_system_instance = MagicMock(spec=MemorySystem)
@@ -118,7 +118,7 @@ def app_components(mocker, tmp_path): # Add tmp_path
     mock_handler_instance.get_provider_identifier.return_value = "mock:provider"
     registered_tools_storage = {} # Use a real dict to capture registrations
     tool_executors_storage = {}
-    # --- START FIX: Updated mock registration function ---
+    # Updated mock registration function
     def mock_register_tool_side_effect(tool_spec, executor_func):
         tool_name = tool_spec.get("name")
         if tool_name:
@@ -126,7 +126,6 @@ def app_components(mocker, tmp_path): # Add tmp_path
             tool_executors_storage[tool_name] = executor_func
             return True # Indicate success
         return False # Indicate failure (e.g., missing name)
-    # --- END FIX ---
     mock_handler_instance.register_tool = MagicMock(side_effect=mock_register_tool_side_effect)
     mock_handler_instance.registered_tools = registered_tools_storage # Point to the dict
     mock_handler_instance.tool_executors = tool_executors_storage # Point to the dict
@@ -217,7 +216,6 @@ def test_application_init_wiring(app_components):
 
     # Assert agent initialization call
     app_components['mock_handler_instance'].get_tools_for_agent.assert_called_once()
-    # --- START FIX ---
     # Check initialize_agent call more robustly
     app_components['mock_llm_manager_instance'].initialize_agent.assert_called_once()
     # Get the actual arguments passed to initialize_agent
@@ -229,7 +227,6 @@ def test_application_init_wiring(app_components):
     # Expecting system:get_context and system:read_files wrappers
     assert len(actual_tools_passed) == 2
     assert all(callable(tool) for tool in actual_tools_passed)
-    # --- END FIX ---
 
 
 def test_index_repository_success(app_components, tmp_path):
