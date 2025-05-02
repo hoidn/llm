@@ -123,7 +123,8 @@ class TestAiderBridge:
     @patch('src.aider_bridge.bridge.stdio_client', spec=real_stdio_client)
     # Patch where it's looked up: 'src.aider_bridge.bridge.ClientSession'
     @patch('src.aider_bridge.bridge.ClientSession', spec=RealClientSession)
-    async def test_call_aider_tool_ai_code_success(self, MockClientSession, mock_stdio_client, aider_bridge_instance): # Removed mock_mcp_available_flag
+    # Signature updated: mock_stdio_client (middle patch) before MockClientSession (inner patch)
+    async def test_call_aider_tool_ai_code_success(self, mock_stdio_client, MockClientSession, aider_bridge_instance):
         """Verify call_aider_tool invokes aider_ai_code and maps success response."""
         # Arrange
         tool_name = "aider_ai_code"
@@ -170,7 +171,8 @@ class TestAiderBridge:
     @patch('src.aider_bridge.bridge.MCP_AVAILABLE', True)
     @patch('src.aider_bridge.bridge.stdio_client', spec=real_stdio_client)
     @patch('src.aider_bridge.bridge.ClientSession', spec=RealClientSession)
-    async def test_call_aider_tool_ai_code_failure(self, MockClientSession, mock_stdio_client, aider_bridge_instance): # Removed mock_mcp_available_flag
+    # Signature updated: mock_stdio_client (middle patch) before MockClientSession (inner patch)
+    async def test_call_aider_tool_ai_code_failure(self, mock_stdio_client, MockClientSession, aider_bridge_instance):
         """Verify call_aider_tool handles application error from aider_ai_code."""
         # Arrange
         tool_name = "aider_ai_code"
@@ -211,7 +213,8 @@ class TestAiderBridge:
     @patch('src.aider_bridge.bridge.MCP_AVAILABLE', True)
     @patch('src.aider_bridge.bridge.stdio_client', spec=real_stdio_client)
     @patch('src.aider_bridge.bridge.ClientSession', spec=RealClientSession)
-    async def test_call_aider_tool_list_models_success(self, MockClientSession, mock_stdio_client, aider_bridge_instance): # Removed mock_mcp_available_flag
+    # Signature updated: mock_stdio_client (middle patch) before MockClientSession (inner patch)
+    async def test_call_aider_tool_list_models_success(self, mock_stdio_client, MockClientSession, aider_bridge_instance):
         """Verify call_aider_tool invokes list_models and maps success response."""
         # Arrange
         tool_name = "list_models"
@@ -249,7 +252,8 @@ class TestAiderBridge:
     @patch('src.aider_bridge.bridge.MCP_AVAILABLE', True)
     @patch('src.aider_bridge.bridge.stdio_client', spec=real_stdio_client)
     @patch('src.aider_bridge.bridge.ClientSession', spec=RealClientSession)
-    async def test_call_aider_tool_mcp_exception(self, MockClientSession, mock_stdio_client, aider_bridge_instance): # Removed mock_mcp_available_flag
+    # Signature updated: mock_stdio_client (middle patch) before MockClientSession (inner patch)
+    async def test_call_aider_tool_mcp_exception(self, mock_stdio_client, MockClientSession, aider_bridge_instance):
         """Verify call_aider_tool handles exceptions from mcp.py client."""
         # Arrange
         tool_name = "aider_ai_code"
@@ -284,7 +288,8 @@ class TestAiderBridge:
     @patch('src.aider_bridge.bridge.MCP_AVAILABLE', True)
     @patch('src.aider_bridge.bridge.stdio_client', spec=real_stdio_client)
     @patch('src.aider_bridge.bridge.ClientSession', spec=RealClientSession)
-    async def test_call_aider_tool_json_parse_error(self, MockClientSession, mock_stdio_client, aider_bridge_instance): # Removed mock_mcp_available_flag
+    # Signature updated: mock_stdio_client (middle patch) before MockClientSession (inner patch)
+    async def test_call_aider_tool_json_parse_error(self, mock_stdio_client, MockClientSession, aider_bridge_instance):
         """Verify call_aider_tool handles invalid JSON from server."""
         # Arrange
         tool_name = "aider_ai_code"
