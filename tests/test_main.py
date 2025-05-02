@@ -21,7 +21,6 @@ from src import dispatcher
 from src.executors import system_executors as system_executors_module
 # Import the REAL module containing the functions to patch for spec
 import src.tools.anthropic_tools
-
 # Import Aider components conditionally
 try:
     from src.aider_bridge.bridge import AiderBridge
@@ -33,6 +32,9 @@ except ImportError:
     AiderExecutors = None
     AIDER_IMPORT_SUCCESS = False
     AIDER_AVAILABLE_IMPORT_PATH = 'src.main.AIDER_AVAILABLE' # Path still exists even if False
+
+# Import the class needed for the spec fix
+from src.executors.aider_executors import AiderExecutorFunctions
 
 
 # Define dummy tool specs used in Application init
@@ -359,7 +361,7 @@ def test_handle_task_command_dispatcher_error(app_components):
 # Add test for conditional Aider initialization and tool registration
 # Need to mock AIDER_AVAILABLE
 @patch('src.main.AIDER_AVAILABLE', True) # Simulate Aider being available
-def test_application_init_with_aider(mock_aider_available_flag, app_components):
+def test_application_init_with_aider(app_components): # Removed mock_aider_available_flag
     """Verify AiderBridge is initialized and tools registered when available."""
     # Arrange
     # Mock the AiderExecutors methods if needed for registration check
@@ -387,7 +389,7 @@ def test_application_init_with_aider(mock_aider_available_flag, app_components):
     assert callable(registered_tools['aider:interactive']['executor'])
 
 @patch('src.main.AIDER_AVAILABLE', False) # Simulate Aider being unavailable
-def test_application_init_without_aider(mock_aider_unavailable_flag, app_components):
+def test_application_init_without_aider(app_components): # Removed mock_aider_unavailable_flag
     """Verify AiderBridge is NOT initialized and tools NOT registered when unavailable."""
      # Act
     app = Application()
