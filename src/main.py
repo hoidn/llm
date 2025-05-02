@@ -336,13 +336,13 @@ Select the best matching paths *from the provided metadata* and output the JSON.
         # Add system tools from registered_tools if they exist
         if self.passthrough_handler and hasattr(self.passthrough_handler, 'registered_tools'):
             for tool_name, tool_data in self.passthrough_handler.registered_tools.items():
-                # tool_data is expected to be {'spec': {...}, 'executor': callable}
+                # tool_data IS the spec dictionary here
                 if tool_name.startswith('system:'):
-                    if 'spec' in tool_data:
-                        active_tool_specs.append(tool_data['spec'])
-                        logger.debug(f"Including system tool spec: {tool_name}")
-                    else:
-                        logger.warning(f"System tool '{tool_name}' missing 'spec' in registered_tools.")
+                    # --- START FIX: Append tool_data directly ---
+                    active_tool_specs.append(tool_data)
+                    # --- END FIX ---
+                    logger.debug(f"Including system tool spec: {tool_name}")
+                    # Removed warning as tool_data is the spec
 
         # Add provider-specific tools based on the provider_identifier
         if provider_identifier:
@@ -352,11 +352,12 @@ Select the best matching paths *from the provided metadata* and output the JSON.
                 if self.passthrough_handler and hasattr(self.passthrough_handler, 'registered_tools'):
                      for tool_name, tool_data in self.passthrough_handler.registered_tools.items():
                          if tool_name.startswith('anthropic:'):
-                             if 'spec' in tool_data:
-                                 active_tool_specs.append(tool_data['spec'])
-                                 logger.debug(f"Including Anthropic tool spec: {tool_name}")
-                             else:
-                                 logger.warning(f"Anthropic tool '{tool_name}' missing 'spec' in registered_tools.")
+                             # --- START FIX: Append tool_data directly ---
+                             active_tool_specs.append(tool_data)
+                             # --- END FIX ---
+                             logger.debug(f"Including Anthropic tool spec: {tool_name}")
+                             # Removed warning
+
             # Add other provider-specific logic here if needed
             # elif provider_identifier.startswith('openai:'):
             #     pass
@@ -367,11 +368,11 @@ Select the best matching paths *from the provided metadata* and output the JSON.
             if self.passthrough_handler and hasattr(self.passthrough_handler, 'registered_tools'):
                  for tool_name, tool_data in self.passthrough_handler.registered_tools.items():
                      if tool_name.startswith('aider:'):
-                         if 'spec' in tool_data:
-                             active_tool_specs.append(tool_data['spec'])
-                             logger.debug(f"Including Aider tool spec: {tool_name}")
-                         else:
-                             logger.warning(f"Aider tool '{tool_name}' missing 'spec' in registered_tools.")
+                         # --- START FIX: Append tool_data directly ---
+                         active_tool_specs.append(tool_data)
+                         # --- END FIX ---
+                         logger.debug(f"Including Aider tool spec: {tool_name}")
+                         # Removed warning
 
 
         logger.info(f"Determined {len(active_tool_specs)} active tool specifications: {[t.get('name', 'unnamed') for t in active_tool_specs]}")
@@ -586,17 +587,31 @@ Select the best matching paths *from the provided metadata* and output the JSON.
             registered_count = 0
             # Ensure AiderExecutors was imported successfully before using its methods
             if AiderExecutors:
+                # --- START: Add Logging ---
+                logger.info(f"Attempting to register {len(aider_tools_to_register)} Aider tools...")
+                # --- END: Add Logging ---
                 for tool in aider_tools_to_register:
                     # --- START Aider Wrapper Refactor ---
                     # Register the explicit wrapper directly
-                    success = self.passthrough_handler.register_tool(tool["spec"], tool["executor"])
+                    executor_wrapper = tool["executor"] # Get the wrapper function
                     # --- END Aider Wrapper Refactor ---
+
+                    # --- START: Add Logging ---
+                    logger.debug(f"Registering tool: {tool['spec']['name']} with executor: {executor_wrapper}")
+                    success = self.passthrough_handler.register_tool(tool["spec"], executor_wrapper)
+                    logger.debug(f"Registration result for {tool['spec']['name']}: {success}")
+                    # --- END: Add Logging ---
+
                     if success:
                         registered_count += 1
-                        logger.debug(f"Registered Aider tool: {tool['spec']['name']}")
+                        # logger.debug(f"Registered Aider tool: {tool['spec']['name']}") # Covered by log above
                     else:
                         logger.warning(f"Failed to register Aider tool: {tool['spec']['name']}")
                 logger.info(f"Registered {registered_count}/{len(aider_tools_to_register)} Aider tools.")
+                # --- START: Add Logging ---
+                # Add check immediately after registration
+                logger.info(f"Handler tool executors after Aider registration: {list(self.passthrough_handler.tool_executors.keys())}")
+                # --- END: Add Logging ---
             else:
                  logger.error("AiderExecutorFunctions not available. Cannot register Aider tools.")
 
