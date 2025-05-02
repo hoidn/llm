@@ -125,7 +125,7 @@ class TestAiderBridge:
                                                  mock_client_session_cls,  # From Decorator 1 (Innermost)
                                                  mock_stdio_client_func,   # From Decorator 2
                                                  mock_stdio_params_cls,    # From Decorator 3
-                                                 mock_mcp_flag,            # From Decorator 4 (Outermost) - Added
+                                                 # mock_mcp_flag removed
                                                  aider_bridge_instance):   # Fixture
         """Verify call_aider_tool invokes aider_ai_code and maps success response."""
         # Arrange
@@ -181,7 +181,7 @@ class TestAiderBridge:
                                                  mock_client_session_cls,  # From Decorator 1 (Innermost)
                                                  mock_stdio_client_func,   # From Decorator 2
                                                  mock_stdio_params_cls,    # From Decorator 3
-                                                 mock_mcp_flag,            # From Decorator 4 (Outermost) - Added
+                                                 # mock_mcp_flag removed
                                                  aider_bridge_instance):   # Fixture
         """Verify call_aider_tool handles application error from aider_ai_code."""
         # Arrange
@@ -239,7 +239,7 @@ class TestAiderBridge:
                                                      mock_client_session_cls,  # From Decorator 1 (Innermost)
                                                      mock_stdio_client_func,   # From Decorator 2
                                                      mock_stdio_params_cls,    # From Decorator 3
-                                                     mock_mcp_flag,            # From Decorator 4 (Outermost) - Added
+                                                     # mock_mcp_flag removed
                                                      aider_bridge_instance):   # Fixture
         """Verify call_aider_tool invokes list_models and maps success response."""
         # Arrange
@@ -294,7 +294,7 @@ class TestAiderBridge:
                                                mock_client_session_cls,  # From Decorator 1 (Innermost)
                                                mock_stdio_client_func,   # From Decorator 2
                                                mock_stdio_params_cls,    # From Decorator 3
-                                               mock_mcp_flag,            # From Decorator 4 (Outermost) - Added
+                                               # mock_mcp_flag removed
                                                aider_bridge_instance):   # Fixture
         """Verify call_aider_tool handles exceptions from mcp.py client."""
         # Arrange
@@ -345,7 +345,7 @@ class TestAiderBridge:
                                                   mock_client_session_cls,  # From Decorator 1 (Innermost)
                                                   mock_stdio_client_func,   # From Decorator 2
                                                   mock_stdio_params_cls,    # From Decorator 3
-                                                  mock_mcp_flag,            # From Decorator 4 (Outermost) - Added
+                                                  # mock_mcp_flag removed
                                                   aider_bridge_instance):   # Fixture
         """Verify call_aider_tool handles invalid JSON from server."""
         # Arrange
