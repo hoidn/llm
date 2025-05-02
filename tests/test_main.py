@@ -28,6 +28,8 @@ try:
     from pydantic_ai import Agent as RealPydanticAgent
 except ImportError:
     RealPydanticAgent = object # type: ignore
+# Import Anthropic tool functions for autospec
+from src.tools import anthropic_tools as anthropic_tools_module
 
 from src import dispatcher
 # Import modules for patching targets
@@ -75,7 +77,7 @@ def app_components(mocker, tmp_path): # Add tmp_path
     """Provides mocked components for Application testing using autospec."""
     # Patch classes and INDIVIDUAL functions at their DEFINITION location
 
-    # --- Use 'with patch' for core component classes ---
+    # --- Use 'with patch' for core component classes AND tool functions ---
     with patch('src.main.MemorySystem', autospec=True) as MockMemory, \
          patch('src.main.TaskSystem', autospec=True) as MockTask, \
          patch('src.main.PassthroughHandler', autospec=True) as MockHandler, \
@@ -85,17 +87,16 @@ def app_components(mocker, tmp_path): # Add tmp_path
          patch('src.main.GitRepositoryIndexer', autospec=True) as MockIndexer, \
          patch('src.main.SystemExecutorFunctions', autospec=True) as MockSysExecCls, \
          patch('src.main.AiderExecutors', autospec=True) as MockAiderExec, \
-         patch('src.handler.llm_interaction_manager.Agent', autospec=True) as MockPydanticAgent:
+         patch('src.handler.llm_interaction_manager.Agent', autospec=True) as MockPydanticAgent, \
+         patch('src.tools.anthropic_tools.view', autospec=True) as mock_anthropic_view_func, \
+         patch('src.tools.anthropic_tools.create', autospec=True) as mock_anthropic_create_func, \
+         patch('src.tools.anthropic_tools.str_replace', autospec=True) as mock_anthropic_replace_func, \
+         patch('src.tools.anthropic_tools.insert', autospec=True) as mock_anthropic_insert_func:
 
         # --- Patch specific functions/static methods directly (using mocker) ---
         # SystemExecutorFunctions methods are now mocked via the class patch above
         # AiderExecutorFunctions methods are now mocked via the class patch above
-
-        # Patch Anthropic tool functions WHERE DEFINED
-        mock_anthropic_view_func = mocker.patch('src.tools.anthropic_tools.view', name="mock_anthropic_view")
-        mock_anthropic_create_func = mocker.patch('src.tools.anthropic_tools.create', name="mock_anthropic_create")
-        mock_anthropic_replace_func = mocker.patch('src.tools.anthropic_tools.str_replace', name="mock_anthropic_replace")
-        mock_anthropic_insert_func = mocker.patch('src.tools.anthropic_tools.insert', name="mock_anthropic_insert")
+        # Anthropic tool functions are now mocked via the 'with patch' block above
 
         # Create mock instances that the mocked classes will return
         # Use autospec=True for instances to mimic the class spec
@@ -157,7 +158,7 @@ def app_components(mocker, tmp_path): # Add tmp_path
             "MockAiderBridge": MockAiderBridge,
             "MockGitRepositoryIndexer": MockIndexer,
             "MockSystemExecutorFunctions": MockSysExecCls,
-            "MockAiderExecutors": MockAiderExec, # Added AiderExecutors class mock
+            "MockAiderExecutors": MockAiderExec,
             "MockPydanticAgent": MockPydanticAgent,
 
             # Core Component Instance Mocks
@@ -173,9 +174,7 @@ def app_components(mocker, tmp_path): # Add tmp_path
             "registered_tools_storage": registered_tools_storage,
             "tool_executors_storage": tool_executors_storage,
 
-            # Expose specific function/method mocks (from mocker.patch)
-            # Removed mock_exec_get_context, mock_exec_read_files
-            # Removed mock_aider_auto_func, mock_aider_inter_func
+            # Expose specific function/method mocks (now from 'with patch')
             "mock_anthropic_view_func": mock_anthropic_view_func,
             "mock_anthropic_create_func": mock_anthropic_create_func,
             "mock_anthropic_replace_func": mock_anthropic_replace_func,
