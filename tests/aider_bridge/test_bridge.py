@@ -160,6 +160,7 @@ class TestAiderBridge:
         )
         # Check stdio_client function mock was called
         mock_stdio_client_func.assert_called_once()
+        # Check ClientSession class mock was called
         mock_client_session_cls.assert_called_once()
         mock_session_instance.initialize.assert_awaited_once()
         mock_session_instance.call_tool.assert_awaited_once_with(name=tool_name, arguments=params)
@@ -210,6 +211,7 @@ class TestAiderBridge:
         mock_stdio_params_cls.assert_called_once()
         # Check stdio_client function mock was called
         mock_stdio_client_func.assert_called_once()
+        # Check ClientSession class mock was called
         mock_client_session_cls.assert_called_once()
         mock_session_instance.initialize.assert_awaited_once()
         mock_session_instance.call_tool.assert_awaited_once_with(name=tool_name, arguments=params)
@@ -264,6 +266,7 @@ class TestAiderBridge:
         mock_stdio_params_cls.assert_called_once()
         # Check stdio_client function mock was called
         mock_stdio_client_func.assert_called_once()
+        # Check ClientSession class mock was called
         mock_client_session_cls.assert_called_once()
         mock_session_instance.initialize.assert_awaited_once()
         mock_session_instance.call_tool.assert_awaited_once_with(name=tool_name, arguments=params)
@@ -314,6 +317,7 @@ class TestAiderBridge:
         mock_stdio_params_cls.assert_called_once()
         # Check stdio_client function mock was called
         mock_stdio_client_func.assert_called_once()
+        # Check ClientSession class mock was called
         mock_client_session_cls.assert_called_once()
         mock_session_instance.initialize.assert_awaited_once()
         mock_session_instance.call_tool.assert_awaited_once_with(name=tool_name, arguments=params)
@@ -363,6 +367,7 @@ class TestAiderBridge:
         mock_stdio_params_cls.assert_called_once()
         # Check stdio_client function mock was called
         mock_stdio_client_func.assert_called_once()
+        # Check ClientSession class mock was called
         mock_client_session_cls.assert_called_once()
         mock_session_instance.initialize.assert_awaited_once()
         mock_session_instance.call_tool.assert_awaited_once_with(name=tool_name, arguments=params)
