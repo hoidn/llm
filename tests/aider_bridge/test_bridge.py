@@ -22,7 +22,7 @@ from src.system.models import TaskResult, AssociativeMatchResult, MatchTuple, Ta
 try:
     from mcp.client.stdio import stdio_client as real_stdio_client, StdioServerParameters as RealStdioServerParameters
     from mcp.client.session import ClientSession as RealClientSession
-    from mcp.types import TextContent as RealTextContent
+    from mcp.types import TextContent, CallToolResult
     from mcp.exceptions import MCPError, ConnectionClosed, TimeoutError, ConnectionRefusedError
     import anyio  # For connection errors
     CONNECTION_ERRORS = (anyio.BrokenResourceError, anyio.EndOfStream, ConnectionRefusedError, TimeoutError)
@@ -44,10 +44,15 @@ except ImportError:
         async def call_tool(self, *args, **kwargs): return []
     class DummyTextContent:
         def __init__(self, text=""): self.text = text
+    class DummyCallToolResult:
+        def __init__(self, content=None, isError=False):
+            self.content = content or []
+            self.isError = isError
     real_stdio_client = DummyStdioClient # type: ignore
     RealStdioServerParameters = DummyStdioParams # type: ignore
     RealClientSession = DummyClientSession # type: ignore
-    RealTextContent = DummyTextContent # type: ignore
+    TextContent = DummyTextContent # type: ignore
+    CallToolResult = DummyCallToolResult # type: ignore
     # Define dummy exceptions if needed
     MCPError = ConnectionClosed = ConnectionRefusedError = Exception
     # TimeoutError might come from asyncio or mcp.exceptions
@@ -146,7 +151,7 @@ class TestAiderBridge:
         params = {"ai_coding_prompt": "Implement fibonacci", "relative_editable_files": ["math.py"]}
         mock_diff = "--- a/math.py\n+++ b/math.py\n@@ ..."
         server_response_json = json.dumps({"success": True, "diff": mock_diff})
-        mock_server_response = [RealTextContent(text=server_response_json)]
+        mock_server_response = [TextContent(text=server_response_json)]
 
         # --- Mock Configuration (Use the CORRECT argument names now) ---
         mock_session_instance = AsyncMock(spec=RealClientSession)
@@ -204,7 +209,7 @@ class TestAiderBridge:
         error_msg = "Aider execution failed due to invalid syntax"
         server_payload = {"success": False, "error": error_msg, "diff": "partial diff..."}
         server_response_json = json.dumps(server_payload)
-        mock_server_response = [RealTextContent(text=server_response_json)]
+        mock_server_response = [TextContent(text=server_response_json)]
 
         # --- Mock Configuration (Use the CORRECT argument names now) ---
         mock_session_instance = AsyncMock(spec=RealClientSession)
@@ -267,7 +272,7 @@ class TestAiderBridge:
         params = {"substring": "gpt"}
         model_list = ["openai/gpt-4o", "openai/gpt-3.5-turbo"]
         server_response_json = json.dumps({"models": model_list})
-        mock_server_response = [RealTextContent(text=server_response_json)]
+        mock_server_response = [TextContent(text=server_response_json)]
 
         # --- Mock Configuration (Use the CORRECT argument names now) ---
         mock_session_instance = AsyncMock(spec=RealClientSession)
@@ -373,7 +378,7 @@ class TestAiderBridge:
         tool_name = "aider_ai_code"
         params = {"ai_coding_prompt": "Test", "relative_editable_files": ["f.py"]}
         invalid_json = "This is not JSON {"
-        mock_server_response = [RealTextContent(text=invalid_json)] # Server sends bad JSON string
+        mock_server_response = [TextContent(text=invalid_json)] # Server sends bad JSON string
 
         # --- Mock Configuration (Use the CORRECT argument names now) ---
         mock_session_instance = AsyncMock(spec=RealClientSession)

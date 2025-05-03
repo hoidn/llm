@@ -282,7 +282,7 @@ class AiderBridge:
         except asyncio.TimeoutError as timeout_err:
              logger.error(f"Timeout error calling tool '{tool_name}': {timeout_err}")
              # Use a more specific reason if available, e.g., 'execution_timeout'
-             return _create_failed_result_dict("execution_timeout", f"Operation timed out: {timeout_err}")
+             return _create_failed_result_dict("execution_timeout", f"MCP communication error: {timeout_err}")
 
         # Catch potential errors from StdioServerParameters or config issues
         except ValueError as val_err:
