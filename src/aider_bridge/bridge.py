@@ -163,39 +163,58 @@ class AiderBridge:
                     await session.initialize()
                     logger.debug("MCP session initialized. Calling tool...")
 
-                    # MCP v0.2.0 returns a list of content parts
-                    mcp_response = await session.call_tool(name=tool_name, arguments=params)
+                    mcp_response_wrapper = await session.call_tool(name=tool_name, arguments=params) # Rename variable
 
-                    # --- Enhanced Logging & Checks ---
-                    logger.debug(f"Raw MCP response received: Type={type(mcp_response)}, Value={mcp_response!r}")
+                    # --- START FIX: Handle CallToolResult Wrapper ---
+                    # Log the raw wrapper object received
+                    logger.debug(f"Raw MCP response wrapper received: Type={type(mcp_response_wrapper)}, Value={mcp_response_wrapper!r}")
 
-                    # Check 1: Type check
-                    if not isinstance(mcp_response, list):
-                        logger.error(f"Invalid response type. Expected list, got: {type(mcp_response)}. Value: {mcp_response!r}")
-                        details = {"raw_response_type": str(type(mcp_response)), "raw_response_value": repr(mcp_response)}
-                        return _create_failed_result_dict("protocol_error", f"Invalid response type from MCP server: {type(mcp_response)}", details_dict=details)
+                    # Check if it's the expected wrapper type using hasattr for robustness
+                    if not hasattr(mcp_response_wrapper, 'content') or not hasattr(mcp_response_wrapper, 'isError'):
+                        logger.error(f"Invalid response wrapper type received. Expected object with 'content' and 'isError' attributes, got: {type(mcp_response_wrapper)}")
+                        details = {"raw_response_type": str(type(mcp_response_wrapper)), "raw_response_value": repr(mcp_response_wrapper)}
+                        return _create_failed_result_dict("protocol_error", f"Invalid response wrapper type from MCP server: {type(mcp_response_wrapper)}", details_dict=details)
 
-                    # Check 2: Empty list
-                    if not mcp_response:
-                        logger.error("Empty list response received from MCP server.")
-                        details = {"raw_response_value": repr(mcp_response)}
-                        return _create_failed_result_dict("protocol_error", "Empty list response from MCP server.", details_dict=details)
+                    # Check if the wrapper indicates an error
+                    if getattr(mcp_response_wrapper, 'isError', False):
+                         logger.error(f"MCP response wrapper indicates an error. isError=True. Value: {mcp_response_wrapper!r}")
+                         error_content = getattr(mcp_response_wrapper, 'content', ["Unknown error content"])
+                         details = {"raw_response_value": repr(mcp_response_wrapper)}
+                         return _create_failed_result_dict("protocol_error", f"MCP response wrapper indicates error: {error_content}", details_dict=details)
 
-                    # Check 3: First element None
-                    if mcp_response[0] is None:
-                         logger.error(f"First element in response list is None. Full Response: {mcp_response!r}")
-                         details = {"raw_response_value": repr(mcp_response)}
-                         return _create_failed_result_dict("protocol_error", "First element in response list is None.", details_dict=details)
+                    # Extract the actual content list from the wrapper
+                    mcp_response_content_list = getattr(mcp_response_wrapper, 'content', None)
 
-                    # Check 4: First element type
-                    if not isinstance(mcp_response[0], TextContent):
-                         logger.error(f"Unexpected element type in list: {type(mcp_response[0])}. Expected TextContent. Full Response: {mcp_response!r}")
-                         details = {"raw_response_type": str(type(mcp_response[0])), "raw_response_value": repr(mcp_response)}
-                         return _create_failed_result_dict("protocol_error", f"Unexpected response type: {type(mcp_response[0])}", details_dict=details)
-                    # --- End Enhanced Logging & Checks ---
+                    # Now perform the original checks on the extracted content list
+                    # Check 1: Is the extracted content a list?
+                    if not isinstance(mcp_response_content_list, list):
+                        logger.error(f"Invalid 'content' type inside wrapper. Expected list, got: {type(mcp_response_content_list)}. Wrapper: {mcp_response_wrapper!r}")
+                        details = {"raw_response_type": str(type(mcp_response_content_list)), "raw_response_value": repr(mcp_response_wrapper)}
+                        return _create_failed_result_dict("protocol_error", f"Invalid 'content' type inside wrapper: {type(mcp_response_content_list)}", details_dict=details)
 
-                    response_text = mcp_response[0].text
-                    logger.debug(f"Raw MCP response text from TextContent: {response_text!r}") # Log with repr()
+                    # Check 2: Is the list empty?
+                    if not mcp_response_content_list:
+                        logger.error(f"Empty 'content' list received inside wrapper. Wrapper: {mcp_response_wrapper!r}")
+                        details = {"raw_response_value": repr(mcp_response_wrapper)}
+                        return _create_failed_result_dict("protocol_error", "Empty 'content' list from MCP server.", details_dict=details)
+
+                    # Check 3: Is the first element None?
+                    first_element = mcp_response_content_list[0]
+                    if first_element is None:
+                         logger.error(f"First element in 'content' list is None. Wrapper: {mcp_response_wrapper!r}")
+                         details = {"raw_response_value": repr(mcp_response_wrapper)}
+                         return _create_failed_result_dict("protocol_error", "First element in 'content' list is None.", details_dict=details)
+
+                    # Check 4: Is the first element TextContent?
+                    if not isinstance(first_element, TextContent):
+                         logger.error(f"Unexpected element type in 'content' list: {type(first_element)}. Expected TextContent. Wrapper: {mcp_response_wrapper!r}")
+                         details = {"raw_response_type": str(type(first_element)), "raw_response_value": repr(mcp_response_wrapper)}
+                         return _create_failed_result_dict("protocol_error", f"Unexpected response type in list: {type(first_element)}", details_dict=details)
+                    # --- END FIX: Handle CallToolResult Wrapper ---
+
+                    # If all checks pass, proceed with parsing TextContent
+                    response_text = first_element.text # Get text from the first element
+                    logger.debug(f"Raw MCP response text from TextContent: {response_text!r}")
 
                     try:
                         server_payload = json.loads(response_text)
@@ -207,9 +226,11 @@ class AiderBridge:
                         return _create_failed_result_dict("output_format_failure", f"Failed to parse JSON response: {json_err}", details_dict=details)
 
                     # Map server payload to TaskResult dictionary
+                    # Check for explicit error reported by the server application
                     if server_payload.get("error"):
                         error_msg = server_payload["error"]
                         logger.warning(f"Aider MCP tool '{tool_name}' reported application error: {error_msg}")
+                        # Include other potential fields in notes (passed as details_dict)
                         notes_for_details = {k: v for k, v in server_payload.items() if k != 'error'}
                         return _create_failed_result_dict("tool_execution_error", error_msg, details_dict=notes_for_details)
 
@@ -221,17 +242,22 @@ class AiderBridge:
                             logger.info(f"Aider MCP tool '{tool_name}' completed successfully.")
                             return TaskResult(status="COMPLETE", content=diff_content, notes={"success": True, "diff": diff_content}).model_dump(exclude_none=True)
                         else:
+                            # If success is false but no explicit 'error' key, use diff as error message
                             error_msg = diff_content or f"Aider tool '{tool_name}' failed without specific error message."
                             logger.warning(f"Aider MCP tool '{tool_name}' failed: {error_msg}")
+                            # Include all payload in notes (passed as details_dict)
                             notes_for_details = {k: v for k, v in server_payload.items()}
+                            # Use the actual error from the server payload as the message
                             return _create_failed_result_dict("tool_execution_error", error_msg, details_dict=notes_for_details)
                     elif tool_name == "list_models":
                         models = server_payload.get("models", [])
                         logger.info(f"Aider MCP tool '{tool_name}' listed {len(models)} models.")
+                        # Return the list as JSON string in content, and raw list in notes
                         return TaskResult(status="COMPLETE", content=json.dumps(models), notes={"models": models}).model_dump(exclude_none=True)
                     else:
                         # Generic success handling
                         logger.info(f"Aider MCP tool '{tool_name}' returned generic payload.")
+                        # Assume payload itself is the content if no standard fields found
                         content_str = json.dumps(server_payload)
                         return TaskResult(status="COMPLETE", content=content_str, notes=server_payload).model_dump(exclude_none=True)
 
