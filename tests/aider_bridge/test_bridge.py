@@ -61,6 +61,16 @@ except ImportError:
     except ImportError:
         TimeoutError = Exception # Further fallback
     CONNECTION_ERRORS = (Exception,)
+
+# Debug check to confirm which TextContent class is being used
+try:
+    from mcp.types import TextContent as RealTextContentCheck
+    if TextContent is RealTextContentCheck:
+        print("\nDEBUG: SUCCESSFULLY Using REAL mcp.types.TextContent in tests!\n")
+    else:
+        print("\nDEBUG: WARNING! Using DUMMY TextContent in tests! (Likely mcp.py import failed)\n")
+except ImportError:
+    print("\nDEBUG: ERROR! Could not import real mcp.types.TextContent for check.\n")
 # --- End REAL/DUMMY types ---
 
 # Mock CallToolResult class for testing
@@ -155,7 +165,10 @@ class TestAiderBridge:
         mock_session_instance = AsyncMock(spec=RealClientSession)
         # Create the response content after the mock is defined
         server_response_json = json.dumps({"success": True, "diff": mock_diff})
-        mock_server_response_content = [TextContent(text=server_response_json)]
+        # Create TextContent objects - use the TextContent class that's available in this scope
+        # (either real or dummy, depending on import success)
+        mock_text_content = TextContent(text=server_response_json)
+        mock_server_response_content = [mock_text_content]
         # Wrap the response in MockCallToolResult
         mock_session_instance.call_tool.return_value = MockCallToolResult(content=mock_server_response_content, isError=False)
 
@@ -214,7 +227,9 @@ class TestAiderBridge:
         mock_session_instance = AsyncMock(spec=RealClientSession)
         # Create the response content after the mock is defined
         server_response_json = json.dumps(server_payload)
-        mock_server_response_content = [TextContent(text=server_response_json)]
+        # Create TextContent objects - use the TextContent class that's available in this scope
+        mock_text_content = TextContent(text=server_response_json)
+        mock_server_response_content = [mock_text_content]
         # Wrap the response in MockCallToolResult
         mock_session_instance.call_tool.return_value = MockCallToolResult(content=mock_server_response_content, isError=False)
         mock_cm_session = AsyncMock() # Context manager for the session
@@ -278,7 +293,9 @@ class TestAiderBridge:
         mock_session_instance = AsyncMock(spec=RealClientSession)
         # Create the response content after the mock is defined
         server_response_json = json.dumps({"models": model_list})
-        mock_server_response_content = [TextContent(text=server_response_json)]
+        # Create TextContent objects - use the TextContent class that's available in this scope
+        mock_text_content = TextContent(text=server_response_json)
+        mock_server_response_content = [mock_text_content]
         # Wrap the response in MockCallToolResult
         mock_session_instance.call_tool.return_value = MockCallToolResult(content=mock_server_response_content, isError=False)
         mock_cm_session = AsyncMock() # Context manager for the session
@@ -385,7 +402,9 @@ class TestAiderBridge:
         # --- Mock Configuration (Use the CORRECT argument names now) ---
         mock_session_instance = AsyncMock(spec=RealClientSession)
         # Create the response content after the mock is defined
-        mock_server_response_content = [TextContent(text=invalid_json)] # Server sends bad JSON string
+        # Create TextContent objects - use the TextContent class that's available in this scope
+        mock_text_content = TextContent(text=invalid_json)
+        mock_server_response_content = [mock_text_content] # Server sends bad JSON string
         # Wrap the response in MockCallToolResult
         mock_session_instance.call_tool.return_value = MockCallToolResult(content=mock_server_response_content, isError=False)
         mock_cm_session = AsyncMock() # Context manager for the session
