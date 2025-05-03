@@ -185,18 +185,21 @@ def test_e2e_aider_automatic_edit(e2e_aider_repo):
             assert isinstance(result_dict, dict)
             assert result_dict.get("status") == "COMPLETE"
 
-            # Assert diff content (may be fragile depending on LLM/Aider version)
+            # Assert diff content (more robust check that doesn't depend on exact docstring content)
             diff_content = result_dict.get("content", "")
             assert "--- a/hello.py" in diff_content
             assert "+++ b/hello.py" in diff_content
-            assert '+    """Greets the user."""' in diff_content # Check for added docstring line
+            assert '+    """' in diff_content # Check for added docstring opening, regardless of content
+            assert 'def greet(name):' in diff_content # Check context remains
 
             # Assert actual file content
             modified_file_path = e2e_aider_repo / target_file
             assert modified_file_path.exists()
             modified_content = modified_file_path.read_text()
             print(f"\nModified content of {target_file}:\n{modified_content}")
-            assert '"""Greets the user."""' in modified_content # Verify docstring is present
+            assert '"""' in modified_content # Verify some docstring is present
+            assert "def greet(name):" in modified_content # Verify function signature remains
+            assert "print(f\"Hello, {name}!\")" in modified_content # Verify function body remains
 
     finally:
         # --- Cleanup ---
