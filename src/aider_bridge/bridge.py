@@ -18,7 +18,8 @@ try:
     from mcp.client.stdio import stdio_client, StdioServerParameters
     from mcp.client.session import ClientSession
     from mcp.types import TextContent
-    from mcp.exceptions import MCPError, ConnectionClosed, TimeoutError, ConnectionRefusedError
+    # --- Import exceptions directly from the top-level mcp module ---
+    from mcp import MCPError, ConnectionClosed, TimeoutError, ConnectionRefusedError # <<< CORRECTED LINE
     MCP_AVAILABLE = True
 except ImportError:
     MCP_AVAILABLE = False
@@ -26,6 +27,7 @@ except ImportError:
     StdioServerParameters = object # type: ignore
     ClientSession = object # type: ignore
     TextContent = object # type: ignore
+    # Define dummy exceptions based on the changed import line
     MCPError = ConnectionClosed = TimeoutError = ConnectionRefusedError = Exception # type: ignore
     # Dummy stdio_client context manager
     class DummyStdioClient:
