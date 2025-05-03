@@ -35,25 +35,18 @@ try:
     from src.aider_bridge.bridge import AiderBridge
     from src.executors.aider_executors import AiderExecutorFunctions as AiderExecutors
     logger.debug("Aider components imported successfully.")
-    # Check environment variable for enabling Aider
-    AIDER_ENABLED_ENV = os.environ.get('AIDER_ENABLED', 'false').lower() == 'true'
-    logger.debug(f"AIDER_ENABLED environment variable: {os.environ.get('AIDER_ENABLED')}, Parsed as enabled: {AIDER_ENABLED_ENV}")
-    AIDER_AVAILABLE = AIDER_ENABLED_ENV # Set availability based on env var
-    if not AIDER_AVAILABLE:
-        logger.info("Aider integration is disabled (AIDER_ENABLED env var not 'true' or not set).")
-    else:
-        logger.info("Aider integration is enabled via environment variable.")
+    # AIDER_AVAILABLE check moved to initialize_aider method
 except ImportError as e:
     logger.warning(f"AiderBridge or AiderExecutorFunctions not found. Aider integration disabled. Import error: {e}")
     AiderBridge = None # type: ignore
     AiderExecutors = None # type: ignore
-    AIDER_AVAILABLE = False
+    # AIDER_AVAILABLE check moved to initialize_aider method
 except Exception as e:
     logger.exception(f"Unexpected error during Aider component import. Aider integration disabled. Error: {e}")
     AiderBridge = None # type: ignore
     AiderExecutors = None # type: ignore
-    AIDER_AVAILABLE = False
-logger.info(f"Final AIDER_AVAILABLE status after import block: {AIDER_AVAILABLE}")
+    # AIDER_AVAILABLE check moved to initialize_aider method
+# logger.info(f"Final AIDER_AVAILABLE status after import block: {AIDER_AVAILABLE}") # Removed
 
 
 # Helper function to create a standard FAILED TaskResult dictionary
@@ -295,9 +288,9 @@ Select the best matching paths *from the provided metadata* and output the JSON.
                 logger.info("Provider is not Anthropic. Skipping Anthropic tool registration.")
             # --- End Conditional Provider Tool Registration ---
 
-            # Initialize Aider integration (if available) - Phase 8
+            # Initialize Aider integration (if available and enabled)
             self.initialize_aider() # Call the helper method
-            logger.info(f"Aider integration initialization check complete (Available: {AIDER_AVAILABLE}).")
+            logger.info("Aider integration initialization check complete.") # Updated log message
 
 
             # Determine active tools based on provider AFTER registration
@@ -482,18 +475,26 @@ Select the best matching paths *from the provided metadata* and output the JSON.
 
     def initialize_aider(self) -> None:
         """
-        Initializes the AiderBridge and registers Aider tools if available.
+        Initializes the AiderBridge and registers Aider tools if available and enabled.
         """
-        # Add this print statement for debugging
-        print(f"DEBUG: Inside initialize_aider. AIDER_AVAILABLE = {AIDER_AVAILABLE}")
-        logger.debug(f"Inside initialize_aider. AIDER_AVAILABLE = {AIDER_AVAILABLE}") # Also log it
+        # --- START FIX: Check environment variable inside the method ---
+        aider_enabled_env = os.environ.get('AIDER_ENABLED', 'false').lower() == 'true'
+        logger.debug(f"Inside initialize_aider. Checked AIDER_ENABLED env var: {os.environ.get('AIDER_ENABLED')}, Evaluated to enabled: {aider_enabled_env}")
 
-        if not AIDER_AVAILABLE:
-            logger.info("Aider integration is unavailable (missing dependencies or disabled). Skipping initialization.")
+        if not aider_enabled_env:
+            logger.info("Aider integration is disabled via environment variable (AIDER_ENABLED not 'true' or not set). Skipping Aider initialization.")
             self.aider_bridge = None # Ensure it's None
             return
+        # --- END FIX ---
 
-        # Proceed only if AIDER_AVAILABLE is True
+        # Check if Aider dependencies were imported successfully (still necessary)
+        aider_imported_successfully = AiderBridge is not None and AiderExecutors is not None
+        if not aider_imported_successfully:
+             logger.info("Aider integration is unavailable (missing dependencies). Skipping initialization.")
+             self.aider_bridge = None # Ensure it's None
+             return
+
+        # Proceed only if enabled AND dependencies available
         if not self.passthrough_handler:
             logger.error("Cannot initialize Aider: PassthroughHandler not available.")
             return
