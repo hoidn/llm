@@ -103,8 +103,10 @@ class AiderBridge:
         Args:
             memory_system: Instance of MemorySystem.
             file_access_manager: Instance of FileAccessManager.
-            config: Configuration dictionary containing MCP connection details.
-                    Expected keys for STDIO: 'mcp_stdio_command', 'mcp_stdio_args', 'mcp_stdio_env'.
+            config: Configuration dictionary. Can contain MCP connection details
+                    under keys 'mcp_stdio_command', 'mcp_stdio_args', 'mcp_stdio_env'.
+                    If keys are missing, falls back to environment variables:
+                    MCP_STDIO_COMMAND, MCP_STDIO_ARGS (JSON list), MCP_STDIO_ENV (JSON dict).
         """
         if not MCP_AVAILABLE:
             logger.error("mcp.py library not found or failed to import components. AiderBridge cannot function.")
@@ -114,18 +116,108 @@ class AiderBridge:
         self.memory_system = memory_system
         self.file_access_manager = file_access_manager
         self.config = config
-        self._mcp_config = {
-            "command": config.get("mcp_stdio_command"),
-            "args": config.get("mcp_stdio_args", []),
-            "env": config.get("mcp_stdio_env", {})
-        }
         self._file_context: Set[str] = set()
         self._context_source: Optional[str] = None
 
+        # --- Resolve MCP STDIO Configuration ---
+        resolved_config: Dict[str, Any] = {}
+        config_sources: Dict[str, str] = {}  # Track where each value came from
+
+        # 1. Command
+        cmd_from_config = config.get("mcp_stdio_command")
+        if cmd_from_config:
+            resolved_config["command"] = cmd_from_config
+            config_sources["command"] = "config_dict"
+        else:
+            cmd_from_env = os.environ.get("MCP_STDIO_COMMAND")
+            if cmd_from_env:
+                resolved_config["command"] = cmd_from_env
+                config_sources["command"] = "env_var"
+            else:
+                resolved_config["command"] = None  # Mark as unresolved
+                config_sources["command"] = "not_found"
+
+        # 2. Arguments
+        args_from_config = config.get("mcp_stdio_args")
+        if args_from_config is not None:  # Allow empty list from config
+            if isinstance(args_from_config, list):
+                resolved_config["args"] = args_from_config
+                config_sources["args"] = "config_dict"
+            else:
+                logger.warning("Value for 'mcp_stdio_args' in config dict is not a list. Ignoring.")
+                resolved_config["args"] = None  # Treat as unresolved if type is wrong
+                config_sources["args"] = "config_invalid_type"
+        else:
+            args_from_env_str = os.environ.get("MCP_STDIO_ARGS")
+            if args_from_env_str:
+                try:
+                    parsed_args = json.loads(args_from_env_str)
+                    if isinstance(parsed_args, list):
+                        resolved_config["args"] = parsed_args
+                        config_sources["args"] = "env_var"
+                    else:
+                        logger.warning(f"MCP_STDIO_ARGS environment variable is not a valid JSON list: {args_from_env_str}")
+                        resolved_config["args"] = None
+                        config_sources["args"] = "env_var_invalid_json"
+                except json.JSONDecodeError:
+                    logger.warning(f"Failed to parse MCP_STDIO_ARGS environment variable as JSON list: {args_from_env_str}")
+                    resolved_config["args"] = None
+                    config_sources["args"] = "env_var_invalid_json"
+            else:
+                resolved_config["args"] = None  # Mark as unresolved
+                config_sources["args"] = "not_found"
+        # Default to empty list if unresolved
+        if resolved_config.get("args") is None:
+            resolved_config["args"] = []
+
+        # 3. Environment Variables for Server
+        env_from_config = config.get("mcp_stdio_env")
+        if env_from_config is not None:  # Allow empty dict from config
+            if isinstance(env_from_config, dict):
+                resolved_config["env"] = env_from_config
+                config_sources["env"] = "config_dict"
+            else:
+                logger.warning("Value for 'mcp_stdio_env' in config dict is not a dictionary. Ignoring.")
+                resolved_config["env"] = None  # Treat as unresolved if type is wrong
+                config_sources["env"] = "config_invalid_type"
+        else:
+            env_from_env_str = os.environ.get("MCP_STDIO_ENV")
+            if env_from_env_str:
+                try:
+                    parsed_env = json.loads(env_from_env_str)
+                    if isinstance(parsed_env, dict):
+                        resolved_config["env"] = parsed_env
+                        config_sources["env"] = "env_var"
+                    else:
+                        logger.warning(f"MCP_STDIO_ENV environment variable is not a valid JSON dictionary: {env_from_env_str}")
+                        resolved_config["env"] = None
+                        config_sources["env"] = "env_var_invalid_json"
+                except json.JSONDecodeError:
+                    logger.warning(f"Failed to parse MCP_STDIO_ENV environment variable as JSON dictionary: {env_from_env_str}")
+                    resolved_config["env"] = None
+                    config_sources["env"] = "env_var_invalid_json"
+            else:
+                resolved_config["env"] = None  # Mark as unresolved
+                config_sources["env"] = "not_found"
+        # Default to empty dict if unresolved
+        if resolved_config.get("env") is None:
+            resolved_config["env"] = {}
+
+        # Store the final resolved config
+        self._mcp_config = resolved_config
+
+        # Log final config and sources
         logger.info("AiderBridge (MCP Client) initialized.")
-        logger.debug(f"AiderBridge MCP STDIO config: {self._mcp_config}")
+        logger.info(f"  MCP Command Source: {config_sources.get('command', 'unknown')}")
+        logger.info(f"  MCP Args Source:    {config_sources.get('args', 'unknown')}")
+        logger.info(f"  MCP Env Source:     {config_sources.get('env', 'unknown')}")
+        # Log resolved values carefully, masking sensitive info if necessary in real code
+        logger.debug(f"  Resolved MCP Command: {self._mcp_config['command']}")
+        logger.debug(f"  Resolved MCP Args:    {self._mcp_config['args']}")
+        logger.debug(f"  Resolved MCP Env Keys: {list(self._mcp_config['env'].keys())}")  # Log only keys
+
         if not self._mcp_config.get("command"):
-            logger.warning("AiderBridge initialized without 'mcp_stdio_command' in config. MCP calls will fail.")
+            logger.warning("AiderBridge initialized without 'mcp_stdio_command' from config or environment. MCP calls will fail.")
 
     async def call_aider_tool(self, tool_name: str, params: Dict[str, Any]) -> Dict[str, Any]:
         """

@@ -113,7 +113,32 @@ def run_interactive_demo(repo_path: str, default_model: Optional[str] = None):
                 "enabled": True  # Force enable Aider regardless of environment variable
             }
         }
+        
+        # Check for MCP environment variables and add them to config if present
+        if os.environ.get("MCP_STDIO_COMMAND"):
+            logger.info(f"Found MCP_STDIO_COMMAND in environment: {os.environ.get('MCP_STDIO_COMMAND')}")
+            app_config["mcp_stdio_command"] = os.environ.get("MCP_STDIO_COMMAND")
+            
+            # Parse MCP_STDIO_ARGS if present
+            if os.environ.get("MCP_STDIO_ARGS"):
+                try:
+                    args = json.loads(os.environ.get("MCP_STDIO_ARGS", "[]"))
+                    app_config["mcp_stdio_args"] = args
+                    logger.info(f"Found MCP_STDIO_ARGS in environment: {args}")
+                except json.JSONDecodeError as e:
+                    logger.warning(f"Failed to parse MCP_STDIO_ARGS as JSON: {e}")
+            
+            # Parse MCP_STDIO_ENV if present
+            if os.environ.get("MCP_STDIO_ENV"):
+                try:
+                    env_vars = json.loads(os.environ.get("MCP_STDIO_ENV", "{}"))
+                    app_config["mcp_stdio_env"] = env_vars
+                    logger.info(f"Found MCP_STDIO_ENV in environment with keys: {list(env_vars.keys())}")
+                except json.JSONDecodeError as e:
+                    logger.warning(f"Failed to parse MCP_STDIO_ENV as JSON: {e}")
+        
         logger.info("Explicitly enabling Aider in application config")
+        logger.debug(f"Final app_config: {app_config}")
         app = Application(config=app_config)
         logger.info("Application instantiated successfully.")
 
