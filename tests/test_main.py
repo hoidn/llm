@@ -372,7 +372,6 @@ def test_handle_task_command_dispatcher_error(app_components):
         assert result.get("notes", {}).get("error", {}).get("reason") == "unexpected_error"
 
 
-@patch(AIDER_AVAILABLE_IMPORT_PATH, True) # Simulate Aider being available
 def test_application_init_with_aider(app_components):
     """Verify AiderBridge is initialized and tools registered when available."""
     # Arrange (Mocks are already configured in the fixture)
@@ -380,8 +379,10 @@ def test_application_init_with_aider(app_components):
     mock_aider_auto_func = app_components['MockAiderExec'].execute_aider_automatic
     mock_aider_inter_func = app_components['MockAiderExec'].execute_aider_interactive
 
-    # Act
-    app = Application(config={"aider_config": {"mcp_stdio_command": "aider_server"}})
+    # Use patch.dict to set the environment variable for the duration of the test
+    with patch.dict(os.environ, {'AIDER_ENABLED': 'true'}, clear=False):
+        # Act
+        app = Application(config={"aider_config": {"mcp_stdio_command": "aider_server"}})
 
     # Assert AiderBridge was instantiated
     app_components['MockAiderBridge'].assert_called_once_with(
@@ -401,11 +402,12 @@ def test_application_init_with_aider(app_components):
     # This requires calling the lambda, which might be complex to set up here.
     # Rely on the fact that the correct function was patched and passed during registration.
 
-@patch(AIDER_AVAILABLE_IMPORT_PATH, False) # Simulate Aider being unavailable
 def test_application_init_without_aider(app_components):
     """Verify AiderBridge is NOT initialized and tools NOT registered when unavailable."""
-     # Act
-    app = Application()
+    # Use patch.dict to set the environment variable for the duration of the test
+    with patch.dict(os.environ, {'AIDER_ENABLED': 'false'}, clear=False):
+        # Act
+        app = Application()
 
     # Assert AiderBridge was NOT instantiated
     app_components['MockAiderBridge'].assert_not_called()
@@ -417,15 +419,16 @@ def test_application_init_without_aider(app_components):
     assert 'aider:interactive' not in registered_tools
 
 
-@patch(AIDER_AVAILABLE_IMPORT_PATH, False) # Disable Aider for this test
 def test_application_init_with_anthropic(app_components):
     """Verify Anthropic tools are registered for Anthropic provider."""
     # Arrange
     app_components["mock_handler_instance"].get_provider_identifier.return_value = "anthropic:claude-3-5-sonnet-latest"
     # Mocks for functions are already configured in the fixture
 
-    # Act
-    app = Application()
+    # Use patch.dict to set the environment variable for the duration of the test
+    with patch.dict(os.environ, {'AIDER_ENABLED': 'false'}, clear=False):
+        # Act
+        app = Application()
 
     # Assert Anthropic tools were registered
     registered_tools = app_components['registered_tools_storage']
@@ -446,14 +449,15 @@ def test_application_init_with_anthropic(app_components):
     # Check that the executor wrapper correctly points to the mocked function
     # Similar to Aider, this requires calling the lambda. Rely on patching.
 
-@patch(AIDER_AVAILABLE_IMPORT_PATH, False) # Disable Aider
 def test_application_init_without_anthropic(app_components):
     """Verify Anthropic tools are NOT registered for non-Anthropic provider."""
-     # Arrange
+    # Arrange
     app_components["mock_handler_instance"].get_provider_identifier.return_value = "openai:gpt-4o"
 
-    # Act
-    app = Application()
+    # Use patch.dict to set the environment variable for the duration of the test
+    with patch.dict(os.environ, {'AIDER_ENABLED': 'false'}, clear=False):
+        # Act
+        app = Application()
 
     # Assert Anthropic tools were NOT registered
     registered_tools = app_components['registered_tools_storage']

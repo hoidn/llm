@@ -55,6 +55,16 @@ except ImportError:
         TimeoutError = Exception # Further fallback
 # --- End REAL/DUMMY types ---
 
+# Mock CallToolResult class for testing
+class MockCallToolResult:
+    def __init__(self, content, isError=False, meta=None):
+        self.content = content
+        self.isError = isError
+        self.meta = meta or {}
+
+    def __repr__(self):
+        return f"MockCallToolResult(content={self.content!r}, isError={self.isError})"
+
 # Use the real or dummy TextContent for mocking the response
 MockTextContent = RealTextContent
 
@@ -138,7 +148,8 @@ class TestAiderBridge:
 
         # --- Mock Configuration (Use the CORRECT argument names now) ---
         mock_session_instance = AsyncMock(spec=RealClientSession)
-        mock_session_instance.call_tool.return_value = mock_server_response # Configure instance method
+        # Wrap the response in MockCallToolResult
+        mock_session_instance.call_tool.return_value = MockCallToolResult(content=mock_server_response)
 
         mock_cm_session = AsyncMock() # Context manager for the session
         mock_cm_session.__aenter__.return_value = mock_session_instance # __aenter__ returns the session instance
@@ -195,7 +206,8 @@ class TestAiderBridge:
 
         # --- Mock Configuration (Use the CORRECT argument names now) ---
         mock_session_instance = AsyncMock(spec=RealClientSession)
-        mock_session_instance.call_tool.return_value = mock_server_response # Configure instance method
+        # Wrap the response in MockCallToolResult
+        mock_session_instance.call_tool.return_value = MockCallToolResult(content=mock_server_response)
         mock_cm_session = AsyncMock() # Context manager for the session
         mock_cm_session.__aenter__.return_value = mock_session_instance # __aenter__ returns the session instance
         # 1. Configure the ClientSession CLASS mock
@@ -257,7 +269,8 @@ class TestAiderBridge:
 
         # --- Mock Configuration (Use the CORRECT argument names now) ---
         mock_session_instance = AsyncMock(spec=RealClientSession)
-        mock_session_instance.call_tool.return_value = mock_server_response # Configure instance method
+        # Wrap the response in MockCallToolResult
+        mock_session_instance.call_tool.return_value = MockCallToolResult(content=mock_server_response)
         mock_cm_session = AsyncMock() # Context manager for the session
         mock_cm_session.__aenter__.return_value = mock_session_instance # __aenter__ returns the session instance
         # 1. Configure the ClientSession CLASS mock
@@ -362,7 +375,8 @@ class TestAiderBridge:
 
         # --- Mock Configuration (Use the CORRECT argument names now) ---
         mock_session_instance = AsyncMock(spec=RealClientSession)
-        mock_session_instance.call_tool.return_value = mock_server_response # Configure instance method
+        # Wrap the response in MockCallToolResult
+        mock_session_instance.call_tool.return_value = MockCallToolResult(content=mock_server_response)
         mock_cm_session = AsyncMock() # Context manager for the session
         mock_cm_session.__aenter__.return_value = mock_session_instance # __aenter__ returns the session instance
         # 1. Configure the ClientSession CLASS mock
