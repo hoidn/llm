@@ -30,19 +30,30 @@ from src import dispatcher # Import the dispatcher module
 # Import the new tools module
 from src.tools import anthropic_tools
 # Import Aider components conditionally
+logger.debug("Attempting to import Aider components...")
 try:
     from src.aider_bridge.bridge import AiderBridge
     from src.executors.aider_executors import AiderExecutorFunctions as AiderExecutors
+    logger.debug("Aider components imported successfully.")
     # Check environment variable for enabling Aider
     AIDER_ENABLED_ENV = os.environ.get('AIDER_ENABLED', 'false').lower() == 'true'
+    logger.debug(f"AIDER_ENABLED environment variable: {os.environ.get('AIDER_ENABLED')}, Parsed as enabled: {AIDER_ENABLED_ENV}")
     AIDER_AVAILABLE = AIDER_ENABLED_ENV # Set availability based on env var
     if not AIDER_AVAILABLE:
         logger.info("Aider integration is disabled (AIDER_ENABLED env var not 'true' or not set).")
-except ImportError:
-    logger.warning("AiderBridge or AiderExecutorFunctions not found. Aider integration disabled.")
+    else:
+        logger.info("Aider integration is enabled via environment variable.")
+except ImportError as e:
+    logger.warning(f"AiderBridge or AiderExecutorFunctions not found. Aider integration disabled. Import error: {e}")
     AiderBridge = None # type: ignore
     AiderExecutors = None # type: ignore
     AIDER_AVAILABLE = False
+except Exception as e:
+    logger.exception(f"Unexpected error during Aider component import. Aider integration disabled. Error: {e}")
+    AiderBridge = None # type: ignore
+    AiderExecutors = None # type: ignore
+    AIDER_AVAILABLE = False
+logger.info(f"Final AIDER_AVAILABLE status after import block: {AIDER_AVAILABLE}")
 
 
 # Helper function to create a standard FAILED TaskResult dictionary
@@ -473,6 +484,10 @@ Select the best matching paths *from the provided metadata* and output the JSON.
         """
         Initializes the AiderBridge and registers Aider tools if available.
         """
+        # Add this print statement for debugging
+        print(f"DEBUG: Inside initialize_aider. AIDER_AVAILABLE = {AIDER_AVAILABLE}")
+        logger.debug(f"Inside initialize_aider. AIDER_AVAILABLE = {AIDER_AVAILABLE}") # Also log it
+
         if not AIDER_AVAILABLE:
             logger.info("Aider integration is unavailable (missing dependencies or disabled). Skipping initialization.")
             self.aider_bridge = None # Ensure it's None
