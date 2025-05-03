@@ -9,6 +9,7 @@ import json
 import logging
 import os
 from typing import Dict, Any, Optional, List, Set
+import anyio # Add import for anyio.EndOfStream
 
 # Import system models
 # Assuming these paths are correct relative to your project structure
@@ -25,10 +26,10 @@ try:
     from mcp.client.session import ClientSession
     from mcp.types import TextContent
     # --- Corrected exception import path ---
-    # Assuming exceptions are defined in mcp.exceptions
-    from mcp.exceptions import McpError, ConnectionClosed, TimeoutError, ConnectionRefusedError
-    # If the above fails, the next most likely place is mcp.client.exceptions:
-    # from mcp.client.exceptions import McpError, ConnectionClosed, TimeoutError, ConnectionRefusedError # type: ignore
+    # McpError is exported at the top level
+    from mcp import McpError
+    # ConnectionClosed, TimeoutError, ConnectionRefusedError are NOT defined in mcp
+    # We will use standard library / asyncio exceptions instead.
 
     MCP_AVAILABLE = True
 except ImportError:
@@ -37,8 +38,8 @@ except ImportError:
     StdioServerParameters = object # type: ignore
     ClientSession = object # type: ignore
     TextContent = object # type: ignore
-    # Define dummy exceptions based on a generic Exception
-    McpError = ConnectionClosed = TimeoutError = ConnectionRefusedError = Exception
+    # Define dummy McpError based on a generic Exception
+    McpError = Exception # type: ignore
     # Dummy stdio_client context manager
     class DummyStdioClient:
         def __init__(self, *args, **kwargs): pass
@@ -218,13 +219,35 @@ class AiderBridge:
                         content_str = json.dumps(server_payload)
                         return TaskResult(status="COMPLETE", content=content_str, notes=server_payload).model_dump(exclude_none=True)
 
-        # Catch specific MCP exceptions first
-        except (McpError, ConnectionClosed, TimeoutError, ConnectionRefusedError) as mcp_err:
-            logger.error(f"MCP communication error calling tool '{tool_name}': {mcp_err}")
-            return _create_failed_result_dict("connection_error", f"MCP communication error: {mcp_err}")
-        except ValueError as val_err: # Catch potential errors from StdioServerParameters or config issues
+        # Catch the specific MCP protocol error
+        except McpError as mcp_err:
+             logger.error(f"MCP protocol error calling tool '{tool_name}': {mcp_err}")
+             # Extract details if available from the McpError structure
+             details = None
+             if hasattr(mcp_err, 'error') and hasattr(mcp_err.error, 'data'):
+                 details = mcp_err.error.data # type: ignore
+             return _create_failed_result_dict("protocol_error", f"MCP protocol error: {mcp_err}", details_dict=details)
+
+        # Catch standard connection errors
+        except ConnectionRefusedError as conn_refused_err:
+             logger.error(f"Connection refused calling tool '{tool_name}': {conn_refused_err}")
+             return _create_failed_result_dict("connection_error", f"Connection refused: {conn_refused_err}")
+        # Catch other relevant connection closed/aborted errors (adjust based on transport library)
+        except (ConnectionResetError, ConnectionAbortedError, anyio.EndOfStream) as conn_closed_err:
+             logger.error(f"Connection closed unexpectedly calling tool '{tool_name}': {conn_closed_err}")
+             return _create_failed_result_dict("connection_error", f"Connection closed unexpectedly: {conn_closed_err}")
+        # Catch standard timeout error (likely asyncio's)
+        except asyncio.TimeoutError as timeout_err:
+             logger.error(f"Timeout error calling tool '{tool_name}': {timeout_err}")
+             # Use a more specific reason if available, e.g., 'execution_timeout'
+             return _create_failed_result_dict("execution_timeout", f"Operation timed out: {timeout_err}")
+
+        # Catch potential errors from StdioServerParameters or config issues
+        except ValueError as val_err:
              logger.error(f"Configuration or parameter error calling tool '{tool_name}': {val_err}")
              return _create_failed_result_dict("configuration_error", f"Configuration error: {val_err}")
+
+        # Catch any other unexpected errors
         except Exception as e:
             logger.exception(f"Unexpected error calling Aider MCP tool '{tool_name}': {e}")
             return _create_failed_result_dict("unexpected_error", f"Unexpected error during MCP call: {e}")
