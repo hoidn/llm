@@ -395,6 +395,19 @@ When merging data from multiple sources (e.g., configuration layers, default val
     # final_data.update(orchestrator_defaults) # Avoid this if component data is primary
     ```
 
+**13. Aider Integration (MCP Client)**
+
+*   **Standard:** The project uses the **`mcp.py`** library for integration with the Aider MCP Server. This enables delegating coding tasks to an external Aider instance.
+*   **Implementation Pattern:**
+    *   The `AiderBridge` class serves as the MCP client for communicating with the Aider MCP Server.
+    *   `AiderExecutorFunctions` provides the interface for executing Aider tools, with methods like `execute_aider_automatic` and `execute_aider_interactive`.
+    *   `Application.initialize_aider()` is responsible for initializing the `AiderBridge` and registering Aider tools conditionally.
+*   **Key Considerations:**
+    *   **Parameter Handling:** When constructing parameters for the Aider MCP Server, always send an empty list `[]` for `relative_readonly_files` instead of `None` to avoid server-side errors.
+    *   **Response Processing:** The `AiderBridge.call_aider_tool` method must properly handle the `CallToolResult` wrapper object returned by `session.call_tool`, including checks for the wrapper type, `isError` flag, and extraction of the content list.
+    *   **Error Handling:** Implement robust error handling for both client-side exceptions (connection issues, timeouts) and server-side errors (returned in the response payload).
+*   **Reference:** Familiarize yourself with the Aider MCP Server documentation in `docs/librarydocs/aider_MCP_server.md` for details on the server's API and behavior.
+
 *   **11.2. Separate Evaluation from Application:**
     *   Design the core evaluation function (e.g., `_eval`) with the primary responsibility of determining the *value* of a given expression/node in the current context/environment.
     *   Isolate the logic that *applies* a function, operator, or procedure to its arguments. This application logic should operate on *already evaluated* arguments.
