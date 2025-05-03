@@ -278,7 +278,7 @@ Implement robust error handling for server communication:
 try:
     result = await session.call_tool("example_tool", {"param": "value"})
     # Process successful result
-except Exception as e:
+except McpError as e:
     # Handle exceptions (connection issues, protocol errors, etc.)
     print(f"Error executing tool: {e}")
 ```
@@ -291,7 +291,7 @@ async def execute_with_retry(tool_name, arguments, max_retries=3, base_delay=1.0
     while attempt < max_retries:
         try:
             return await session.call_tool(tool_name, arguments)
-        except Exception as e:
+        except McpError as e:
             attempt += 1
             if attempt >= max_retries:
                 raise
