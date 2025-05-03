@@ -258,8 +258,8 @@ class TestAiderBridge:
 
         # Check TaskResult content and status
         assert result.get("status") == "FAILED"
-        # Check that the original error message from the server is in the content set by _create_failed_result_dict
-        assert f"Tool Execution Error: {error_msg}" == result.get("content", "")
+        # Check that the original error message from the server is in the content field
+        assert error_msg == result.get("content", "") # Expect only the original message
         assert result.get("notes", {}).get("error", {}).get("reason") == "tool_execution_error"
         # --- START FIX: Check nested details ---
         # Check that the original error details (excluding the 'error' key itself)
