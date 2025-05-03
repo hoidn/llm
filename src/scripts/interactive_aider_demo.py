@@ -19,6 +19,7 @@ import json
 import logging
 import argparse
 import readline # For better input history
+from typing import Optional, List, Dict, Any
 
 # --- Setup Project Path ---
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
