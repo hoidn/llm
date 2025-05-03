@@ -93,10 +93,9 @@ def run_interactive_demo(repo_path: str, default_model: Optional[str] = None):
     print(f"3. Ensure the target repository '{repo_path}' is a valid Git repo.")
     print("-" * 37)
 
-    if os.environ.get('AIDER_ENABLED', 'false').lower() != 'true':
-        logger.error("AIDER_ENABLED environment variable is not set to 'true'.")
-        print("\nERROR: AIDER_ENABLED environment variable must be set to 'true'. Exiting.")
-        return
+    # Force set the environment variable in the current process
+    os.environ['AIDER_ENABLED'] = 'true'
+    logger.info("Ensuring AIDER_ENABLED=true is set in process environment")
 
     if not os.path.isdir(repo_path) or not os.path.isdir(os.path.join(repo_path, ".git")):
         logger.error(f"Provided repository path is not a valid Git repository: {repo_path}")
@@ -108,8 +107,13 @@ def run_interactive_demo(repo_path: str, default_model: Optional[str] = None):
     try:
         # 1. Instantiate Application
         logger.info("Instantiating Application...")
-        # Pass config if needed, e.g., for Aider MCP connection details if not in env
-        app_config = {} # Add config here if needed
+        # Pass config with explicit AIDER_ENABLED to ensure it's recognized
+        app_config = {
+            "aider": {
+                "enabled": True  # Force enable Aider regardless of environment variable
+            }
+        }
+        logger.info("Explicitly enabling Aider in application config")
         app = Application(config=app_config)
         logger.info("Application instantiated successfully.")
 
@@ -262,11 +266,10 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    # Basic check for environment variable
-    if os.environ.get('AIDER_ENABLED', 'false').lower() != 'true':
-        print("ERROR: AIDER_ENABLED environment variable must be set to 'true' before running.")
-        print("Example (Linux/macOS): export AIDER_ENABLED=true")
-        print("Example (Windows CMD): set AIDER_ENABLED=true")
-        print("Example (Windows PowerShell): $env:AIDER_ENABLED='true'")
-    else:
-        run_interactive_demo(repo_path=args.repo, default_model=args.model)
+    # Set AIDER_ENABLED in the current process environment
+    # This ensures it's available for any subprocess or module that checks it
+    os.environ['AIDER_ENABLED'] = 'true'
+    logger.info("Setting AIDER_ENABLED=true in process environment")
+    
+    # Run the demo (we've already set the environment variable)
+    run_interactive_demo(repo_path=args.repo, default_model=args.model)
