@@ -795,7 +795,14 @@ if __name__ == "__main__":
         query_result = app.handle_query("What is the capital of France?")
         print("\nQuery Result:")
         import json
-        print(json.dumps(query_result, indent=2))
+        
+        # Add a custom serializer to handle non-serializable objects like methods
+        def json_serializable(obj):
+            if callable(obj):
+                return str(obj)
+            raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
+        
+        print(json.dumps(query_result, indent=2, default=json_serializable))
 
         # Example: Handle a task command (assuming a core:echo template exists or Sexp works)
         # task_result = app.handle_task_command("core:echo", {"message": "Hello Task!"})
