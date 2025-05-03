@@ -75,7 +75,7 @@ class AiderExecutorFunctions:
         mcp_params = {
             "ai_coding_prompt": prompt,
             "relative_editable_files": relative_files, # Assuming context files are editable
-            "relative_readonly_files": None, # Or provide if needed
+            "relative_readonly_files": [], # Always send empty list instead of None to avoid server-side TypeError
             "model": model_override # Pass None if not provided
         }
 
@@ -135,7 +135,7 @@ class AiderExecutorFunctions:
         mcp_params = {
             "ai_coding_prompt": prompt,
             "relative_editable_files": relative_files,
-            "relative_readonly_files": None,
+            "relative_readonly_files": [], # Always send empty list instead of None to avoid server-side TypeError
             "model": model_override
         }
 
