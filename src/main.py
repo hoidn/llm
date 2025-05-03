@@ -7,6 +7,7 @@ and provides top-level methods for interacting with the system.
 
 import os
 import sys
+import json
 import logging
 import functools # Add functools import
 import asyncio # Add asyncio import
@@ -72,6 +73,8 @@ class Application:
                     'memory_config', 'task_system_config', 'handler_config', etc.
         """
         self.config = config or {}
+        self.mcp_server_configs: Dict[str, Dict[str, Any]] = {}
+        self._load_mcp_config()
         self.memory_system: Optional[MemorySystem] = None
         self.task_system: Optional[TaskSystem] = None
         self.passthrough_handler: Optional[PassthroughHandler] = None
@@ -85,7 +88,8 @@ class Application:
             # 1. Instantiate components with fewer dependencies first
             # Define PROJECT_ROOT if not already defined globally in the file
             # This assumes PROJECT_ROOT is needed for the default path
-            PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+            if 'PROJECT_ROOT' not in globals():
+                PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
             fm_base_path = self.config.get('file_manager_base_path', PROJECT_ROOT) # Use PROJECT_ROOT as default
             self.file_access_manager = FileAccessManager(base_path=fm_base_path)
             logger.info(f"FileAccessManager initialized with base_path: {self.file_access_manager.base_path}") # Log actual base path
@@ -474,6 +478,36 @@ Select the best matching paths *from the provided metadata* and output the JSON.
         logger.info(f"Registered {registered_count}/{len(tools_to_register)} system tools.")
 
 
+    def _load_mcp_config(self, config_path: str = ".mcp.json"):
+        """Loads MCP server configurations from a JSON file."""
+        # Determine path relative to project root or use absolute
+        if 'PROJECT_ROOT' not in globals():
+            # Calculate PROJECT_ROOT if not globally defined
+            SCRIPT_DIR_MAIN = os.path.dirname(os.path.abspath(__file__))
+            PROJECT_ROOT_MAIN = os.path.abspath(os.path.join(SCRIPT_DIR_MAIN, '..'))
+            logger.warning("PROJECT_ROOT not found globally, calculating locally in _load_mcp_config.")
+        else:
+            PROJECT_ROOT_MAIN = PROJECT_ROOT  # Use existing global if available
+
+        abs_config_path = os.path.join(PROJECT_ROOT_MAIN, config_path)
+        logger.info(f"Attempting to load MCP server config from: {abs_config_path}")
+        try:
+            if os.path.exists(abs_config_path):
+                with open(abs_config_path, 'r') as f:
+                    loaded_data = json.load(f)
+                # Basic validation
+                if "mcpServers" in loaded_data and isinstance(loaded_data["mcpServers"], dict):
+                    self.mcp_server_configs = loaded_data["mcpServers"]
+                    logger.info(f"Loaded {len(self.mcp_server_configs)} MCP server configurations: {list(self.mcp_server_configs.keys())}")
+                else:
+                    logger.warning(f"MCP config file '{abs_config_path}' found but missing 'mcpServers' dictionary or invalid format.")
+            else:
+                logger.warning(f"MCP config file not found at '{abs_config_path}'. No servers loaded from file.")
+        except json.JSONDecodeError as e:
+            logger.error(f"Error parsing MCP config file '{abs_config_path}': {e}")
+        except Exception as e:
+            logger.error(f"Error loading MCP config file '{abs_config_path}': {e}")
+
     def initialize_aider(self) -> None:
         """
         Initializes the AiderBridge and registers Aider tools if available and enabled.
@@ -495,6 +529,27 @@ Select the best matching paths *from the provided metadata* and output the JSON.
              self.aider_bridge = None # Ensure it's None
              return
 
+        # Check if config was actually found and passed
+        aider_server_id = "aider-mcp-server"  # The key used in .mcp.json
+        aider_mcp_config_loaded = self.mcp_server_configs.get(aider_server_id)
+        
+        if aider_mcp_config_loaded is None:
+            logger.warning("Aider initialization skipped: Configuration for Aider not found in loaded MCP configs.")
+            self.aider_bridge = None
+            return
+            
+        # Check if transport is stdio
+        if aider_mcp_config_loaded.get("transport") != "stdio":
+            logger.error(f"Aider initialization skipped: Configuration requires 'stdio' transport, found '{aider_mcp_config_loaded.get('transport')}'.")
+            self.aider_bridge = None
+            return
+            
+        # Check if command is present (AiderBridge init will also check, but good here too)
+        if not aider_mcp_config_loaded.get("command"):
+            logger.error("Aider initialization skipped: STDIO configuration missing 'command'.")
+            self.aider_bridge = None
+            return
+
         # Proceed only if enabled AND dependencies available
         if not self.passthrough_handler:
             logger.error("Cannot initialize Aider: PassthroughHandler not available.")
@@ -506,17 +561,15 @@ Select the best matching paths *from the provided metadata* and output the JSON.
              logger.error("Cannot initialize Aider: FileAccessManager not available.")
              return
 
-        logger.info("Aider is available. Initializing AiderBridge and registering tools...")
+        logger.info("Aider is available and configured via JSON. Initializing AiderBridge...")
         try:
-            # Instantiate AiderBridge ONLY if available
-            aider_config = self.config.get('aider_config', {})
-            # Ensure dependencies are passed correctly
+            # Instantiate AiderBridge, passing the specific config dict loaded from JSON
             self.aider_bridge = AiderBridge(
                 memory_system=self.memory_system,
                 file_access_manager=self.file_access_manager,
-                config=aider_config
+                config=aider_mcp_config_loaded  # Pass the specific dict here
             )
-            logger.info("AiderBridge (MCP Client) instantiated.")
+            logger.info("AiderBridge (MCP Client) instantiated using specific JSON config.")
 
             # --- START Aider Wrapper Refactor ---
             # --- Wrapper for Aider automatic ---
