@@ -19,7 +19,7 @@ try:
     from mcp.client.session import ClientSession
     from mcp.types import TextContent
     # --- Import exceptions directly from the top-level mcp module ---
-    from mcp import MCPError, ConnectionClosed, TimeoutError, ConnectionRefusedError # <<< CORRECTED LINE
+    from mcp import McpError, ConnectionClosed, TimeoutError, ConnectionRefusedError # <<< CORRECTED CASING
     MCP_AVAILABLE = True
 except ImportError:
     MCP_AVAILABLE = False
@@ -28,7 +28,7 @@ except ImportError:
     ClientSession = object # type: ignore
     TextContent = object # type: ignore
     # Define dummy exceptions based on the changed import line
-    MCPError = ConnectionClosed = TimeoutError = ConnectionRefusedError = Exception # type: ignore
+    McpError = ConnectionClosed = TimeoutError = ConnectionRefusedError = Exception # <<< CORRECTED DUMMIES
     # Dummy stdio_client context manager
     class DummyStdioClient:
         def __init__(self, *args, **kwargs): pass
@@ -211,7 +211,7 @@ class AiderBridge:
                         content_str = json.dumps(server_payload)
                         return TaskResult(status="COMPLETE", content=content_str, notes=server_payload).model_dump(exclude_none=True)
 
-        except (MCPError, ConnectionClosed, TimeoutError, ConnectionRefusedError) as mcp_err:
+        except (McpError, ConnectionClosed, TimeoutError, ConnectionRefusedError) as mcp_err: # <<< CORRECTED CASING HERE TOO
             logger.error(f"MCP communication error calling tool '{tool_name}': {mcp_err}")
             # No extra details needed for connection errors
             return _create_failed_result_dict("connection_error", f"MCP communication error: {mcp_err}")
