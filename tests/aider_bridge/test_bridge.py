@@ -24,6 +24,8 @@ try:
     from mcp.client.session import ClientSession as RealClientSession
     from mcp.types import TextContent as RealTextContent
     from mcp.exceptions import MCPError, ConnectionClosed, TimeoutError, ConnectionRefusedError
+    import anyio  # For connection errors
+    CONNECTION_ERRORS = (anyio.BrokenResourceError, anyio.EndOfStream, ConnectionRefusedError, TimeoutError)
     MCP_INSTALLED = True
 except ImportError:
     MCP_INSTALLED = False
@@ -53,6 +55,7 @@ except ImportError:
         from asyncio import TimeoutError # Fallback to asyncio version
     except ImportError:
         TimeoutError = Exception # Further fallback
+    CONNECTION_ERRORS = (Exception,)
 # --- End REAL/DUMMY types ---
 
 # Mock CallToolResult class for testing
@@ -65,8 +68,7 @@ class MockCallToolResult:
     def __repr__(self):
         return f"MockCallToolResult(content={self.content!r}, isError={self.isError})"
 
-# Use the real or dummy TextContent for mocking the response
-MockTextContent = RealTextContent
+# We'll use RealTextContent directly for mocking the response
 
 # Import MemorySystem and FileAccessManager for specing mocks
 try:
@@ -144,7 +146,7 @@ class TestAiderBridge:
         params = {"ai_coding_prompt": "Implement fibonacci", "relative_editable_files": ["math.py"]}
         mock_diff = "--- a/math.py\n+++ b/math.py\n@@ ..."
         server_response_json = json.dumps({"success": True, "diff": mock_diff})
-        mock_server_response = [MockTextContent(server_response_json)]
+        mock_server_response = [RealTextContent(text=server_response_json)]
 
         # --- Mock Configuration (Use the CORRECT argument names now) ---
         mock_session_instance = AsyncMock(spec=RealClientSession)
@@ -202,7 +204,7 @@ class TestAiderBridge:
         error_msg = "Aider execution failed due to invalid syntax"
         server_payload = {"success": False, "error": error_msg, "diff": "partial diff..."}
         server_response_json = json.dumps(server_payload)
-        mock_server_response = [MockTextContent(server_response_json)]
+        mock_server_response = [RealTextContent(text=server_response_json)]
 
         # --- Mock Configuration (Use the CORRECT argument names now) ---
         mock_session_instance = AsyncMock(spec=RealClientSession)
@@ -235,7 +237,7 @@ class TestAiderBridge:
         # Check TaskResult content and status
         assert result.get("status") == "FAILED"
         # Check that the original error message from the server is in the content set by _create_failed_result_dict
-        assert error_msg in result.get("content", "")
+        assert f"Tool Execution Error: {error_msg}" == result.get("content", "")
         assert result.get("notes", {}).get("error", {}).get("reason") == "tool_execution_error"
         # --- START FIX: Check nested details ---
         # Check that the original error details (excluding the 'error' key itself)
@@ -244,7 +246,7 @@ class TestAiderBridge:
         assert isinstance(nested_notes, dict) # Ensure nested notes is a dict
         assert nested_notes.get("success") is False # Check the 'success' field from original payload
         assert nested_notes.get("diff") == "partial diff..." # Check the 'diff' field from original payload
-        assert "error" not in nested_notes # Explicitly check that the 'error' key was removed as expected
+        assert nested_notes.get("error") == error_msg # Check the 'error' field is preserved in notes
         # --- END FIX ---
         # mock_mcp_flag is unused in the test logic
 
@@ -265,7 +267,7 @@ class TestAiderBridge:
         params = {"substring": "gpt"}
         model_list = ["openai/gpt-4o", "openai/gpt-3.5-turbo"]
         server_response_json = json.dumps({"models": model_list})
-        mock_server_response = [MockTextContent(server_response_json)]
+        mock_server_response = [RealTextContent(text=server_response_json)]
 
         # --- Mock Configuration (Use the CORRECT argument names now) ---
         mock_session_instance = AsyncMock(spec=RealClientSession)
@@ -350,8 +352,8 @@ class TestAiderBridge:
 
         # Check TaskResult content and status
         assert result.get("status") == "FAILED"
-        assert "MCP communication error" in result.get("content", "")
-        assert "MCP call timed out" in result.get("content", "") # Check specific error message
+        expected_error_msg = f"MCP communication error: {mcp_exception}"
+        assert result.get("content", "") == expected_error_msg
         assert result.get("notes", {}).get("error", {}).get("reason") == "connection_error"
         # mock_mcp_flag is unused in the test logic
 
@@ -371,7 +373,7 @@ class TestAiderBridge:
         tool_name = "aider_ai_code"
         params = {"ai_coding_prompt": "Test", "relative_editable_files": ["f.py"]}
         invalid_json = "This is not JSON {"
-        mock_server_response = [MockTextContent(invalid_json)] # Server sends bad JSON string
+        mock_server_response = [RealTextContent(text=invalid_json)] # Server sends bad JSON string
 
         # --- Mock Configuration (Use the CORRECT argument names now) ---
         mock_session_instance = AsyncMock(spec=RealClientSession)
@@ -407,7 +409,7 @@ class TestAiderBridge:
         assert result.get("notes", {}).get("error", {}).get("reason") == "output_format_failure"
         # --- START FIX: Check nested details ---
         # Check that raw response is included in the nested notes within details
-        assert result.get("notes", {}).get("error", {}).get("details", {}).get("notes", {}).get("raw_response") == invalid_json
+        assert result.get("notes", {}).get("error", {}).get("details", {}).get("notes", {}).get("raw_response_text") == invalid_json
         # --- END FIX ---
         # mock_mcp_flag is unused in the test logic
 
