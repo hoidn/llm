@@ -17,3 +17,21 @@
     }
   }
 }
+{
+  "mcpServers": {
+    "aider-mcp-server": {
+      "transport": "stdio",
+      "command": "python",
+      "args": [
+        "-m",
+        "aider_mcp_server.server",
+        "--working-dir",
+        "."
+      ],
+      "env": {
+        "EXAMPLE_VAR": "example_value_if_needed"
+      },
+      "description": "Aider code assistant via MCP (STDIO)"
+    }
+  }
+}
