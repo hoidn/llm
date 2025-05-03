@@ -366,9 +366,10 @@ Select the best matching paths *from the provided metadata* and output the JSON.
             # elif provider_identifier.startswith('openai:'):
             #     pass
 
-        # Add Aider tools if available
-        if AIDER_AVAILABLE:
-            logger.debug("Including Aider tool specs.")
+        # Add Aider tools if dependencies were imported successfully
+        aider_imported_successfully = AiderBridge is not None and AiderExecutors is not None
+        if aider_imported_successfully:
+            logger.debug("Including Aider tool specs (dependencies present).")
             if self.passthrough_handler and hasattr(self.passthrough_handler, 'registered_tools'):
                  for tool_name, tool_data in self.passthrough_handler.registered_tools.items():
                      if tool_name.startswith('aider:'):
