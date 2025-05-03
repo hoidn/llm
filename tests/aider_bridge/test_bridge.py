@@ -120,11 +120,12 @@ def aider_bridge_instance(mock_memory_system_bridge, mock_file_access_manager_br
     """Provides an instance of AiderBridge with mocked dependencies."""
     if not AiderBridge:
         pytest.skip("AiderBridge class not available for testing.")
-    # Provide minimal config for MCP STDIO
+    # Provide config in the new JSON format
     config = {
-        "mcp_stdio_command": "dummy_aider_mcp_server",
-        "mcp_stdio_args": [],
-        "mcp_stdio_env": {}
+        "transport": "stdio",
+        "command": "dummy_aider_mcp_server",
+        "args": [],
+        "env": {}
     }
     # Pass mocks to the constructor
     return AiderBridge(
