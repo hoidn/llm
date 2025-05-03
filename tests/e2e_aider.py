@@ -140,9 +140,27 @@ def test_e2e_aider_automatic_edit(e2e_aider_repo):
 
         # Patch environment for the Application instance itself
         with patch.dict(os.environ, env_vars_to_patch, clear=False):
-            print("Instantiating Application...")
-            app = Application(config=app_config)
-            print("Application instantiated.")
+            # Ensure the Application sees the patched environment if it reads env vars directly
+            # The subprocess already got the env, but the App init might read os.environ again
+            original_aider_enabled = os.environ.get("AIDER_ENABLED")
+            os.environ["AIDER_ENABLED"] = "true" # Force it for the App instantiation
+            try:
+                print("Instantiating Application...") # Moved print inside try
+                app = Application(config=app_config)
+                print("Application instantiated.") # Moved print inside try
+            finally:
+                # Restore original env var state for cleanliness
+                if original_aider_enabled is None:
+                    if "AIDER_ENABLED" in os.environ: del os.environ["AIDER_ENABLED"]
+                else:
+                    os.environ["AIDER_ENABLED"] = original_aider_enabled
+
+            # --- Log Handler Tools After Init ---
+            if app and app.passthrough_handler:
+                 print(f"DEBUG: Handler tool executors after app init: {list(app.passthrough_handler.tool_executors.keys())}")
+            else:
+                 print("DEBUG: App or Handler not available to log tools.")
+
 
             # --- Test Action ---
             target_file = "hello.py"
