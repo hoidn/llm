@@ -236,14 +236,64 @@ for tool_group in tools_result:
 
 ### Calling Tools
 
-To execute a tool on the server:
+To execute a tool on the server, use the `session.call_tool` asynchronous method. Note that this method returns a wrapper object (typically `mcp.types.CallToolResult`) containing the actual response content and status information. You need to access the `.content` attribute of this wrapper to get the list of response elements (like `TextContent`).
 
 ```python
-result = await session.call_tool(
-    name="example_tool",
-    arguments={"param1": "value1", "param2": 42}
-)
-print(f"Tool result: {result}")
+# Example: Calling a tool and handling the wrapper response
+from mcp import McpError, TextContent
+import anyio # For connection errors
+import json # For parsing example
+
+# Assuming 'session' is an initialized ClientSession
+
+tool_name = "example_tool"
+params = {"param1": "value1", "param2": 42}
+
+try:
+    # session.call_tool returns a wrapper object (e.g., CallToolResult)
+    mcp_response_wrapper = await session.call_tool(
+        name=tool_name,
+        arguments=params
+    )
+
+    # Check if the wrapper indicates an error flag (optional check)
+    if getattr(mcp_response_wrapper, 'isError', False):
+        # Error details might be in the content attribute even if isError is True
+        error_content = getattr(mcp_response_wrapper, 'content', "Unknown server error")
+        print(f"MCP tool call failed (isError=True): {error_content}")
+        # Handle application-level error reported by the server
+
+    else:
+        # Access the actual response content list from the wrapper's .content attribute
+        response_content_list = getattr(mcp_response_wrapper, 'content', None)
+
+        # Process the content (often a list containing TextContent, etc.)
+        if response_content_list and isinstance(response_content_list, list) and len(response_content_list) > 0:
+            first_content_item = response_content_list[0]
+            if isinstance(first_content_item, TextContent):
+                response_text = first_content_item.text
+                print(f"Tool result text: {response_text}")
+                # Parse JSON or process text as needed
+                try:
+                    result_data = json.loads(response_text)
+                    print(f"Parsed tool result: {result_data}")
+                    # Process successful result
+                except json.JSONDecodeError:
+                    print(f"Warning: Tool response was not valid JSON: {response_text}")
+                    # Handle non-JSON text if expected
+            else:
+                print(f"Received unexpected content type in list: {type(first_content_item)}")
+        elif response_content_list is None:
+             print("Received None instead of content list from wrapper.")
+        else: # Empty list
+            print("Received empty content list from wrapper.")
+
+except McpError as mcp_protocol_err:
+    print(f"MCP Protocol Error: {mcp_protocol_err.error}")
+except (anyio.BrokenResourceError, TimeoutError) as conn_err: # Example connection errors
+    print(f"MCP Communication Error: {conn_err}")
+except Exception as e:
+    print(f"Unexpected error executing tool: {e}")
 ```
 
 ## Prompt Management

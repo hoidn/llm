@@ -48,6 +48,7 @@ module src.aider_bridge.bridge {
         // - If no error, maps the success payload (e.g., `{"success": true, "diff": str}` for aider_ai_code, `{"models": list}` for list_models) to a COMPLETE TaskResult dictionary (e.g., content=diff, notes={'success': True}).
         // - Handles potential communication exceptions raised by the MCP client library (e.g., connection errors, timeouts) by formatting them into a FAILED TaskResult.
         // - Handles JSON parsing errors by formatting them into a FAILED TaskResult.
+        // - Internally, this method handles the `CallToolResult` object returned by the `mcp.py` client library and extracts the relevant content (e.g., `TextContent`) before processing the server's JSON payload.
         // @raises_error(condition="MCPCommunicationError", description="Handled internally. Raised by mcp.py client for connection/timeout issues, returned as FAILED TaskResult.")
         // @raises_error(condition="JSONDecodeError", description="Handled internally. If server response is not valid JSON, returned as FAILED TaskResult.")
         // @raises_error(condition="ConfigurationError", description="Handled internally. If MCP server config is missing/invalid, returned as FAILED TaskResult.")
