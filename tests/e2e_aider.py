@@ -85,11 +85,24 @@ def test_e2e_aider_automatic_edit(e2e_aider_repo):
     # --- Environment Patching ---
     # Ensure Aider is enabled and the necessary API key is present
     # for the Application's context AND the subprocess environment
+    # Explicitly list ALL keys needed by the server/aider/litellm
+    # Ensure the values are correctly sourced from the test runner's environment
     env_vars_to_patch = {
-        "AIDER_ENABLED": "true",
-        LLM_API_KEY_ENV_VAR: os.environ.get(LLM_API_KEY_ENV_VAR, "dummy_key_if_not_set"), # Use actual key
-        "AIDER_DISABLE_WELCOME_MESSAGE": "1", # Suppress Aider's welcome message in logs
+        "AIDER_ENABLED": "true", # For the Application side
+        # Add specific keys needed by the model/litellm
+        "ANTHROPIC_API_KEY": os.environ.get("ANTHROPIC_API_KEY", ""),
+        "OPENAI_API_KEY": os.environ.get("OPENAI_API_KEY", ""),
+        "GOOGLE_API_KEY": os.environ.get("GOOGLE_API_KEY", ""),
+        # Pass the specific key var used by the test config, ensuring it's included
+        LLM_API_KEY_ENV_VAR: os.environ.get(LLM_API_KEY_ENV_VAR, "dummy_key_if_not_set"),
+        # Add any other relevant config aider might use from env vars
+        "AIDER_DISABLE_WELCOME_MESSAGE": "1",
+        "LITELLM_LOG": "DEBUG", # Optional: Increase server logging via litellm
+        "LITELLM_DISABLE_TELEMETRY": "1", # Optional: Disable telemetry
     }
+    # Filter out empty values to avoid potential issues with some tools/libs
+    env_vars_to_patch = {k: v for k, v in env_vars_to_patch.items() if v}
+
 
     # --- Server Startup ---
     try:
@@ -101,8 +114,11 @@ def test_e2e_aider_automatic_edit(e2e_aider_repo):
             ]
         print(f"Starting Aider MCP Server with command: {' '.join(server_command)}")
 
+        # Combine current environment with EXPLICITLY patched vars
+        server_env = {**os.environ, **env_vars_to_patch}
+        print(f"Passing environment keys to server subprocess: {list(env_vars_to_patch.keys())}") # Log keys being passed
+
         # Start the server process using Popen for non-blocking execution
-        # Inherit environment variables, including the API key
         server_process = subprocess.Popen(
             server_command,
             stdin=subprocess.PIPE,
@@ -110,7 +126,7 @@ def test_e2e_aider_automatic_edit(e2e_aider_repo):
             stderr=subprocess.PIPE,
             text=True,
             encoding='utf-8',
-            env={**os.environ, **env_vars_to_patch} # Pass patched env vars
+            env=server_env # Pass the combined environment
         )
 
         # Wait briefly for the server to initialize
@@ -133,7 +149,8 @@ def test_e2e_aider_automatic_edit(e2e_aider_repo):
             "aider_config": {
                 "mcp_stdio_command": server_command[0], # Just the executable/module path
                 "mcp_stdio_args": server_command[1:],   # Pass the arguments separately
-                "mcp_stdio_env": env_vars_to_patch      # Pass env vars if needed by bridge logic
+                # Pass the SAME explicit env vars to the bridge config as it uses them for StdioServerParameters
+                "mcp_stdio_env": env_vars_to_patch
             },
             "file_manager_base_path": repo_path_str # IMPORTANT: Point handler to the test repo
         }

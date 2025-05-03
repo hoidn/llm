@@ -144,6 +144,7 @@ class AiderBridge:
             return _create_failed_result_dict("configuration_error", "Aider MCP server command not configured.")
 
         logger.debug(f"Calling Aider MCP tool '{tool_name}' with params: {params}")
+        logger.debug(f"Attempting MCP connection with config: {self._mcp_config}") # Log connection config
 
         try:
             # Create StdioServerParameters
@@ -163,32 +164,47 @@ class AiderBridge:
                     logger.debug("MCP session initialized. Calling tool...")
 
                     # MCP v0.2.0 returns a list of content parts
-                    mcp_response_content_parts = await session.call_tool(name=tool_name, arguments=params)
-                    logger.debug(f"Received MCP response content parts: {mcp_response_content_parts}")
+                    mcp_response = await session.call_tool(name=tool_name, arguments=params)
 
-                    # Process response - Assuming the primary result is in the first part for now
-                    if not mcp_response_content_parts or not isinstance(mcp_response_content_parts, list) or not mcp_response_content_parts[0]:
-                        logger.error("Invalid or empty response received from MCP server.")
-                        return _create_failed_result_dict("protocol_error", "Invalid or empty response from MCP server.")
+                    # --- Enhanced Logging & Checks ---
+                    logger.debug(f"Raw MCP response received: Type={type(mcp_response)}, Value={mcp_response!r}")
 
-                    first_part = mcp_response_content_parts[0]
+                    # Check 1: Type check
+                    if not isinstance(mcp_response, list):
+                        logger.error(f"Invalid response type. Expected list, got: {type(mcp_response)}. Value: {mcp_response!r}")
+                        details = {"raw_response_type": str(type(mcp_response)), "raw_response_value": repr(mcp_response)}
+                        return _create_failed_result_dict("protocol_error", f"Invalid response type from MCP server: {type(mcp_response)}", details_dict=details)
 
-                    # Handle TextContent specifically
-                    if not isinstance(first_part, TextContent):
-                         logger.error(f"Unexpected response type from MCP server: {type(first_part)}")
-                         # Consider how to handle non-text content if expected
-                         return _create_failed_result_dict("protocol_error", f"Expected TextContent, got: {type(first_part)}")
+                    # Check 2: Empty list
+                    if not mcp_response:
+                        logger.error("Empty list response received from MCP server.")
+                        details = {"raw_response_value": repr(mcp_response)}
+                        return _create_failed_result_dict("protocol_error", "Empty list response from MCP server.", details_dict=details)
 
-                    response_text = first_part.text
-                    logger.debug(f"Raw MCP response text: {response_text}")
+                    # Check 3: First element None
+                    if mcp_response[0] is None:
+                         logger.error(f"First element in response list is None. Full Response: {mcp_response!r}")
+                         details = {"raw_response_value": repr(mcp_response)}
+                         return _create_failed_result_dict("protocol_error", "First element in response list is None.", details_dict=details)
+
+                    # Check 4: First element type
+                    if not isinstance(mcp_response[0], TextContent):
+                         logger.error(f"Unexpected element type in list: {type(mcp_response[0])}. Expected TextContent. Full Response: {mcp_response!r}")
+                         details = {"raw_response_type": str(type(mcp_response[0])), "raw_response_value": repr(mcp_response)}
+                         return _create_failed_result_dict("protocol_error", f"Unexpected response type: {type(mcp_response[0])}", details_dict=details)
+                    # --- End Enhanced Logging & Checks ---
+
+                    response_text = mcp_response[0].text
+                    logger.debug(f"Raw MCP response text from TextContent: {response_text!r}") # Log with repr()
 
                     try:
                         server_payload = json.loads(response_text)
                         logger.debug(f"Parsed MCP server payload: {server_payload}")
                     except json.JSONDecodeError as json_err:
                         logger.error(f"Failed to parse JSON response from MCP server: {json_err}")
-                        logger.error(f"Invalid JSON string: {response_text}")
-                        return _create_failed_result_dict("output_format_failure", f"Failed to parse JSON response: {json_err}", details_dict={"raw_response": response_text})
+                        logger.error(f"Invalid JSON string received: {response_text!r}") # Log problematic text
+                        details = {"raw_response_text": response_text} # Pass raw text in details
+                        return _create_failed_result_dict("output_format_failure", f"Failed to parse JSON response: {json_err}", details_dict=details)
 
                     # Map server payload to TaskResult dictionary
                     if server_payload.get("error"):
