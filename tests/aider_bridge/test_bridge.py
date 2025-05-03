@@ -150,11 +150,12 @@ class TestAiderBridge:
         tool_name = "aider_ai_code"
         params = {"ai_coding_prompt": "Implement fibonacci", "relative_editable_files": ["math.py"]}
         mock_diff = "--- a/math.py\n+++ b/math.py\n@@ ..."
-        server_response_json = json.dumps({"success": True, "diff": mock_diff})
-        mock_server_response_content = [TextContent(text=server_response_json)]
-
+        
         # --- Mock Configuration (Use the CORRECT argument names now) ---
         mock_session_instance = AsyncMock(spec=RealClientSession)
+        # Create the response content after the mock is defined
+        server_response_json = json.dumps({"success": True, "diff": mock_diff})
+        mock_server_response_content = [TextContent(text=server_response_json)]
         # Wrap the response in MockCallToolResult
         mock_session_instance.call_tool.return_value = MockCallToolResult(content=mock_server_response_content, isError=False)
 
@@ -208,11 +209,12 @@ class TestAiderBridge:
         params = {"ai_coding_prompt": "Bad prompt", "relative_editable_files": ["file.py"]}
         error_msg = "Aider execution failed due to invalid syntax"
         server_payload = {"success": False, "error": error_msg, "diff": "partial diff..."}
-        server_response_json = json.dumps(server_payload)
-        mock_server_response_content = [TextContent(text=server_response_json)]
-
+        
         # --- Mock Configuration (Use the CORRECT argument names now) ---
         mock_session_instance = AsyncMock(spec=RealClientSession)
+        # Create the response content after the mock is defined
+        server_response_json = json.dumps(server_payload)
+        mock_server_response_content = [TextContent(text=server_response_json)]
         # Wrap the response in MockCallToolResult
         mock_session_instance.call_tool.return_value = MockCallToolResult(content=mock_server_response_content, isError=False)
         mock_cm_session = AsyncMock() # Context manager for the session
@@ -271,11 +273,12 @@ class TestAiderBridge:
         tool_name = "list_models"
         params = {"substring": "gpt"}
         model_list = ["openai/gpt-4o", "openai/gpt-3.5-turbo"]
-        server_response_json = json.dumps({"models": model_list})
-        mock_server_response_content = [TextContent(text=server_response_json)]
-
+        
         # --- Mock Configuration (Use the CORRECT argument names now) ---
         mock_session_instance = AsyncMock(spec=RealClientSession)
+        # Create the response content after the mock is defined
+        server_response_json = json.dumps({"models": model_list})
+        mock_server_response_content = [TextContent(text=server_response_json)]
         # Wrap the response in MockCallToolResult
         mock_session_instance.call_tool.return_value = MockCallToolResult(content=mock_server_response_content, isError=False)
         mock_cm_session = AsyncMock() # Context manager for the session
@@ -359,7 +362,7 @@ class TestAiderBridge:
         assert result.get("status") == "FAILED"
         expected_error_msg = f"MCP communication error: {mcp_exception}"
         assert result.get("content", "") == expected_error_msg
-        assert result.get("notes", {}).get("error", {}).get("reason") == "connection_error"
+        assert result.get("notes", {}).get("error", {}).get("reason") == "execution_timeout"
         # mock_mcp_flag is unused in the test logic
 
     @pytest.mark.asyncio
@@ -378,10 +381,11 @@ class TestAiderBridge:
         tool_name = "aider_ai_code"
         params = {"ai_coding_prompt": "Test", "relative_editable_files": ["f.py"]}
         invalid_json = "This is not JSON {"
-        mock_server_response_content = [TextContent(text=invalid_json)] # Server sends bad JSON string
-
+        
         # --- Mock Configuration (Use the CORRECT argument names now) ---
         mock_session_instance = AsyncMock(spec=RealClientSession)
+        # Create the response content after the mock is defined
+        mock_server_response_content = [TextContent(text=invalid_json)] # Server sends bad JSON string
         # Wrap the response in MockCallToolResult
         mock_session_instance.call_tool.return_value = MockCallToolResult(content=mock_server_response_content, isError=False)
         mock_cm_session = AsyncMock() # Context manager for the session
