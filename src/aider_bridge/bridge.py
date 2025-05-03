@@ -11,15 +11,25 @@ import os
 from typing import Dict, Any, Optional, List, Set
 
 # Import system models
-from src.system.models import TaskResult, TaskFailureError, TaskFailureReason, ContextGenerationInput, AssociativeMatchResult, MatchTuple, TaskFailureDetails # Ensure TaskFailureDetails is imported
+# Assuming these paths are correct relative to your project structure
+try:
+    from src.system.models import TaskResult, TaskFailureError, TaskFailureReason, ContextGenerationInput, AssociativeMatchResult, MatchTuple, TaskFailureDetails
+except ImportError as e:
+    # Provide a more informative error if internal imports fail
+    raise ImportError(f"Failed to import internal project modules: {e}. Ensure PYTHONPATH is set correctly or run from the project root.") from e
+
 
 # Import MCP components
 try:
     from mcp.client.stdio import stdio_client, StdioServerParameters
     from mcp.client.session import ClientSession
     from mcp.types import TextContent
-    # --- Import exceptions directly from the top-level mcp module ---
-    from mcp import McpError, ConnectionClosed, TimeoutError, ConnectionRefusedError # <<< CORRECTED CASING
+    # --- Corrected exception import path ---
+    # Assuming exceptions are defined in mcp.exceptions
+    from mcp.exceptions import McpError, ConnectionClosed, TimeoutError, ConnectionRefusedError
+    # If the above fails, the next most likely place is mcp.client.exceptions:
+    # from mcp.client.exceptions import McpError, ConnectionClosed, TimeoutError, ConnectionRefusedError # type: ignore
+
     MCP_AVAILABLE = True
 except ImportError:
     MCP_AVAILABLE = False
@@ -27,8 +37,8 @@ except ImportError:
     StdioServerParameters = object # type: ignore
     ClientSession = object # type: ignore
     TextContent = object # type: ignore
-    # Define dummy exceptions based on the changed import line
-    McpError = ConnectionClosed = TimeoutError = ConnectionRefusedError = Exception # <<< CORRECTED DUMMIES
+    # Define dummy exceptions based on a generic Exception
+    McpError = ConnectionClosed = TimeoutError = ConnectionRefusedError = Exception
     # Dummy stdio_client context manager
     class DummyStdioClient:
         def __init__(self, *args, **kwargs): pass
@@ -37,8 +47,13 @@ except ImportError:
     stdio_client = DummyStdioClient # type: ignore
 
 # Import dependencies for context methods
-from src.memory.memory_system import MemorySystem
-from src.handler.file_access import FileAccessManager
+# Assuming these paths are correct relative to your project structure
+try:
+    from src.memory.memory_system import MemorySystem
+    from src.handler.file_access import FileAccessManager
+except ImportError as e:
+     raise ImportError(f"Failed to import internal project modules: {e}. Ensure PYTHONPATH is set correctly or run from the project root.") from e
+
 
 logger = logging.getLogger(__name__)
 
@@ -46,28 +61,24 @@ logger = logging.getLogger(__name__)
 def _create_failed_result_dict(
     reason: TaskFailureReason,
     message: str,
-    details_dict: Optional[Dict[str, Any]] = None # Changed name and type
+    details_dict: Optional[Dict[str, Any]] = None
 ) -> Dict[str, Any]:
     """Creates a dictionary representing a FAILED TaskResult."""
-    # Create TaskFailureDetails object only if details_dict is provided
     details_obj = None
     if details_dict:
-        # Nest the arbitrary dictionary within the 'notes' field of TaskFailureDetails
         details_obj = TaskFailureDetails(notes=details_dict)
 
-    # Create the error object, passing the TaskFailureDetails object
     error_obj = TaskFailureError(
         type="TASK_FAILURE",
         reason=reason,
         message=message,
-        details=details_obj # Pass the object here
+        details=details_obj
     )
     task_result = TaskResult(
         status="FAILED",
         content=message,
-        notes={"error": error_obj} # Embed the error object in notes
+        notes={"error": error_obj}
     )
-    # Use exclude_none=True to avoid sending null fields if not set
     return task_result.model_dump(exclude_none=True)
 
 
@@ -95,9 +106,9 @@ class AiderBridge:
                     Expected keys for STDIO: 'mcp_stdio_command', 'mcp_stdio_args', 'mcp_stdio_env'.
         """
         if not MCP_AVAILABLE:
-            logger.error("mcp.py library not found. AiderBridge cannot function.")
-            # Optionally raise an error here depending on desired behavior
-            # raise ImportError("mcp.py library is required for AiderBridge")
+            logger.error("mcp.py library not found or failed to import components. AiderBridge cannot function.")
+            # Consider raising ImportError here if MCP is strictly required
+            # raise ImportError("mcp.py library and its components are required for AiderBridge")
 
         self.memory_system = memory_system
         self.file_access_manager = file_access_manager
@@ -150,21 +161,24 @@ class AiderBridge:
                     await session.initialize()
                     logger.debug("MCP session initialized. Calling tool...")
 
-                    mcp_response = await session.call_tool(name=tool_name, arguments=params)
-                    logger.debug(f"Received MCP response: {mcp_response}")
+                    # MCP v0.2.0 returns a list of content parts
+                    mcp_response_content_parts = await session.call_tool(name=tool_name, arguments=params)
+                    logger.debug(f"Received MCP response content parts: {mcp_response_content_parts}")
 
-                    # Process response
-                    if not mcp_response or not isinstance(mcp_response, list) or not mcp_response[0]:
+                    # Process response - Assuming the primary result is in the first part for now
+                    if not mcp_response_content_parts or not isinstance(mcp_response_content_parts, list) or not mcp_response_content_parts[0]:
                         logger.error("Invalid or empty response received from MCP server.")
                         return _create_failed_result_dict("protocol_error", "Invalid or empty response from MCP server.")
 
-                    # Assuming the first part of the response contains the main result
-                    # Check if it's TextContent (adjust if other types are possible)
-                    if not isinstance(mcp_response[0], TextContent):
-                         logger.error(f"Unexpected response type from MCP server: {type(mcp_response[0])}")
-                         return _create_failed_result_dict("protocol_error", f"Unexpected response type: {type(mcp_response[0])}")
+                    first_part = mcp_response_content_parts[0]
 
-                    response_text = mcp_response[0].text
+                    # Handle TextContent specifically
+                    if not isinstance(first_part, TextContent):
+                         logger.error(f"Unexpected response type from MCP server: {type(first_part)}")
+                         # Consider how to handle non-text content if expected
+                         return _create_failed_result_dict("protocol_error", f"Expected TextContent, got: {type(first_part)}")
+
+                    response_text = first_part.text
                     logger.debug(f"Raw MCP response text: {response_text}")
 
                     try:
@@ -173,15 +187,12 @@ class AiderBridge:
                     except json.JSONDecodeError as json_err:
                         logger.error(f"Failed to parse JSON response from MCP server: {json_err}")
                         logger.error(f"Invalid JSON string: {response_text}")
-                        # Pass raw response dict as details_dict
                         return _create_failed_result_dict("output_format_failure", f"Failed to parse JSON response: {json_err}", details_dict={"raw_response": response_text})
 
                     # Map server payload to TaskResult dictionary
-                    # Check for explicit error reported by the server application
                     if server_payload.get("error"):
                         error_msg = server_payload["error"]
                         logger.warning(f"Aider MCP tool '{tool_name}' reported application error: {error_msg}")
-                        # Include other potential fields in notes (passed as details_dict)
                         notes_for_details = {k: v for k, v in server_payload.items() if k != 'error'}
                         return _create_failed_result_dict("tool_execution_error", error_msg, details_dict=notes_for_details)
 
@@ -193,38 +204,32 @@ class AiderBridge:
                             logger.info(f"Aider MCP tool '{tool_name}' completed successfully.")
                             return TaskResult(status="COMPLETE", content=diff_content, notes={"success": True, "diff": diff_content}).model_dump(exclude_none=True)
                         else:
-                            # If success is false but no explicit 'error' key, use diff as error message
                             error_msg = diff_content or f"Aider tool '{tool_name}' failed without specific error message."
                             logger.warning(f"Aider MCP tool '{tool_name}' failed: {error_msg}")
-                            # Include all payload in notes (passed as details_dict)
                             notes_for_details = {k: v for k, v in server_payload.items()}
                             return _create_failed_result_dict("tool_execution_error", error_msg, details_dict=notes_for_details)
                     elif tool_name == "list_models":
                         models = server_payload.get("models", [])
                         logger.info(f"Aider MCP tool '{tool_name}' listed {len(models)} models.")
-                        # Return the list as JSON string in content, and raw list in notes
                         return TaskResult(status="COMPLETE", content=json.dumps(models), notes={"models": models}).model_dump(exclude_none=True)
                     else:
-                        # Generic success handling for unknown tools
+                        # Generic success handling
                         logger.info(f"Aider MCP tool '{tool_name}' returned generic payload.")
-                        # Assume payload itself is the content if no standard fields found
                         content_str = json.dumps(server_payload)
                         return TaskResult(status="COMPLETE", content=content_str, notes=server_payload).model_dump(exclude_none=True)
 
-        except (McpError, ConnectionClosed, TimeoutError, ConnectionRefusedError) as mcp_err: # <<< CORRECTED CASING HERE TOO
+        # Catch specific MCP exceptions first
+        except (McpError, ConnectionClosed, TimeoutError, ConnectionRefusedError) as mcp_err:
             logger.error(f"MCP communication error calling tool '{tool_name}': {mcp_err}")
-            # No extra details needed for connection errors
             return _create_failed_result_dict("connection_error", f"MCP communication error: {mcp_err}")
         except ValueError as val_err: # Catch potential errors from StdioServerParameters or config issues
              logger.error(f"Configuration or parameter error calling tool '{tool_name}': {val_err}")
-             # No extra details needed for config errors
              return _create_failed_result_dict("configuration_error", f"Configuration error: {val_err}")
         except Exception as e:
             logger.exception(f"Unexpected error calling Aider MCP tool '{tool_name}': {e}")
-            # No extra details needed for unexpected errors
             return _create_failed_result_dict("unexpected_error", f"Unexpected error during MCP call: {e}")
 
-    # --- Context Preparation Methods (Retained but role clarified) ---
+    # --- Context Preparation Methods ---
 
     def set_file_context(self, file_paths: List[str], source: Optional[str] = "explicit_specification") -> Dict[str, Any]:
         """
@@ -240,7 +245,6 @@ class AiderBridge:
         """
         if not self.file_access_manager:
             logger.warning("FileAccessManager not available in AiderBridge. Cannot validate paths.")
-            # Store paths without validation if FAM is missing
             self._file_context = set(file_paths)
             self._context_source = source
             return {"status": "warning", "file_count": len(self._file_context), "context_source": source, "message": "FileAccessManager unavailable, paths stored without validation."}
@@ -251,54 +255,45 @@ class AiderBridge:
         skipped_nonexistent = 0
         skipped_unsafe = 0
 
-        for path_str in file_paths: # Rename variable to avoid confusion
+        for path_str in file_paths:
              processed_count += 1
              try:
-                 # --- START FIX: Handle absolute vs relative ---
                  if os.path.isabs(path_str):
-                     # If already absolute, normalize it directly
                      abs_path = os.path.abspath(path_str)
-                     # Still need to check safety relative to base_path
-                     if not self.file_access_manager._is_path_safe(abs_path):
+                     if not self.file_access_manager._is_path_safe(abs_path): # type: ignore [reportPrivateUsage]
                          logger.warning(f"Skipping unsafe absolute path: {path_str} (resolved to {abs_path})")
                          skipped_unsafe += 1
                          continue
                  else:
-                     # If relative, resolve using FAM's method (which includes safety check)
-                     abs_path = self.file_access_manager._resolve_path(path_str)
-                     # Double-check safety (resolve_path might not raise on failure)
-                     if not self.file_access_manager._is_path_safe(abs_path):
+                     abs_path = self.file_access_manager._resolve_path(path_str) # type: ignore [reportPrivateUsage]
+                     if not self.file_access_manager._is_path_safe(abs_path): # type: ignore [reportPrivateUsage]
                          logger.warning(f"Skipping unsafe resolved path: {path_str} (resolved to {abs_path})")
                          skipped_unsafe += 1
                          continue
-                 # --- END FIX ---
 
-                 # Check existence using os.path
                  if not os.path.exists(abs_path):
                      logger.warning(f"Skipping non-existent path: {path_str} (resolved to {abs_path})")
                      skipped_nonexistent += 1
                      continue
-                 # Check if it's a file
                  if not os.path.isfile(abs_path):
                      logger.warning(f"Skipping non-file path: {path_str} (resolved to {abs_path})")
-                     skipped_nonexistent += 1 # Count as non-existent for simplicity
+                     skipped_nonexistent += 1
                      continue
 
                  valid_abs_paths.add(abs_path)
-             except ValueError as e: # Catch errors from _resolve_path or safety checks
+             except ValueError as e:
                  logger.warning(f"Skipping invalid path '{path_str}': {e}")
                  skipped_unsafe += 1
              except Exception as e:
                   logger.exception(f"Error processing path '{path_str}' in set_file_context: {e}")
                   skipped_unsafe += 1
 
-
         self._file_context = valid_abs_paths
         self._context_source = source
         logger.info(f"Set file context: {len(valid_abs_paths)} valid files added. Source: {source}. (Processed: {processed_count}, Skipped Non-existent: {skipped_nonexistent}, Skipped Unsafe: {skipped_unsafe})")
 
         status_msg = f"Added {len(valid_abs_paths)} files."
-        if skipped_nonexistent > 0: status_msg += f" Skipped {skipped_nonexistent} non-existent/non-file." # Clarify message
+        if skipped_nonexistent > 0: status_msg += f" Skipped {skipped_nonexistent} non-existent/non-file."
         if skipped_unsafe > 0: status_msg += f" Skipped {skipped_unsafe} unsafe/invalid."
 
         return {"status": "success", "file_count": len(valid_abs_paths), "context_source": source, "message": status_msg}
@@ -334,7 +329,6 @@ class AiderBridge:
             return []
 
         try:
-            # Use ContextGenerationInput v5.0 structure
             context_input = ContextGenerationInput(query=query)
             memory_result: AssociativeMatchResult = self.memory_system.get_relevant_context_for(context_input)
 
@@ -346,14 +340,11 @@ class AiderBridge:
                 logger.info(f"No relevant files found by MemorySystem for query: '{query}'")
                 return []
 
-            # Extract paths from matches
-            # Assume paths in MatchTuple are already absolute or resolvable by FAM
             relevant_paths = [match.path for match in memory_result.matches]
             logger.debug(f"MemorySystem returned {len(relevant_paths)} potential paths.")
 
             # Use set_file_context to validate and update internal state
-            # Pass the paths found by memory system
-            status_result = self.set_file_context(relevant_paths, source="associative_matching")
+            self.set_file_context(relevant_paths, source="associative_matching")
 
             # Return the validated paths stored internally
             return sorted(list(self._file_context))
@@ -361,9 +352,3 @@ class AiderBridge:
         except Exception as e:
             logger.exception(f"Error getting context from MemorySystem for query '{query}': {e}")
             return []
-
-    # --- Deprecated Methods (Removed) ---
-    # - execute_code_edit
-    # - start_interactive_session
-    # - create_interactive_session
-    # - create_automatic_handler
