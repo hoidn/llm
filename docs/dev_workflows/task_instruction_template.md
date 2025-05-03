@@ -176,6 +176,7 @@
     9.  `[...]`
 *   **Data Models:** `[Specify any Pydantic models the JD needs to use or be aware of, e.g., "Ensure the final return value is a dictionary conforming to the `TaskResult` structure."]`
 *   **Key Considerations:** `[Highlight any tricky parts, edge cases to consider, or specific project patterns to follow, e.g., "Remember to use the `resolve_model_class` helper, don't implement dynamic imports yourself.", "Ensure all external calls are within try/except blocks."] `
+    *   **Python/DSL Interaction:** If this task involves invoking the S-expression evaluator (`evaluate_string`) with complex inputs (e.g., prompts built from multiple files), ensure the data preparation logic resides in the calling Python code. Pass the prepared data via `SexpEnvironment` bindings. Avoid adding complex string/data manipulation logic directly into the S-expression string itself. Refer to `docs/implementation_rules.md#11.6`.
 
 **5. Testing Plan:**
 

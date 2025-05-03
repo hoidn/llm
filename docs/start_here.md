@@ -133,6 +133,10 @@ When assigned to implement or modify a component specified by an IDL (or tacklin
     *   **Practice:** The `AiderBridge` component (`src/aider_bridge/bridge.py`) acts as an **MCP client**, using the `mcp.py` library to communicate with an external Aider MCP Server process. `AiderBridge` does **not** contain direct Aider library calls or manage Aider subprocesses itself. Executor functions (`src/executors/aider_executors.py`) call methods on the `AiderBridge` instance.
     *   **Reference:** See `src/aider_bridge/bridge_IDL.md`, `src/executors/aider_executors_IDL.md`, and `docs/librarydocs/aider_MCP_server.md` (for the server's expected interface).
 
+*   **Python Orchestration with Embedded S-expression Evaluation:**
+    *   **Concept:** While the S-expression DSL is used for defining task/tool invocation sequences and basic control flow, complex data preparation, especially multi-source string construction (e.g., building prompts from multiple files), should be handled in the calling Python code.
+    *   **Practice:** Python code prepares the necessary data (like complex strings), creates a `SexpEnvironment`, binds the prepared data to variable names in the environment, and then calls `SexpEvaluator.evaluate_string` with the S-expression string (which references the bound variables) and the prepared environment. This leverages Python's strengths for data manipulation and keeps the DSL focused on orchestration, avoiding the need to implement complex data handling primitives within the DSL itself. See `docs/implementation_rules.md` for details.
+
 **6. Testing Strategy**
 
 *   **Framework:** `pytest`.

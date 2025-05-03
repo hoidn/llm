@@ -11,6 +11,12 @@ module src.sexp_evaluator.sexp_evaluator {
     // Interface for the S-expression DSL Evaluator.
     // Responsible for parsing and executing workflows defined in S-expression syntax.
     // This component is the exclusive mechanism for executing all workflow composition logic (sequences, conditionals, loops, etc.).
+    // Note: This evaluator focuses on executing workflow logic, special forms, primitives
+    // essential for control flow and system interaction (like `get_context`), and invoking
+    // registered tasks/tools. Complex data preparation (e.g., multi-source string building,
+    // complex list/dict manipulation) is expected to be handled by the calling Python code,
+    // with data passed into the evaluation via the environment, rather than by implementing
+    // numerous data manipulation primitives within this evaluator.
     interface SexpEvaluator {
 
         // Constructor: Initializes the S-expression evaluator.
@@ -28,6 +34,8 @@ module src.sexp_evaluator.sexp_evaluator {
         // Preconditions:
         // - sexp_string is a string containing the S-expression workflow.
         // - initial_env is an optional SexpEnvironment instance; a new root environment is created if None.
+        // (+)   It is expected that the calling Python code will prepare any complex data structures
+        // (+)   or strings required by the workflow and provide them via the `initial_env`.
         // Postconditions:
         // - Returns the final result of evaluating the S-expression. This is often the result of the last top-level expression evaluated.
         // - The result should ideally be formatted as a standard TaskResult dictionary by the calling layer (e.g., Dispatcher) if the S-expression doesn't explicitly create one.
@@ -37,6 +45,9 @@ module src.sexp_evaluator.sexp_evaluator {
         // - Creates a root `SexpEnvironment` if `initial_env` is None.
         // - Calls the internal recursive `_eval` method on the parsed AST node(s) within the environment.
         // - Handles evaluation errors (e.g., unbound symbols, primitive misuse, errors from underlying calls).
+        // (+) - The S-expression logic typically references variables bound in the `initial_env`
+        // (+)   for complex inputs (like prompts built from multiple sources) rather than
+        // (+)   performing complex data manipulation itself.
         // @raises_error(condition="SexpSyntaxError", description="Raised by internal parser if the input string has invalid S-expression syntax.")
         // @raises_error(condition="SexpEvaluationError", description="Raised by internal _eval if runtime errors occur during S-expression evaluation (e.g., unbound symbol, invalid arguments to primitive, type mismatch).")
         // @raises_error(condition="TaskError", description="Propagated if an underlying TaskSystem/Handler call invoked by the S-expression fails (e.g., RESOURCE_EXHAUSTION, TASK_FAILURE from atomic task).")

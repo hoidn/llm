@@ -433,6 +433,49 @@ When merging data from multiple sources (e.g., configuration layers, default val
     *   Design error handling (`raise` statements, exception messages) to pinpoint the semantic source of the error as accurately as possible (e.g., "Undefined function 'foo' in expression (foo 1)" is better than "Type error processing arguments").
     *   Include relevant context in error messages, such as the specific expression or node being processed when the error occurred.
 
+*   **11.6. Python Orchestration Pattern (Recommended Usage):**
+    *   **Guideline:** Leverage Python for complex data preparation and manipulation tasks before invoking the S-expression evaluator. Avoid replicating extensive Python standard library functionality (especially complex string, list, or dictionary manipulation) as DSL primitives.
+    *   **Recommended Pattern:**
+        1.  **Prepare Data in Python:** Use standard Python code (f-strings, loops, file I/O via `FileAccessManager`, library calls) to construct complex data structures or strings (e.g., prompts assembled from multiple file contents).
+        2.  **Create SexpEnvironment:** Instantiate `src.sexp_evaluator.sexp_environment.SexpEnvironment`.
+        3.  **Bind Data:** Populate the environment's initial bindings dictionary, mapping desired S-expression variable names (strings) to the prepared Python objects.
+        4.  **Write Focused S-expression:** Create the S-expression string. This string should primarily focus on workflow logic (sequences, conditionals), invoking tasks/tools, and referencing the variables bound in the environment for complex data inputs.
+        5.  **Call `evaluate_string`:** Invoke `SexpEvaluator.evaluate_string(sexp_string, initial_env=prepared_env)`.
+        6.  **Process Result in Python:** Handle the Python object returned by the evaluator.
+    *   **Example:**
+        ```python
+        # --- Python Orchestration Code ---
+        from src.sexp_evaluator.sexp_environment import SexpEnvironment
+        # Assume 'evaluator' is an initialized SexpEvaluator instance
+
+        # 1. Prepare complex data (e.g., prompt) in Python
+        file1_content = "..." # Read file 1
+        file2_content = "..." # Read file 2
+        complex_prompt = f"Context:\nFile 1:\n{file1_content}\n\nFile 2:\n{file2_content}\n\nTask: Analyze."
+
+        # 2. Create Environment
+        # 3. Bind Data
+        env = SexpEnvironment(bindings={
+            "analysis_prompt_data": complex_prompt,
+            "analysis_threshold": 0.7
+        })
+
+        # 4. Write S-expression using variables
+        sexp_to_run = """
+            (if (> analysis_threshold 0.5)
+                (run_analysis_task (prompt analysis_prompt_data))
+                (log_message "Threshold too low, skipping analysis")
+            )
+        """ # Assumes run_analysis_task and log_message are defined tasks/tools
+
+        # 5. Call Evaluator
+        result = evaluator.evaluate_string(sexp_to_run, initial_env=env)
+
+        # 6. Process Result
+        print(result)
+        ```
+    *   **Rationale:** This pattern leverages Python's strengths for general-purpose programming and data manipulation, keeping the S-expression DSL focused on its core orchestration role and simplifying the `SexpEvaluator` implementation by reducing the need for numerous custom primitives.
+
 **12. Data Merging Conventions**
 
 When merging data from multiple sources (e.g., configuration layers, default values, runtime parameters, results from different components), the code MUST clearly implement the intended precedence rules.

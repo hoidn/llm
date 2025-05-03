@@ -45,6 +45,7 @@
         *   Specify algorithms, data structures (Pydantic models from `types.md` or new ones to define), and critical logic flow.
         *   Detail *exactly* how to interact with dependencies (methods, parameters, handling results/errors).
         *   Specify precise error handling logic (e.g., "If `dependency.call()` raises `SpecificError`, catch it and return a FAILED `TaskResult` with reason `X` and details Y").
+        *   **Define Python/DSL Boundary:** Clearly specify which parts of the logic involve complex data preparation (to be done in Python) and which parts involve S-expression execution. Detail how data prepared in Python should be bound to the `SexpEnvironment` for use within the S-expression.
     4.  **Compile Detailed Testing Plan for JD:**
         *   For each stubbed test function:
             *   Specify required `pytest` fixtures.
