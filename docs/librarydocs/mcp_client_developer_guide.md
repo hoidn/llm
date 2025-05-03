@@ -272,18 +272,46 @@ print(f"Prompt content: {prompt.content}")
 
 ## Error Handling
 
-Implement robust error handling for server communication:
+Implement robust error handling for server communication. The `mcp.py` library raises `McpError` for protocol-level issues reported by the server. Communication problems like timeouts or connection closures often raise exceptions from the underlying transport library (e.g., `anyio`). Catch these different types separately for better error management.
 
 ```python
+# Example showing relevant imports
+from mcp import McpError # Correct public import for the MCP-specific error
+# Import transport/connection errors from their source library, e.g.:
+import anyio # Or httpx, etc. depending on transport
+import asyncio # For TimeoutError if needed
+
 try:
+    # ... mcp client operations ...
     result = await session.call_tool("example_tool", {"param": "value"})
     # Process successful result
-except McpError as e:
-    # Handle exceptions (connection issues, protocol errors, etc.)
-    print(f"Error executing tool: {e}")
+
+except McpError as mcp_protocol_err:
+    # Handle errors defined by the MCP protocol itself
+    # mcp_protocol_err.error contains the structured ErrorData
+    print(f"MCP Protocol Error: Code={mcp_protocol_err.error.code}, Message='{mcp_protocol_err.error.message}'")
+    # Implement logic based on the protocol error
+
+except (anyio.BrokenResourceError, anyio.EndOfStream) as conn_closed_err: # Example using anyio common errors
+    # Handle connection closed errors (replace with actual library exceptions if different)
+    print(f"Connection Closed Error: {conn_closed_err}")
+    # Implement reconnection logic or return error status
+
+except (TimeoutError, asyncio.TimeoutError) as timeout_err: # Catch potential built-in or asyncio TimeoutError
+    print(f"Timeout Error: {timeout_err}")
+    # Implement retry logic or return error status
+
+except ConnectionRefusedError as refused_err: # Often a standard OSError subclass
+     print(f"Connection Refused Error: {refused_err}")
+     # Implement logic to handle server unavailability
+
+except Exception as e:
+    # Handle other unexpected errors during communication or processing
+    print(f"Unexpected error executing tool: {e}")
+    # Log the error, return a generic failure status
 ```
 
-For robust applications, implement retry logic with exponential backoff:
+For robust applications, implement retry logic with exponential backoff for communication errors:
 
 ```python
 async def execute_with_retry(tool_name, arguments, max_retries=3, base_delay=1.0):
