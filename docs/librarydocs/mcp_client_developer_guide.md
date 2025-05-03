@@ -294,6 +294,8 @@ except (anyio.BrokenResourceError, TimeoutError) as conn_err: # Example connecti
     print(f"MCP Communication Error: {conn_err}")
 except Exception as e:
     print(f"Unexpected error executing tool: {e}")
+
+**Note for Testers/Mocking:** The `session.call_tool` method returns a wrapper object (typically `mcp.types.CallToolResult`) which contains attributes like `.content` (a list, often containing `mcp.types.TextContent` instances) and `.isError` (boolean). When mocking this call in unit tests, ensure your mock return value accurately simulates this structure, including using the correct `mcp.types.TextContent` type within the `.content` list if your implementation performs type checks. Do not rely on simple dictionaries or dummy types if `isinstance` checks are used in the calling code.
 ```
 
 ## Prompt Management
