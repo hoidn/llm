@@ -35,7 +35,15 @@ if PROJECT_ROOT not in sys.path:
 
 # --- Import Application ---
 try:
-    from src.main import Application
+    # Try to import from main implementation file first
+    try:
+        from src.scripts.main_implementation import Application
+        print("[Setup] Successfully imported Application from main_implementation.py")
+    except ImportError:
+        # Fall back to src.main if the implementation file is not found
+        from src.main import Application
+        print("[Setup] Imported Application from src.main (fallback)")
+    
     from src.system.models import TaskResult # For type hints
 except ImportError as e:
     print(f"Error importing project modules: {e}")
