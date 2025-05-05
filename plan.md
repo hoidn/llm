@@ -128,7 +128,7 @@
     *   **Readiness:** Feature Enhancement (Builds on Level 6 & Phase 3b).
 
 *   **Phase 8: Aider Integration (MCP Approach)**
-    *   **Status:** PENDING
+    *   **Status:** DONE
     *   **Goal:** Add code editing capabilities using Aider via the MCP client/server model (as defined in ADR 19).
     *   **Prerequisites:** Functional external `Aider MCP Server`.
     *   **Components & Tasks:** `AiderBridge`, `AiderExecutorFunctions`, `BaseHandler`.
@@ -142,16 +142,61 @@
     *   **Outcome:** System gains code editing features via Aider/MCP. **Completes Feature Readiness Level 5.**
     *   **Readiness:** Advanced Feature Enabled (Builds on Level 6, Phase 7).
 
-*   **Phase 9: `lambda` Special Form**
-    *   **Status:** PENDING
-    *   **Goal:** Add anonymous functions with lexical scoping (closures) to the DSL.
-    *   **Components & Tasks:** `SexpEvaluator`, `SexpEnvironment`, New `Closure` class. Implement `lambda` special form, `Closure` class, function application logic (`_apply_closure`) in `SexpEvaluator`. Add extensive tests.
-    *   **Integration:** Deep changes within `SexpEvaluator` and `SexpEnvironment`.
-    *   **Outcome:** DSL gains significant expressive power with first-class functions and lexical scoping.
-    *   **Readiness:** Core Language Enhancement (Builds on previous phases).
+**Phase 9: Core Agentic Tooling & Multi-LLM Support**
 
-*   **Phase 10: Documentation Alignment & Final Review**
-    *   **Status:** PENDING
-    *   **Goal:** Ensure all documentation is up-to-date, consistent, and accurate. Perform final code review.
-    *   **Tasks:** Update all relevant IDLs, READMEs, guides (`start_here.md`, `implementation_rules.md`), ADRs (including ensuring ADR 19 is finalized). Add usage examples for S-expressions, Aider, Lambda, etc. Final linting, formatting, testing, and review.
-    *   **Outcome:** Project is polished, well-documented, and ready for release or further development cycles.
+*   **Status:** PENDING
+*   **Goal:** Enhance the system's ability to act as an agent by providing essential generic file system tools and enabling flexible LLM selection.
+*   **Components & Tasks:**
+    1.  **Generic File System Tools:**
+        *   Implement provider-agnostic tools: `system:write_file`, `system:list_directory`, potentially `system:create_directory`.
+        *   Leverage `FileAccessManager` for safe execution.
+        *   Register these tools unconditionally in `Application._register_system_tools` alongside `system:read_files` and `system:get_context`.
+        *   Write unit/integration tests for the new tool executors.
+    2.  **Multi-LLM Routing/Execution:**
+        *   Design and implement a mechanism to allow selecting or routing to different LLM providers/models during execution (e.g., via parameters in `evaluate_string` or task definitions, dynamic agent configuration, or managing multiple handlers). Choose one approach (e.g., dynamic configuration or parameter passing).
+        *   Modify `BaseHandler`/`LLMInteractionManager` accordingly.
+        *   Update `_execute_llm_call` and potentially task/tool invocation logic to handle model selection/routing.
+        *   Add tests verifying that calls can be routed to different (mocked) providers/models.
+*   **Integration:** Generic tools become available alongside provider-specific ones. Multi-LLM support enhances flexibility for all LLM calls originating from the Handler.
+*   **Outcome:** System gains essential generic file manipulation tools usable by any LLM/DSL workflow and the flexibility to utilize different LLMs dynamically. Enables step 1 of the Vibecoding methodology (multi-model calls).
+*   **Readiness:** Enhanced Agent Capabilities & Flexibility.
+
+**Phase 10: S-expression `lambda` and Closures**
+
+*   **Status:** PENDING
+*   **Goal:** Implement anonymous functions with lexical scoping (closures) in the S-expression DSL, as per `ADR_lambdas.md`.
+*   **Components & Tasks:** `SexpEvaluator`, `SexpEnvironment`, New `Closure` class.
+    1.  Implement the `lambda` special form parsing/handling in `_eval_list`.
+    2.  Define the internal `Closure` object to store parameters, body AST, and the definition environment.
+    3.  Modify `_eval_list` (or `_handle_invocation`) to detect when the operator evaluates to a `Closure`.
+    4.  Implement the function application logic: create new environment frame, link to closure's environment, bind arguments, evaluate body.
+    5.  Write extensive unit tests covering closure creation, lexical scope capture (accessing variables from defining environment), argument binding, and recursive calls.
+    6.  Update `SexpEvaluator_IDL.md`, `SexpEnvironment_IDL.md`, and DSL documentation/examples.
+*   **Integration:** Deep changes within `SexpEvaluator` and `SexpEnvironment`. Enables significantly more complex and modular logic within S-expression workflows.
+*   **Outcome:** DSL gains first-class functions and lexical scoping, dramatically increasing its expressive power.
+*   **Readiness:** Core Language Enhancement.
+
+**Phase 11: Workflow State Management & Resumption (Interactive Mode)**
+
+*   **Status:** PENDING
+*   **Goal:** Enable workflows to be suspended, have their state persisted, and be resumed later, potentially after external input (e.g., user feedback). Required for fully interactive agentic processes like Vibecoding.
+*   **Components & Tasks:** This likely requires significant new components or major refactoring.
+    1.  **Design State Representation:** Define how workflow state (current step, variable bindings/environment, generated artifacts/paths, etc.) will be represented.
+    2.  **Design Persistence Mechanism:** Choose and implement how state will be saved/loaded (e.g., JSON files, database). Address serialization challenges (especially for `SexpEnvironment` if complex objects/closures are involved).
+    3.  **Implement Suspend/Resume Points:** Define how workflows signal suspension (e.g., specific return status like `CONTINUATION` with state payload, explicit `(wait-for-input)` primitive). Modify the Python orchestrator or `SexpEvaluator` to handle suspension.
+    4.  **Develop Resumption Logic:** Create mechanisms (e.g., a command, API endpoint, background process) to load state and resume workflow execution, potentially incorporating new input.
+    5.  **Implement Error Handling & Recovery:** Address how to handle failures during suspended or resumed workflows.
+    6.  Write comprehensive tests covering suspension, persistence, resumption, and error recovery.
+*   **Integration:** Major architectural addition. Deeply impacts how workflows are defined and executed.
+*   **Outcome:** System supports long-running, interactive, and potentially recoverable workflows. Enables full automation of processes requiring user-in-the-loop or interruption tolerance.
+*   **Readiness:** Advanced Agent Interactivity & Reliability.
+
+**Phase 12: Final Documentation Alignment & Review**
+
+*   **Status:** PENDING
+*   **Goal:** Ensure all documentation (IDLs, guides, ADRs, examples) is fully updated, consistent, and accurate, reflecting all implemented features including Lambda and State Management (if built). Perform final code review, testing, and potential release preparation.
+*   **Components & Tasks:** Project-wide documentation review and updates, final testing sweep, code cleanup, potentially creating release notes.
+*   **Integration:** N/A (Documentation phase).
+*   **Outcome:** Project is polished, comprehensively documented, and ready for its next lifecycle stage.
+*   **Readiness:** Final Polish & Release Readiness.
+

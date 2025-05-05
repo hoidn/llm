@@ -6,7 +6,7 @@ requires-python = ">=3.9" # Assuming Python 3.9+ based on type hints used
 dependencies = [
     "pydantic>=2.0", # Already implicitly needed by models.py
     "sexpdata>=1.0.0",
-    "pydantic-ai[anthropic]>=1.0.0b1", # Using a beta version as stable might not be out
+    "pydantic-ai[anthropic]>=0.1.9", 
     # Add other core dependencies here if known
 ]
 
