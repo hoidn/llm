@@ -39,17 +39,66 @@ def mock_sexp_evaluator_instance():
 # --- Test Cases ---
 
 # (test_dispatch_s_expression_routing remains the same)
+from src.sexp_evaluator.sexp_environment import SexpEnvironment # For type checking
+
+# --- Fixtures ---
+# (Fixtures remain the same)
+@pytest.fixture
+def mock_handler():
+    mock = MagicMock(name="MockHandler")
+    mock.tool_executors = {}
+    mock._execute_tool.return_value = TaskResult(status="COMPLETE", content="Tool Executed", notes={})
+    return mock
+
+@pytest.fixture
+def mock_task_system():
+    mock = MagicMock(name="MockTaskSystem")
+    mock.find_template.return_value = None
+    mock.execute_atomic_template.return_value = TaskResult(status="COMPLETE", content="Task Executed", notes={})
+    return mock
+
+@pytest.fixture
+def mock_memory_system():
+    return MagicMock(name="MockMemorySystem")
+
+@pytest.fixture
+def mock_sexp_evaluator_instance():
+    mock = MagicMock(spec=SexpEvaluator)
+    mock.evaluate_string.return_value = "Sexp Result" # Default, can be overridden
+    return mock
+
+# --- Test Cases ---
+
+# (test_dispatch_s_expression_routing remains the same)
 @patch('src.dispatcher.SexpEvaluator')
 def test_dispatch_s_expression_routing(MockSexpEvaluatorClass, mock_handler, mock_task_system, mock_memory_system, mock_sexp_evaluator_instance):
     MockSexpEvaluatorClass.return_value = mock_sexp_evaluator_instance
     identifier = "(list 1 2)"
     params, flags = {}, {}
+
+    # Configure the mock to return a specific, simple value for this test
+    expected_sexp_eval_result = [1, 2]
+    mock_sexp_evaluator_instance.evaluate_string.return_value = expected_sexp_eval_result
+
     result = execute_programmatic_task(identifier, params, flags, mock_handler, mock_task_system, mock_memory_system)
+
     MockSexpEvaluatorClass.assert_called_once_with(mock_task_system, mock_handler, mock_memory_system)
-    mock_sexp_evaluator_instance.evaluate_string.assert_called_once_with(identifier)
+    
+    # Check evaluate_string call details
+    mock_sexp_evaluator_instance.evaluate_string.assert_called_once()
+    called_args, called_kwargs = mock_sexp_evaluator_instance.evaluate_string.call_args
+    assert called_args[0] == identifier
+    assert 'initial_env' in called_kwargs
+    assert isinstance(called_kwargs['initial_env'], SexpEnvironment)
+    # Since params is empty, the bindings in the initial_env should also be empty
+    assert called_kwargs['initial_env'].get_local_bindings() == {}
+
+
     assert result['status'] == "COMPLETE"
-    assert result['content'] == "Sexp Result"
+    # The dispatcher wraps the raw result in str() if it's not already a TaskResult
+    assert result['content'] == str(expected_sexp_eval_result)
     assert result['notes']['execution_path'] == "s_expression"
+    assert result['notes']['sexp_raw_result'] == expected_sexp_eval_result
 
 # (test_dispatch_atomic_task_routing remains the same)
 @patch('src.dispatcher.SexpEvaluator')
