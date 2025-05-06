@@ -117,7 +117,7 @@ def run_code_processing_demo():
     (progn
       (defatom code-analyzer-llm
         (params (code-snippet))
-        (instructions "LLM, analyze the following code snippet: '{{code-snippet}}'. Based on the analysis, if the code contains the word 'complex' or 'loop', output the STRING 'refactoring_needed'. Otherwise, output the STRING 'optimization_candidate'.")
+        (instructions "Analyze the code snippet: '{{code-snippet}}'. Your response MUST be ONLY the single word 'refactoring_needed' if the snippet contains the word 'complex' OR the word 'loop'. Otherwise, your entire response MUST be ONLY the single word 'optimization_candidate'. Do NOT include any other text, explanation, or formatting. Just output the one required word.")
         (description "Analyzes code and suggests 'refactoring_needed' or 'optimization_candidate'.")
       )
 

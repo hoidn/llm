@@ -380,7 +380,7 @@ class LLMInteractionManager:
             try:
                 log_data = {
                     "system_prompt": current_system_prompt,
-                    "conversation_history": conversation_history,
+                    "conversation_history": [msg.model_dump(exclude_none=True, round_trip=True) if hasattr(msg, 'model_dump') else str(msg) for msg in conversation_history],
                     "prompt": prompt,
                     "model_used": target_model_id_for_log, # Log which model was used
                 }
