@@ -1069,8 +1069,6 @@ def test_eval_special_form_loop_error_body_eval_fails(evaluator, mock_parser, mo
 # --- New Unit Tests for Refactored Internal Methods ---
 
 class TestSexpEvaluatorInternals:
-
-    def test_eval_list_form_dispatches_special_form(self, evaluator, mock_parser, mocker):
         """Test _eval_list_form correctly dispatches to a special form handler."""
         env = SexpEnvironment()
         # original_expr_str = "(if true 1 0)" # Original string form
