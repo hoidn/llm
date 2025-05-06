@@ -427,50 +427,9 @@ class BaseHandler:
         # Store history *before* the call
         history_dicts_before_call = list(self.conversation_history)
 
-        # --- START DIAGNOSTIC PRINT STATEMENTS ---
-        print("\n--- DEBUG MARKER: ENTERING _execute_llm_call ---", flush=True)
-        print(f"--- DEBUG MARKER: Prompt (start): {prompt[:100]}...", flush=True)
-        print(f"--- DEBUG MARKER: History length before loop: {len(self.conversation_history)}", flush=True) # Check history passed in effectively
-
-        # Check the crucial variables right before the loop where they're used
-        print(f"--- DEBUG MARKER: PydanticMessagesAvailable = {PydanticMessagesAvailable}", flush=True)
-        print(f"--- DEBUG MARKER: Type of ModelResponse = {type(ModelResponse)}", flush=True)
-        print(f"--- DEBUG MARKER: Value of ModelResponse = {ModelResponse!r}", flush=True)
-        print(f"--- DEBUG MARKER: Type of TextPart = {type(TextPart)}", flush=True)
-        print(f"--- DEBUG MARKER: Value of TextPart = {TextPart!r}", flush=True)
         from typing import Union
-        is_union = ModelResponse is Union
-        print(f"--- DEBUG MARKER: Is ModelResponse typing.Union? {is_union}", flush=True)
-        print("--- DEBUG MARKER: BEFORE History Conversion Loop ---", flush=True)
-        # --- END DIAGNOSTIC PRINT STATEMENTS ---
 
-        # --- START MOVED INTROSPECTION LOGGING ---
         logging.debug(f"--- Before History Conversion Loop ---")
-        logging.debug(f"ModelResponse points to: {ModelResponse!r}")
-        logging.debug(f"Type of ModelResponse: {type(ModelResponse)}")
-        logging.debug(f"TextPart points to: {TextPart!r}")
-        logging.debug(f"Type of TextPart: {type(TextPart)}")
-        # Union already imported above
-        logging.debug(f"Is 'ModelResponse' the same object as typing.Union? {is_union}")
-        
-        # Check module origin
-        if hasattr(ModelResponse, '__module__'):
-            logging.debug(f"Module of 'ModelResponse': {ModelResponse.__module__}")
-        if hasattr(TextPart, '__module__'):
-            logging.debug(f"Module of 'TextPart': {TextPart.__module__}")
-        
-        # Try to get more info about the objects
-        logging.debug(f"Dir of 'ModelResponse': {dir(ModelResponse)[:10]}...")
-        logging.debug(f"Dir of 'TextPart': {dir(TextPart)[:10]}...")
-        
-        # Check if we can access the original ModelMessage directly
-        try:
-            import pydantic_ai.messages
-            logging.debug(f"Direct import of pydantic_ai.messages.ModelMessage: {pydantic_ai.messages.ModelMessage!r}")
-            logging.debug(f"Is ModelResponse same as ModelMessage? {pydantic_ai.messages.ModelMessage is ModelResponse}")
-        except (ImportError, AttributeError) as e:
-            logging.debug(f"Error accessing direct import: {e}")
-        # --- END MOVED INTROSPECTION LOGGING ---
 
         # --- Convert History to Objects ---
         message_objects_for_agent = [] # Will hold PydanticModelMessage objects
@@ -545,18 +504,20 @@ class BaseHandler:
             "model_override": model_override, # PASS THE OVERRIDE
         }
 
-        # --- Add the detailed logging right before the call ---
-        logging.debug(f"------->>> Preparing to call run_sync for model: {self.llm_manager.get_provider_identifier() or model_override}") # Use actual model if possible
-        logging.debug(f"------->>> Prompt Type: {type(prompt)}")
-        logging.debug(f"------->>> Prompt Content (first 500 chars): {prompt[:500]}")
-        # Log the OBJECTS this time
-        history_repr = "\n".join([repr(msg) for msg in message_objects_for_agent])
-        logging.debug(f"------->>> Run Kwargs History (Objects):\n{history_repr}")
-        logging.debug(f"------->>> Run Kwargs System Prompt: {call_kwargs.get('system_prompt_override')}")
-        logging.debug(f"------->>> Run Kwargs Tools: {call_kwargs.get('tools_override')}") 
-        logging.debug(f"------->>> Run Kwargs Output Type: {call_kwargs.get('output_type_override')}")
-        logging.debug(f"------->>> Full Run Kwargs (excluding history objects): { {k: v for k, v in call_kwargs.items() if k != 'conversation_history'} }")
-        # --- End detailed logging ---
+        # Add concise logging for key parameters
+        logging.debug(f"Calling LLM manager for model: {self.llm_manager.get_provider_identifier() or model_override}")
+        logging.debug(f"Prompt type: {type(prompt)}, length: {len(prompt)}")
+        logging.debug(f"History objects: {len(message_objects_for_agent)}")
+        logging.debug(f"System prompt: {call_kwargs.get('system_prompt_override', '')[:100]}...")
+        
+        # Log tool and output type information without full dumps
+        if call_kwargs.get('tools_override'):
+            tool_count = len(call_kwargs.get('tools_override', []))
+            logging.debug(f"Using {tool_count} tool executors")
+        
+        if call_kwargs.get('output_type_override'):
+            output_type = call_kwargs.get('output_type_override')
+            logging.debug(f"Output type: {getattr(output_type, '__name__', str(output_type))}")
 
         manager_result = self.llm_manager.execute_call(**call_kwargs)
 
