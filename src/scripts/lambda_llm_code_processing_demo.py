@@ -150,7 +150,7 @@ def run_code_processing_demo():
     (let ((code-to-process "{code_snippet_placeholder}"))
       (log-message "Starting code processing for snippet:" code-to-process)
 
-      (let ((analysis-result (code-analyzer-llm (code-snippet code-to-process))))
+      (let ((analysis-result (code-analyzer-llm code-to-process)))
         ; analysis-result is a TaskResult-like dictionary.
         ; Its "content" field should hold "refactoring_needed" or "optimization_candidate".
         (log-message "Analysis task raw result:" analysis-result)
