@@ -55,17 +55,22 @@ class AtomicTaskExecutor:
                     val = getattr(val, key)
                 else:
                     raise KeyError(key)  # Or AttributeError
+            # Add logging before returning
+            logging.debug(f"    _resolve_dot_notation: Resolved '{key_string}' to value type {type(val).__name__}")
             return val
             
         def replace_match(match):
             full_param_name = match.group(1)  # e.g., "context_input.query"
+            logging.debug(f"  _substitute_params: Found placeholder '{{{{{full_param_name}}}}}'") # Log placeholder
             try:
                 # Use helper to resolve dot notation
                 value = resolve_dot_notation(params, full_param_name)
-                # Inside replace_match function in _substitute_params, before return
+                # --- Log value BEFORE str() ---
+                logging.debug(f"  _substitute_params: Value for '{full_param_name}' is: {value!r} (Type: {type(value).__name__})")
+                # --- End log ---
                 value_type = type(value)
                 value_size = len(value) if hasattr(value, '__len__') else 'N/A'
-                logging.debug(f"Substituting '{full_param_name}': Type={value_type}, Size/Len={value_size}")
+                logging.debug(f"  Substituting '{full_param_name}': Type={value_type}, Size/Len={value_size}")
                 
                 # Enhanced error handling for str() conversion
                 try:
@@ -85,6 +90,10 @@ class AtomicTaskExecutor:
                 # Return the placeholder itself to find all missing ones first
                 return match.group(0)
 
+        # --- Add logging for input text ---
+        logging.debug(f"--- _substitute_params processing text (first 500 chars): --- \n{text[:500] if text else 'None'}\n-------------------------------------")
+        # --- End logging ---
+        
         try:
             substituted_text = PARAM_REGEX.sub(replace_match, text)
             if missing_params:
