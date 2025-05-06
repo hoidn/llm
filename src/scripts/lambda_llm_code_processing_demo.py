@@ -161,13 +161,13 @@ def run_code_processing_demo():
           (if (string=? analysis-decision "refactoring_needed")
               (let ((refactor-fn (lambda (code) 
                                    (log-message "Lambda: Invoking refactor-code-llm for:" code)
-                                   (refactor-code-llm (code-snippet code)))))
+                                   (refactor-code-llm code)))) ; Pass 'code' directly
                 (refactor-fn code-to-process))
               
               (if (string=? analysis-decision "optimization_candidate")
                   (let ((optimize-fn (lambda (code) 
                                      (log-message "Lambda: Invoking optimize-code-llm for:" code)
-                                     (optimize-code-llm (code-snippet code)))))
+                                     (optimize-code-llm code)))) ; Pass 'code' directly
                     (optimize-fn code-to-process))
                   
                   (progn
