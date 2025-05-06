@@ -9,19 +9,22 @@ import pydantic_ai
 
 # Import specific message types needed
 try:
-    from pydantic_ai.messages import ModelResponse, TextPart, UserMessage # ADD UserMessage
+    # **MODIFIED: Import correct classes**
+    from pydantic_ai.messages import ModelRequest, UserPromptPart, ModelResponse, TextPart
     PydanticMessagesAvailable = True
-    logging.info("Successfully imported ModelResponse, TextPart, UserMessage from pydantic_ai.messages.")
+    logging.info("Successfully imported ModelRequest, UserPromptPart, ModelResponse, TextPart from pydantic_ai.messages.")
 except ImportError:
     logging.error("Failed to import message types from pydantic_ai.messages.", exc_info=True)
     PydanticMessagesAvailable = False
-    # Create placeholders if import fails
+    # Create placeholders if import fails (including UserPromptPart)
     class TextPart:
         def __init__(self, content=""): self.content = content
     class ModelResponse:
         def __init__(self, parts=None): self.parts = parts or []
-    class UserMessage: # ADD Placeholder
+    class UserPromptPart: # Placeholder
         def __init__(self, content=""): self.content = content
+    class ModelRequest: # Placeholder
+        def __init__(self, parts=None, instructions=None): self.parts = parts or []
 
 from src.handler import command_executor
 
@@ -463,8 +466,8 @@ class BaseHandler:
                     # Create ModelResponse for assistant
                     message_objects_for_agent.append(ModelResponse(parts=[TextPart(content=content)]))
                 elif role == "user":
-                    # **FIX: Create UserMessage for user turns**
-                    message_objects_for_agent.append(UserMessage(content=content))
+                    # **FIX: Create ModelRequest containing UserPromptPart for user turns**
+                    message_objects_for_agent.append(ModelRequest(parts=[UserPromptPart(content=content)]))
                 else:
                     logging.warning(f"Unsupported role '{role}' found in history, skipping.")
                     continue # Skip unknown roles

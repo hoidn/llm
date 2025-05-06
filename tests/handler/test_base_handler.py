@@ -6,8 +6,8 @@ from typing import Callable, List, Dict, Any # Add necessary types
 
 # Import the class under test
 from src.handler.base_handler import BaseHandler
-# Import UserMessage for test assertions
-from pydantic_ai.messages import UserMessage
+# Import correct message types for test assertions
+from pydantic_ai.messages import ModelRequest, UserPromptPart, ModelResponse, TextPart
 
 # Import real classes for spec verification if needed
 from src.handler.file_access import FileAccessManager
@@ -335,9 +335,11 @@ def test_base_handler_execute_llm_call_success(base_handler_instance):
     initial_history_dict = [{"role": "user", "content": "Previous"}]
     base_handler_instance.conversation_history = list(initial_history_dict) # Use a copy
 
-    # **MODIFIED: Construct the expected list of pydantic-ai objects**
+    # **MODIFIED: Construct the expected list of pydantic-ai ModelRequest/ModelResponse objects**
+    # The history passed to the manager should represent the previous turns.
+    # Based on initial_history_dict, this should be a ModelRequest containing a UserPromptPart.
     expected_history_objects = [
-        UserMessage(content="Previous")
+        ModelRequest(parts=[UserPromptPart(content="Previous")])
     ]
     initial_history_len = len(base_handler_instance.conversation_history)
 
@@ -351,16 +353,23 @@ def test_base_handler_execute_llm_call_success(base_handler_instance):
     assert result.notes == {"usage": {"tokens": 50}}
 
     # Verify manager call with the *expected pydantic-ai message objects*
-    mock_llm_manager.execute_call.assert_called_once_with(
-        prompt=user_prompt,
-        # **MODIFIED: Assert against the expected object list**
-        conversation_history=expected_history_objects,
-        system_prompt_override=None,
-        tools_override=None,
-        output_type_override=None,
-        active_tools=None,
-        model_override=None
-    )
+    # We might need to use mock.ANY for timestamps or compare relevant attributes.
+    mock_llm_manager.execute_call.assert_called_once()
+    call_args, call_kwargs = mock_llm_manager.execute_call.call_args
+    assert call_kwargs.get("prompt") == user_prompt
+    # Compare relevant parts of the history objects
+    actual_history = call_kwargs.get("conversation_history", [])
+    assert len(actual_history) == len(expected_history_objects)
+    assert isinstance(actual_history[0], ModelRequest)
+    assert len(actual_history[0].parts) == 1
+    assert isinstance(actual_history[0].parts[0], UserPromptPart)
+    assert actual_history[0].parts[0].content == "Previous"
+    # Check other kwargs are as expected
+    assert call_kwargs.get("system_prompt_override") is None
+    assert call_kwargs.get("tools_override") is None
+    assert call_kwargs.get("output_type_override") is None
+    assert call_kwargs.get("active_tools") is None
+    assert call_kwargs.get("model_override") is None
 
     # Assert history update
     assert len(base_handler_instance.conversation_history) == initial_history_len + 2
