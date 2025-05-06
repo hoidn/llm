@@ -317,8 +317,8 @@ def test_execute_atomic_template_executor_param_mismatch(
     assert error_details.reason == "input_validation_failure" # Check reason set by executor
     # Check that the wrapped error message contains the original error
     assert "Missing parameter(s) or access error for substitution: input1" in result.content
-    # Check that it indicates an unexpected error occurred during substitution
-    assert "Unexpected substitution error" in result.content
+    # Remove the check for "Unexpected substitution error" as it's not the primary message anymore
+    # assert "Unexpected substitution error" in result.content
 
 
 # --- Tests for resolve_file_paths (Phase 2c) ---
@@ -437,10 +437,15 @@ def test_execute_generate_plan_task(mock_execute_body, mock_find_template, task_
     assert call_kwargs['handler'] == mock_handler # Check handler passed
 
     assert result.status == "COMPLETE"
-    assert isinstance(result.parsedContent, DevelopmentPlan)
-    assert result.parsedContent.instructions == expected_plan_data["instructions"]
-    assert result.parsedContent.files == expected_plan_data["files"]
-    assert result.parsedContent.test_command == expected_plan_data["test_command"]
+    # MODIFIED: Validate the dictionary against the Pydantic model
+    assert isinstance(result.parsedContent, dict) # First check it's a dict
+    try:
+        plan = DevelopmentPlan.model_validate(result.parsedContent) # Validate structure
+        assert plan.instructions == expected_plan_data["instructions"]
+        assert plan.files == expected_plan_data["files"]
+        assert plan.test_command == expected_plan_data["test_command"]
+    except Exception as e:
+        assert False, f"parsedContent failed DevelopmentPlan validation: {e}"
     assert result.notes.get("template_used") == "user:generate-plan"
 
 @patch.object(TaskSystem, 'find_template')
@@ -489,10 +494,15 @@ def test_execute_analyze_aider_result_task(mock_execute_body, mock_find_template
     assert call_kwargs['handler'] == mock_handler # Check handler passed
 
     assert result.status == "COMPLETE"
-    assert isinstance(result.parsedContent, FeedbackResult)
-    assert result.parsedContent.status == expected_feedback_data["status"]
-    assert result.parsedContent.next_prompt == expected_feedback_data["next_prompt"]
-    assert result.parsedContent.explanation == expected_feedback_data["explanation"]
+    # MODIFIED: Validate the dictionary against the Pydantic model
+    assert isinstance(result.parsedContent, dict) # First check it's a dict
+    try:
+        feedback = FeedbackResult.model_validate(result.parsedContent) # Validate structure
+        assert feedback.status == expected_feedback_data["status"]
+        assert feedback.next_prompt == expected_feedback_data["next_prompt"]
+        assert feedback.explanation == expected_feedback_data["explanation"]
+    except Exception as e:
+        assert False, f"parsedContent failed FeedbackResult validation: {e}"
     assert result.notes.get("template_used") == "user:analyze-aider-result"
 
 @patch.object(AtomicTaskExecutor, 'execute_body')

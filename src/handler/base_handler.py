@@ -508,7 +508,9 @@ class BaseHandler:
         logging.debug(f"Calling LLM manager for model: {self.llm_manager.get_provider_identifier() or model_override}")
         logging.debug(f"Prompt type: {type(prompt)}, length: {len(prompt)}")
         logging.debug(f"History objects: {len(message_objects_for_agent)}")
-        logging.debug(f"System prompt: {call_kwargs.get('system_prompt_override', '')[:100]}...")
+        # FIX: Handle potential None value before slicing
+        system_prompt_value = call_kwargs.get('system_prompt_override') or '' # Use 'or' for None check
+        logging.debug(f"System prompt: {system_prompt_value[:100]}...") # Slice the potentially empty string
         
         # Log tool and output type information without full dumps
         if call_kwargs.get('tools_override'):
