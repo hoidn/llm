@@ -45,14 +45,19 @@ class FileAccessManager:
 
 
     def _resolve_path(self, file_path: str) -> str:
-        """Resolves a potentially relative path against the base path."""
-        # Security Note: This basic resolution doesn't prevent path traversal attacks
-        # (e.g., "../../../etc/passwd"). A production implementation should add
-        # checks to ensure the resolved path stays within the base_path.
-        # Sticking strictly to IDL for now.
-        # Update: Path safety check is now handled by _is_path_safe
+        """
+        Resolves a potentially relative path against the base path.
+        Returns the canonical absolute path with symlinks resolved.
+        """
+        # First get the absolute path by joining with base_path
         absolute_req_path = os.path.abspath(os.path.join(self.base_path, file_path))
-        return absolute_req_path
+        
+        # Then get the canonical path (resolves symlinks like /var -> /private/var on macOS)
+        canonical_path = os.path.realpath(absolute_req_path)
+        
+        logger.debug(f"Path resolution: '{file_path}' -> abs: '{absolute_req_path}' -> canonical: '{canonical_path}'")
+        
+        return canonical_path
 
     # Add this helper method to the class
     def _is_path_safe(self, resolved_path: str) -> bool:
