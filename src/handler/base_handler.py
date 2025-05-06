@@ -327,18 +327,22 @@ class BaseHandler:
         """
         # Import specific message types for pydantic-ai
         try:
-            # Import the specific class needed for assistant messages, not the Union alias
-            from pydantic_ai.messages import ModelResponse
+            # Import the specific classes needed for assistant messages
+            from pydantic_ai.messages import ModelResponse, TextPart
             PydanticMessagesAvailable = True
-            logging.info("Successfully imported ModelResponse from pydantic_ai.messages.")
+            logging.info("Successfully imported ModelResponse and TextPart from pydantic_ai.messages.")
         except ImportError:
             logging.error("Failed to import ModelResponse from pydantic_ai.messages.", exc_info=True)
             PydanticMessagesAvailable = False
-            # Create a placeholder if import fails
-            class ModelResponse:
-                def __init__(self, content=""):
-                    logging.error("!!! Using Dummy ModelResponse fallback class !!!")
+            # Create placeholders if import fails
+            class TextPart:
+                def __init__(self, content=""): 
                     self.content = content
+            
+            class ModelResponse:
+                def __init__(self, parts=None):
+                    logging.error("!!! Using Dummy ModelResponse fallback class !!!")
+                    self.parts = parts or []
 
         self.log_debug(f"Executing LLM call for prompt: '{prompt[:100]}...'")
         if model_override:
@@ -428,10 +432,12 @@ class BaseHandler:
         print(f"--- DEBUG MARKER: Prompt (start): {prompt[:100]}...", flush=True)
         print(f"--- DEBUG MARKER: History length before loop: {len(self.conversation_history)}", flush=True) # Check history passed in effectively
 
-        # Check the crucial variable right before the loop where it's used
+        # Check the crucial variables right before the loop where they're used
         print(f"--- DEBUG MARKER: PydanticMessagesAvailable = {PydanticMessagesAvailable}", flush=True)
         print(f"--- DEBUG MARKER: Type of ModelResponse = {type(ModelResponse)}", flush=True)
         print(f"--- DEBUG MARKER: Value of ModelResponse = {ModelResponse!r}", flush=True)
+        print(f"--- DEBUG MARKER: Type of TextPart = {type(TextPart)}", flush=True)
+        print(f"--- DEBUG MARKER: Value of TextPart = {TextPart!r}", flush=True)
         from typing import Union
         is_union = ModelResponse is Union
         print(f"--- DEBUG MARKER: Is ModelResponse typing.Union? {is_union}", flush=True)
@@ -442,15 +448,20 @@ class BaseHandler:
         logging.debug(f"--- Before History Conversion Loop ---")
         logging.debug(f"ModelResponse points to: {ModelResponse!r}")
         logging.debug(f"Type of ModelResponse: {type(ModelResponse)}")
+        logging.debug(f"TextPart points to: {TextPart!r}")
+        logging.debug(f"Type of TextPart: {type(TextPart)}")
         # Union already imported above
         logging.debug(f"Is 'ModelResponse' the same object as typing.Union? {is_union}")
         
         # Check module origin
         if hasattr(ModelResponse, '__module__'):
             logging.debug(f"Module of 'ModelResponse': {ModelResponse.__module__}")
+        if hasattr(TextPart, '__module__'):
+            logging.debug(f"Module of 'TextPart': {TextPart.__module__}")
         
-        # Try to get more info about the object
+        # Try to get more info about the objects
         logging.debug(f"Dir of 'ModelResponse': {dir(ModelResponse)[:10]}...")
+        logging.debug(f"Dir of 'TextPart': {dir(TextPart)[:10]}...")
         
         # Check if we can access the original ModelMessage directly
         try:
@@ -492,8 +503,24 @@ class BaseHandler:
                 # Only include assistant messages in the history objects
                 # User messages are handled by the prompt parameter
                 if role == "assistant":
-                    # Use the directly imported concrete class instead of the Union alias
-                    message_objects_for_agent.append(ModelResponse(content=content)) # content is now guaranteed string
+                    # Ensure content is a string first
+                    if not isinstance(content, str):
+                        # Perform necessary string conversion if content might not be string
+                        if hasattr(content, 'model_dump_json'):
+                            try:
+                                content = content.model_dump_json()
+                            except Exception:
+                                content = str(content)
+                        elif isinstance(content, dict):
+                            try:
+                                content = json.dumps(content)
+                            except Exception:
+                                content = str(content)
+                        else:
+                            content = str(content) # General fallback
+                    
+                    # Create a TextPart and pass it to the 'parts' argument in a list
+                    message_objects_for_agent.append(ModelResponse(parts=[TextPart(content=content)]))
                 elif role == "user":
                     # Skip user messages - they're handled by the prompt parameter
                     pass
