@@ -3,8 +3,8 @@ import logging
 import os  # Add os import for environment variable checking
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Type, Union
 
-# Import message types for type hints
-from pydantic_ai.messages import UserMessage, ModelMessage
+# Import pydantic-ai directly
+import pydantic_ai
 
 # Import models needed for error handling
 from src.system.models import TaskResult, TaskFailureError
@@ -223,7 +223,7 @@ class LLMInteractionManager:
     def execute_call(
         self,
         prompt: str,
-        conversation_history: List[Union[UserMessage, ModelMessage]],  # Updated type hint
+        conversation_history: List[Dict[str, Any]],  # Use dictionary type hint
         system_prompt_override: Optional[str] = None,
         tools_override: Optional[List[Callable]] = None,  # Executors
         output_type_override: Optional[Type] = None,
