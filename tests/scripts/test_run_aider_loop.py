@@ -402,7 +402,10 @@ def test_run_orchestration_max_retries_reached(
             {"status": "COMPLETE", "content": "Aider attempt 1"},
             {"status": "COMPLETE", "content": "Aider attempt 2"}
         ],
-        analysis_results=["REVISE: Prompt 2", "REVISE: Prompt 3"], # Always revise
+        analysis_results=[
+            {"status": "REVISE", "next_prompt": "Prompt 2", "explanation":"Revise 1"}, # Correct dict
+            {"status": "REVISE", "next_prompt": "Prompt 3", "explanation":"Revise 2"}  # Correct dict
+        ],
         test_success=True, # Tests run after loop finishes
         final_analysis_success=True,
         final_verdict="OVERALL_FAILURE" # Assume final analysis says failure
@@ -412,7 +415,8 @@ def test_run_orchestration_max_retries_reached(
     run_orchestration_loop(default_args)
 
     # Assertions
-    assert mock_application.handle_task_command.call_count == 6 # plan + aider*2 + analysis*2 + test
+    # Recalculate expected calls: 1(plan) + 2(aider) + 2(analysis) + 1(test) = 6
+    assert mock_application.handle_task_command.call_count == 6 # CORRECTED COUNT
     aider_calls = [c for c in mock_application.handle_task_command.call_args_list if c.args[0] == 'aider:automatic']
     analysis_calls = [c for c in mock_application.handle_task_command.call_args_list if c.args[0] == 'user:analyze-aider-result']
     assert len(aider_calls) == 2
