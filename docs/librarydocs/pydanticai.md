@@ -149,31 +149,39 @@ result = await agent.run("What did I say first?", history=history)
 
 While `pydantic-ai` handles history automatically when passing results from previous runs, you may sometimes need to construct message objects manually (e.g., when building history from scratch or within wrapper classes like `BaseHandler`).
 
-**Important:** Do **not** attempt to instantiate the `ModelMessage` union type directly (e.g., `ModelMessage(...)`). You must use the specific message classes like `UserMessage` or `ModelResponse`.
+**Important:** Do **not** attempt to instantiate the abstract `ModelMessage` union type directly (e.g., `ModelMessage(...)`). You must use the specific concrete message classes like `ModelRequest` (for user turns) or `ModelResponse` (for assistant/model turns).
 
 **Required Imports:**
 
 ```python
-from pydantic_ai.messages import UserMessage, ModelResponse, TextPart
+# Corrected imports based on pydantic-ai source
+from pydantic_ai.messages import ModelRequest, UserPromptPart, ModelResponse, TextPart
 ```
 
 **Example:**
 
 ```python
-from pydantic_ai.messages import UserMessage, ModelResponse, TextPart
+# Corrected imports based on pydantic-ai source
+from pydantic_ai.messages import ModelRequest, UserPromptPart, ModelResponse, TextPart
 
-# Creating a user message (simple string content)
-user_msg_obj = UserMessage(content="Tell me about Pydantic.")
+# --- Creating a USER message ---
+# User turns are represented by ModelRequest containing UserPromptPart(s)
+user_content_str = "Tell me about Pydantic."
+user_msg_obj = ModelRequest(parts=[UserPromptPart(content=user_content_str)])
 
-# Creating an assistant message (simple text response)
+# --- Creating an ASSISTANT message ---
+# Assistant turns are represented by ModelResponse containing TextPart(s)
 # Note: Content MUST be wrapped in a TextPart within the 'parts' list.
 assistant_content_str = "Pydantic is a data validation library..."
 assistant_msg_obj = ModelResponse(parts=[TextPart(content=assistant_content_str)])
 
 # Creating history list for agent.run_sync or agent.run
 manual_history = [
-    # UserMessage(content="Previous user turn..."), # If needed
-    # ModelResponse(parts=[TextPart(content="Previous assistant turn...")]), # If needed
+    # Example previous user turn
+    ModelRequest(parts=[UserPromptPart(content="What models do you support?")]),
+    # Example previous assistant turn
+    ModelResponse(parts=[TextPart(content="I support OpenAI, Anthropic, Gemini, etc.")]),
+    # You would typically build this list by iterating through your internal history format
 ]
 
 # You can then pass this list to the agent:
@@ -181,10 +189,12 @@ manual_history = [
 ```
 
 *   **Key Points:**
-    *   Import `UserMessage`, `ModelResponse`, and `TextPart` directly.
-    *   Use `UserMessage(content="...")` for user turns.
-    *   Use `ModelResponse(parts=[TextPart(content="...")])` for assistant turns containing simple text.
-    *   Refer to `pydantic-ai` documentation for handling other content types (e.g., tool calls) within `ModelResponse.parts`.
+    *   Import `ModelRequest`, `UserPromptPart`, `ModelResponse`, and `TextPart` directly.
+    *   Use `ModelRequest(parts=[UserPromptPart(content="...")])` for **user** turns in the history.
+    *   Use `ModelResponse(parts=[TextPart(content="...")])` for **assistant** turns containing simple text.
+    *   Both `ModelRequest` and `ModelResponse` structure their content within a `parts` list.
+    *   Refer to official `pydantic-ai` documentation for handling other content types (e.g., tool calls, images) within the `parts` list of `ModelResponse` or `ModelRequest`.
+    *   **Note:** While the `agent.run_sync` signature might hint `message_history` as `list[ModelMessage]`, `ModelMessage` is likely a type union; you must instantiate using the concrete classes (`ModelRequest`, `ModelResponse`).
 
 ## Agent.run_sync
 
