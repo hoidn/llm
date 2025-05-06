@@ -59,7 +59,7 @@ GENERATE_PLAN_TEMPLATE = {
     "type": "atomic",
     "subtype": "standard",
     "description": "Generates a development plan for a coding task based on user prompts and context.",
-    "parameters": {
+    "params": {
         "user_prompts": {"type": "string", "description": "The user's request(s) for the coding task, potentially combined."},
         "initial_context": {"type": "string", "description": "Relevant context, such as file contents or project overview."}
     },
@@ -92,7 +92,7 @@ ANALYZE_AIDER_RESULT_TEMPLATE = {
     "type": "atomic",
     "subtype": "standard",
     "description": "Analyzes the result of an Aider execution iteration and provides feedback.",
-    "parameters": {
+    "params": {
         "aider_result_content": {"type": "string", "description": "The content/output/error message from the Aider execution."},
         "aider_result_status": {"type": "string", "description": "The status of the Aider execution (e.g., 'COMPLETE', 'FAILED')."},
         "original_prompt": {"type": "string", "description": "The prompt given to Aider for this iteration."},

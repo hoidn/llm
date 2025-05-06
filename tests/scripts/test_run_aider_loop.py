@@ -214,10 +214,23 @@ def configure_mock_app(mock_app, plan_success=True, aider_results=None, analysis
 
     # --- Analysis Task ---
     analysis_call_results = []
-    for i, res_status in enumerate(analysis_results):
-        feedback_data = {"status": res_status}
-        if res_status == "REVISE":
-            feedback_data["next_prompt"] = f"Revised prompt {i+1}"
+    for i, res in enumerate(analysis_results):
+        # --- FIX: Convert status strings to FeedbackResult dicts ---
+        if isinstance(res, str): # Handle old string format if needed, but prefer dicts
+            if res == "SUCCESS":
+                feedback_data = {"status": "SUCCESS", "next_prompt": None, "explanation": "Looks good!"}
+            elif res.startswith("REVISE:"):
+                feedback_data = {"status": "REVISE", "next_prompt": res[len("REVISE:"):].strip(), "explanation": "Needs revision."}
+            elif res == "ABORT":
+                feedback_data = {"status": "ABORT", "next_prompt": None, "explanation": "Cannot proceed."}
+            else: # Default to ABORT on unknown string
+                feedback_data = {"status": "ABORT", "next_prompt": None, "explanation": f"Unknown feedback string: {res}"}
+        elif isinstance(res, dict) and "status" in res: # Accept pre-formatted dicts
+            feedback_data = res
+        else: # Invalid mock input
+            feedback_data = {"status": "ABORT", "next_prompt": None, "explanation": f"Invalid mock analysis result: {res}"}
+        # --- END FIX ---
+        
         analysis_call_results.append({"status": "COMPLETE", "parsedContent": feedback_data, "content": json.dumps(feedback_data)})
 
     # --- Test Execution Task ---
@@ -325,7 +338,10 @@ def test_run_orchestration_loop_revise_then_success(
             {"status": "COMPLETE", "content": "Aider attempt 1"},
             {"status": "COMPLETE", "content": "Aider attempt 2"}
         ],
-        analysis_results=["REVISE: Prompt 2", "SUCCESS"], # Revise first, then success
+        analysis_results=[
+            {"status": "REVISE", "next_prompt": "Prompt 2", "explanation": "Revise 1"}, # Correct dict
+            {"status": "SUCCESS", "explanation": "Success!"} # Correct dict
+        ],
         test_success=True,
         final_analysis_success=True,
         final_verdict="OVERALL_SUCCESS"
@@ -335,7 +351,8 @@ def test_run_orchestration_loop_revise_then_success(
     run_orchestration_loop(default_args)
 
     # Assertions
-    assert mock_application.handle_task_command.call_count == 5 # plan + aider*2 + analysis*2 + test
+    # Recalculate expected calls: 1(plan) + 2(aider) + 2(analysis) + 1(test) = 6
+    assert mock_application.handle_task_command.call_count == 6 # CORRECTED COUNT
     aider_calls = [c for c in mock_application.handle_task_command.call_args_list if c.args[0] == 'aider:automatic']
     analysis_calls = [c for c in mock_application.handle_task_command.call_args_list if c.args[0] == 'user:analyze-aider-result']
     assert len(aider_calls) == 2
