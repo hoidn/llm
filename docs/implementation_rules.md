@@ -124,7 +124,7 @@ This document outlines the standard conventions, patterns, and rules for impleme
         }
         ```
 *   **Reference:** Familiarize yourself with the `pydantic-ai` library documentation, potentially summarized or linked in `docs/librarydocs/pydanticai.md`.
-*   **Verify Library Usage:** When integrating *any* significant third-party library (like `pydantic-ai`), carefully verify API usage (e.g., function signatures, required arguments, expected data formats) against the library's official documentation and examples for the specific version being used. Do not rely solely on code examples from other sources or previous versions.
+*   **Verify Library Usage:** **Crucially, when integrating *any* significant third-party library (like `pydantic-ai`), carefully verify API usage** (e.g., function signatures, required arguments, expected data formats, **object constructor parameters**) against the library's official documentation and examples for the specific version being used. Do not rely solely on code examples from other sources or previous versions. **Failure to verify library APIs, especially for object construction or specific method signatures, can lead to subtle `TypeError` or `AttributeError` issues during runtime, even if type hints seem correct.** Consult `docs/librarydocs/` for internal summaries and links.
 *   **Test Wrapper Interactions:** Wrapper classes (like `LLMInteractionManager`) that directly interact with external libraries should have targeted integration tests. These tests should verify the interaction (mocking the external network endpoint if necessary) and ensure data is passed to the library and results are received/processed correctly according to the library's expected behavior.
 
 **7. Testing Conventions**
@@ -221,6 +221,8 @@ This document outlines the standard conventions, patterns, and rules for impleme
 
 *   **7.y Vertical Slice Testing:** Incorporate integration tests early in the development cycle that cover a key 'vertical slice' of functionality, exercising the main path through multiple collaborating components (e.g., Dispatcher -> SexpEvaluator -> MemorySystem -> TaskSystem -> Executor -> Handler). Even if some deeper dependencies within the slice are initially mocked or simplified, these tests validate the core wiring and data flow sooner.
 *   **7.z Testing Failure Paths:** Explicitly design integration tests to verify how errors propagate between components. Test scenarios where a dependency returns a FAILED `TaskResult` or raises a documented exception, and assert that the calling component handles it correctly according to the [Error Handling Philosophy](../system/architecture/overview.md#error-handling-philosophy) and its own IDL contract.
+
+*   **[NEW] Guideline 7b: Testing Wrapper Interactions / Library Boundaries:** When testing methods that prepare arguments for and call external library functions (e.g., `BaseHandler._execute_llm_call` preparing history for `llm_manager.execute_call`), aim to test the argument preparation logic (like history conversion) separately from the external call itself (which can often be mocked). This helps isolate errors, such as `TypeError` during object construction required by the library, from potential errors in the external call.
 
     *   **[NEW] Guideline 6: Verify Mock Calls Correctly:** When asserting mock calls (`assert_called_once_with`, `assert_called`), ensure you are checking the correct mock object. If you used `with patch.object(...)` or `@patch.object(...)`, assert against the mock object created by the patcher (often passed into the test function or available as the `as` target in the `with` statement). If you passed a mock instance during DI (Guideline 1), assert against that original mock instance variable.
 
@@ -360,7 +362,42 @@ This document outlines the standard conventions, patterns, and rules for impleme
 *   **Dependencies:** Implement dependencies (`@depends_on`) using constructor injection.
 *   **Parameter Substitution (AtomicTaskExecutor):** Be aware that the current `AtomicTaskExecutor` uses a simple regex-based substitution mechanism (`{{variable}}` or `{{variable.attribute}}`) and **does not support template engine features like filters or complex logic within placeholders**. See `src/executors/atomic_executor_IDL.md` for details. If complex templating is needed, the executor would require enhancement (e.g., integrating Jinja2).
 
-**10. Missing Items?**
+**10. Logging Conventions**
+
+Consistent logging is crucial for debugging and monitoring.
+
+*   **10.1. Early Configuration:** Configure logging using `logging.basicConfig()` or a more advanced setup (like `logging.config.dictConfig`) as the **very first step** in application entry-point scripts (e.g., `src/main.py`, `scripts/*.py`, test runners) **before importing any application modules** (`src.*`).
+    *   **Rationale:** Python's logging system initializes loggers when modules are imported. Configuring the root logger *after* module imports may not correctly apply the desired level or formatting to already-existing module loggers.
+    *   **Example (Entry Point Script):**
+        ```python
+        import logging
+        import os
+        import sys
+        # --- Logging Setup FIRST ---
+        LOG_LEVEL = logging.DEBUG # Or get from args/env
+        logging.basicConfig(level=LOG_LEVEL, format='%(asctime)s...')
+        logging.getLogger().setLevel(LOG_LEVEL) # Optional: Force root level
+        print(f"Logging configured to level: {logging.getLevelName(LOG_LEVEL)}")
+
+        # --- Path Setup (After logging) ---
+        # ... sys.path modification ...
+
+        # --- Application Imports (After logging) ---
+        from src.main import Application
+        # ... other imports ...
+
+        # --- Main script logic ---
+        # ...
+        ```
+
+*   **10.2. Module Loggers:** Use `logger = logging.getLogger(__name__)` at the top of each module to get a specific logger for that module.
+*   **10.3. Setting Specific Levels:** If DEBUG logs from a specific module are not appearing despite setting the overall level in `basicConfig`, explicitly set the level for that module's logger *after* the `basicConfig` call in your entry point script:
+    ```python
+    # In your entry point script, after basicConfig:
+    logging.getLogger("src.handler.base_handler").setLevel(logging.DEBUG)
+    ```
+
+**11. Missing Items?**
 
 *   **Configuration Management:** How is configuration (API keys, default models, resource limits, feature flags) loaded and accessed consistently? (Consider a dedicated config module/class).
 *   **AsyncIO Usage:** Conventions for using `async`/`await` if asynchronous operations are prevalent (especially LLM calls, potentially parallel map).

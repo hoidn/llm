@@ -142,6 +142,9 @@ module src.handler.base_handler {
         // Behavior:
         // - Delegates the primary interaction logic to the LLMInteractionManager which manages the pydantic-ai agent.
         // - Passes the current conversation history to the manager.
+        //   // Implementation Note: The internal conversation history (list of dicts) MUST be converted
+        //   // to a list of pydantic_ai.messages objects (e.g., ModelResponse(parts=[TextPart(...)])
+        //   // before being passed to the LLMInteractionManager. See librarydocs/pydanticai.md.
         // - **Tool Passing Logic:**
         //   - If `tools_override` (list of callables/specs) is provided, it takes precedence and is passed to the LLMInteractionManager.
         //   - Otherwise, the list of tool *definitions* stored internally by `set_active_tool_definitions` (i.e., `self.active_tool_definitions`) is retrieved and passed to the LLMInteractionManager's `execute_call` via the `active_tools` parameter.
