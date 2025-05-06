@@ -5,22 +5,15 @@
 
 **Goal:** Phase 9: System Tool Implementation & Refinement.
 
-**Current Sub-task:** Phase 9.3: Implement Multi-LLM Routing/Execution.
+**Current Sub-task:** Documentation Update Cycle (Post Phase 9b/9.3).
 
 **Relevant Files:**
-- `src/handler/llm_interaction_manager.py`
-- `src/handler/llm_interaction_manager_IDL.md`
-- `src/handler/base_handler.py`
-- `src/handler/base_handler_IDL.md`
-- `tests/handler/test_llm_interaction_manager.py`
-- `tests/handler/test_base_handler.py`
-- `src/main.py` (For config structure context)
-- `docs/implementation_rules.md`
-- `docs/system/contracts/types.md`
+- `src/sexp_evaluator/sexp_evaluator_IDL.md`
+- `memory.md` (This file)
+- `docs/documentation_update.md`
 
 **Related IDLs:**
-- `src/handler/llm_interaction_manager_IDL.md`
-- `src/handler/base_handler_IDL.md`
+- `src/sexp_evaluator/sexp_evaluator_IDL.md`
 
 ## Recent Activity Log
 
@@ -50,7 +43,9 @@
 - **Phase 7: Documentation Update (Cycle 2):** Performed final review and refinement of documentation related to tool handling logic (`llm_interaction_manager_IDL.md`, `implementation_rules.md`, `start_here.md`, `pydanticai.md`, `pydanticai_details.md`). Updated `memory.md`.
 - **Phase 7: Documentation Update (Cycle 3):** Reviewed `atomic_executor_IDL.md` and `phase6.py`. Confirmed consistency with recent changes. Updated `memory.md`.
 - **Phase 9.2: Implement Shell Execution Tool:** Added `execute_shell_command` instance method to `SystemExecutorFunctions`. Updated IDL. Registered tool in `Application._register_system_tools`. Added tests in `test_system_executors.py`. Updated `test_main.py` to verify registration. Updated `memory.md`.
-- **Phase 9.3: Implement Multi-LLM Routing/Execution:** Added `model_override` parameter to `LLMInteractionManager.execute_call` and `BaseHandler._execute_llm_call`. Implemented logic in `LLMInteractionManager` to handle override by looking up config and instantiating a temporary `pydantic-ai Agent`. Updated relevant IDLs. Updated `memory.md`. (This commit).
+- **Phase 9.3: Implement Multi-LLM Routing/Execution:** Added `model_override` parameter to `LLMInteractionManager.execute_call` and `BaseHandler._execute_llm_call`. Implemented logic in `LLMInteractionManager` to handle override by looking up config and instantiating a temporary `pydantic-ai Agent`. Updated relevant IDLs. Updated `memory.md`.
+- **Phase 9b: Implement `loop` Special Form:** Added `_eval_loop` to `SexpEvaluator` and dispatch logic. Added tests to `test_sexp_evaluator.py`. Commit `aafbfc8`.
+- **Documentation Update (Post 9b/9.3):** Updated `src/sexp_evaluator/sexp_evaluator_IDL.md` to document the `loop` special form. Updated `memory.md`. (This commit).
 
 ## Next Steps
 
@@ -75,9 +70,7 @@
 
 ## Notes & Context
 
-- Phase 9.3 successfully added the `model_override` parameter and the core logic for handling it in `LLMInteractionManager`.
-- The implementation assumes a configuration structure like `config['llm_providers'][model_id]` for override details.
-- Error handling for missing configuration and temporary agent initialization failures has been added.
-- The temporary agent reuses tools from the default agent.
-- IDLs have been updated to reflect the new parameter.
-- Next step is to write tests for this new functionality.
+- Phase 9b (`loop` special form) implementation is complete and tested (commit `aafbfc8`).
+- Documentation for `loop` has been added to the `SexpEvaluator` IDL.
+- Phase 9.3 (Multi-LLM routing) implementation is complete but requires testing.
+- Next immediate step is to write tests for Phase 9.3 functionality.

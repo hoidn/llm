@@ -67,7 +67,7 @@ module src.sexp_evaluator.sexp_evaluator {
         //   - Lists: Delegates processing to `_eval_list` to determine if it's a special form, primitive call, function/task/tool invocation, or invalid.
         // - **Guideline:** Focuses on returning the value; the *application* of functions/operators happens within the logic called by `_eval_list`.
         //     - **Dispatch Order & Explicitness:** Follows a strict dispatch order:
-        //   1. Check if operator is a symbol matching a **Special Form** (`if`, `let`, `bind`, `progn`, `quote`, `lambda`, `defatom`). If yes, execute special form logic (which handles its own argument evaluation or definition).
+        //   1. Check if operator is a symbol matching a **Special Form** (`if`, `let`, `bind`, `progn`, `quote`, `lambda`, `defatom`, `loop`). If yes, execute special form logic (which handles its own argument evaluation or definition).
         //   2. Else, check if operator is a symbol matching a **Primitive** (`list`, `get_context`). If yes, execute primitive logic (which evaluates necessary arguments internally).
         //   3. Else (operator is not a special form or primitive symbol, OR operator is a complex expression like another list): Evaluate the operator expression itself using `_eval`. Let the result be `evaluated_operator`.
         //      a. If `evaluated_operator` is a **Closure object** (a function created by `lambda`): Trigger the **Function Application** process:
@@ -89,14 +89,14 @@ module src.sexp_evaluator.sexp_evaluator {
         //     - Raises `SexpEvaluationError` if syntax is invalid or registration fails.
         //     - Returns the `task-name` Symbol upon success.
         //     - **Note:** This definition is global for the current session/evaluator instance. It does not currently support lexical scoping for task definitions.
-        
+        // - `(loop <count-expr> <body-expr>)`: **Special Form.** Executes a body expression a fixed number of times.
+        //   - **Syntax:** `(loop <count-expr> <body-expr>)`
+        //   - **Argument Processing:** Evaluates `<count-expr>` *once*. Expects a non-negative integer result (`n`). Raises `SexpEvaluationError` if the result is not a valid count (non-integer or negative).
+        //   - **Behavior:** Evaluates `<body-expr>` exactly `n` times sequentially in the *current* environment.
+        //   - **Returns:** The result of the *last* evaluation of `<body-expr>`. If `n` is 0, returns `nil` (represented as `[]` in Python).
+        //   - **Errors:** Raises `SexpEvaluationError` if argument count is not exactly 2. Propagates `SexpEvaluationError` from evaluation of `<count-expr>` or `<body-expr>`. Raises `SexpEvaluationError` if count is invalid.
+        //
         // **Note on Closures:** A Closure is a runtime object representing a function created by `lambda` (or potentially `define` if added later). It bundles the function's code (parameter list and body AST) with a reference to the environment where it was defined, enabling lexical scoping. It is a first-class value that can be passed around, stored in variables, and invoked later.
-         //
-         // - `(loop <count-expr> <body-expr>)`: **Special Form.** Executes a body expression a fixed number of times.
-         //   - **Argument Processing:** Evaluates `<count-expr>` *once*. Expects a non-negative integer result (`n`). Raises `SexpEvaluationError` if the result is not a valid count.
-         //   - **Behavior:** Evaluates `<body-expr>` exactly `n` times sequentially in the *current* environment.
-         //   - **Returns:** The result of the *last* evaluation of `<body-expr>`. If `n` is 0, returns `nil` (represented as `[]` in Python).
-         //   - **Errors:** Can propagate `SexpEvaluationError` from evaluation of `<count-expr>` or `<body-expr>`. Raises `SexpEvaluationError` if count is invalid.
          //
           //
         // - `(get_context (key1 value_expr1) (key2 value_expr2) ...)`: **Primitive.**
