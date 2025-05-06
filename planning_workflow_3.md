@@ -1,4 +1,4 @@
-<doc>
+<workflow>
 **Revised Development Process Guide: IDL-Driven Implementation and Revision**
 
 **Purpose:** This guide outlines a structured, step-by-step process for implementing, refactoring, or revising components based on their Interface Definition Language (IDL) specifications. Following this ensures alignment between the contract (IDL), implementation, and tests, whether creating new features, modifying existing ones, or removing obsolete parts.
@@ -219,4 +219,4 @@ Modify the `LLMInteractionManager` and `BaseHandler` to allow the LLM provider/m
 </example-developer-instructions>
 ---
 
-</doc>
+</workflow>
