@@ -325,6 +325,10 @@ class BaseHandler:
         """
         Internal method to execute a call via the LLMInteractionManager and update history.
         """
+        # Import message types for pydantic-ai
+        from pydantic_ai.messages import UserMessage, ModelMessage
+        from typing import Union
+
         self.log_debug(f"Executing LLM call for prompt: '{prompt[:100]}...'")
         if model_override:
             self.log_debug(f"  with model override: {model_override}")
@@ -406,24 +410,69 @@ class BaseHandler:
         # --- End Prepare tools ---
 
         # Store history *before* the call
-        history_before_call = list(self.conversation_history)
+        history_dicts_before_call = list(self.conversation_history)
 
-        # Pass the raw history dictionaries directly
-        # pydantic-ai expects dictionaries with 'role' and 'content' keys
-        message_objects_for_agent = history_before_call
+        # --- Convert History to Objects ---
+        message_objects_for_agent: List[Union[UserMessage, ModelMessage]] = [] # Use Union for type hint
+        for msg_dict in history_dicts_before_call:
+            role = msg_dict.get("role")
+            content = msg_dict.get("content", "") # Default to empty string if missing
+
+            # --- START: Ensure content is always string for ModelMessage ---
+            # Convert potential Pydantic models/JSON strings in history to simple strings
+            # before creating the ModelMessage object.
+            if role == "assistant" and not isinstance(content, str):
+                # Example: If content might be a Pydantic model or dict
+                if hasattr(content, 'model_dump_json'):
+                    try:
+                        content_str = content.model_dump_json()
+                    except Exception:
+                        content_str = str(content) # Fallback
+                elif isinstance(content, dict):
+                    try:
+                        content_str = json.dumps(content)
+                    except Exception:
+                         content_str = str(content) # Fallback
+                else:
+                    content_str = str(content) # General fallback
+                content = content_str # Update content variable
+            # --- END: Ensure content is always string for ModelMessage ---
+
+            if role == "user":
+                # Ensure user content is also a string
+                message_objects_for_agent.append(UserMessage(content=str(content)))
+            elif role == "assistant":
+                message_objects_for_agent.append(ModelMessage(content=content)) # content is now guaranteed string
+            else:
+                logging.warning(f"Unsupported role '{role}' found in history, skipping.")
+                continue # Skip unknown roles
+
+        logging.debug(f"Converted history to {len(message_objects_for_agent)} pydantic-ai message objects.")
+        # --- End History Conversion ---
         
-        logging.debug(f"Using {len(message_objects_for_agent)} history messages for agent.")
-
         # Delegate the call to the manager
         call_kwargs = {
             "prompt": prompt,
-            "conversation_history": message_objects_for_agent, # Pass the list of objects
+            "conversation_history": message_objects_for_agent, # Pass the CONVERTED list of objects
             "system_prompt_override": system_prompt_override,
             "tools_override": executors_for_agent, # Pass resolved executors
             "output_type_override": output_type_override,
             "active_tools": definitions_for_agent, # Pass resolved definitions
             "model_override": model_override, # PASS THE OVERRIDE
         }
+
+        # --- Add the detailed logging right before the call ---
+        logging.debug(f"------->>> Preparing to call run_sync for model: {self.llm_manager.get_provider_identifier() or model_override}") # Use actual model if possible
+        logging.debug(f"------->>> Prompt Type: {type(prompt)}")
+        logging.debug(f"------->>> Prompt Content (first 500 chars): {prompt[:500]}")
+        # Log the OBJECTS this time
+        history_repr = "\n".join([repr(msg) for msg in message_objects_for_agent])
+        logging.debug(f"------->>> Run Kwargs History (Objects):\n{history_repr}")
+        logging.debug(f"------->>> Run Kwargs System Prompt: {call_kwargs.get('system_prompt_override')}")
+        logging.debug(f"------->>> Run Kwargs Tools: {call_kwargs.get('tools_override')}") 
+        logging.debug(f"------->>> Run Kwargs Output Type: {call_kwargs.get('output_type_override')}")
+        logging.debug(f"------->>> Full Run Kwargs (excluding history objects): { {k: v for k, v in call_kwargs.items() if k != 'conversation_history'} }")
+        # --- End detailed logging ---
 
         manager_result = self.llm_manager.execute_call(**call_kwargs)
 
@@ -443,10 +492,11 @@ class BaseHandler:
             self.log_debug(
                 f"LLM call successful. Response: '{str(assistant_content)[:100]}...'"
             )
-            # Update history correctly
+            # Update history correctly - ADD DICTIONARIES
             self.conversation_history.append({"role": "user", "content": prompt})
             # Ensure assistant content added is a string
             assistant_content_str = str(assistant_content) if assistant_content is not None else ""
+            # Store as dictionary in the conversation history
             self.conversation_history.append(
                 {"role": "assistant", "content": assistant_content_str}
             )
