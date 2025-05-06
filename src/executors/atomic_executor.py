@@ -66,7 +66,19 @@ class AtomicTaskExecutor:
                 value_type = type(value)
                 value_size = len(value) if hasattr(value, '__len__') else 'N/A'
                 logging.debug(f"Substituting '{full_param_name}': Type={value_type}, Size/Len={value_size}")
-                return str(value)  # Convert final value to string
+                
+                # Enhanced error handling for str() conversion
+                try:
+                    result = str(value)  # Try to convert to string
+                    return result
+                except TypeError as str_err:
+                    # More detailed error for str() conversion failure
+                    logging.error(f"Failed to convert parameter '{full_param_name}' to string: {str_err}")
+                    logging.error(f"Value details: type={value_type}, repr={value!r}")
+                    if hasattr(value, '__origin__'):
+                        logging.error(f"  __origin__={value.__origin__}, __args__={getattr(value, '__args__', 'N/A')}")
+                    # Re-raise with more context
+                    raise TypeError(f"Cannot convert parameter '{full_param_name}' to string: {str_err}")
             except (KeyError, AttributeError, TypeError) as e:  # Catch potential errors during access
                 logging.error(f"Parameter '{full_param_name}' not found or access error in provided params: {e}")
                 missing_params.append(full_param_name)
@@ -108,6 +120,26 @@ class AtomicTaskExecutor:
         """
         task_name = atomic_task_def.get("name", "unnamed_atomic_task")
         logging.info(f"Executing atomic task body for: {task_name}")
+
+        # --- START ADDED LOGGING ---
+        try:
+            # Log types of values within params for detailed debugging
+            param_types = {k: type(v).__name__ for k, v in params.items()}
+            logging.debug(f"AtomicTaskExecutor received params: {params}")
+            logging.debug(f"AtomicTaskExecutor received param types: {param_types}")
+            
+            # Additional detailed logging for complex objects
+            for k, v in params.items():
+                if not isinstance(v, (str, int, float, bool, type(None))):
+                    logging.debug(f"Complex parameter '{k}' details: {v!r}")
+                    if hasattr(v, '__dict__'):
+                        logging.debug(f"  __dict__: {v.__dict__}")
+                    if hasattr(v, '__origin__'):
+                        logging.debug(f"  __origin__: {v.__origin__}")
+                        logging.debug(f"  __args__: {getattr(v, '__args__', 'N/A')}")
+        except Exception as log_e:
+            logging.error(f"Error logging params in AtomicTaskExecutor: {log_e}")
+        # --- END ADDED LOGGING ---
 
         try:
             # --- 1. Parameter Substitution (Strictly from params) ---
