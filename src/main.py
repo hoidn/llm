@@ -99,35 +99,14 @@ ANALYZE_AIDER_RESULT_TEMPLATE = {
         "iteration": {"type": "integer", "description": "The current iteration number."},
         "max_retries": {"type": "integer", "description": "The maximum number of retries allowed."}
     },
-    "instructions": """
-Analyze the result of an Aider coding iteration based on the provided information.
-Determine if the iteration was successful, needs revision, or should be aborted.
-
-- If the Aider status is FAILED or the content indicates a clear failure or inability to proceed, the status should likely be REVISE (if fixable) or ABORT (if unrecoverable).
-- If the Aider status is COMPLETE and the content looks reasonable, the status should likely be SUCCESS.
-- If the Aider status is COMPLETE but the content seems incorrect or incomplete based on the original prompt, the status should be REVISE.
-
-Provide a verdict ('SUCCESS', 'REVISE', 'ABORT').
-If 'REVISE', provide a 'next_prompt' for Aider to address the issues.
-Optionally, provide a brief 'explanation'.
-
-Aider Iteration: {{iteration}} / {{max_retries}}
-Original Prompt to Aider:
-{{original_prompt}}
-
-Aider Execution Status: {{aider_result_status}}
-Aider Result Content/Error:
-{{aider_result_content}}
-
+    "instructions": """Simple Test: Iteration {{iteration}} / {{max_retries}}. Status: {{aider_result_status}}.
 Output the result ONLY as a valid JSON object conforming to the FeedbackResult schema:
 {
-  "status": "SUCCESS" | "REVISE" | "ABORT",
-  "next_prompt": "string (Required if status is REVISE, otherwise null)",
-  "explanation": "string (Optional brief explanation)"
+  "status": "SUCCESS",
+  "next_prompt": null,
+  "explanation": "Test with simplified template."
 }
-
-**IMPORTANT:** Your response MUST contain ONLY the valid JSON object conforming to the FeedbackResult structure specified above. Do NOT include any introductory text, explanations, apologies, or concluding remarks. Your entire output must be the JSON object itself, starting with `{` and ending with `}`.
-""",
+**IMPORTANT:** Your response MUST contain ONLY the valid JSON object conforming to the FeedbackResult structure specified above. Do NOT include any introductory text, explanations, apologies, or concluding remarks. Your entire output must be the JSON object itself, starting with `{` and ending with `}`.""",
     "output_format": {"type": "json", "schema": "src.system.models.FeedbackResult"}
 }
 
