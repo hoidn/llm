@@ -1026,7 +1026,12 @@ class SexpEvaluator:
                         details={"task_name": task_name, "returned_type": str(type(task_result_obj))} # Add details
                     ).model_dump(exclude_none=True)}
                  )
-            logging.debug(f"  Task '{task_name}' execution returned: {task_result_obj.model_dump_json(indent=2)}")
+            # Robust logging for TaskResult
+            try:
+                debug_dump = task_result_obj.model_dump_json(indent=2)
+            except Exception: 
+                debug_dump = str(task_result_obj) # Fallback for serialization issues
+            logging.debug(f"  Task '{task_name}' execution returned: {debug_dump}")
             return task_result_obj
         except Exception as e_exec:
             logging.exception(f"  Error executing atomic task '{task_name}': {e_exec}")

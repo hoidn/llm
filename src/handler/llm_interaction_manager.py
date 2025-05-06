@@ -448,7 +448,30 @@ class LLMInteractionManager:
                 response, "output", None
             )  # Common attribute for text output
             tool_calls = getattr(response, "tool_calls", [])  # Check for tool calls
-            usage = getattr(response, "usage", {})  # Check for usage data
+            
+            # --- START: Process usage data ---
+            raw_usage = getattr(response, "usage", None)
+            actual_usage_data: Optional[Dict[str, Any]] = None
+
+            if raw_usage is not None:
+                if callable(raw_usage):
+                    try:
+                        actual_usage_data = raw_usage() 
+                        logger.debug(f"Called response.usage() method, got: {actual_usage_data}")
+                    except Exception as e_usage_call:
+                        logger.warning(f"Could not call response.usage() method: {e_usage_call}. Storing as string.")
+                        actual_usage_data = {"raw_usage_representation": str(raw_usage)}
+                elif isinstance(raw_usage, dict):
+                    actual_usage_data = raw_usage
+                    logger.debug(f"response.usage was a dict: {actual_usage_data}")
+                else:
+                    logger.warning(f"response.usage is of unexpected type: {type(raw_usage)}. Storing as string.")
+                    actual_usage_data = {"raw_usage_representation": str(raw_usage)}
+            else:
+                logger.debug("No 'usage' attribute found in pydantic-ai response.")
+            # --- END: Process usage data ---
+            
+            usage = actual_usage_data # Use the processed data
 
             # Initialize parsed_content to None
             parsed_content = None
