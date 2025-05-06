@@ -30,7 +30,7 @@ from src.main import Application # Assuming Application is in src.main
 from src.system.models import TaskResult # For type hinting and checking
 
 # --- Logging Setup ---
-LOG_LEVEL = logging.INFO
+LOG_LEVEL = logging.DEBUG
 # Configure basic logging
 logging.basicConfig(
     level=LOG_LEVEL,
@@ -176,7 +176,6 @@ def run_code_processing_demo():
           )
         )
       )
-    )
     """
 
     # Execute for refactoring case
