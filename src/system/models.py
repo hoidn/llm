@@ -178,7 +178,7 @@ class ContextManagement(BaseModel):
 
 # Default context management settings for atomic tasks invoked as subtasks
 SUBTASK_CONTEXT_DEFAULTS: ContextManagement = ContextManagement(
-    inheritContext='subset',
+    inheritContext='none',  # Changed from 'subset' to 'none' to be compatible with freshContext='enabled'
     accumulateData=False,
     accumulationFormat='notes_only',
     freshContext='enabled'
