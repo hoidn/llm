@@ -13,6 +13,7 @@ from src.system.models import (
 )
 from src.system.errors import SexpSyntaxError, SexpEvaluationError
 from src.sexp_evaluator.sexp_evaluator import SexpEvaluator # Import SexpEvaluator
+from src.sexp_evaluator.sexp_environment import SexpEnvironment # ADDED for S-expression execution
 
 # Use TYPE_CHECKING to avoid circular imports at runtime
 if TYPE_CHECKING:
@@ -43,7 +44,7 @@ def execute_programmatic_task(
     flags: Dict[str, bool], # Corrected type hint
     handler_instance: 'BaseHandler',
     task_system_instance: 'TaskSystem',
-    memory_system: 'MemorySystem',
+    memory_system: 'MemorySystem', # Ensure this is passed in
     optional_history_str: Optional[str] = None # Added optional history
 ) -> Dict[str, Any]:
     """
@@ -70,58 +71,55 @@ def execute_programmatic_task(
     # --- S-expression Handling ---
     if identifier.strip().startswith('('):
         notes['execution_path'] = "s_expression"
-        logging.info("Identifier detected as S-expression.")
+        logging.info("Identifier detected as S-expression. Executing via SexpEvaluator.")
         try:
+            # Ensure SexpEvaluator gets all its dependencies
             sexp_evaluator = SexpEvaluator(task_system_instance, handler_instance, memory_system)
-            # TODO: Pass optional_history_str if evaluator needs it
-            raw_result = sexp_evaluator.evaluate_string(identifier) # Assuming default initial_env=None
+            
+            # Prepare initial environment if params are meant to be bound
+            initial_bindings = params.copy() # Or a more specific way to select bindings
+            # Example: Add history if SexpEvaluator is designed to use it
+            # if optional_history_str: initial_bindings["_history_"] = optional_history_str
+            
+            initial_env = SexpEnvironment(bindings=initial_bindings) # Pass params as initial bindings
+            
+            raw_result = sexp_evaluator.evaluate_string(identifier, initial_env=initial_env)
 
-            # Convert raw result to TaskResult object
+            # Convert raw result to TaskResult object/dict
             if isinstance(raw_result, TaskResult):
                 task_result_obj = raw_result
             elif isinstance(raw_result, dict) and "status" in raw_result and "content" in raw_result:
-                 try:
-                     task_result_obj = TaskResult.model_validate(raw_result)
-                 except Exception as val_err:
-                     logging.warning(f"Sexp result looked like TaskResult dict but failed validation: {val_err}. Wrapping.")
-                     task_result_obj = TaskResult(status="COMPLETE", content=str(raw_result), notes={"sexp_raw_result": raw_result})
-            else:
-                 task_result_obj = TaskResult(status="COMPLETE", content=str(raw_result), notes={"sexp_raw_result": raw_result})
-
-            # Merge dispatcher notes into the result notes
-            if task_result_obj.notes is None: task_result_obj.notes = {}
-            task_result_obj.notes.update(notes)
+                try:
+                    task_result_obj = TaskResult.model_validate(raw_result)
+                except Exception as val_err:
+                    logging.warning(f"Sexp result looked like TaskResult dict but failed validation: {val_err}. Wrapping.")
+                    task_result_obj = TaskResult(status="COMPLETE", content=str(raw_result), notes={"sexp_raw_result": raw_result})
+            else: # Wrap any other type of result
+                task_result_obj = TaskResult(status="COMPLETE", content=str(raw_result), notes={"sexp_raw_result": raw_result})
+            
+            if task_result_obj.notes is None: task_result_obj.notes = {} # Ensure notes dict exists
+            task_result_obj.notes.update(notes) # Merge dispatcher notes
             task_result_dict = task_result_obj.model_dump(exclude_none=True)
 
         except SexpSyntaxError as e:
             logging.warning(f"S-expression syntax error for '{identifier[:50]}...': {e}")
-            # Create TaskFailureDetails object for details
             details_obj = TaskFailureDetails(failing_expression=e.sexp_string, notes={"raw_error_details": e.error_details})
-            # Use CORRECTED helper signature
             task_result_dict = _create_failed_result_dict("input_validation_failure", f"S-expression Syntax Error: {e.args[0]}", details_obj)
-            # Merge notes into the error result
             if 'notes' not in task_result_dict: task_result_dict['notes'] = {}
             task_result_dict['notes'].update(notes)
 
         except SexpEvaluationError as e:
             logging.warning(f"S-expression evaluation error for '{identifier[:50]}...': {e}")
-            # Create TaskFailureDetails object for details
             details_obj = TaskFailureDetails(failing_expression=e.expression, notes={"raw_error_details": e.error_details})
-            # Use CORRECTED helper signature
             task_result_dict = _create_failed_result_dict("subtask_failure", f"S-expression Evaluation Error: {e.args[0]}", details_obj)
-            # Merge notes into the error result
             if 'notes' not in task_result_dict: task_result_dict['notes'] = {}
             task_result_dict['notes'].update(notes)
-
         except Exception as e:
             logging.exception(f"Unexpected error during S-expression evaluation: {e}")
-            # Use CORRECTED helper signature (details_obj is None here)
-            task_result_dict = _create_failed_result_dict("unexpected_error", f"Unexpected evaluation error: {e}")
-            # Merge notes into the error result
+            task_result_dict = _create_failed_result_dict("unexpected_error", f"Unexpected S-expression evaluation error: {e}")
             if 'notes' not in task_result_dict: task_result_dict['notes'] = {}
             task_result_dict['notes'].update(notes)
-
-        return task_result_dict
+        return task_result_dict # RETURN HERE for S-expressions
 
     # --- Named Target Handling (Task or Tool) ---
     resolved_files: Optional[List[str]] = None
