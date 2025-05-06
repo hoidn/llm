@@ -53,6 +53,7 @@ except Exception as e:
 # logger.info(f"Final AIDER_AVAILABLE status after import block: {AIDER_AVAILABLE}") # Removed
 
 
+# TODO is it redundant to have both output_format and explicit format instructions in the main prompt?
 # --- Aider Loop Task Templates ---
 GENERATE_PLAN_TEMPLATE = {
     "name": "user:generate-plan",
