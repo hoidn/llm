@@ -251,6 +251,10 @@ class Application:
                         "context_input": { "description": "Input query/context details (as dict)" },
                         "file_contents": { "description": "A single string containing file contents wrapped in `<file path=...>...</file>` tags" }
                     },
+                    "params": {
+                        "context_input": { "description": "Input query/context details (as dict)" },
+                        "file_contents": { "description": "A single string containing file contents wrapped in `<file path=...>...</file>` tags" }
+                    },
                     "instructions": """Analyze the user query details in 'context_input'.
 Review the **full file contents** provided in the 'file_contents' parameter (a dictionary mapping paths to content).
 Based on the query and the **provided file contents**, select up to 10 relevant file paths *from the keys of the file_contents dictionary*. Assign a relevance score (0.0-1.0) to each selected path.
@@ -281,6 +285,10 @@ Select the best matching paths *from the provided file contents*.
                     "subtype": "associative_matching",
                     "description": "Internal task to find relevant files based on query and pre-generated METADATA.",
                      "parameters": {
+                        "context_input": { "description": "Input query/context details (as dict)" },
+                        "metadata_snippet": { "description": "Dictionary mapping candidate file paths to their metadata strings" }
+                    },
+                    "params": {
                         "context_input": { "description": "Input query/context details (as dict)" },
                         "metadata_snippet": { "description": "Dictionary mapping candidate file paths to their metadata strings" }
                     },
