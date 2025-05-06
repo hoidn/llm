@@ -367,3 +367,10 @@ class FeedbackResult(BaseModel):
     next_prompt: Optional[str] = Field(None, description="If status is REVISE, the revised prompt to give Aider for the next iteration.")
     explanation: Optional[str] = Field(None, description="Brief explanation for the status (e.g., why it succeeded, failed, or needs revision).")
     # Consider adding model_config = ConfigDict(extra='ignore') if needed
+
+    @model_validator(mode='after')
+    def check_next_prompt_on_revise(self) -> 'FeedbackResult':
+        if self.status == 'REVISE' and self.next_prompt is None:
+            raise ValueError("'next_prompt' is required when status is 'REVISE'")
+        # It's okay for next_prompt to be None if status is SUCCESS or ABORT
+        return self

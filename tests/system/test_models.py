@@ -393,8 +393,18 @@ def test_feedback_result_invalid_missing_fields():
     """Test FeedbackResult validation fails with missing required fields."""
     with pytest.raises(ValidationError):
         FeedbackResult.model_validate({}) # Missing status
-    with pytest.raises(ValidationError): # Missing next_prompt when status is REVISE
-        FeedbackResult.model_validate({"status": "REVISE", "explanation": "Needs prompt"})
+
+    # Test case: status is REVISE but next_prompt is missing
+    with pytest.raises(ValidationError, match="'next_prompt' is required when status is 'REVISE'"):
+         FeedbackResult.model_validate({"status": "REVISE", "explanation": "Needs changes"})
+
+    # Test case: status is REVISE and next_prompt is None (explicitly)
+    with pytest.raises(ValidationError, match="'next_prompt' is required when status is 'REVISE'"):
+         FeedbackResult.model_validate({"status": "REVISE", "next_prompt": None})
+
+    # Test case: status is SUCCESS/ABORT, next_prompt can be None (should NOT raise error)
+    FeedbackResult.model_validate({"status": "SUCCESS", "next_prompt": None})
+    FeedbackResult.model_validate({"status": "ABORT", "next_prompt": None})
 
 def test_feedback_result_invalid_types():
     """Test FeedbackResult validation fails with incorrect data types."""

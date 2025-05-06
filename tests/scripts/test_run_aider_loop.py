@@ -103,20 +103,25 @@ def test_parse_arguments_optional():
     assert args.max_retries == 5
     assert args.log_level == 'DEBUG'
 
-def test_parse_arguments_missing_required(mock_sys_exit):
+@patch('argparse.ArgumentParser.exit') # Mock argparse's exit method
+def test_parse_arguments_missing_required(mock_argparse_exit):
     """Test parsing fails if required arguments are missing."""
-    with patch.object(sys, 'argv', ['script_name']): # Missing all required
-        with pytest.raises(SystemExit): # argparse calls sys.exit on error
-            parse_arguments()
-    mock_sys_exit.assert_called()
+    with patch.object(sys, 'argv', ['script_name']):
+        parse_arguments() # Call the function
+    # Assert that argparse's exit was called (indicating an error)
+    mock_argparse_exit.assert_called()
+    # Optionally check the error code if needed, often it's 2 for argparse errors
+    # print(mock_argparse_exit.call_args) # Uncomment to see call details
 
-def test_parse_arguments_mutually_exclusive_prompts(mock_sys_exit):
+@patch('argparse.ArgumentParser.exit') # Mock argparse's exit method
+def test_parse_arguments_mutually_exclusive_prompts(mock_argparse_exit):
     """Test parsing fails if both prompt and prompt-file are given."""
-    test_args = ['/repo', 'ctx.txt', '-p', 'prompt1', '-f', 'prompts.txt']
+    # NOTE: Argparse handles required positional args BEFORE mutual exclusion usually.
+    # Need to provide dummy positional args for repo_path and context_file.
+    test_args = ['/repo', 'ctx.txt', '--prompt', 'prompt1', '--prompt-file', 'prompts.txt']
     with patch.object(sys, 'argv', ['script_name'] + test_args):
-        with pytest.raises(SystemExit):
-            parse_arguments()
-    mock_sys_exit.assert_called()
+        parse_arguments()
+    mock_argparse_exit.assert_called()
 
 # --- Test Prompt Loading ---
 
@@ -126,44 +131,48 @@ def test_load_prompts_from_args():
     prompts = load_prompts(args)
     assert prompts == ['prompt1', 'prompt2']
 
-def test_load_prompts_from_file_success(mock_os_path_exists, mock_open_file):
+@patch('sys.exit') # Keep mocking exit just in case
+@patch('os.path.exists')
+@patch('builtins.open', new_callable=mock_open) # Mock open directly
+def test_load_prompts_from_file_success(mock_open_handle, mock_exists, mock_exit):
     """Test loading prompts successfully from a file."""
-    file_content = "Some text\n<prompt> Prompt One </prompt>\nMore text\n<prompt>\nPrompt Two\n</prompt>Empty<prompt></prompt>"
-    mock_open_file.configure_mock(read_data=file_content)
-    mock_os_path_exists.return_value = True
+    # Correct file content with actual prompts
+    file_content = "Some text\n<prompt>Prompt One</prompt>\nMore text\n<prompt>\nPrompt Two\n</prompt>Empty<prompt>  </prompt><prompt>Prompt Three</prompt>"
+    # Configure mock_open to simulate reading this content
+    mock_open_handle.return_value.read.return_value = file_content
+    mock_exists.return_value = True
     args = argparse.Namespace(prompt=None, prompt_file='prompts.txt')
 
     prompts = load_prompts(args)
 
-    mock_os_path_exists.assert_called_once_with('prompts.txt')
-    mock_open_file.assert_called_once_with('prompts.txt', 'r', encoding='utf-8')
-    assert prompts == ['Prompt One', 'Prompt Two'] # Check stripping and removal of empty
+    # Assertions
+    assert prompts == ["Prompt One", "Prompt Two", "Prompt Three"] # Check stripped, non-empty prompts
+    mock_open_handle.assert_called_once_with('prompts.txt', 'r', encoding='utf-8')
+    mock_exit.assert_not_called() # Ensure sys.exit wasn't called
 
-def test_load_prompts_from_file_not_found(mock_os_path_exists, mock_sys_exit):
+@patch('sys.exit')
+def test_load_prompts_from_file_not_found(mock_sys_exit, mock_os_path_exists): # Pass mock_sys_exit
     """Test loading prompts when file does not exist."""
     mock_os_path_exists.return_value = False
     args = argparse.Namespace(prompt=None, prompt_file='missing.txt')
+    load_prompts(args) # Call the function
+    mock_sys_exit.assert_called_once_with("Error: Prompt file not found: missing.txt") # Assert exit call
 
-    with pytest.raises(SystemExit):
-        load_prompts(args)
-    mock_sys_exit.assert_called_with("Error: Prompt file not found: missing.txt")
-
-def test_load_prompts_from_file_no_tags(mock_os_path_exists, mock_open_file, mock_sys_exit):
+@patch('sys.exit')
+def test_load_prompts_from_file_no_tags(mock_sys_exit, mock_os_path_exists, mock_open_file): # Pass mock_sys_exit
     """Test loading prompts when file has no <prompt> tags."""
     mock_open_file.configure_mock(read_data="Just plain text.")
     mock_os_path_exists.return_value = True
     args = argparse.Namespace(prompt=None, prompt_file='no_tags.txt')
+    load_prompts(args)
+    mock_sys_exit.assert_called_once_with("Error: No prompts found in file: no_tags.txt")
 
-    with pytest.raises(SystemExit):
-        load_prompts(args)
-    mock_sys_exit.assert_called_with("Error: No prompts found in file: no_tags.txt")
-
-def test_load_prompts_no_prompts_provided(mock_sys_exit):
+@patch('sys.exit')
+def test_load_prompts_no_prompts_provided(mock_sys_exit): # Pass mock_sys_exit
     """Test error when neither --prompt nor --prompt-file is provided."""
     args = argparse.Namespace(prompt=None, prompt_file=None)
-    with pytest.raises(SystemExit):
-        load_prompts(args)
-    mock_sys_exit.assert_called_with("Error: No prompts provided.")
+    load_prompts(args)
+    mock_sys_exit.assert_called_once_with("Error: No prompts provided.")
 
 # --- Test Main Orchestration Logic ---
 
@@ -253,25 +262,25 @@ def configure_mock_app(mock_app, plan_success=True, aider_results=None, analysis
     mock_app.handle_query.return_value = final_analysis_result
 
 
+@patch('sys.exit') # Patch sys.exit for all orchestration tests
 def test_run_orchestration_success_path(
-    default_args, mock_application, mock_sys_exit, mock_os_path_exists, mock_os_path_isdir, mock_open_file, mock_logging
+    mock_sys_exit, # Add mock_sys_exit parameter
+    default_args, mock_application, mock_os_path_exists, mock_os_path_isdir, mock_open_file, mock_logging
 ):
     """Test the successful execution path of the orchestration loop."""
-    # Arrange: Configure mocks for success
     configure_mock_app(
         mock_application,
         plan_success=True,
-        aider_results=[{"status": "COMPLETE", "content": "Aider success"}], # Single successful Aider run
-        analysis_results=["SUCCESS"], # Model A says success on first try
+        aider_results=[{"status": "COMPLETE", "content": "Aider success"}],
+        analysis_results=["SUCCESS"],
         test_success=True,
         final_analysis_success=True,
         final_verdict="OVERALL_SUCCESS"
     )
-    mock_open_file.configure_mock(read_data="Initial context") # Mock context file read
+    mock_open_file.configure_mock(read_data="Initial context")
 
     # Act
-    with pytest.raises(SystemExit) as excinfo:
-         run_orchestration_loop(default_args)
+    run_orchestration_loop(default_args) # Call directly
 
     # Assert
     # Check planning call
@@ -286,28 +295,27 @@ def test_run_orchestration_success_path(
     mock_application.handle_query.assert_called_once()
     assert "OVERALL_SUCCESS" in mock_application.handle_query.call_args[0][0] # Check prompt content
 
-    # Check final exit code
-    assert excinfo.value.code == 0
-    mock_sys_exit.assert_called_once_with(0)
+    mock_sys_exit.assert_called_once_with(0) # Expect exit code 0 for success
 
+@patch('sys.exit')
 def test_run_orchestration_planning_fails(
-    default_args, mock_application, mock_sys_exit, mock_os_path_exists, mock_os_path_isdir, mock_open_file, mock_logging
+    mock_sys_exit, # Add mock
+    default_args, mock_application, mock_os_path_exists, mock_os_path_isdir, mock_open_file, mock_logging
 ):
     """Test failure during the planning phase."""
     configure_mock_app(mock_application, plan_success=False)
     mock_open_file.configure_mock(read_data="Initial context")
 
-    with pytest.raises(SystemExit) as excinfo:
-        run_orchestration_loop(default_args)
-
+    run_orchestration_loop(default_args)
     mock_application.handle_task_command.assert_called_once_with("user:generate-plan", ANY)
     # Ensure other phases were not reached
     mock_application.handle_query.assert_not_called()
-    assert excinfo.value.code == 1
-    mock_sys_exit.assert_called_once_with(1)
+    mock_sys_exit.assert_called_once_with(1) # Expect exit code 1 for failure
 
+@patch('sys.exit')
 def test_run_orchestration_loop_revise_then_success(
-    default_args, mock_application, mock_sys_exit, mock_os_path_exists, mock_os_path_isdir, mock_open_file, mock_logging
+    mock_sys_exit, # Add mock
+    default_args, mock_application, mock_os_path_exists, mock_os_path_isdir, mock_open_file, mock_logging
 ):
     """Test loop with one revision then success."""
     configure_mock_app(
@@ -317,15 +325,14 @@ def test_run_orchestration_loop_revise_then_success(
             {"status": "COMPLETE", "content": "Aider attempt 1"},
             {"status": "COMPLETE", "content": "Aider attempt 2"}
         ],
-        analysis_results=["REVISE", "SUCCESS"], # Revise first, then success
+        analysis_results=["REVISE: Prompt 2", "SUCCESS"], # Revise first, then success
         test_success=True,
         final_analysis_success=True,
         final_verdict="OVERALL_SUCCESS"
     )
     mock_open_file.configure_mock(read_data="Initial context")
 
-    with pytest.raises(SystemExit) as excinfo:
-        run_orchestration_loop(default_args)
+    run_orchestration_loop(default_args)
 
     # Assertions
     assert mock_application.handle_task_command.call_count == 5 # plan + aider*2 + analysis*2 + test
@@ -336,11 +343,12 @@ def test_run_orchestration_loop_revise_then_success(
     # Check second aider call used revised prompt
     assert aider_calls[1].args[1]['prompt'] == "Revised prompt 1"
     mock_application.handle_query.assert_called_once()
-    assert excinfo.value.code == 0
     mock_sys_exit.assert_called_once_with(0)
 
+@patch('sys.exit')
 def test_run_orchestration_loop_abort(
-    default_args, mock_application, mock_sys_exit, mock_os_path_exists, mock_os_path_isdir, mock_open_file, mock_logging
+    mock_sys_exit, # Add mock
+    default_args, mock_application, mock_os_path_exists, mock_os_path_isdir, mock_open_file, mock_logging
 ):
     """Test loop aborts based on Model A feedback."""
     configure_mock_app(
@@ -353,8 +361,7 @@ def test_run_orchestration_loop_abort(
     )
     mock_open_file.configure_mock(read_data="Initial context")
 
-    with pytest.raises(SystemExit) as excinfo:
-        run_orchestration_loop(default_args)
+    run_orchestration_loop(default_args)
 
     # Assertions
     assert mock_application.handle_task_command.call_count == 3 # plan + aider + analysis
@@ -362,11 +369,12 @@ def test_run_orchestration_loop_abort(
     test_call = next((c for c in mock_application.handle_task_command.call_args_list if c.args[0] == 'system:execute_shell_command'), None)
     assert test_call is None
     mock_application.handle_query.assert_not_called()
-    assert excinfo.value.code == 1
     mock_sys_exit.assert_called_once_with(1)
 
+@patch('sys.exit')
 def test_run_orchestration_max_retries_reached(
-    default_args, mock_application, mock_sys_exit, mock_os_path_exists, mock_os_path_isdir, mock_open_file, mock_logging
+    mock_sys_exit, # Add mock
+    default_args, mock_application, mock_os_path_exists, mock_os_path_isdir, mock_open_file, mock_logging
 ):
     """Test loop finishes due to max retries without success."""
     default_args.max_retries = 2
@@ -377,15 +385,14 @@ def test_run_orchestration_max_retries_reached(
             {"status": "COMPLETE", "content": "Aider attempt 1"},
             {"status": "COMPLETE", "content": "Aider attempt 2"}
         ],
-        analysis_results=["REVISE", "REVISE"], # Always revise
+        analysis_results=["REVISE: Prompt 2", "REVISE: Prompt 3"], # Always revise
         test_success=True, # Tests run after loop finishes
         final_analysis_success=True,
         final_verdict="OVERALL_FAILURE" # Assume final analysis says failure
     )
     mock_open_file.configure_mock(read_data="Initial context")
 
-    with pytest.raises(SystemExit) as excinfo:
-        run_orchestration_loop(default_args)
+    run_orchestration_loop(default_args)
 
     # Assertions
     assert mock_application.handle_task_command.call_count == 6 # plan + aider*2 + analysis*2 + test
@@ -394,11 +401,12 @@ def test_run_orchestration_max_retries_reached(
     assert len(aider_calls) == 2
     assert len(analysis_calls) == 2
     mock_application.handle_query.assert_called_once() # Final analysis still runs
-    assert excinfo.value.code == 1 # Overall failure
-    mock_sys_exit.assert_called_once_with(1)
+    mock_sys_exit.assert_called_once_with(1) # Overall failure
 
+@patch('sys.exit')
 def test_run_orchestration_tests_fail(
-    default_args, mock_application, mock_sys_exit, mock_os_path_exists, mock_os_path_isdir, mock_open_file, mock_logging
+    mock_sys_exit, # Add mock
+    default_args, mock_application, mock_os_path_exists, mock_os_path_isdir, mock_open_file, mock_logging
 ):
     """Test overall failure when tests fail after a successful loop."""
     configure_mock_app(
@@ -412,8 +420,7 @@ def test_run_orchestration_tests_fail(
     )
     mock_open_file.configure_mock(read_data="Initial context")
 
-    with pytest.raises(SystemExit) as excinfo:
-        run_orchestration_loop(default_args)
+    run_orchestration_loop(default_args)
 
     # Assertions
     assert mock_application.handle_task_command.call_count == 4 # plan + aider + analysis + test
@@ -421,11 +428,12 @@ def test_run_orchestration_tests_fail(
     # Check final analysis prompt includes test failure info
     assert "Test Exit Code: 1" in mock_application.handle_query.call_args[0][0]
     assert "Test failed" in mock_application.handle_query.call_args[0][0]
-    assert excinfo.value.code == 1 # Overall failure because tests failed
-    mock_sys_exit.assert_called_once_with(1)
+    mock_sys_exit.assert_called_once_with(1) # Overall failure because tests failed
 
+@patch('sys.exit')
 def test_run_orchestration_final_analysis_fails(
-     default_args, mock_application, mock_sys_exit, mock_os_path_exists, mock_os_path_isdir, mock_open_file, mock_logging
+    mock_sys_exit, # Add mock
+     default_args, mock_application, mock_os_path_exists, mock_os_path_isdir, mock_open_file, mock_logging
 ):
     """Test overall failure when the final analysis query fails."""
     configure_mock_app(
@@ -438,33 +446,43 @@ def test_run_orchestration_final_analysis_fails(
     )
     mock_open_file.configure_mock(read_data="Initial context")
 
-    with pytest.raises(SystemExit) as excinfo:
-        run_orchestration_loop(default_args)
+    run_orchestration_loop(default_args)
 
     # Assertions
     assert mock_application.handle_task_command.call_count == 4 # plan + aider + analysis + test
     mock_application.handle_query.assert_called_once()
-    assert excinfo.value.code == 1 # Overall failure
-    mock_sys_exit.assert_called_once_with(1)
+    mock_sys_exit.assert_called_once_with(1) # Overall failure
 
+@patch('sys.exit')
 def test_run_orchestration_repo_path_invalid(
-    default_args, mock_application, mock_sys_exit, mock_os_path_exists, mock_os_path_isdir, mock_open_file, mock_logging
+    mock_sys_exit, # Add mock
+    default_args, mock_application, mock_os_path_exists, mock_os_path_isdir, mock_open_file, mock_logging
 ):
     """Test script exits if repo path is invalid."""
-    mock_os_path_isdir.return_value = False # Simulate invalid repo path
-    with pytest.raises(SystemExit) as excinfo:
-        run_orchestration_loop(default_args)
+    # Simulate only the second isdir check (for .git) failing
+    mock_os_path_isdir.side_effect = lambda path: '.git' not in path
+    mock_os_path_exists.return_value = True # Assume base path exists
+
+    run_orchestration_loop(default_args)
+    # Assert that sys.exit was called due to the ValueError raised
     mock_application.handle_task_command.assert_not_called() # Should exit early
-    assert excinfo.value.code == 1
     mock_sys_exit.assert_called_once_with(1)
 
+@patch('sys.exit')
 def test_run_orchestration_context_file_not_found(
-    default_args, mock_application, mock_sys_exit, mock_os_path_exists, mock_os_path_isdir, mock_open_file, mock_logging
+    mock_sys_exit, # Add mock
+    default_args, mock_application, mock_os_path_exists, mock_os_path_isdir, mock_open_file, mock_logging
 ):
     """Test script exits if context file is not found."""
-    mock_os_path_exists.side_effect = lambda path: path != '/mock/context.txt' # Only context file doesn't exist
-    with pytest.raises(SystemExit) as excinfo:
-        run_orchestration_loop(default_args)
+    # Make os.path.exists return False only for the context file
+    original_exists = os.path.exists
+    def exists_side_effect(path):
+        if path == default_args.context_file:
+            return False
+        return original_exists(path) # Or use mock_os_path_exists for others if needed
+    mock_os_path_exists.side_effect = exists_side_effect
+    mock_os_path_isdir.return_value = True # Assume repo path is valid
+
+    run_orchestration_loop(default_args)
     mock_application.handle_task_command.assert_not_called() # Should exit early
-    assert excinfo.value.code == 1
     mock_sys_exit.assert_called_once_with(1)

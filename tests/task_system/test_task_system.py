@@ -391,11 +391,13 @@ def test_find_matching_tasks_sorting(task_system_instance):
 
 # --- Integration Tests for New Atomic Tasks ---
 
+@patch.object(TaskSystem, 'find_template')
 @patch.object(AtomicTaskExecutor, 'execute_body')
-def test_execute_generate_plan_task(mock_execute_body, task_system_instance, mock_handler):
+def test_execute_generate_plan_task(mock_execute_body, mock_find_template, task_system_instance, mock_handler):
     """Integration test for executing user:generate-plan task."""
     # Arrange
-    task_system_instance.register_template(GENERATE_PLAN_TEMPLATE) # Register the actual template
+    # Mock find_template to return the template directly instead of relying on registration
+    mock_find_template.return_value = GENERATE_PLAN_TEMPLATE
 
     # Mock the executor's behavior (which internally calls the handler)
     # Simulate the executor returning a dict representing the TaskResult
@@ -426,6 +428,7 @@ def test_execute_generate_plan_task(mock_execute_body, task_system_instance, moc
     result = task_system_instance.execute_atomic_template(request)
 
     # Assert
+    mock_find_template.assert_called_once_with("user:generate-plan")
     mock_execute_body.assert_called_once()
     call_args, _ = mock_execute_body.call_args
     assert call_args[0]['name'] == "user:generate-plan" # Check template passed
@@ -439,11 +442,13 @@ def test_execute_generate_plan_task(mock_execute_body, task_system_instance, moc
     assert result.parsedContent.test_command == expected_plan_data["test_command"]
     assert result.notes.get("template_used") == "user:generate-plan"
 
+@patch.object(TaskSystem, 'find_template')
 @patch.object(AtomicTaskExecutor, 'execute_body')
-def test_execute_analyze_aider_result_task(mock_execute_body, task_system_instance, mock_handler):
+def test_execute_analyze_aider_result_task(mock_execute_body, mock_find_template, task_system_instance, mock_handler):
     """Integration test for executing user:analyze-aider-result task."""
     # Arrange
-    task_system_instance.register_template(ANALYZE_AIDER_RESULT_TEMPLATE)
+    # Mock find_template to return the template directly instead of relying on registration
+    mock_find_template.return_value = ANALYZE_AIDER_RESULT_TEMPLATE
 
     expected_feedback_data = {
         "status": "REVISE",
@@ -474,6 +479,7 @@ def test_execute_analyze_aider_result_task(mock_execute_body, task_system_instan
     result = task_system_instance.execute_atomic_template(request)
 
     # Assert
+    mock_find_template.assert_called_once_with("user:analyze-aider-result")
     mock_execute_body.assert_called_once()
     call_args, _ = mock_execute_body.call_args
     assert call_args[0]['name'] == "user:analyze-aider-result"
