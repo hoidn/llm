@@ -14,7 +14,10 @@ import asyncio # Add asyncio import
 from typing import Dict, Any, Optional, List
 
 # Add project root to path for src imports
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+# Define PROJECT_ROOT at the module level
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+sys.path.insert(0, PROJECT_ROOT)
+
 
 # Configure logging early
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -86,10 +89,7 @@ class Application:
         try:
             # --- START MODIFICATION ---
             # 1. Instantiate components with fewer dependencies first
-            # Define PROJECT_ROOT if not already defined globally in the file
-            # This assumes PROJECT_ROOT is needed for the default path
-            if 'PROJECT_ROOT' not in globals():
-                PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+            # Use the module-level PROJECT_ROOT
             fm_base_path = self.config.get('file_manager_base_path', PROJECT_ROOT) # Use PROJECT_ROOT as default
             self.file_access_manager = FileAccessManager(base_path=fm_base_path)
             logger.info(f"FileAccessManager initialized with base_path: {self.file_access_manager.base_path}") # Log actual base path
@@ -526,16 +526,8 @@ Select the best matching paths *from the provided metadata* and output the JSON.
 
     def _load_mcp_config(self, config_path: str = ".mcp.json"):
         """Loads MCP server configurations from a JSON file."""
-        # Determine path relative to project root or use absolute
-        if 'PROJECT_ROOT' not in globals():
-            # Calculate PROJECT_ROOT if not globally defined
-            SCRIPT_DIR_MAIN = os.path.dirname(os.path.abspath(__file__))
-            PROJECT_ROOT_MAIN = os.path.abspath(os.path.join(SCRIPT_DIR_MAIN, '..'))
-            logger.warning("PROJECT_ROOT not found globally, calculating locally in _load_mcp_config.")
-        else:
-            PROJECT_ROOT_MAIN = PROJECT_ROOT  # Use existing global if available
-
-        abs_config_path = os.path.join(PROJECT_ROOT_MAIN, config_path)
+        # Use the module-level PROJECT_ROOT
+        abs_config_path = os.path.join(PROJECT_ROOT, config_path)
         logger.info(f"Attempting to load MCP server config from: {abs_config_path}")
         try:
             if os.path.exists(abs_config_path):
