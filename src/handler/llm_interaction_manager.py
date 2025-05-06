@@ -411,20 +411,22 @@ class LLMInteractionManager:
                 f"LLMInteractionManager: Calling agent.run_sync (Model: '{target_model_id_for_log}') with prompt='{prompt[:100]}...' and kwargs={run_kwargs}"
             )
 
-            # Add detailed logging for debugging the assert_never issue
-            logger.debug(f"------->>> Preparing to call run_sync for model: {target_model_id_for_log}")
-            logger.debug(f"------->>> Prompt Type: {type(prompt)}")
-            logger.debug(f"------->>> Prompt Content (first 500 chars): {prompt[:500]}")
-            # Use json.dumps for potentially complex history structure, handling errors
-            try:
-                history_json = json.dumps(run_kwargs.get("message_history", "N/A"), indent=2, default=str) # Use default=str for non-serializable
-            except Exception as json_e:
-                history_json = f"Error serializing history: {json_e}"
-            logger.debug(f"------->>> Run Kwargs History:\n{history_json}")
-            logger.debug(f"------->>> Run Kwargs System Prompt: {run_kwargs.get('system_prompt')}")
-            logger.debug(f"------->>> Run Kwargs Tools: {run_kwargs.get('tools')}")
-            logger.debug(f"------->>> Run Kwargs Output Type: {run_kwargs.get('output_type')}")
-            logger.debug(f"------->>> Full Run Kwargs: {run_kwargs}") # Log the whole dict
+            # Add concise logging for key parameters
+            logger.debug(f"Calling run_sync for model: {target_model_id_for_log}")
+            logger.debug(f"Prompt type: {type(prompt)}, length: {len(prompt)}")
+            logger.debug(f"System prompt: {run_kwargs.get('system_prompt')[:100]}...")
+            
+            # Log tool and output type information without full dumps
+            if 'tools' in run_kwargs:
+                tool_info = run_kwargs.get('tools')
+                if isinstance(tool_info, list):
+                    tool_count = len(tool_info)
+                    tool_names = [getattr(t, '__name__', str(t)) for t in tool_info[:5]] if callable(tool_info[0]) else [t.get('name', 'unnamed') for t in tool_info[:5]]
+                    logger.debug(f"Using {tool_count} tools: {', '.join(tool_names)}{' and more...' if tool_count > 5 else ''}")
+            
+            if 'output_type' in run_kwargs:
+                output_type = run_kwargs.get('output_type')
+                logger.debug(f"Output type: {getattr(output_type, '__name__', str(output_type))}")
 
             if self.debug_mode:
                 # Redundant logging now, keep or remove

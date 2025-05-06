@@ -115,8 +115,7 @@ def setup_logging(log_level_str: str):
     logging.getLogger('httpx').setLevel(logging.WARNING)
     logging.getLogger('httpcore').setLevel(logging.WARNING)
     
-    # --- FORCE SPECIFIC MODULE LOGGERS TO RESPECT DEBUG LEVEL ---
-    # Explicitly set the level for key module loggers AFTER basicConfig
+    # Explicitly set the level for key module loggers after basicConfig
     handler_logger = logging.getLogger("src.handler.base_handler")
     handler_logger.setLevel(log_level)
     # Set other important module loggers
