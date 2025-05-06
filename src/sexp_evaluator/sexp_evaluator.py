@@ -47,12 +47,8 @@ class Closure:
             definition_env: The SexpEnvironment captured at the time of lambda definition.
                             This environment is the parent for the function's call frame.
         """
-        # Validate params_ast contains only Symbols
-        for p_node in params_ast:
-            if not isinstance(p_node, Symbol):
-                # This validation should ideally happen before Closure creation,
-                # but a check here is also good.
-                raise SexpEvaluationError(f"Lambda parameters must be symbols, got {type(p_node)}: {p_node}")
+        # Validation that params_ast contains only Symbol objects is now done
+        # in SexpEvaluator._eval before Closure instantiation.
         
         self.params_ast: list = params_ast # List of Symbol objects
         self.body_ast: list = body_ast     # List of SexpNode (body expressions)
