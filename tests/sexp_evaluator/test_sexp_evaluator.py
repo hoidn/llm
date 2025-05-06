@@ -1811,3 +1811,331 @@ class TestSexpEvaluatorInternals:
         mock_if_handler.assert_called_once_with(arg_exprs, env, original_expr_str_expected)
         # Restore original handler if necessary for other tests, or use fresh evaluator
         evaluator.SPECIAL_FORM_HANDLERS['if'] = evaluator._eval_if_form
+
+# --- Tests for Lambda and Closures ---
+
+# Import Closure class for isinstance checks if it's accessible
+# If not, tests will rely on attribute checking (duck typing)
+try:
+    from src.sexp_evaluator.sexp_evaluator import Closure
+    CLOSURE_CLASS_AVAILABLE = True
+except ImportError:
+    CLOSURE_CLASS_AVAILABLE = False
+    Closure = None # Placeholder if not importable
+
+class TestSexpEvaluatorLambdaClosures:
+
+    def test_lambda_definition_creates_closure(self, evaluator, mock_parser):
+        """Test that (lambda (params) body) evaluates to a Closure object."""
+        sexp_str = "(lambda (x) (+ x 1))"
+        # AST for (lambda (x) (+ x 1))
+        params_ast = [S('x')]
+        body_expr_ast = [S('+'), S('x'), 1] # The single body expression
+        
+        # The SexpEvaluator's _eval for lambda expects node[2:] to be a list of body expressions.
+        # So, if the body is just one expression like (+ x 1), lambda_body_ast will be [[S('+'), S('x'), 1]]
+        # However, the Closure object itself stores node[2:] as self.body_ast.
+        # If the parser returns (lambda (x) (+ x 1)) as [S('lambda'), [S('x')], [S('+'), S('x'), 1]],
+        # then lambda_body_ast in _eval becomes [[S('+'), S('x'), 1]].
+        # Let's assume the parser returns the body expression directly if it's singular,
+        # and the _eval logic wraps it in a list if needed.
+        # The provided plan for _eval for lambda: lambda_body_ast = node[2:]
+        # If node = [S('lambda'), params_list_node, body_expr_1, body_expr_2, ...]
+        # then lambda_body_ast = [body_expr_1, body_expr_2, ...]
+        # So, for (lambda (x) (+ x 1)), AST is [S('lambda'), [S('x')], [S('+'), S('x'), 1]]
+        # params_list_node = [S('x')]
+        # lambda_body_ast = [[S('+'), S('x'), 1]]
+        
+        lambda_ast = [S('lambda'), params_ast, body_expr_ast] # Parser returns this
+        
+        mock_parser.parse_string.return_value = lambda_ast
+        
+        def_env = SexpEnvironment(parent=None)
+        result = evaluator.evaluate_string(sexp_str, initial_env=def_env)
+
+        assert hasattr(result, 'params_ast'), "Result missing 'params_ast'"
+        assert hasattr(result, 'body_ast'), "Result missing 'body_ast'"
+        assert hasattr(result, 'definition_env'), "Result missing 'definition_env'"
+        
+        if CLOSURE_CLASS_AVAILABLE:
+            assert isinstance(result, Closure), f"Result is not a Closure object, got {type(result)}"
+
+        assert result.params_ast == params_ast, "Closure params mismatch"
+        # body_ast in Closure should be a list of body expressions.
+        # Since lambda_body_ast = node[2:], and node[2] was body_expr_ast,
+        # result.body_ast should be [body_expr_ast]
+        assert result.body_ast == [body_expr_ast], "Closure body mismatch"
+        assert result.definition_env is def_env, "Closure definition environment mismatch"
+        mock_parser.parse_string.assert_called_once_with(sexp_str)
+
+    def test_lambda_application_basic(self, evaluator, mock_parser):
+        """Test basic application of a lambda-defined closure."""
+        # Sexp: ((lambda (x) (+ x 10)) 5)
+        sexp_str = "((lambda (x) (+ x 10)) 5)"
+
+        # AST for the whole expression:
+        # [[S('lambda'), [S('x')], [S('+'), S('x'), 10]], 5]
+        lambda_params_ast = [S('x')]
+        lambda_body_expr_ast = [S('+'), S('x'), 10]
+        lambda_expr_ast = [S('lambda'), lambda_params_ast, lambda_body_expr_ast]
+        
+        application_ast = [lambda_expr_ast, 5]
+        mock_parser.parse_string.return_value = application_ast
+
+        # Mock the evaluation of '+' primitive if not fully implemented/tested elsewhere
+        # For this test, assume '+' works or mock its behavior within _eval if needed.
+        # We'll rely on the _apply_operator logic for Python callables if '+' is a Python func.
+        # Or, if '+' is a primitive, its applier will be called.
+        # Let's assume '+' is a primitive that evaluates its args and sums them.
+        
+        # To make '+' work, we can define it in the environment or mock _eval for it.
+        # Simpler: Assume '+' is a known primitive that SexpEvaluator handles.
+        # We need to ensure the SexpEvaluator's _eval can handle the `+` operation.
+        # For simplicity in this test, let's mock the behavior of `_eval` for the `+` call.
+        
+        original_eval = evaluator._eval
+        def eval_side_effect(node, env):
+            if node == lambda_body_expr_ast and env.lookup('x') == 5: # Inside closure body
+                 # Simulate evaluation of (+ x 10) where x is 5
+                 # This part assumes '+' itself is handled correctly by a deeper _eval or primitive
+                 # For this specific test, we can directly return the expected result of the body
+                 return 15 
+            return original_eval(node, env)
+
+        with patch.object(evaluator, '_eval', side_effect=eval_side_effect) as mock_internal_eval:
+            result = evaluator.evaluate_string(sexp_str)
+            assert result == 15
+
+            # Check that the lambda expression itself was evaluated to create a Closure
+            # This call happens when `_eval(lambda_expr_ast, env)` is invoked by `_eval_list_form`
+            # for the operator part of `application_ast`.
+            assert any(call_args[0] == lambda_expr_ast for call_args, _ in mock_internal_eval.call_args_list), \
+                "Lambda expression was not evaluated."
+
+            # Check that the argument '5' was evaluated.
+            assert any(call_args[0] == 5 for call_args, _ in mock_internal_eval.call_args_list), \
+                "Argument '5' was not evaluated."
+
+            # Check that the body of the closure was evaluated with x=5 in its environment
+            # This is implicitly checked by `eval_side_effect` returning 15.
+            # We can be more explicit by checking the call to _eval for the body:
+            body_eval_call_found = False
+            for call_args_tuple in mock_internal_eval.call_args_list:
+                node_arg, env_arg = call_args_tuple[0] # call_args is a tuple: ((node, env), kwargs)
+                if node_arg == lambda_body_expr_ast:
+                    try:
+                        if env_arg.lookup('x') == 5: # Check if 'x' is 5 in the call_frame_env
+                            body_eval_call_found = True
+                            break
+                    except NameError:
+                        pass # 'x' not in this env
+            assert body_eval_call_found, "Closure body was not evaluated with correct parameter binding."
+
+
+    def test_lambda_lexical_scope_capture(self, evaluator, mock_parser):
+        """Test that closures capture their definition environment (lexical scope)."""
+        # Sexp: (let ((y 10)) ((lambda (x) (+ x y)) 5))
+        # The 'y' inside the lambda should refer to the 'y' from the 'let' scope.
+        sexp_str = "(let ((y 10)) ((lambda (x) (+ x y)) 5))"
+
+        y_sym = S('y')
+        x_sym = S('x')
+        plus_sym = S('+')
+        lambda_sym = S('lambda')
+        let_sym = S('let')
+
+        # AST for ((lambda (x) (+ x y)) 5)
+        lambda_expr_ast = [lambda_sym, [x_sym], [plus_sym, x_sym, y_sym]]
+        application_inner_ast = [lambda_expr_ast, 5]
+        
+        # AST for (let ((y 10)) ...)
+        let_ast = [let_sym, [[y_sym, 10]], application_inner_ast]
+        mock_parser.parse_string.return_value = let_ast
+
+        # Mock the evaluation of '+' primitive/callable
+        original_eval = evaluator._eval
+        def eval_side_effect(node, env):
+            # This will be called for various parts. We're interested in the body of the lambda.
+            # Body: [S('+'), S('x'), S('y')]
+            # When body is evaluated, x should be 5 (from arg), y should be 10 (from captured def_env)
+            if node == [plus_sym, x_sym, y_sym]:
+                val_x = env.lookup(x_sym.value())
+                val_y = env.lookup(y_sym.value())
+                if val_x == 5 and val_y == 10:
+                    return 15 # 5 + 10
+            return original_eval(node, env)
+
+        with patch.object(evaluator, '_eval', side_effect=eval_side_effect):
+            result = evaluator.evaluate_string(sexp_str)
+            assert result == 15
+
+    def test_lambda_higher_order_function_create(self, evaluator, mock_parser):
+        """Test creating a function that returns another function (closure)."""
+        # Sexp: (let ((adder (lambda (n) (lambda (x) (+ n x))))) ((adder 10) 5))
+        # (adder 10) should return a closure equivalent to (lambda (x) (+ 10 x))
+        # Then ((lambda (x) (+ 10 x)) 5) should be 15.
+        sexp_str = "(let ((adder (lambda (n) (lambda (x) (+ n x))))) ((adder 10) 5))"
+        
+        adder_sym, n_sym, x_sym, plus_sym, lambda_sym, let_sym = \
+            S('adder'), S('n'), S('x'), S('+'), S('lambda'), S('let')
+
+        # Inner lambda: (lambda (x) (+ n x))
+        inner_lambda_ast = [lambda_sym, [x_sym], [plus_sym, n_sym, x_sym]]
+        # Outer lambda: (lambda (n) <inner_lambda_ast>)
+        outer_lambda_ast = [lambda_sym, [n_sym], inner_lambda_ast]
+        
+        # Application: ((adder 10) 5)
+        # AST for (adder 10)
+        adder_call_ast = [adder_sym, 10]
+        # AST for (<result of (adder 10)> 5)
+        full_application_ast = [adder_call_ast, 5]
+        
+        # Let expression
+        let_ast = [let_sym, [[adder_sym, outer_lambda_ast]], full_application_ast]
+        mock_parser.parse_string.return_value = let_ast
+
+        # Mock '+' evaluation
+        original_eval = evaluator._eval
+        def eval_side_effect(node, env):
+            # For the body of the inner lambda: (+ n x)
+            if node == [plus_sym, n_sym, x_sym]:
+                val_n = env.lookup(n_sym.value()) # Should be 10 (captured by outer, passed to inner)
+                val_x = env.lookup(x_sym.value()) # Should be 5 (arg to inner lambda)
+                if val_n == 10 and val_x == 5:
+                    return 15
+            return original_eval(node, env)
+
+        with patch.object(evaluator, '_eval', side_effect=eval_side_effect):
+            result = evaluator.evaluate_string(sexp_str)
+            assert result == 15
+
+    def test_lambda_arity_mismatch_too_few_args(self, evaluator, mock_parser):
+        """Test error when a closure is called with too few arguments."""
+        sexp_str = "((lambda (a b) (+ a b)) 1)" # Expects 2, gets 1
+        
+        lambda_expr_ast = [S('lambda'), [S('a'), S('b')], [S('+'), S('a'), S('b')]]
+        application_ast = [lambda_expr_ast, 1]
+        mock_parser.parse_string.return_value = application_ast
+        
+        with pytest.raises(SexpEvaluationError, match="Arity mismatch: Closure expects 2 arguments, got 1"):
+            evaluator.evaluate_string(sexp_str)
+
+    def test_lambda_arity_mismatch_too_many_args(self, evaluator, mock_parser):
+        """Test error when a closure is called with too many arguments."""
+        sexp_str = "((lambda (a) a) 1 2)" # Expects 1, gets 2
+        
+        lambda_expr_ast = [S('lambda'), [S('a')], S('a')]
+        application_ast = [lambda_expr_ast, 1, 2]
+        mock_parser.parse_string.return_value = application_ast
+        
+        with pytest.raises(SexpEvaluationError, match="Arity mismatch: Closure expects 1 arguments, got 2"):
+            evaluator.evaluate_string(sexp_str)
+
+    def test_lambda_definition_invalid_param_list_not_list(self, evaluator, mock_parser):
+        """Test error if lambda parameter definition is not a list."""
+        sexp_str = "(lambda x x)" # Params 'x' is not a list (x)
+        mock_parser.parse_string.return_value = [S('lambda'), S('x'), S('x')]
+        with pytest.raises(SexpEvaluationError, match="Lambda parameter definition must be a list of symbols."):
+            evaluator.evaluate_string(sexp_str)
+
+    def test_lambda_definition_invalid_param_not_symbol(self, evaluator, mock_parser):
+        """Test error if a lambda parameter is not a symbol."""
+        sexp_str = "(lambda (1) 1)" # Param '1' is not a symbol
+        mock_parser.parse_string.return_value = [S('lambda'), [1], 1]
+        with pytest.raises(SexpEvaluationError, match="Lambda parameters must be symbols, got <class 'int'>: 1"):
+            evaluator.evaluate_string(sexp_str)
+            
+    def test_lambda_definition_no_body(self, evaluator, mock_parser):
+        """Test error if lambda has no body expressions."""
+        sexp_str = "(lambda (x))"
+        mock_parser.parse_string.return_value = [S('lambda'), [S('x')]]
+        with pytest.raises(SexpEvaluationError, match="'lambda' requires a parameter list and at least one body expression."):
+            evaluator.evaluate_string(sexp_str)
+
+    def test_lambda_recursive_closure(self, evaluator, mock_parser):
+        """Test a recursive closure (e.g., factorial)."""
+        # (let ((fact (lambda (n) (if (= n 0) 1 (* n (fact (- n 1))))))) (fact 3))
+        sexp_str = "(let ((fact (lambda (n) (if (= n 0) 1 (* n (fact (- n 1))))))) (fact 3))"
+        
+        fact, n, if_s, eq, mul, sub = S('fact'), S('n'), S('if'), S('='), S('*'), S('-')
+        lambda_s, let_s = S('lambda'), S('let')
+
+        # Body of lambda: (if (= n 0) 1 (* n (fact (- n 1))))
+        fact_call_recursive = [fact, [sub, n, 1]]
+        if_body_ast = [if_s, [eq, n, 0], 1, [mul, n, fact_call_recursive]]
+        
+        # Lambda for fact: (lambda (n) <if_body_ast>)
+        fact_lambda_ast = [lambda_s, [n], if_body_ast]
+        
+        # Let expr: (let ((fact <fact_lambda_ast>)) (fact 3))
+        let_binding_ast = [[fact, fact_lambda_ast]]
+        final_call_ast = [fact, 3]
+        full_ast = [let_s, let_binding_ast, final_call_ast]
+        
+        mock_parser.parse_string.return_value = full_ast
+
+        # We need to mock the behavior of '=', '*', '-' primitives for this to work.
+        # This is becoming a complex integration test for _eval.
+        original_eval = evaluator._eval
+        
+        memo_eval_calls = []
+        def eval_side_effect(node, env):
+            memo_eval_calls.append((node, id(env)))
+            # Simulate primitive operations
+            if isinstance(node, list) and len(node) > 0:
+                op_sym = node[0]
+                if op_sym == eq: # (= n 0)
+                    val_n = eval_side_effect(node[1], env)
+                    val_0 = eval_side_effect(node[2], env)
+                    return val_n == val_0
+                if op_sym == sub: # (- n 1)
+                    val_n = eval_side_effect(node[1], env)
+                    val_1 = eval_side_effect(node[2], env)
+                    return val_n - val_1
+                if op_sym == mul: # (* n <recursive_call_result>)
+                    val_n = eval_side_effect(node[1], env)
+                    val_rec = eval_side_effect(node[2], env) # This will eval (fact (- n 1))
+                    return val_n * val_rec
+            return original_eval(node, env)
+
+        with patch.object(evaluator, '_eval', side_effect=eval_side_effect):
+            result = evaluator.evaluate_string(sexp_str)
+            assert result == 6 # 3 * 2 * 1
+
+    def test_closure_retains_definition_env_even_if_outer_var_is_rebound(self, evaluator, mock_parser):
+        """Test that a closure uses its definition-time environment, not the call-time one
+           if an outer variable it captured is later rebound in the scope from which the
+           closure was *returned* but before the closure is *called*.
+        """
+        # Sexp:
+        # (let ((outer-val 10))
+        #   (let ((my-closure (lambda () outer-val))) ; Closure captures outer-val=10
+        #     (bind outer-val 20)                     ; Rebind outer-val in the middle scope
+        #     (my-closure)))                          ; Call closure. Should still see outer-val=10
+        
+        sexp_str = "(let ((outer-val 10)) (let ((my-closure (lambda () outer-val))) (bind outer-val 20) (my-closure)))"
+
+        let_s, lambda_s, bind_s = S('let'), S('lambda'), S('bind')
+        outer_val_s, my_closure_s = S('outer-val'), S('my-closure')
+
+        # (lambda () outer-val)
+        closure_def_ast = [lambda_s, [], outer_val_s]
+        # (my-closure)
+        closure_call_ast = [my_closure_s]
+        # (bind outer-val 20)
+        rebind_ast = [bind_s, outer_val_s, 20]
+
+        # Inner let: (let ((my-closure ...)) (bind ...) (my-closure))
+        inner_let_bindings = [[my_closure_s, closure_def_ast]]
+        inner_let_body = [rebind_ast, closure_call_ast] # progn is implicit for multiple body exprs in let
+        inner_let_ast = [let_s, inner_let_bindings] + inner_let_body # Corrected: body exprs are separate args
+
+        # Outer let: (let ((outer-val 10)) <inner_let_ast>)
+        outer_let_bindings = [[outer_val_s, 10]]
+        full_ast = [let_s, outer_let_bindings, inner_let_ast]
+        
+        mock_parser.parse_string.return_value = full_ast
+        
+        # No special eval mocking needed, rely on correct env behavior
+        result = evaluator.evaluate_string(sexp_str)
+        assert result == 10
