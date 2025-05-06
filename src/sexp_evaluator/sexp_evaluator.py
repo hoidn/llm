@@ -242,11 +242,12 @@ class SexpEvaluator:
         # 2b. Pass unevaluated arguments to _apply_operator
         # _apply_operator will be responsible for how/when arguments are evaluated.
         logging.debug(f"  _eval_list_form: Passing {len(arg_exprs)} unevaluated argument expressions to _apply_operator.")
-        return self._apply_operator(resolved_operator, arg_exprs, env, original_expr_str)
+        # REMOVED: evaluated_args = [self._eval(arg, env) for arg in arg_exprs]
+        return self._apply_operator(resolved_operator, arg_exprs, env, original_expr_str) # Pass unevaluated arg_exprs
 
     def _apply_operator(
         self,
-        resolved_op: Any,
+        resolved_op: Any, # Can be a name string, or a callable (e.g. future Closure)
         unevaluated_arg_exprs: List[SexpNode],
         env: SexpEnvironment,
         original_expr_str: str
@@ -599,7 +600,7 @@ class SexpEvaluator:
         evaluated_args = []
         for i, arg_node in enumerate(unevaluated_arg_exprs):
             try:
-                evaluated_arg = self._eval(arg_node, env)
+                evaluated_arg = self._eval(arg_node, env) # Evaluate each argument
                 evaluated_args.append(evaluated_arg)
                 logging.debug(f"  'list' Arg {i+1}: {arg_node} -> {evaluated_arg}")
             except Exception as e:
@@ -624,21 +625,27 @@ class SexpEvaluator:
         
         context_params: Dict[str, Any] = {}
         for arg_expr_pair in unevaluated_arg_exprs:
-            # Each arg_expr_pair should be like (key_symbol value_expr_node)
             if not (isinstance(arg_expr_pair, list) and len(arg_expr_pair) == 2 and isinstance(arg_expr_pair[0], Symbol)):
                 raise SexpEvaluationError(f"Invalid argument format for 'get_context'. Expected (key_symbol value_expression), got: {arg_expr_pair}", original_expr_str)
             
             key_symbol = arg_expr_pair[0]
             value_expr_node = arg_expr_pair[1]
             key_str = key_symbol.value()
+            evaluated_value: Any
 
             try:
-                evaluated_value = self._eval(value_expr_node, env)
-                logging.debug(f"  _apply_get_context: Evaluated value for key '{key_str}': {value_expr_node} -> {evaluated_value}")
+                if key_str == "matching_strategy" and isinstance(value_expr_node, Symbol):
+                    # For matching_strategy, if the value_expr_node is a Symbol, use its value directly.
+                    evaluated_value = value_expr_node.value()
+                    logging.debug(f"  _apply_get_context: Using symbol value for key '{key_str}': {value_expr_node} -> {evaluated_value}")
+                else:
+                    # Otherwise, evaluate the value_expr_node.
+                    evaluated_value = self._eval(value_expr_node, env)
+                    logging.debug(f"  _apply_get_context: Evaluated value for key '{key_str}': {value_expr_node} -> {evaluated_value}")
             except Exception as e:
-                logging.exception(f"  Error evaluating value expression '{value_expr_node}' for key '{key_str}' in 'get_context': {e}")
+                logging.exception(f"  Error processing value expression '{value_expr_node}' for key '{key_str}' in 'get_context': {e}")
                 if isinstance(e, SexpEvaluationError): raise
-                raise SexpEvaluationError(f"Error evaluating value for '{key_str}' in 'get_context': {value_expr_node}", original_expr_str, error_details=str(e)) from e
+                raise SexpEvaluationError(f"Error processing value for '{key_str}' in 'get_context': {value_expr_node}", original_expr_str, error_details=str(e)) from e
 
             # Special validation for matching_strategy
             if key_str == "matching_strategy":
@@ -691,8 +698,8 @@ class SexpEvaluator:
 
     def _invoke_task_system(
         self,
-        task_name: str,
-        template_def: Dict[str, Any],
+        task_name: str, # Changed from target_name_or_callable
+        template_def: Dict[str, Any], # Added template_def
         unevaluated_arg_exprs: List[SexpNode],
         env: SexpEnvironment,
         original_expr_str: str
@@ -703,16 +710,16 @@ class SexpEvaluator:
         file_paths: Optional[List[str]] = None
         context_settings: Optional[Dict[str, Any]] = None
 
-        for arg_expr_pair in unevaluated_arg_exprs:
+        for arg_expr_pair in unevaluated_arg_exprs: # Iterate unevaluated argument expressions
             if not (isinstance(arg_expr_pair, list) and len(arg_expr_pair) == 2 and isinstance(arg_expr_pair[0], Symbol)):
                 raise SexpEvaluationError(f"Invalid argument format for task '{task_name}'. Expected (key_symbol value_expression), got: {arg_expr_pair}", original_expr_str)
             
             key_symbol = arg_expr_pair[0]
-            value_expr_node = arg_expr_pair[1]
+            value_expr_node = arg_expr_pair[1] # This is the unevaluated value expression
             key_str = key_symbol.value()
 
             try:
-                evaluated_value = self._eval(value_expr_node, env)
+                evaluated_value = self._eval(value_expr_node, env) # Evaluate the value expression
             except Exception as e:
                 logging.exception(f"  Error evaluating value expression '{value_expr_node}' for key '{key_str}' in task '{task_name}': {e}")
                 if isinstance(e, SexpEvaluationError): raise
@@ -723,12 +730,14 @@ class SexpEvaluator:
                     raise SexpEvaluationError(f"'files' argument for task '{task_name}' must evaluate to a list of strings, got {type(evaluated_value)}: {evaluated_value!r}", original_expr_str)
                 file_paths = evaluated_value
             elif key_str == "context":
-                if isinstance(evaluated_value, list) and all(isinstance(p, list) and len(p)==2 for p in evaluated_value): # from (quote ((k v)...))
+                # Value for 'context' should be a list of pairs (from quote) or a dict (from var)
+                if isinstance(evaluated_value, list) and all(isinstance(p, list) and len(p)==2 for p in evaluated_value):
                     try:
+                        # Convert list of pairs (key_node, value_already_eval_from_quote) to dict
                         context_settings = { (pair[0].value() if isinstance(pair[0], Symbol) else str(pair[0])): pair[1] for pair in evaluated_value }
                     except Exception as e_conv:
                          raise SexpEvaluationError(f"Failed converting 'context' list {evaluated_value!r} to dict for task '{task_name}': {e_conv}", original_expr_str) from e_conv
-                elif isinstance(evaluated_value, dict): # from variable holding a dict
+                elif isinstance(evaluated_value, dict):
                     context_settings = evaluated_value
                 else:
                     raise SexpEvaluationError(f"'context' argument for task '{task_name}' must evaluate to a dictionary or a list of pairs, got {type(evaluated_value)}: {evaluated_value!r}", original_expr_str)
@@ -775,7 +784,7 @@ class SexpEvaluator:
 
     def _invoke_handler_tool(
         self,
-        tool_name: str,
+        tool_name: str, # Changed from target_name_or_callable
         unevaluated_arg_exprs: List[SexpNode],
         env: SexpEnvironment,
         original_expr_str: str
@@ -783,19 +792,18 @@ class SexpEvaluator:
         logging.debug(f"--- _invoke_handler_tool START: tool_name='{tool_name}', unevaluated_arg_exprs={unevaluated_arg_exprs}")
 
         named_params: Dict[str, Any] = {}
-        # Handler tools typically don't use 'files' or 'context' in the same structured way as tasks.
-        # They receive all arguments as named_params.
+        # Handler tools receive all arguments as named_params.
 
-        for arg_expr_pair in unevaluated_arg_exprs:
+        for arg_expr_pair in unevaluated_arg_exprs: # Iterate unevaluated argument expressions
             if not (isinstance(arg_expr_pair, list) and len(arg_expr_pair) == 2 and isinstance(arg_expr_pair[0], Symbol)):
                 raise SexpEvaluationError(f"Invalid argument format for tool '{tool_name}'. Expected (key_symbol value_expression), got: {arg_expr_pair}", original_expr_str)
             
             key_symbol = arg_expr_pair[0]
-            value_expr_node = arg_expr_pair[1]
+            value_expr_node = arg_expr_pair[1] # This is the unevaluated value expression
             key_str = key_symbol.value()
 
             try:
-                evaluated_value = self._eval(value_expr_node, env)
+                evaluated_value = self._eval(value_expr_node, env) # Evaluate the value expression
             except Exception as e:
                 logging.exception(f"  Error evaluating value expression '{value_expr_node}' for key '{key_str}' in tool '{tool_name}': {e}")
                 if isinstance(e, SexpEvaluationError): raise
