@@ -53,7 +53,6 @@ except Exception as e:
 # logger.info(f"Final AIDER_AVAILABLE status after import block: {AIDER_AVAILABLE}") # Removed
 
 
-# TODO is it redundant to have both output_format and explicit format instructions in the main prompt?
 # --- Aider Loop Task Templates ---
 GENERATE_PLAN_TEMPLATE = {
     "name": "user:generate-plan",
@@ -70,12 +69,7 @@ Generate a detailed, step-by-step plan suitable for an AI coding assistant like 
 Identify the relevant files that need modification.
 Determine the exact shell command required to run tests verifying the task's completion.
 
-Output the result ONLY as a valid JSON object conforming to the DevelopmentPlan schema:
-{
-  "instructions": "string (Detailed step-by-step instructions for Aider)",
-  "files": ["list", "of", "relevant/file/paths.py"],
-  "test_command": "string (Exact shell command to run tests)"
-}
+Output the result ONLY as a valid JSON object conforming to the DevelopmentPlan schema.
 
 User Prompts:
 {{user_prompts}}
@@ -83,7 +77,7 @@ User Prompts:
 Initial Context:
 {{initial_context}}
 
-**IMPORTANT:** Your response MUST contain ONLY the valid JSON object conforming to the DevelopmentPlan structure specified above. Do NOT include any introductory text, explanations, apologies, or concluding remarks. Your entire output must be the JSON object itself, starting with `{` and ending with `}`.
+**IMPORTANT:** Your response MUST contain ONLY the valid JSON object conforming to the DevelopmentPlan schema. Do NOT include any introductory text, explanations, apologies, or concluding remarks. Your entire output must be the JSON object itself, starting with `{` and ending with `}`.
 """,
     "output_format": {"type": "json", "schema": "src.system.models.DevelopmentPlan"}
 }
@@ -112,14 +106,9 @@ Based on the above information, determine if:
 2. The execution failed but can be retried with a revised prompt
 3. The execution failed and should be aborted
 
-Output the result ONLY as a valid JSON object conforming to the FeedbackResult schema:
-{
-  "status": "SUCCESS, REVISE, or ABORT",
-  "next_prompt": "string or null (provide a revised prompt if status is REVISE, otherwise null)",
-  "explanation": "string (brief explanation of your decision)"
-}
+Output the result ONLY as a valid JSON object conforming to the FeedbackResult schema.
 
-**IMPORTANT:** Your response MUST contain ONLY the valid JSON object conforming to the FeedbackResult structure specified above. Do NOT include any introductory text, explanations, apologies, or concluding remarks. Your entire output must be the JSON object itself, starting with `{` and ending with `}`.""",
+**IMPORTANT:** Your response MUST contain ONLY the valid JSON object conforming to the FeedbackResult schema. Do NOT include any introductory text, explanations, apologies, or concluding remarks. Your entire output must be the JSON object itself, starting with `{` and ending with `}`.""",
     "output_format": {"type": "json", "schema": "src.system.models.FeedbackResult"}
 }
 
