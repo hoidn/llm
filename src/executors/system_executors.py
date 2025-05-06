@@ -65,7 +65,7 @@ class SystemExecutorFunctions:
         self.command_executor = command_executor_module
         logger.info("SystemExecutorFunctions instance created with dependencies.")
     
-    def execute_get_context(params: Dict[str, Any], memory_system: Any) -> Dict[str, Any]:
+    def execute_get_context(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """
         Executor logic for the 'system:get_context' Direct Tool.
         Retrieves relevant file paths from the MemorySystem.
@@ -75,7 +75,6 @@ class SystemExecutorFunctions:
                 - 'query': string (required) - The search query.
                 - 'history': string (optional) - Conversation history for context.
                 - 'target_files': list<string> (optional) - Hint for target files.
-            memory_system: A valid instance implementing MemorySystem.
 
         Returns:
             A TaskResult dictionary with:
@@ -131,7 +130,7 @@ class SystemExecutorFunctions:
         try:
             logging.debug(f"execute_get_context: Calling memory_system with query: '{query}'")
             # Assuming memory_system.get_relevant_context_for returns AssociativeMatchResult model
-            result: AssociativeMatchResult = memory_system.get_relevant_context_for(context_input)
+            result: AssociativeMatchResult = self.memory_system.get_relevant_context_for(context_input)
 
             # 4. Extract file paths from the result
             file_paths = []

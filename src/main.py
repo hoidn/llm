@@ -233,6 +233,17 @@ Select the best matching paths *from the provided metadata* and output the JSON.
                 logger.exception(f"Failed to register core templates: {e}")
                 raise # Re-raise as this is critical
 
+            # Instantiate SystemExecutorFunctions
+            from src.executors.system_executors import SystemExecutorFunctions
+            from src.handler import command_executor
+            
+            self.system_executors = SystemExecutorFunctions(
+                memory_system=self.memory_system,
+                file_manager=self.file_access_manager,
+                command_executor_module=command_executor
+            )
+            logger.info("SystemExecutorFunctions instance created in Application.")
+            
             # Register system-level tools
             self._register_system_tools()
             logger.info("System tools registered.")

@@ -413,3 +413,117 @@ def test_execute_read_files_with_unexpected_error(system_executor_instance):
 
     # Verify read_file was called for each path
     assert system_executor_instance.file_manager.read_file.call_count == 3
+
+# --- Tests for execute_shell_command ---
+
+def test_execute_shell_command_success(system_executor_instance):
+    """Test successful shell command execution."""
+    # Setup
+    system_executor_instance.command_executor.execute_command_safely.return_value = {
+        'success': True,
+        'exit_code': 0,
+        'stdout': 'Command executed successfully',
+        'stderr': ''
+    }
+    params = {"command": "echo 'test'"}
+
+    # Act
+    result = system_executor_instance.execute_shell_command(params)
+
+    # Assert
+    assert isinstance(result, dict)
+    assert result["status"] == "COMPLETE"
+    assert result["content"] == "Command executed successfully"
+    assert result["notes"]["success"] is True
+    assert result["notes"]["exit_code"] == 0
+    assert result["notes"]["stdout"] == "Command executed successfully"
+    assert result["notes"]["stderr"] == ""
+
+    # Verify command_executor was called with correct parameters
+    system_executor_instance.command_executor.execute_command_safely.assert_called_once_with(
+        command="echo 'test'",
+        cwd=None,
+        timeout=None
+    )
+
+def test_execute_shell_command_failure(system_executor_instance):
+    """Test handling of failed shell command execution."""
+    # Setup
+    system_executor_instance.command_executor.execute_command_safely.return_value = {
+        'success': False,
+        'exit_code': 1,
+        'stdout': '',
+        'stderr': 'Command failed: permission denied',
+        'error': 'Permission denied'
+    }
+    params = {"command": "sudo something"}
+
+    # Act
+    result = system_executor_instance.execute_shell_command(params)
+
+    # Assert
+    assert isinstance(result, dict)
+    assert result["status"] == "FAILED"
+    assert "Command failed: permission denied" in result["content"]
+    assert result["notes"]["success"] is False
+    assert result["notes"]["exit_code"] == 1
+    assert result["notes"]["stderr"] == "Command failed: permission denied"
+    assert result["notes"]["error"]["reason"] == "command_execution_failure"
+
+def test_execute_shell_command_missing_command(system_executor_instance):
+    """Test validation failure when command parameter is missing."""
+    # Setup
+    params = {}  # Missing required 'command'
+
+    # Act
+    result = system_executor_instance.execute_shell_command(params)
+
+    # Assert
+    assert result["status"] == "FAILED"
+    assert "Missing or invalid required parameter: 'command'" in result["content"]
+    assert result["notes"]["error"]["reason"] == "input_validation_failure"
+    system_executor_instance.command_executor.execute_command_safely.assert_not_called()
+
+def test_execute_shell_command_with_optional_params(system_executor_instance):
+    """Test shell command execution with optional parameters."""
+    # Setup
+    system_executor_instance.command_executor.execute_command_safely.return_value = {
+        'success': True,
+        'exit_code': 0,
+        'stdout': 'Command with options executed',
+        'stderr': ''
+    }
+    params = {
+        "command": "ls -la",
+        "cwd": "/home/user",
+        "timeout": 30
+    }
+
+    # Act
+    result = system_executor_instance.execute_shell_command(params)
+
+    # Assert
+    assert result["status"] == "COMPLETE"
+    assert result["content"] == "Command with options executed"
+    
+    # Verify command_executor was called with all parameters
+    system_executor_instance.command_executor.execute_command_safely.assert_called_once_with(
+        command="ls -la",
+        cwd="/home/user",
+        timeout=30
+    )
+
+def test_execute_shell_command_unexpected_error(system_executor_instance):
+    """Test handling of unexpected exceptions during command execution."""
+    # Setup
+    system_executor_instance.command_executor.execute_command_safely.side_effect = Exception("Unexpected command error")
+    params = {"command": "valid command"}
+
+    # Act
+    result = system_executor_instance.execute_shell_command(params)
+
+    # Assert
+    assert result["status"] == "FAILED"
+    assert "Unexpected error executing command" in result["content"]
+    assert "Unexpected command error" in result["content"]
+    assert result["notes"]["error"]["reason"] == "unexpected_error"
