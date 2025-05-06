@@ -113,7 +113,7 @@ Based on the above information, determine if:
 
 Output the result ONLY as a valid JSON object conforming to the FeedbackResult schema:
 {
-  "status": "SUCCESS" | "REVISE" | "ABORT",
+  "status": "SUCCESS, REVISE, or ABORT",
   "next_prompt": "string or null (provide a revised prompt if status is REVISE, otherwise null)",
   "explanation": "string (brief explanation of your decision)"
 }
