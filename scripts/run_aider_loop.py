@@ -114,7 +114,19 @@ def setup_logging(log_level_str: str):
     # Optionally adjust levels for other noisy loggers
     logging.getLogger('httpx').setLevel(logging.WARNING)
     logging.getLogger('httpcore').setLevel(logging.WARNING)
+    
+    # --- FORCE SPECIFIC MODULE LOGGERS TO RESPECT DEBUG LEVEL ---
+    # Explicitly set the level for key module loggers AFTER basicConfig
+    handler_logger = logging.getLogger("src.handler.base_handler")
+    handler_logger.setLevel(log_level)
+    # Set other important module loggers
+    logging.getLogger("src.main").setLevel(log_level)
+    logging.getLogger("src.executors.atomic_executor").setLevel(log_level)
+    logging.getLogger("src.handler.llm_interaction_manager").setLevel(log_level)
+    logging.getLogger("src.aider_bridge.bridge").setLevel(log_level)
+    
     logger.info(f"Logging configured to level: {log_level_str.upper()}")
+    logger.info(f"Explicitly set module loggers to level: {logging.getLevelName(log_level)}")
 
 
 def parse_arguments() -> argparse.Namespace:
