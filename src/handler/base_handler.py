@@ -420,12 +420,26 @@ class BaseHandler:
         # Store history *before* the call
         history_dicts_before_call = list(self.conversation_history)
 
+        # --- START DIAGNOSTIC PRINT STATEMENTS ---
+        print("\n--- DEBUG MARKER: ENTERING _execute_llm_call ---", flush=True)
+        print(f"--- DEBUG MARKER: Prompt (start): {prompt[:100]}...", flush=True)
+        print(f"--- DEBUG MARKER: History length before loop: {len(self.conversation_history)}", flush=True) # Check history passed in effectively
+
+        # Check the crucial variable right before the loop where it's used
+        print(f"--- DEBUG MARKER: PydanticMessagesAvailable = {PydanticMessagesAvailable}", flush=True)
+        print(f"--- DEBUG MARKER: Type of PydanticModelMessage = {type(PydanticModelMessage)}", flush=True)
+        print(f"--- DEBUG MARKER: Value of PydanticModelMessage = {PydanticModelMessage!r}", flush=True)
+        from typing import Union
+        is_union = PydanticModelMessage is Union
+        print(f"--- DEBUG MARKER: Is PydanticModelMessage typing.Union? {is_union}", flush=True)
+        print("--- DEBUG MARKER: BEFORE History Conversion Loop ---", flush=True)
+        # --- END DIAGNOSTIC PRINT STATEMENTS ---
+
         # --- START MOVED INTROSPECTION LOGGING ---
         logging.debug(f"--- Before History Conversion Loop ---")
         logging.debug(f"Alias 'PydanticModelMessage' points to: {PydanticModelMessage!r}")
         logging.debug(f"Type of alias 'PydanticModelMessage': {type(PydanticModelMessage)}")
-        from typing import Union # Ensure Union is imported for comparison
-        is_union = PydanticModelMessage is Union
+        # Union already imported above
         logging.debug(f"Is 'PydanticModelMessage' the same object as typing.Union? {is_union}")
         
         # Check module origin
