@@ -2,7 +2,10 @@ import json
 import logging
 import os
 import warnings # Ensure imported
-from typing import Any, Callable, Dict, List, Optional, Type
+from typing import Any, Callable, Dict, List, Optional, Type, Union
+
+# Import pydantic-ai message types
+from pydantic_ai.messages import UserMessage, ModelMessage
 
 from src.handler import command_executor
 
@@ -405,10 +408,26 @@ class BaseHandler:
         # Store history *before* the call
         history_before_call = list(self.conversation_history)
 
+        # Convert history dictionaries to pydantic-ai message objects
+        message_objects_for_agent = []
+        for msg_dict in history_before_call:
+            role = msg_dict.get("role")
+            content = msg_dict.get("content", "") # Default to empty string if missing
+            if role == "user":
+                message_objects_for_agent.append(UserMessage(content=content))
+            elif role == "assistant":
+                # Ensure content is a string for ModelMessage
+                message_objects_for_agent.append(ModelMessage(content=str(content)))
+            else:
+                logging.warning(f"Unsupported role '{role}' found in history, skipping.")
+                continue # Skip unknown roles
+
+        logging.debug(f"Converted history to {len(message_objects_for_agent)} pydantic-ai message objects.")
+
         # Delegate the call to the manager
         call_kwargs = {
             "prompt": prompt,
-            "conversation_history": history_before_call,
+            "conversation_history": message_objects_for_agent, # Pass the list of objects
             "system_prompt_override": system_prompt_override,
             "tools_override": executors_for_agent, # Pass resolved executors
             "output_type_override": output_type_override,
