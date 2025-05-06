@@ -61,6 +61,9 @@ def load_prompts(args: argparse.Namespace) -> list[str]:
         if not os.path.exists(args.prompt_file):
             logger.error(f"Prompt file not found: {args.prompt_file}")
             sys.exit(f"Error: Prompt file not found: {args.prompt_file}")
+            # Return here to prevent the try block from executing
+            # This is unreachable but makes the intent clear
+            return []
         try:
             with open(args.prompt_file, 'r', encoding='utf-8') as f:
                 content = f.read()
