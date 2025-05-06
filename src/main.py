@@ -452,7 +452,7 @@ Select the best matching paths *from the provided metadata* and output the JSON.
                 # tool_data IS the spec dictionary here
                 if tool_name.startswith('system:'):
                     # --- START FIX: Append tool_data directly ---
-                    active_tool_specs.append(tool_data['spec']) # Get the spec dict from the stored data
+                    active_tool_specs.append(tool_data) # Append the spec dict itself
                     # --- END FIX ---
                     logger.debug(f"Including system tool spec: {tool_name}")
                     # Removed warning as tool_data is the spec
@@ -466,7 +466,7 @@ Select the best matching paths *from the provided metadata* and output the JSON.
                      for tool_name, tool_data in self.passthrough_handler.registered_tools.items():
                          if tool_name.startswith('anthropic:'):
                              # --- START FIX: Append tool_data directly ---
-                             active_tool_specs.append(tool_data['spec']) # Get the spec dict
+                             active_tool_specs.append(tool_data) # Append the spec dict itself
                              # --- END FIX ---
                              logger.debug(f"Including Anthropic tool spec: {tool_name}")
                              # Removed warning
@@ -483,7 +483,7 @@ Select the best matching paths *from the provided metadata* and output the JSON.
                  for tool_name, tool_data in self.passthrough_handler.registered_tools.items():
                      if tool_name.startswith('aider:'):
                          # --- START FIX: Append tool_data directly ---
-                         active_tool_specs.append(tool_data['spec']) # Get the spec dict
+                         active_tool_specs.append(tool_data) # Append the spec dict itself
                          # --- END FIX ---
                          logger.debug(f"Including Aider tool spec: {tool_name}")
                          # Removed warning
