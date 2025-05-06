@@ -17,11 +17,15 @@ from src.handler.base_handler import BaseHandler # For type hint/mocking
 from src.system.models import (
     SubtaskRequest, TaskResult, ContextManagement,
     ContextGenerationInput, AssociativeMatchResult, MatchTuple, # Added MatchTuple, AssociativeMatchResult
-    SUBTASK_CONTEXT_DEFAULTS, TaskError, TaskFailureError # Added TaskFailureError
+    SUBTASK_CONTEXT_DEFAULTS, TaskError, TaskFailureError, # Added TaskFailureError
+    # Import new models for integration tests
+    DevelopmentPlan, FeedbackResult
 )
 from pydantic import ValidationError as PydanticValidationError # Renamed import
 # Import the executor and its error for testing
 from src.executors.atomic_executor import AtomicTaskExecutor, ParameterMismatchError
+# Import templates defined in main for registration
+from src.main import GENERATE_PLAN_TEMPLATE, ANALYZE_AIDER_RESULT_TEMPLATE
 
 # Example valid template structure
 VALID_ATOMIC_TEMPLATE = {
@@ -383,6 +387,179 @@ def test_find_matching_tasks_sorting(task_system_instance):
         mock_get_all.assert_called_once()
         assert len(matches) == 1 # Expecting only task3 with threshold 0.6
         assert matches[0]["task"]["name"] == "task3"
+
+
+# --- Integration Tests for New Atomic Tasks ---
+
+@patch.object(AtomicTaskExecutor, 'execute_body')
+def test_execute_generate_plan_task(mock_execute_body, task_system_instance, mock_handler):
+    """Integration test for executing user:generate-plan task."""
+    # Arrange
+    task_system_instance.register_template(GENERATE_PLAN_TEMPLATE) # Register the actual template
+
+    # Mock the executor's behavior (which internally calls the handler)
+    # Simulate the executor returning a dict representing the TaskResult
+    expected_plan_data = {
+        "instructions": "1. Refactor X.\n2. Add test.",
+        "files": ["file1.py", "test_file1.py"],
+        "test_command": "pytest tests/"
+    }
+    # Executor returns a dict, TaskSystem wraps it in TaskResult object
+    mock_execute_body.return_value = TaskResult(
+        content=json.dumps(expected_plan_data), # LLM raw output
+        status="COMPLETE",
+        parsedContent=expected_plan_data, # Simulate successful parsing by executor/handler
+        notes={}
+    ).model_dump() # Executor returns dict
+
+    request = SubtaskRequest(
+        task_id="plan-test-1",
+        type="atomic",
+        name="user:generate-plan",
+        inputs={
+            "user_prompts": "Refactor X and add tests.",
+            "initial_context": "Context about X..."
+        }
+    )
+
+    # Act
+    result = task_system_instance.execute_atomic_template(request)
+
+    # Assert
+    mock_execute_body.assert_called_once()
+    call_args, _ = mock_execute_body.call_args
+    assert call_args[0]['name'] == "user:generate-plan" # Check template passed
+    assert call_args[1] == request.inputs # Check params passed
+    assert call_args[2] == mock_handler # Check handler passed
+
+    assert result.status == "COMPLETE"
+    assert isinstance(result.parsedContent, DevelopmentPlan)
+    assert result.parsedContent.instructions == expected_plan_data["instructions"]
+    assert result.parsedContent.files == expected_plan_data["files"]
+    assert result.parsedContent.test_command == expected_plan_data["test_command"]
+    assert result.notes.get("template_used") == "user:generate-plan"
+
+@patch.object(AtomicTaskExecutor, 'execute_body')
+def test_execute_analyze_aider_result_task(mock_execute_body, task_system_instance, mock_handler):
+    """Integration test for executing user:analyze-aider-result task."""
+    # Arrange
+    task_system_instance.register_template(ANALYZE_AIDER_RESULT_TEMPLATE)
+
+    expected_feedback_data = {
+        "status": "REVISE",
+        "next_prompt": "Please handle the edge case where input is None.",
+        "explanation": "Aider implementation missed a null check."
+    }
+    mock_execute_body.return_value = TaskResult(
+        content=json.dumps(expected_feedback_data),
+        status="COMPLETE",
+        parsedContent=expected_feedback_data,
+        notes={}
+    ).model_dump()
+
+    request = SubtaskRequest(
+        task_id="analyze-test-1",
+        type="atomic",
+        name="user:analyze-aider-result",
+        inputs={
+            "aider_result_content": "Code generated, but missed null check.",
+            "aider_result_status": "COMPLETE",
+            "original_prompt": "Implement the function.",
+            "iteration": 1,
+            "max_retries": 3
+        }
+    )
+
+    # Act
+    result = task_system_instance.execute_atomic_template(request)
+
+    # Assert
+    mock_execute_body.assert_called_once()
+    call_args, _ = mock_execute_body.call_args
+    assert call_args[0]['name'] == "user:analyze-aider-result"
+    assert call_args[1] == request.inputs
+    assert call_args[2] == mock_handler
+
+    assert result.status == "COMPLETE"
+    assert isinstance(result.parsedContent, FeedbackResult)
+    assert result.parsedContent.status == expected_feedback_data["status"]
+    assert result.parsedContent.next_prompt == expected_feedback_data["next_prompt"]
+    assert result.parsedContent.explanation == expected_feedback_data["explanation"]
+    assert result.notes.get("template_used") == "user:analyze-aider-result"
+
+@patch.object(AtomicTaskExecutor, 'execute_body')
+def test_execute_task_llm_fails(mock_execute_body, task_system_instance, mock_handler):
+    """Test task execution when the underlying LLM call (mocked via executor) fails."""
+    # Arrange
+    task_system_instance.register_template(GENERATE_PLAN_TEMPLATE)
+
+    # Simulate executor returning a FAILED TaskResult dict
+    fail_reason = "llm_error"
+    fail_message = "LLM API connection timeout"
+    error_obj = TaskFailureError(type="TASK_FAILURE", reason=fail_reason, message=fail_message)
+    mock_execute_body.return_value = TaskResult(
+        content=fail_message,
+        status="FAILED",
+        notes={"error": error_obj.model_dump()} # Pass error as dict
+    ).model_dump() # Executor returns dict
+
+    request = SubtaskRequest(
+        task_id="plan-fail-1",
+        type="atomic",
+        name="user:generate-plan",
+        inputs={"user_prompts": "...", "initial_context": "..."}
+    )
+
+    # Act
+    result = task_system_instance.execute_atomic_template(request)
+
+    # Assert
+    mock_execute_body.assert_called_once()
+    assert result.status == "FAILED"
+    assert result.content == fail_message
+    assert result.notes.get("template_used") == "user:generate-plan"
+    assert result.notes.get("error") is not None
+    # Validate the error structure returned by TaskSystem
+    assert result.notes["error"]["type"] == "TASK_FAILURE"
+    assert result.notes["error"]["reason"] == fail_reason
+    assert result.notes["error"]["message"] == fail_message
+
+@patch.object(AtomicTaskExecutor, 'execute_body')
+def test_execute_task_invalid_json_output(mock_execute_body, task_system_instance, mock_handler):
+    """Test task execution when LLM returns invalid JSON for a structured output task."""
+    # Arrange
+    task_system_instance.register_template(GENERATE_PLAN_TEMPLATE) # Expects DevelopmentPlan JSON
+
+    # Simulate executor returning a TaskResult dict where parsing failed
+    invalid_json_content = '{"instructions": "...", "files": [}' # Malformed JSON
+    mock_execute_body.return_value = TaskResult(
+        content=invalid_json_content,
+        status="COMPLETE", # LLM call itself might complete
+        parsedContent=None, # Parsing failed
+        notes={"parseError": "JSONDecodeError: Expecting ']' delimiter..."} # Note indicating parse failure
+    ).model_dump() # Executor returns dict
+
+    request = SubtaskRequest(
+        task_id="plan-json-fail-1",
+        type="atomic",
+        name="user:generate-plan",
+        inputs={"user_prompts": "...", "initial_context": "..."}
+    )
+
+    # Act
+    result = task_system_instance.execute_atomic_template(request)
+
+    # Assert
+    # TaskSystem currently passes through the result from the executor.
+    # If the executor indicates parsing failed, the TaskResult reflects that.
+    # Depending on desired behavior, TaskSystem *could* change status to FAILED here.
+    # Current assertion reflects pass-through behavior:
+    mock_execute_body.assert_called_once()
+    assert result.status == "COMPLETE" # Status from executor is passed through
+    assert result.content == invalid_json_content
+    assert result.parsedContent is None
+    assert result.notes.get("template_used") == "user:generate-plan"
+    assert "parseError" in result.notes # Check the parse error note is present
 
 
 # --- Remove Deferred Method Tests ---

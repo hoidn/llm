@@ -53,6 +53,85 @@ except Exception as e:
 # logger.info(f"Final AIDER_AVAILABLE status after import block: {AIDER_AVAILABLE}") # Removed
 
 
+# --- Aider Loop Task Templates ---
+GENERATE_PLAN_TEMPLATE = {
+    "name": "user:generate-plan",
+    "type": "atomic",
+    "subtype": "standard",
+    "description": "Generates a development plan for a coding task based on user prompts and context.",
+    "parameters": {
+        "user_prompts": {"type": "string", "description": "The user's request(s) for the coding task, potentially combined."},
+        "initial_context": {"type": "string", "description": "Relevant context, such as file contents or project overview."}
+    },
+    "instructions": """
+Analyze the user's request(s) provided in 'user_prompts' and the 'initial_context'.
+Generate a detailed, step-by-step plan suitable for an AI coding assistant like Aider.
+Identify the relevant files that need modification.
+Determine the exact shell command required to run tests verifying the task's completion.
+
+Output the result ONLY as a valid JSON object conforming to the DevelopmentPlan schema:
+{
+  "instructions": "string (Detailed step-by-step instructions for Aider)",
+  "files": ["list", "of", "relevant/file/paths.py"],
+  "test_command": "string (Exact shell command to run tests)"
+}
+
+User Prompts:
+{{user_prompts}}
+
+Initial Context:
+{{initial_context}}
+
+**IMPORTANT:** Your response MUST contain ONLY the valid JSON object conforming to the DevelopmentPlan structure specified above. Do NOT include any introductory text, explanations, apologies, or concluding remarks. Your entire output must be the JSON object itself, starting with `{` and ending with `}`.
+""",
+    "output_format": {"type": "json", "schema": "src.system.models.DevelopmentPlan"}
+}
+
+ANALYZE_AIDER_RESULT_TEMPLATE = {
+    "name": "user:analyze-aider-result",
+    "type": "atomic",
+    "subtype": "standard",
+    "description": "Analyzes the result of an Aider execution iteration and provides feedback.",
+    "parameters": {
+        "aider_result_content": {"type": "string", "description": "The content/output/error message from the Aider execution."},
+        "aider_result_status": {"type": "string", "description": "The status of the Aider execution (e.g., 'COMPLETE', 'FAILED')."},
+        "original_prompt": {"type": "string", "description": "The prompt given to Aider for this iteration."},
+        "iteration": {"type": "integer", "description": "The current iteration number."},
+        "max_retries": {"type": "integer", "description": "The maximum number of retries allowed."}
+    },
+    "instructions": """
+Analyze the result of an Aider coding iteration based on the provided information.
+Determine if the iteration was successful, needs revision, or should be aborted.
+
+- If the Aider status is FAILED or the content indicates a clear failure or inability to proceed, the status should likely be REVISE (if fixable) or ABORT (if unrecoverable).
+- If the Aider status is COMPLETE and the content looks reasonable, the status should likely be SUCCESS.
+- If the Aider status is COMPLETE but the content seems incorrect or incomplete based on the original prompt, the status should be REVISE.
+
+Provide a verdict ('SUCCESS', 'REVISE', 'ABORT').
+If 'REVISE', provide a 'next_prompt' for Aider to address the issues.
+Optionally, provide a brief 'explanation'.
+
+Aider Iteration: {{iteration}} / {{max_retries}}
+Original Prompt to Aider:
+{{original_prompt}}
+
+Aider Execution Status: {{aider_result_status}}
+Aider Result Content/Error:
+{{aider_result_content}}
+
+Output the result ONLY as a valid JSON object conforming to the FeedbackResult schema:
+{
+  "status": "SUCCESS" | "REVISE" | "ABORT",
+  "next_prompt": "string (Required if status is REVISE, otherwise null)",
+  "explanation": "string (Optional brief explanation)"
+}
+
+**IMPORTANT:** Your response MUST contain ONLY the valid JSON object conforming to the FeedbackResult structure specified above. Do NOT include any introductory text, explanations, apologies, or concluding remarks. Your entire output must be the JSON object itself, starting with `{` and ending with `}`.
+""",
+    "output_format": {"type": "json", "schema": "src.system.models.FeedbackResult"}
+}
+
+
 # Helper function to create a standard FAILED TaskResult dictionary
 def _create_failed_result_dict(reason: TaskFailureReason, message: str, details: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Creates a dictionary representing a FAILED TaskResult."""
@@ -160,7 +239,7 @@ class Application:
             logger.info("Components instantiated and wired.")
 
             # --- Core Template Registration ---
-            logger.info("Registering core task templates...")
+            logger.info("Registering core and user task templates...")
             try:
                 # Define CONTENT-based template
                 assoc_matching_content_template = {
@@ -168,7 +247,7 @@ class Application:
                     "type": "atomic",
                     "subtype": "associative_matching", # Keep subtype consistent
                     "description": "Internal task to find relevant files based on query and FULL FILE CONTENT.",
-                    "params": {
+                    "parameters": {
                         "context_input": { "description": "Input query/context details (as dict)" },
                         "file_contents": { "description": "A single string containing file contents wrapped in `<file path=...>...</file>` tags" }
                     },
@@ -201,7 +280,7 @@ Select the best matching paths *from the provided file contents*.
                     "type": "atomic",
                     "subtype": "associative_matching",
                     "description": "Internal task to find relevant files based on query and pre-generated METADATA.",
-                     "params": {
+                     "parameters": {
                         "context_input": { "description": "Input query/context details (as dict)" },
                         "metadata_snippet": { "description": "Dictionary mapping candidate file paths to their metadata strings" }
                     },
@@ -227,24 +306,37 @@ Select the best matching paths *from the provided metadata* and output the JSON.
                 self.task_system.register_template(assoc_matching_metadata_template)
                 logger.info(f"Registered template: {assoc_matching_metadata_template['name']}")
 
+                # Register NEW templates
+                if self.task_system: # Ensure task_system is initialized
+                    self.task_system.register_template(GENERATE_PLAN_TEMPLATE)
+                    logger.info(f"Registered template: {GENERATE_PLAN_TEMPLATE['name']}")
+
+                    self.task_system.register_template(ANALYZE_AIDER_RESULT_TEMPLATE)
+                    logger.info(f"Registered template: {ANALYZE_AIDER_RESULT_TEMPLATE['name']}")
+                else:
+                    # This indicates a programming error in the init sequence
+                    logger.error("TaskSystem not initialized before template registration attempt.")
+                    raise RuntimeError("TaskSystem must be initialized before registering templates.")
+
+
             except AttributeError as ae:
-                 logger.exception(f"Failed to register core templates - likely missing register_template method: {ae}")
+                 logger.exception(f"Failed to register templates - likely missing register_template method: {ae}")
                  raise # Re-raise as this is critical
             except Exception as e:
-                logger.exception(f"Failed to register core templates: {e}")
+                logger.exception(f"Failed to register templates: {e}")
                 raise # Re-raise as this is critical
 
             # Instantiate SystemExecutorFunctions
             from src.executors.system_executors import SystemExecutorFunctions
             from src.handler import command_executor
-            
+
             self.system_executors = SystemExecutorFunctions(
                 memory_system=self.memory_system,
                 file_manager=self.file_access_manager,
                 command_executor_module=command_executor
             )
             logger.info("SystemExecutorFunctions instance created in Application.")
-            
+
             # Register system-level tools
             self._register_system_tools()
             logger.info("System tools registered.")
