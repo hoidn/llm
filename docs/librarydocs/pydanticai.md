@@ -145,6 +145,47 @@ history = [
 result = await agent.run("What did I say first?", history=history)
 ```
 
+## Manually Constructing Message History
+
+While `pydantic-ai` handles history automatically when passing results from previous runs, you may sometimes need to construct message objects manually (e.g., when building history from scratch or within wrapper classes like `BaseHandler`).
+
+**Important:** Do **not** attempt to instantiate the `ModelMessage` union type directly (e.g., `ModelMessage(...)`). You must use the specific message classes like `UserMessage` or `ModelResponse`.
+
+**Required Imports:**
+
+```python
+from pydantic_ai.messages import UserMessage, ModelResponse, TextPart
+```
+
+**Example:**
+
+```python
+from pydantic_ai.messages import UserMessage, ModelResponse, TextPart
+
+# Creating a user message (simple string content)
+user_msg_obj = UserMessage(content="Tell me about Pydantic.")
+
+# Creating an assistant message (simple text response)
+# Note: Content MUST be wrapped in a TextPart within the 'parts' list.
+assistant_content_str = "Pydantic is a data validation library..."
+assistant_msg_obj = ModelResponse(parts=[TextPart(content=assistant_content_str)])
+
+# Creating history list for agent.run_sync or agent.run
+manual_history = [
+    # UserMessage(content="Previous user turn..."), # If needed
+    # ModelResponse(parts=[TextPart(content="Previous assistant turn...")]), # If needed
+]
+
+# You can then pass this list to the agent:
+# result = agent.run_sync("Follow up question", message_history=manual_history)
+```
+
+*   **Key Points:**
+    *   Import `UserMessage`, `ModelResponse`, and `TextPart` directly.
+    *   Use `UserMessage(content="...")` for user turns.
+    *   Use `ModelResponse(parts=[TextPart(content="...")])` for assistant turns containing simple text.
+    *   Refer to `pydantic-ai` documentation for handling other content types (e.g., tool calls) within `ModelResponse.parts`.
+
 ## Agent.run_sync
 
 `Agent.run_sync` is a synchronous method for running an agent with a user prompt. This method provides a synchronous interface to the underlying asynchronous Agent architecture, returning a complete response.

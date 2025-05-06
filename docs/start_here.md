@@ -65,7 +65,7 @@ When assigned to implement or modify a component specified by an IDL (or tacklin
     *   If the IDL defines module-level functions, ensure the module exists. Handle any module-level setup or configuration needed. Dependencies specified in `@depends_on` might be injected into functions directly as parameters or managed via module initialization.
 10. **Implement Functions/Methods:**
     *   Define function/method signatures **exactly** matching the IDL (name, parameters, type hints corresponding to IDL types).
-    *   Implement the logic described in the `Behavior` section.
+    *   Implement the logic described in the `Behavior` section. **Remember that implementing IDL contracts often requires consulting and verifying external library APIs (e.g., for `pydantic-ai`, `mcp.py`) as specified in [`docs/implementation_rules.md#6-llm-interaction`](./implementation_rules.md#6-llm-interaction).**
     *   Use Pydantic models for complex `Expected JSON format` parameters/returns (Parse, Don't Validate).
     *   Ensure your implementation fulfills the `Postconditions`.
     *   Respect `Preconditions` (often handled by type hints or initial checks).
@@ -108,6 +108,7 @@ When assigned to implement or modify a component specified by an IDL (or tacklin
 *   **Docstrings:** **Mandatory** for all modules, classes, functions, methods. Use **Google Style**.
 *   **Imports:** Use **absolute imports** from `src`. Group imports correctly. Top-level only unless exceptional reason exists (document it).
 *   **Naming:** PEP 8 (snake_case for functions/variables, CamelCase for classes). Use descriptive names.
+*   **Logging:** Use the standard `logging` module. **Configure logging early in entry-point scripts** as detailed in [`docs/implementation_rules.md#10-logging-conventions`](./implementation_rules.md#10-logging-conventions).
 
 > **Further Reading:** See `docs/implementation_rules.md` and `docs/project_rules.md` for complete details.
 
