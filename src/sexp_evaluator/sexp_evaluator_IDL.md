@@ -68,22 +68,34 @@ module src.sexp_evaluator.sexp_evaluator {
         //   - Literals (string, number, bool, null, empty list): Return the value directly.
         //   - Symbols: Look up the symbol in the `env`. Raise error if unbound.
         //   - Lists: 
-        //     - If the list starts with the symbol `lambda`, it's a **lambda definition**. This is handled directly by `_eval`. It parses the parameter list and body expressions, creates a `Closure` object (capturing the current `env` as the definition environment), and returns this `Closure`. It does *not* evaluate the parameters or body at this stage.
-        //     - Otherwise (not a `lambda` definition), delegates processing to `_eval_list_form` to determine if it's a special form call, primitive call, function/task/tool invocation, or invalid.
-        // - **Guideline:** Focuses on returning the value; the *application* of functions/operators happens within the logic called by `_eval_list_form` (specifically, `_apply_operator`).
+        //     - If the list starts with the symbol `lambda`: This is a **lambda definition**. `_eval` directly handles this. It parses the parameter list (expecting symbols) and body expressions. It then creates a `Closure` object, capturing the current `env` as the definition environment, and returns this `Closure`. The parameters and body are *not* evaluated at this stage.
+        //     - Otherwise (not a `lambda` definition): Delegates processing to `_eval_list_form`.
+        // - **Guideline:** `_eval` focuses on determining the value of a node. The application of functions/operators is primarily handled by `_apply_operator`, which is called by `_eval_list_form`.
         //
-        // - **Dispatch Order in `_eval_list_form` (after operator is resolved by `_eval`):**
-        //   1. If the resolved operator is a **`Closure` object**: Trigger the **Function Application** process:
-        //      a. Evaluate the argument expressions (`<arg1>`, `<arg2>`, ...) provided in the *call* within the *current calling environment*.
-        //      b. Create a *new environment frame*. The parent of this new frame is the environment **captured within the `Closure` object** (this provides lexical scope).
-        //      c. Bind the function's formal parameter names (from the `Closure`) to the evaluated argument values in the new frame. Check for correct argument count (arity).
-        //      d. Evaluate the function's body expression(s) (from the `Closure`) sequentially within this new environment frame.
-        //      e. The result of the last body expression is the result of the function application. Return this result.
-        //   2. Else, if operator is a symbol matching a **Special Form** (e.g., `if`, `let`, `bind`, `progn`, `quote`, `defatom`, `loop` - *excluding* `lambda` which is handled by `_eval`): Execute special form logic (which handles its own argument evaluation or definition as needed).
-        //   3. Else, if operator is a symbol matching a **Primitive** (`list`, `get_context`): Execute primitive logic (which evaluates necessary arguments internally from the unevaluated argument expressions).
-        //   4. Else, if operator is a **known Task/Tool name string**: Delegate to task/tool invocation logic (passing the *name* and *unevaluated* argument expressions, which are then evaluated by the invoker).
-        //   5. Else, if operator is a **Python callable** (but not a `Closure`): Evaluate all argument expressions, then call the Python callable with these evaluated arguments.
-        //   6. Else (e.g., operator is a symbol not recognized, or a non-callable value like a list or number): Raise an appropriate "Undefined function/operator" or "Cannot apply non-callable" error.
+        // - **`_eval_list_form` Behavior:**
+        //   - Takes a non-empty list (that is not a `lambda` definition) and the current environment.
+        //   - Evaluates the first element of the list (the operator expression) using `self._eval` to get the `resolved_operator`.
+        //   - If the `op_expr_node` (first element) is a symbol that matches a **Special Form** (e.g., `if`, `let`, `defatom`, `loop` - *excluding* `lambda` which is handled by `_eval` directly), it calls the special form's handler method. Special forms manage their own argument evaluation.
+        //   - Otherwise (operator is not a special form symbol), it calls `self._apply_operator(resolved_operator, arg_expr_nodes, calling_env, original_call_expr_str)`.
+        //
+        // - **`_apply_operator` Behavior (Conceptual - this logic is within SexpEvaluator):**
+        //   - Takes the `resolved_operator`, the list of *unevaluated* argument expressions (`arg_expr_nodes`), the `calling_env`, and the original call string.
+        //   - **Dispatch Order:**
+        //     1. If `resolved_operator` is a **`Closure` object**:
+        //        a. Check arity (number of parameters vs. number of provided argument expressions).
+        //        b. Evaluate each `arg_expr_node` in the `calling_env` to get `evaluated_args`.
+        //        c. Create a new environment frame (`call_frame_env`) whose parent is the `Closure`'s captured `definition_env`.
+        //        d. Bind the `Closure`'s parameter symbols to the `evaluated_args` in `call_frame_env`.
+        //        e. Evaluate the `Closure`'s body expressions sequentially in `call_frame_env`. The result of the last body expression is returned.
+        //     2. Else, if `resolved_operator` is a **string (name of a primitive, task, or tool)**:
+        //        a. If it's a **Primitive** (e.g., "list", "get_context"): Call the primitive's applier method (e.g., `_apply_list_primitive`). Primitive appliers are responsible for evaluating their own arguments from `arg_expr_nodes` as needed.
+        //        b. If it's an **Atomic Task name**: Call `_invoke_task_system`. This invoker will evaluate arguments from `arg_expr_nodes` before creating the `SubtaskRequest`.
+        //        c. If it's a **Handler Tool name**: Call `_invoke_handler_tool`. This invoker will evaluate arguments from `arg_expr_nodes` before calling the handler's tool executor.
+        //        d. Else (name not recognized): Raise "Unrecognized operator" error.
+        //     3. Else, if `resolved_operator` is a **Python callable (but not a `Closure`)**:
+        //        a. Evaluate each `arg_expr_node` in the `calling_env` to get `evaluated_args`.
+        //        b. Call the Python callable with these `evaluated_args`.
+        //     4. Else (e.g., `resolved_operator` is a number or a list that's not a closure): Raise "Cannot apply non-callable" error.
         //
         // - `(lambda (param...) body...)`: **Special Form (handled by `_eval`).** Creates and returns a first-class function object (a `Closure`). Does *not* evaluate the parameter list or body immediately. The returned `Closure` captures the parameter list (symbols), the body AST nodes, and the current lexical environment (the environment where the `lambda` expression itself was evaluated). This captured environment enables lexical scoping when the function is later applied.
         // - `(defatom task-name (params ...) (instructions ...) ...)`: **Special Form.** Defines a new atomic task template.
