@@ -60,42 +60,35 @@ class AtomicTaskExecutor:
             return val
             
         def replace_match(match):
-            # --- START TEMPORARY SIMPLIFICATION ---
-            logging.debug(f"  _substitute_params: replace_match called for {match.group(1)}. Returning fixed string.")
-            return "TEST_REPLACEMENT"
-            # --- END TEMPORARY SIMPLIFICATION ---
-
-            # --- ORIGINAL CODE (COMMENTED OUT) ---
-            # full_param_name = match.group(1)  # e.g., "context_input.query"
-            # logging.debug(f"  _substitute_params: Found placeholder '{{{{{full_param_name}}}}}'") # Log placeholder
-            # try:
-            #     # Use helper to resolve dot notation
-            #     value = resolve_dot_notation(params, full_param_name)
-            #     # --- Log value BEFORE str() ---
-            #     logging.debug(f"  _substitute_params: Value for '{full_param_name}' is: {value!r} (Type: {type(value).__name__})")
-            #     # --- End log ---
-            #     value_type = type(value)
-            #     value_size = len(value) if hasattr(value, '__len__') else 'N/A'
-            #     logging.debug(f"  Substituting '{full_param_name}': Type={value_type}, Size/Len={value_size}")
-            #     
-            #     # Enhanced error handling for str() conversion
-            #     try:
-            #         result = str(value)  # Try to convert to string
-            #         return result
-            #     except TypeError as str_err:
-            #         # More detailed error for str() conversion failure
-            #         logging.error(f"Failed to convert parameter '{full_param_name}' to string: {str_err}")
-            #         logging.error(f"Value details: type={value_type}, repr={value!r}")
-            #         if hasattr(value, '__origin__'):
-            #             logging.error(f"  __origin__={value.__origin__}, __args__={getattr(value, '__args__', 'N/A')}")
-            #         # Re-raise with more context
-            #         raise TypeError(f"Cannot convert parameter '{full_param_name}' to string: {str_err}")
-            # except (KeyError, AttributeError, TypeError) as e:  # Catch potential errors during access
-            #     logging.error(f"Parameter '{full_param_name}' not found or access error in provided params: {e}")
-            #     missing_params.append(full_param_name)
-            #     # Return the placeholder itself to find all missing ones first
-            #     return match.group(0)
-            # --- END ORIGINAL CODE ---
+            full_param_name = match.group(1)  # e.g., "context_input.query"
+            logging.debug(f"  _substitute_params: Found placeholder '{{{{{full_param_name}}}}}'") # Log placeholder
+            try:
+                # Use helper to resolve dot notation
+                value = resolve_dot_notation(params, full_param_name)
+                # --- Log value BEFORE str() ---
+                logging.debug(f"  _substitute_params: Value for '{full_param_name}' is: {value!r} (Type: {type(value).__name__})")
+                # --- End log ---
+                value_type = type(value)
+                value_size = len(value) if hasattr(value, '__len__') else 'N/A'
+                logging.debug(f"  Substituting '{full_param_name}': Type={value_type}, Size/Len={value_size}")
+                
+                # Enhanced error handling for str() conversion
+                try:
+                    result = str(value)  # Try to convert to string
+                    return result
+                except TypeError as str_err:
+                    # More detailed error for str() conversion failure
+                    logging.error(f"Failed to convert parameter '{full_param_name}' to string: {str_err}")
+                    logging.error(f"Value details: type={value_type}, repr={value!r}")
+                    if hasattr(value, '__origin__'):
+                        logging.error(f"  __origin__={value.__origin__}, __args__={getattr(value, '__args__', 'N/A')}")
+                    # Re-raise with more context
+                    raise TypeError(f"Cannot convert parameter '{full_param_name}' to string: {str_err}")
+            except (KeyError, AttributeError, TypeError) as e:  # Catch potential errors during access
+                logging.error(f"Parameter '{full_param_name}' not found or access error in provided params: {e}")
+                missing_params.append(full_param_name)
+                # Return the placeholder itself to find all missing ones first
+                return match.group(0)
 
         # --- Add logging for input text ---
         logging.debug(f"--- _substitute_params processing text (first 500 chars): --- \n{text[:500] if text else 'None'}\n-------------------------------------")
@@ -160,41 +153,6 @@ class AtomicTaskExecutor:
             logging.error(f"Error logging params in AtomicTaskExecutor: {log_e}")
         # --- END ADDED LOGGING ---
 
-        # --- START: Manual str() Conversion Test ---
-        logging.debug("--- Manually testing str() conversion on params ---")
-        problematic_key = None
-        problematic_value = None
-        problematic_type = None
-        for k, v in params.items():
-            try:
-                logging.debug(f"Testing str() on key='{k}', value={v!r}, type={type(v).__name__}")
-                _ = str(v) # Attempt conversion
-                logging.debug(f"  str() conversion successful for key='{k}'")
-            except TypeError as te:
-                # Check if it's the specific error we're looking for
-                if "Cannot instantiate typing.Union" in str(te):
-                    problematic_key = k
-                    problematic_value = v
-                    problematic_type = type(v)
-                    logging.error(f"!!! Found the problematic parameter during manual str() test !!!")
-                    logging.error(f"!!! Key: {problematic_key}, Value: {problematic_value!r}, Type: {problematic_type} !!!")
-                    logging.exception(f"Underlying TypeError for key '{k}'") # Log full traceback
-                    # Exit the loop early once the error is found
-                    break
-                else:
-                    # Log other TypeErrors but don't mark as the specific problem yet
-                    logging.exception(f"Unexpected TypeError during manual str() test for key '{k}'")
-            except Exception as e:
-                # Log any other unexpected errors during the test
-                logging.exception(f"Unexpected error during manual str() test for key '{k}'")
-
-        # If the specific TypeError was found, return a FAILED result immediately
-        if problematic_key:
-            error_msg = f"Failed manual str() conversion for param '{problematic_key}' (Type: {problematic_type}): Underlying error likely 'Cannot instantiate typing.Union'"
-            error_details = TaskFailureError(type="TASK_FAILURE", reason="unexpected_error", message=error_msg)
-            return TaskResult(content=error_msg, status="FAILED", notes={"error": error_details.model_dump(exclude_none=True)}).model_dump(exclude_none=True)
-        logging.debug("--- Manual str() conversion test complete (No Union error found) ---")
-        # --- END: Manual str() Conversion Test ---
 
         try:
             # --- 1. Parameter Substitution (Strictly from params) ---
