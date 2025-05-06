@@ -213,7 +213,7 @@ def test_context_management_invalid():
 
 def test_subtask_context_defaults():
     assert isinstance(SUBTASK_CONTEXT_DEFAULTS, ContextManagement)
-    assert SUBTASK_CONTEXT_DEFAULTS.inheritContext == 'subset'
+    assert SUBTASK_CONTEXT_DEFAULTS.inheritContext == 'none'
     assert SUBTASK_CONTEXT_DEFAULTS.accumulateData is False
     assert SUBTASK_CONTEXT_DEFAULTS.accumulationFormat == 'notes_only'
     assert SUBTASK_CONTEXT_DEFAULTS.freshContext == 'enabled'
