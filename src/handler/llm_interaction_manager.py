@@ -266,7 +266,17 @@ class LLMInteractionManager:
                     error_msg = f"Configuration not found for model override: {model_override}"
                     logger.error(error_msg)
                     error_details = TaskFailureError(type="TASK_FAILURE", reason="configuration_error", message=error_msg)
-                    return TaskResult(status="FAILED", content=error_msg, notes={"error": error_details.model_dump(exclude_none=True)}).model_dump(exclude_none=True)
+                    return {
+                        "success": False,
+                        "content": None,
+                        "tool_calls": None,
+                        "usage": None,
+                        "error": error_msg,
+                        "parsed_content": None,
+                        "notes": {
+                            "error": error_details.model_dump(exclude_none=True)
+                        }
+                    }
 
                 # Get tools from the default agent (assuming tools are compatible)
                 # Ensure self.agent is initialized before accessing .tools
@@ -306,7 +316,17 @@ class LLMInteractionManager:
                 logger.exception(f"Failed to initialize temporary Agent for override '{model_override}': {agent_init_error}")
                 error_msg = f"Failed to initialize agent for model: {model_override}"
                 error_details = TaskFailureError(type="TASK_FAILURE", reason="llm_error", message=f"{error_msg}: {agent_init_error}")
-                return TaskResult(status="FAILED", content=error_msg, notes={"error": error_details.model_dump(exclude_none=True)}).model_dump(exclude_none=True)
+                return {
+                    "success": False,
+                    "content": None,
+                    "tool_calls": None,
+                    "usage": None,
+                    "error": f"{error_msg}: {agent_init_error}",
+                    "parsed_content": None,
+                    "notes": {
+                        "error": error_details.model_dump(exclude_none=True)
+                    }
+                }
         else:
              logger.debug(f"Using default agent: {self.default_model_identifier}")
         # --- END: Model Override Logic ---
