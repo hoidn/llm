@@ -27,7 +27,44 @@ from src.system.errors import SexpSyntaxError, SexpEvaluationError
 # Type for Sexp AST nodes (adjust based on SexpParser output)
 # Assuming sexpdata-like output: lists, tuples, strings, numbers, bools, None, Symbol objects
 from sexpdata import Symbol # Or use str if parser converts symbols
+from src.sexp_evaluator.sexp_environment import SexpEnvironment # Ensure this import works
+from src.system.errors import SexpSyntaxError, SexpEvaluationError # Ensure this import works
+
+
 SexpNode = Any # General type hint for AST nodes
+
+logger = logging.getLogger(__name__) # Define logger at module level if not already
+
+class Closure:
+    def __init__(self, params_ast: list, body_ast: list, definition_env: 'SexpEnvironment'): # Use forward ref for SexpEnvironment if needed
+        """
+        Represents a lexically-scoped anonymous function created by 'lambda'.
+
+        Args:
+            params_ast: A list of Symbol objects representing the function's formal parameters.
+            body_ast: A list of AST nodes representing the function's body expressions.
+                        Each element in this list is a complete S-expression AST node.
+            definition_env: The SexpEnvironment captured at the time of lambda definition.
+                            This environment is the parent for the function's call frame.
+        """
+        # Validate params_ast contains only Symbols
+        for p_node in params_ast:
+            if not isinstance(p_node, Symbol):
+                # This validation should ideally happen before Closure creation,
+                # but a check here is also good.
+                raise SexpEvaluationError(f"Lambda parameters must be symbols, got {type(p_node)}: {p_node}")
+        
+        self.params_ast: list = params_ast # List of Symbol objects
+        self.body_ast: list = body_ast     # List of SexpNode (body expressions)
+        self.definition_env: SexpEnvironment = definition_env # Captured environment
+        
+        # For debugging purposes
+        param_names_str = ", ".join([p.value() for p in self.params_ast])
+        logger.debug(f"Closure created: params=({param_names_str}), num_body_exprs={len(self.body_ast)}, def_env_id={id(self.definition_env)}")
+
+    def __repr__(self):
+        param_names = [p.value() for p in self.params_ast]
+        return f"<Closure params=({', '.join(param_names)}) body_exprs#={len(self.body_ast)} def_env_id={id(self.definition_env)}>"
 
 class SexpEvaluator:
     """
@@ -163,28 +200,63 @@ class SexpEvaluator:
         # 1. Handle Symbols (Lookup)
         if isinstance(node, Symbol):
             symbol_name = node.value()
-            logging.debug(f"Eval Symbol: '{symbol_name}'. Performing lookup.")
+            # logging.debug(f"Eval Symbol: '{symbol_name}'. Performing lookup.") # Keep existing debug
             try:
                 value = env.lookup(symbol_name) # Let NameError propagate if needed
-                logging.debug(f"Eval Symbol END: '{symbol_name}' -> {value} (Type={type(value)})")
+                logger.debug(f"Eval Symbol END: '{symbol_name}' -> {value} (Type={type(value)})")
                 return value
             except NameError as e:
-                 logging.error(f"Eval Symbol FAILED: Unbound symbol '{symbol_name}'")
+                 logger.error(f"Eval Symbol FAILED: Unbound symbol '{symbol_name}'")
                  raise # Re-raise NameError to be caught by evaluate_string
 
         # 2. Handle Atoms/Literals (Anything not a list/symbol)
         # Includes str, int, float, bool, None, and [] (parsed nil/())
         if not isinstance(node, list):
-            logging.debug(f"Eval Literal/Atom: {node}")
+            logger.debug(f"Eval Literal/Atom: {node}")
             return node
 
         # 3. Handle Empty List
-        if not node:
-            logging.debug("Eval Empty List: -> []")
+        if not node: # Empty list '()'
+            logger.debug("Eval Empty List: -> []")
             return []
 
+        # --- START LAMBDA DEFINITION HANDLING ---
+        op_expr_node = node[0]
+        if isinstance(op_expr_node, Symbol) and op_expr_node.value() == "lambda":
+            logger.debug(f"Eval: Encountered 'lambda' special form: {node}")
+            
+            if len(node) < 3: # (lambda (params) body1 ...)
+                raise SexpEvaluationError(
+                    "'lambda' requires a parameter list and at least one body expression.", 
+                    expression=str(node)
+                )
+            
+            params_list_node = node[1]
+            if not isinstance(params_list_node, list):
+                raise SexpEvaluationError(
+                    "Lambda parameter definition must be a list of symbols.", 
+                    expression=str(params_list_node)
+                )
+
+            lambda_params_ast = []
+            for p_node in params_list_node:
+                if not isinstance(p_node, Symbol):
+                    raise SexpEvaluationError(
+                        f"Lambda parameters must be symbols, got {type(p_node)}: {p_node}", 
+                        expression=str(params_list_node)
+                    )
+                lambda_params_ast.append(p_node)
+            
+            lambda_body_ast = node[2:] # List of body expressions
+            if not lambda_body_ast: # Should be caught by len(node) < 3, but good to be explicit
+                 raise SexpEvaluationError("Lambda requires at least one body expression.", expression=str(node))
+
+            logger.debug(f"Creating Closure: params={lambda_params_ast}, num_body_exprs={len(lambda_body_ast)}, def_env_id={id(env)}")
+            return Closure(lambda_params_ast, lambda_body_ast, env) # Capture current 'env'
+        # --- END LAMBDA DEFINITION HANDLING ---
+
         # 4. Handle Non-Empty List (Delegate to _eval_list_form)
-        logging.debug(f"Eval Non-Empty List: Delegating to _eval_list_form for: {node}")
+        logger.debug(f"Eval Non-Empty List (not lambda): Delegating to _eval_list_form for: {node}")
         return self._eval_list_form(node, env)
 
     def _eval_list_form(self, expr_list: list, env: SexpEnvironment) -> Any:
@@ -195,131 +267,183 @@ class SexpEvaluator:
         original_expr_str = str(expr_list) # For error reporting
         logging.debug(f"--- _eval_list_form START: expr_list={expr_list}, original_expr_str='{original_expr_str}'")
 
-        op_expr = expr_list[0]
-        arg_exprs = expr_list[1:] # These are UNEVALUATED argument expressions
+        op_expr_node = expr_list[0]
+        arg_expr_nodes = expr_list[1:] # These are UNEVALUATED argument expressions
 
         resolved_operator: Any
 
-        if isinstance(op_expr, Symbol):
-            op_name_str = op_expr.value()
-            # Priority 1: Special Forms
-            if op_name_str in self.SPECIAL_FORM_HANDLERS:
-                logging.debug(f"  _eval_list_form: Dispatching to Special Form Handler: {op_name_str}")
+        if isinstance(op_expr_node, Symbol):
+            op_name_str = op_expr_node.value()
+            # Priority 1: Special Forms (lambda is handled by _eval now, so it won't be caught here)
+            # Ensure 'lambda' is NOT in SPECIAL_FORM_HANDLERS if _eval handles it directly.
+            if op_name_str in self.SPECIAL_FORM_HANDLERS: # e.g. if, let, defatom, loop
+                logger.debug(f"  _eval_list_form: Dispatching to Special Form Handler: {op_name_str}")
                 handler_method = self.SPECIAL_FORM_HANDLERS[op_name_str]
-                return handler_method(arg_exprs, env, original_expr_str)
+                return handler_method(arg_expr_nodes, env, original_expr_str)
             
             # Priority 2: Primitives, Tasks, Tools (use name directly)
             is_primitive = op_name_str in self.PRIMITIVE_APPLIERS
-            template_def = self.task_system.find_template(op_name_str) # Avoid calling twice
+            template_def = self.task_system.find_template(op_name_str)
             is_atomic_task = template_def and template_def.get("type") == "atomic"
             is_handler_tool = op_name_str in self.handler.tool_executors
 
             if is_primitive or is_atomic_task or is_handler_tool:
-                resolved_operator = op_name_str # The operator is the name itself
-                logging.debug(f"  _eval_list_form: Operator '{op_name_str}' identified as known primitive/task/tool name.")
+                resolved_operator = op_name_str 
+                logger.debug(f"  _eval_list_form: Operator '{op_name_str}' identified as known primitive/task/tool name.")
             else:
                 # Priority 3: Symbol needs to be evaluated (looked up in env)
-                logging.debug(f"  _eval_list_form: Operator symbol '{op_name_str}' is not a known fixed operator. Evaluating (looking up) '{op_name_str}'...")
+                logger.debug(f"  _eval_list_form: Operator symbol '{op_name_str}' is not a fixed operator. Evaluating (looking up) '{op_name_str}'...")
                 try:
-                    resolved_operator = self._eval(op_expr, env) # This will perform env.lookup
+                    resolved_operator = self._eval(op_expr_node, env) # This will perform env.lookup
                 except NameError as ne: 
-                    logging.error(f"  _eval_list_form: Operator symbol '{op_name_str}' is unbound during lookup.")
-                    # Pass original_expr_str (the full list) for context of the failed call
+                    logger.error(f"  _eval_list_form: Operator symbol '{op_name_str}' is unbound during lookup.")
                     raise SexpEvaluationError(f"Unbound symbol or unrecognized operator: {op_name_str}", original_expr_str) from ne
-                except SexpEvaluationError as se: # Propagate if _eval itself raises SexpEvaluationError
+                except SexpEvaluationError as se: 
                     raise se
-                except Exception as e: # Catch other errors during _eval of operator
-                    logging.exception(f"  _eval_list_form: Unexpected error evaluating operator symbol '{op_name_str}': {e}")
+                except Exception as e: 
+                    logger.exception(f"  _eval_list_form: Unexpected error evaluating operator symbol '{op_name_str}': {e}")
                     raise SexpEvaluationError(f"Error evaluating operator symbol '{op_name_str}': {e}", original_expr_str, error_details=str(e)) from e
-        elif isinstance(op_expr, list): # Operator is a sub-expression, e.g., ((lambda (x) x) 5)
-            logging.debug(f"  _eval_list_form: Operator is a complex expression, evaluating it: {op_expr}")
+        elif isinstance(op_expr_node, list): # Operator is a sub-expression, e.g., ((lambda (x) x) 5)
+            logger.debug(f"  _eval_list_form: Operator is a complex expression, evaluating it: {op_expr_node}")
             try:
-                resolved_operator = self._eval(op_expr, env)
+                resolved_operator = self._eval(op_expr_node, env)
             except Exception as e_op_eval: 
-                logging.exception(f"  _eval_list_form: Error evaluating complex operator expression '{op_expr}': {e_op_eval}")
+                logger.exception(f"  _eval_list_form: Error evaluating complex operator expression '{op_expr_node}': {e_op_eval}")
                 if isinstance(e_op_eval, SexpEvaluationError): raise 
-                raise SexpEvaluationError(f"Error evaluating operator expression: {op_expr}", original_expr_str, error_details=str(e_op_eval)) from e_op_eval
+                raise SexpEvaluationError(f"Error evaluating operator expression: {op_expr_node}", original_expr_str, error_details=str(e_op_eval)) from e_op_eval
         else: # Operator is a literal, e.g. (1 2 3) - this is an error
-            raise SexpEvaluationError(f"Operator in list form must be a symbol or another list, got {type(op_expr)}: {op_expr}", original_expr_str)
+            raise SexpEvaluationError(f"Operator in list form must be a symbol or another list, got {type(op_expr_node)}: {op_expr_node}", original_expr_str)
 
-        logging.debug(f"  _eval_list_form: Resolved operator to: {resolved_operator} (Type: {type(resolved_operator)})")
+        logger.debug(f"  _eval_list_form: Resolved operator to: {resolved_operator} (Type: {type(resolved_operator)})")
         
-        # Now, pass the resolved_operator and the UNEVALUATED arg_exprs to _apply_operator.
-        # _apply_operator will handle how/if arguments are evaluated based on the operator type.
-        return self._apply_operator(resolved_operator, arg_exprs, env, original_expr_str)
+        # --- DISPATCH TO _apply_operator ---
+        return self._apply_operator(resolved_operator, arg_expr_nodes, env, original_expr_str)
 
     def _apply_operator(
         self,
         resolved_op: Any, 
-        arg_exprs: List[SexpNode],  # UNEVALUATED argument expressions from the call site
-        env: SexpEnvironment,
-        original_expr_str: str  # String representation of the full call expression (op arg1_expr ...)
+        arg_expr_nodes: List[SexpNode],  # UNEVALUATED argument expressions from the call site
+        calling_env: SexpEnvironment, # Renamed from 'env' to 'calling_env' for clarity
+        original_call_expr_str: str  # String representation of the full call expression (op arg1_expr ...)
     ) -> Any:
         """
         Applies a resolved operator to a list of argument expressions.
-        Dispatches to primitive appliers, task/tool invokers, or Python callables.
+        Dispatches to closure application, primitive appliers, task/tool invokers, or Python callables.
         Handles argument evaluation based on the operator type.
         """
-        logging.debug(f"--- _apply_operator START: resolved_op={resolved_op} (Type: {type(resolved_op)}), arg_exprs={arg_exprs}, original_expr_str='{original_expr_str}'")
+        logger.debug(f"--- _apply_operator START: resolved_op_type={type(resolved_op)}, num_arg_exprs={len(arg_expr_nodes)}, original_call_expr_str='{original_call_expr_str}'")
 
-        # Case 1: Operator is a Name (String) - Could be Primitive, Task, or Tool
-        if isinstance(resolved_op, str):
+        # --- Case 0: Closure Application (NEW) ---
+        if isinstance(resolved_op, Closure):
+            closure_to_apply = resolved_op
+            logger.debug(f"  _apply_operator: Applying Closure: {closure_to_apply}")
+
+            # 0a. Arity Check
+            num_expected_params = len(closure_to_apply.params_ast)
+            num_provided_args = len(arg_expr_nodes)
+            if num_expected_params != num_provided_args:
+                raise SexpEvaluationError(
+                    f"Arity mismatch: Closure expects {num_expected_params} arguments, got {num_provided_args} for {original_call_expr_str}",
+                    expression=original_call_expr_str
+                )
+
+            # 0b. Evaluate arguments in the CALLING environment
+            evaluated_args = []
+            logger.debug(f"    Evaluating {num_provided_args} arguments in calling_env (id={id(calling_env)})...")
+            for i, arg_node in enumerate(arg_expr_nodes):
+                try:
+                    eval_arg = self._eval(arg_node, calling_env)
+                    evaluated_args.append(eval_arg)
+                    logger.debug(f"      Evaluated arg {i+1} ('{arg_node}') to: {eval_arg}")
+                except Exception as e_arg_eval:
+                    logger.exception(f"      Error evaluating argument {i+1} ('{arg_node}') for closure: {e_arg_eval}")
+                    if isinstance(e_arg_eval, SexpEvaluationError): raise
+                    raise SexpEvaluationError(f"Error evaluating argument {i+1} for closure: {arg_node}", original_call_expr_str, error_details=str(e_arg_eval)) from e_arg_eval
+            
+            # 0c. Create new environment frame, linked to Closure's DEFINITION environment
+            logger.debug(f"    Creating new call frame. Parent (definition_env from closure) ID: {id(closure_to_apply.definition_env)}")
+            call_frame_env = closure_to_apply.definition_env.extend({}) # Extend the *definition* environment
+
+            # 0d. Bind parameters to evaluated arguments in the new frame
+            for param_symbol, arg_value in zip(closure_to_apply.params_ast, evaluated_args):
+                param_name = param_symbol.value() # Assuming params_ast contains Symbol objects
+                call_frame_env.define(param_name, arg_value)
+                logger.debug(f"      Bound '{param_name}' = {arg_value} in call frame (id={id(call_frame_env)})")
+            
+            # 0e. Evaluate body expressions sequentially in the new frame
+            final_body_result: Any = [] # Default for empty body (lambda spec requires at least one)
+            logger.debug(f"    Evaluating closure body with {len(closure_to_apply.body_ast)} expressions in call frame (id={id(call_frame_env)})")
+            for i, body_node in enumerate(closure_to_apply.body_ast):
+                try:
+                    final_body_result = self._eval(body_node, call_frame_env)
+                    logger.debug(f"      Body expression {i+1} evaluated to: {final_body_result}")
+                except Exception as e_body_eval:
+                    logger.exception(f"      Error evaluating closure body expression {i+1} '{body_node}': {e_body_eval}")
+                    if isinstance(e_body_eval, SexpEvaluationError): raise
+                    raise SexpEvaluationError(f"Error evaluating closure body expression {i+1}: {body_node}", original_call_expr_str, error_details=str(e_body_eval)) from e_body_eval
+            
+            logger.debug(f"--- _apply_operator (Closure) END: returning {final_body_result}")
+            return final_body_result
+
+        # --- Case 1: Operator is a Name (String) - Could be Primitive, Task, or Tool ---
+        elif isinstance(resolved_op, str):
             op_name_str = resolved_op
-            logging.debug(f"  _apply_operator: Operator is a name string: '{op_name_str}'")
+            logger.debug(f"  _apply_operator: Operator is a name string: '{op_name_str}'")
 
             # 1a. Check Primitives
             if op_name_str in self.PRIMITIVE_APPLIERS:
-                logging.debug(f"  _apply_operator: Dispatching to Primitive Applier: {op_name_str}")
+                logger.debug(f"  _apply_operator: Dispatching to Primitive Applier: {op_name_str}")
                 applier_method = self.PRIMITIVE_APPLIERS[op_name_str]
-                # Primitives are responsible for evaluating their arguments from arg_exprs as needed.
-                return applier_method(arg_exprs, env, original_expr_str)
+                # Primitives are responsible for evaluating their arguments from arg_expr_nodes as needed.
+                return applier_method(arg_expr_nodes, calling_env, original_call_expr_str)
 
             # 1b. Check Task System Atomic Templates
             template_def = self.task_system.find_template(op_name_str)
             if template_def and template_def.get("type") == "atomic":
-                logging.debug(f"  _apply_operator: Dispatching to Task System Invoker for: {op_name_str}")
-                # Task invoker receives unevaluated arg_exprs.
-                return self._invoke_task_system(op_name_str, template_def, arg_exprs, env, original_expr_str)
+                logger.debug(f"  _apply_operator: Dispatching to Task System Invoker for: {op_name_str}")
+                # Task invoker receives unevaluated arg_expr_nodes.
+                return self._invoke_task_system(op_name_str, template_def, arg_expr_nodes, calling_env, original_call_expr_str)
 
             # 1c. Check Handler Tools
             if op_name_str in self.handler.tool_executors:
-                logging.debug(f"  _apply_operator: Dispatching to Handler Tool Invoker for: {op_name_str}")
-                # Tool invoker receives unevaluated arg_exprs.
-                return self._invoke_handler_tool(op_name_str, arg_exprs, env, original_expr_str)
+                logger.debug(f"  _apply_operator: Dispatching to Handler Tool Invoker for: {op_name_str}")
+                # Tool invoker receives unevaluated arg_expr_nodes.
+                return self._invoke_handler_tool(op_name_str, arg_expr_nodes, calling_env, original_call_expr_str)
             
             # 1d. If op_name_str was resolved from a symbol lookup but isn't a known type of operator
-            logging.error(f"  _apply_operator: Operator name '{op_name_str}' was resolved but is not a recognized primitive, task, or tool.")
-            raise SexpEvaluationError(f"Operator '{op_name_str}' is not a callable primitive, task, or tool.", original_expr_str)
+            logger.error(f"  _apply_operator: Operator name '{op_name_str}' was resolved but is not a recognized primitive, task, or tool.")
+            raise SexpEvaluationError(f"Operator '{op_name_str}' is not a callable primitive, task, or tool.", original_call_expr_str)
 
-        # Case 2: Operator is a Python Callable (e.g., a function from the environment, or future Closure)
-        elif callable(resolved_op):
-            logging.debug(f"  _apply_operator: Operator is a Python callable: {resolved_op}. Evaluating arguments...")
+        # --- Case 2: Operator is a (non-Closure) Python Callable ---
+        elif callable(resolved_op): # Should be after Closure check
+            logger.debug(f"  _apply_operator: Operator is a general Python callable: {resolved_op}. Evaluating arguments...")
             # For general callables, evaluate all arguments first.
             evaluated_args_list = []
-            for i, arg_node in enumerate(arg_exprs): # Iterate over original arg expressions
+            for i, arg_node in enumerate(arg_expr_nodes): # Iterate over original arg expressions
                 try:
-                    evaluated_args_list.append(self._eval(arg_node, env)) # Evaluate each
-                    logging.debug(f"  _apply_operator: Evaluated arg {i+1} ('{arg_node}') to: {evaluated_args_list[-1]}")
+                    # Evaluate each in the calling_env
+                    evaluated_args_list.append(self._eval(arg_node, calling_env)) 
+                    logger.debug(f"    Evaluated arg {i+1} ('{arg_node}') to: {evaluated_args_list[-1]}")
                 except Exception as e_arg_eval:
                     # Handle errors during argument evaluation for the callable
-                    logging.exception(f"  _apply_operator: Error evaluating argument {i+1} ('{arg_node}') for callable '{resolved_op}': {e_arg_eval}")
+                    logger.exception(f"  _apply_operator: Error evaluating argument {i+1} ('{arg_node}') for callable '{resolved_op}': {e_arg_eval}")
                     if isinstance(e_arg_eval, SexpEvaluationError): raise # Re-raise if already our type
                     # Wrap other exceptions
-                    raise SexpEvaluationError(f"Error evaluating argument {i+1} for callable '{resolved_op}': {arg_node}", original_expr_str, error_details=str(e_arg_eval)) from e_arg_eval
+                    raise SexpEvaluationError(f"Error evaluating argument {i+1} for callable '{resolved_op}': {arg_node}", original_call_expr_str, error_details=str(e_arg_eval)) from e_arg_eval
             
             try:
                 # Call directly with already evaluated args
                 result = resolved_op(*evaluated_args_list) 
-                logging.debug(f"  _apply_operator: Callable {resolved_op} returned: {result}")
+                logger.debug(f"  _apply_operator: Callable {resolved_op} returned: {result}")
                 return result
             except Exception as e:
-                logging.exception(f"  _apply_operator: Error calling Python callable {resolved_op} with args {evaluated_args_list}: {e}")
-                raise SexpEvaluationError(f"Error invoking callable {resolved_op}: {e}", original_expr_str, error_details=str(e)) from e
+                logger.exception(f"  _apply_operator: Error calling Python callable {resolved_op} with args {evaluated_args_list}: {e}")
+                raise SexpEvaluationError(f"Error invoking callable {resolved_op}: {e}", original_call_expr_str, error_details=str(e)) from e
 
-        # Case 3: Operator is Not a Name and Not Callable
+        # --- Case 3: Operator is Not a Name and Not Callable/Closure ---
         else:
-            logging.error(f"  _apply_operator: Operator is not a name and not callable: {resolved_op}")
-            raise SexpEvaluationError(f"Cannot apply non-callable operator: {resolved_op} (type: {type(resolved_op)})", original_expr_str)
+            logger.error(f"  _apply_operator: Operator is not a name and not callable/closure: {resolved_op}")
+            raise SexpEvaluationError(f"Cannot apply non-callable/non-closure operator: {resolved_op} (type: {type(resolved_op)})", original_call_expr_str)
 
     # --- Special Form Handlers (Signatures unchanged, logic relies on _eval) ---
 
