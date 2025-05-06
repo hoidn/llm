@@ -230,23 +230,21 @@ def test_eval_primitive_get_context_with_content_strategy(evaluator, mock_parser
     get_context_sym = Symbol("get_context")
     query_sym = Symbol("query")
     strategy_sym = Symbol("matching_strategy")
-    content_str = "content" # Strategy value needs to be string after symbol eval
+    content_sym = Symbol("content") # Strategy value is a symbol in Sexp
 
-    # Sexp: (get_context (query "q") (matching_strategy "content"))
+    # Sexp: (get_context (query "q") (matching_strategy 'content))
     mock_parser.parse_string.return_value = [
         get_context_sym,
         [query_sym, "q"],
-        [strategy_sym, content_str] # Pass strategy as string literal
+        [strategy_sym, content_sym] # Pass strategy as symbol
     ]
-    # Mock the symbol lookup for 'content' if needed, or assume it evaluates to "content"
-    # For simplicity, assume it evaluates to the string "content"
     expected_context_input = ContextGenerationInput(query="q", matching_strategy='content')
     mock_memory_system.get_relevant_context_for.return_value = AssociativeMatchResult(
         context_summary="Mock context summary",
         matches=[]
     )
 
-    evaluator.evaluate_string('(get_context (query "q") (matching_strategy "content"))')
+    evaluator.evaluate_string("(get_context (query \"q\") (matching_strategy 'content))")
 
     mock_memory_system.get_relevant_context_for.assert_called_once_with(expected_context_input)
 
@@ -255,13 +253,13 @@ def test_eval_primitive_get_context_with_metadata_strategy(evaluator, mock_parse
     get_context_sym = Symbol("get_context")
     query_sym = Symbol("query")
     strategy_sym = Symbol("matching_strategy")
-    metadata_str = "metadata" # Strategy value needs to be string after symbol eval
+    metadata_sym = Symbol("metadata") # Strategy value is a symbol
 
-    # Sexp: (get_context (query "q") (matching_strategy "metadata"))
+    # Sexp: (get_context (query "q") (matching_strategy 'metadata))
     mock_parser.parse_string.return_value = [
         get_context_sym,
         [query_sym, "q"],
-        [strategy_sym, metadata_str] # Pass strategy as string literal
+        [strategy_sym, metadata_sym] # Pass strategy as symbol
     ]
     expected_context_input = ContextGenerationInput(query="q", matching_strategy='metadata')
     mock_memory_system.get_relevant_context_for.return_value = AssociativeMatchResult(
@@ -269,7 +267,7 @@ def test_eval_primitive_get_context_with_metadata_strategy(evaluator, mock_parse
         matches=[]
     )
 
-    evaluator.evaluate_string('(get_context (query "q") (matching_strategy "metadata"))')
+    evaluator.evaluate_string("(get_context (query \"q\") (matching_strategy 'metadata))")
 
     mock_memory_system.get_relevant_context_for.assert_called_once_with(expected_context_input)
 
@@ -278,7 +276,7 @@ def test_eval_primitive_get_context_invalid_strategy_value(evaluator, mock_parse
     get_context_sym = Symbol("get_context")
     query_sym = Symbol("query")
     strategy_sym = Symbol("matching_strategy")
-    invalid_str = "invalid" # Invalid strategy value
+    invalid_str = "invalid" # Use string literal instead of symbol
 
     # Sexp: (get_context (query "q") (matching_strategy "invalid"))
     mock_parser.parse_string.return_value = [
@@ -303,8 +301,8 @@ def test_eval_primitive_get_context_invalid_strategy_type(evaluator, mock_parser
         [strategy_sym, 123] # Invalid type
     ]
 
-    with pytest.raises(SexpEvaluationError, match="Invalid value for 'matching_strategy'"):
-         evaluator.evaluate_string('(get_context (query "q") (matching_strategy 123))')
+    with pytest.raises(SexpEvaluationError, match="Invalid value for 'matching_strategy'. Expected 'content' or 'metadata', got: 123"):
+         evaluator.evaluate_string("(get_context (query \"q\") (matching_strategy 123))")
 
 
 # Invocation: Atomic Task
@@ -520,86 +518,6 @@ def test_evaluate_string_task_error_propagation(evaluator, mock_parser, mock_tas
 
     # Check the wrapped exception details
     assert "Simulated task timeout" in str(excinfo.value) # Check wrapped message
-
-def test_eval_primitive_get_context_with_content_strategy(evaluator, mock_parser, mock_memory_system):
-    """Test get_context with explicit content strategy."""
-    get_context_sym = Symbol("get_context")
-    query_sym = Symbol("query")
-    strategy_sym = Symbol("matching_strategy")
-    content_sym = Symbol("content") # Strategy value is a symbol in Sexp
-
-    # Sexp: (get_context (query "q") (matching_strategy 'content))
-    mock_parser.parse_string.return_value = [
-        get_context_sym,
-        [query_sym, "q"],
-        [strategy_sym, content_sym] # Pass strategy as symbol
-    ]
-    expected_context_input = ContextGenerationInput(query="q", matching_strategy='content')
-    mock_memory_system.get_relevant_context_for.return_value = AssociativeMatchResult(
-        context_summary="Mock context summary",
-        matches=[]
-    )
-
-    evaluator.evaluate_string("(get_context (query \"q\") (matching_strategy 'content))")
-
-    mock_memory_system.get_relevant_context_for.assert_called_once_with(expected_context_input)
-
-def test_eval_primitive_get_context_with_metadata_strategy(evaluator, mock_parser, mock_memory_system):
-    """Test get_context with explicit metadata strategy."""
-    get_context_sym = Symbol("get_context")
-    query_sym = Symbol("query")
-    strategy_sym = Symbol("matching_strategy")
-    metadata_sym = Symbol("metadata") # Strategy value is a symbol
-
-    # Sexp: (get_context (query "q") (matching_strategy 'metadata))
-    mock_parser.parse_string.return_value = [
-        get_context_sym,
-        [query_sym, "q"],
-        [strategy_sym, metadata_sym] # Pass strategy as symbol
-    ]
-    expected_context_input = ContextGenerationInput(query="q", matching_strategy='metadata')
-    mock_memory_system.get_relevant_context_for.return_value = AssociativeMatchResult(
-        context_summary="Mock context summary",
-        matches=[]
-    )
-
-    evaluator.evaluate_string("(get_context (query \"q\") (matching_strategy 'metadata))")
-
-    mock_memory_system.get_relevant_context_for.assert_called_once_with(expected_context_input)
-
-def test_eval_primitive_get_context_invalid_strategy_value(evaluator, mock_parser):
-    """Test get_context with an invalid strategy value."""
-    get_context_sym = Symbol("get_context")
-    query_sym = Symbol("query")
-    strategy_sym = Symbol("matching_strategy")
-    invalid_str = "invalid" # Use string literal instead of symbol
-
-    # Sexp: (get_context (query "q") (matching_strategy "invalid"))
-    mock_parser.parse_string.return_value = [
-        get_context_sym,
-        [query_sym, "q"],
-        [strategy_sym, invalid_str]
-    ]
-
-    with pytest.raises(SexpEvaluationError, match="Invalid value for 'matching_strategy'"):
-        evaluator.evaluate_string('(get_context (query "q") (matching_strategy "invalid"))')
-
-def test_eval_primitive_get_context_invalid_strategy_type(evaluator, mock_parser):
-    """Test get_context with an invalid strategy type (e.g., number)."""
-    get_context_sym = Symbol("get_context")
-    query_sym = Symbol("query")
-    strategy_sym = Symbol("matching_strategy")
-
-    # Sexp: (get_context (query "q") (matching_strategy 123))
-    mock_parser.parse_string.return_value = [
-        get_context_sym,
-        [query_sym, "q"],
-        [strategy_sym, 123] # Invalid type
-    ]
-
-    with pytest.raises(SexpEvaluationError, match="Invalid value for 'matching_strategy'. Expected 'content' or 'metadata', got: 123"):
-         evaluator.evaluate_string("(get_context (query \"q\") (matching_strategy 123))")
-
 
 # Implicit Progn (Sequence at top level)
 def test_evaluate_string_implicit_progn(evaluator, mock_parser):
@@ -891,3 +809,222 @@ class TestSexpEvaluatorDefatom:
         with pytest.raises(SexpEvaluationError, match=r"TaskSystem failed to register template.*returned False"):
             evaluator.evaluate_string("(defatom my-task ...)")
         mock_task_system.register_template.assert_called_once() # Ensure it was called
+
+# --- Tests for 'loop' Special Form ---
+# Use a class to group loop tests if preferred, or keep them at module level
+# Assuming Symbol is imported as S for brevity
+S = Symbol if 'Symbol' in locals() else str
+
+def test_eval_special_form_loop_basic_execution(evaluator, mock_parser, mock_handler):
+    """Test loop executes body the correct number of times."""
+    sexp_str = "(loop 3 (mock_task (arg \"val\")))" # Pass args to mock_task
+    # AST: ['loop', 3, ['mock_task', ['arg', 'val']]]
+    ast = [S('loop'), 3, [S('mock_task'), [S('arg'), 'val']]]
+    mock_parser.parse_string.return_value = ast
+
+    # Mock the tool executor function directly
+    mock_executor_func = MagicMock(return_value=TaskResult(status="COMPLETE", content="mock result"))
+    mock_handler.tool_executors = {"mock_task": mock_executor_func}
+
+    # Mock the _execute_tool method on the handler instance used by the evaluator
+    # This is needed because _invoke_target_by_name calls handler._execute_tool
+    mock_handler._execute_tool.return_value = TaskResult(status="COMPLETE", content="mock result")
+
+    result = evaluator.evaluate_string(sexp_str)
+
+    # Assertions
+    # Check the call count on the actual executor function or the _execute_tool mock
+    assert mock_handler._execute_tool.call_count == 3
+    mock_handler._execute_tool.assert_called_with('mock_task', {'arg': 'val'}) # Check last call args
+
+    # The result of evaluate_string should be the TaskResult object from the last call
+    assert isinstance(result, TaskResult)
+    assert result.status == "COMPLETE"
+    assert result.content == "mock result"
+
+def test_eval_special_form_loop_zero_count(evaluator, mock_parser, mock_handler):
+    """Test loop with count 0 executes body 0 times and returns nil ([])."""
+    sexp_str = "(loop 0 (mock_task))"
+    ast = [S('loop'), 0, [S('mock_task')]]
+    mock_parser.parse_string.return_value = ast
+    mock_executor_func = MagicMock(return_value="should not be called")
+    mock_handler.tool_executors = {"mock_task": mock_executor_func}
+    mock_handler._execute_tool.return_value = "should not be called" # Also mock the wrapper call
+
+    result = evaluator.evaluate_string(sexp_str)
+
+    # Assertions
+    assert result == [] # Should return nil
+    mock_handler._execute_tool.assert_not_called()
+    mock_executor_func.assert_not_called()
+
+def test_eval_special_form_loop_count_expression(evaluator, mock_parser, mock_handler):
+    """Test loop where the count is an expression."""
+    # Assuming '+' primitive is implemented or mocked to work
+    sexp_str = "(loop (+ 1 1) (mock_task))"
+    # AST needs '+' primitive structure
+    ast = [S('loop'), [S('+'), 1, 1], [S('mock_task')]]
+    mock_parser.parse_string.return_value = ast
+    mock_executor_func = MagicMock(return_value=TaskResult(status="COMPLETE", content="mock result"))
+    mock_handler.tool_executors = {"mock_task": mock_executor_func}
+    mock_handler._execute_tool.return_value = TaskResult(status="COMPLETE", content="mock result")
+
+    # Mock the evaluation of the count expression if '+' isn't implemented
+    # Patch the _eval method within the evaluator instance
+    original_eval = evaluator._eval
+    def eval_side_effect(node, env):
+        if node == [S('+'), 1, 1]:
+            return 2 # Simulate '+' evaluation result
+        # IMPORTANT: Call the original _eval for other nodes
+        return original_eval(node, env)
+
+    with patch.object(evaluator, '_eval', side_effect=eval_side_effect) as mock_eval_internal:
+        result = evaluator.evaluate_string(sexp_str)
+
+    # Assertions
+    assert mock_handler._execute_tool.call_count == 2
+    assert isinstance(result, TaskResult) # Check result type
+
+def test_eval_special_form_loop_body_uses_environment(evaluator, mock_parser):
+    """Test loop body executes in the correct environment and can cause side effects."""
+    sexp_str = "(let ((x 0)) (loop 3 (bind x (+ x 1))))"
+    # AST: ['let', [['x', 0]], ['loop', 3, ['bind', 'x', ['+', 'x', 1]]]]
+    ast = [S('let'), [[S('x'), 0]], [S('loop'), 3, [S('bind'), S('x'), [S('+'), S('x'), 1]]]]
+    mock_parser.parse_string.return_value = ast
+
+    # Mock the evaluation of '+' primitive
+    original_eval = evaluator._eval
+    def eval_side_effect(node, env):
+        if isinstance(node, list) and len(node) > 0 and node[0] == S('+'):
+            # Simulate simple addition: eval args and sum
+            val1 = eval_side_effect(node[1], env)
+            val2 = eval_side_effect(node[2], env)
+            if isinstance(val1, int) and isinstance(val2, int):
+                return val1 + val2
+            raise SexpEvaluationError("Mock '+' only supports integers")
+        # IMPORTANT: Call the original _eval for other nodes
+        return original_eval(node, env)
+
+    with patch.object(evaluator, '_eval', side_effect=eval_side_effect) as mock_eval_internal:
+        result = evaluator.evaluate_string(sexp_str)
+
+    # Assertions
+    # The loop returns the result of the last (bind x (+ x 1)) which is the new value of x
+    assert result == 3
+
+def test_eval_special_form_loop_returns_last_body_result(evaluator, mock_parser):
+    """Test loop returns the result of the final body evaluation."""
+    sexp_str = "(loop 3 (+ 10 1))" # Body returns 11 each time
+    ast = [S('loop'), 3, [S('+'), 10, 1]]
+    mock_parser.parse_string.return_value = ast
+
+    # Mock the evaluation of '+' primitive
+    original_eval = evaluator._eval
+    def eval_side_effect(node, env):
+        if node == [S('+'), 10, 1]:
+            return 11
+        return original_eval(node, env)
+
+    with patch.object(evaluator, '_eval', side_effect=eval_side_effect) as mock_eval_internal:
+        result = evaluator.evaluate_string(sexp_str)
+
+    # Assertions
+    assert result == 11
+
+def test_eval_special_form_loop_error_wrong_arg_count_few(evaluator, mock_parser):
+    """Test loop fails with too few arguments."""
+    sexp_str = "(loop 1)"
+    ast = [S('loop'), 1]
+    mock_parser.parse_string.return_value = ast
+
+    with pytest.raises(SexpEvaluationError, match="Loop requires exactly 2 arguments"):
+        evaluator.evaluate_string(sexp_str)
+
+def test_eval_special_form_loop_error_wrong_arg_count_many(evaluator, mock_parser):
+    """Test loop fails with too many arguments."""
+    sexp_str = "(loop 1 (body) (extra))"
+    ast = [S('loop'), 1, [S('body')], [S('extra')]]
+    mock_parser.parse_string.return_value = ast
+
+    with pytest.raises(SexpEvaluationError, match="Loop requires exactly 2 arguments"):
+        evaluator.evaluate_string(sexp_str)
+
+def test_eval_special_form_loop_error_count_expr_eval_fails(evaluator, mock_parser):
+    """Test loop fails if count expression evaluation errors."""
+    sexp_str = "(loop (undefined) (body))"
+    ast = [S('loop'), [S('undefined')], [S('body')]]
+    mock_parser.parse_string.return_value = ast
+
+    # NameError from lookup should be wrapped in SexpEvaluationError
+    with pytest.raises(SexpEvaluationError, match="Error evaluating loop count expression:.*Unbound symbol"):
+        evaluator.evaluate_string(sexp_str)
+
+def test_eval_special_form_loop_error_count_not_integer(evaluator, mock_parser):
+    """Test loop fails if count evaluates to non-integer."""
+    sexp_str_str = "(loop \"two\" (body))"
+    ast_str = [S('loop'), "two", [S('body')]]
+    mock_parser.parse_string.return_value = ast_str
+    with pytest.raises(SexpEvaluationError, match="Loop count must evaluate to an integer"):
+        evaluator.evaluate_string(sexp_str_str)
+
+    sexp_str_list = "(loop (list 1) (body))"
+    ast_list = [S('loop'), [S('list'), 1], [S('body')]]
+    mock_parser.parse_string.return_value = ast_list
+    # Need to mock 'list' primitive evaluation
+    original_eval = evaluator._eval
+    def eval_side_effect(node, env):
+        if node == [S('list'), 1]:
+            return [1] # Simulate list primitive result
+        return original_eval(node, env)
+
+    with patch.object(evaluator, '_eval', side_effect=eval_side_effect):
+        with pytest.raises(SexpEvaluationError, match="Loop count must evaluate to an integer"):
+            evaluator.evaluate_string(sexp_str_list)
+
+def test_eval_special_form_loop_error_count_negative(evaluator, mock_parser):
+    """Test loop fails if count evaluates to negative integer."""
+    sexp_str = "(loop -2 (body))"
+    ast = [S('loop'), -2, [S('body')]]
+    mock_parser.parse_string.return_value = ast
+
+    with pytest.raises(SexpEvaluationError, match="Loop count must be non-negative"):
+        evaluator.evaluate_string(sexp_str)
+
+def test_eval_special_form_loop_error_body_eval_fails(evaluator, mock_parser, mock_handler):
+    """Test loop fails if body evaluation errors during iteration."""
+    sexp_str = "(loop 3 (progn (mock_ok) (fail_sometimes)))"
+    # AST: ['loop', 3, ['progn', ['mock_ok'], ['fail_sometimes']]]
+    ast = [S('loop'), 3, [S('progn'), [S('mock_ok')], [S('fail_sometimes')]]]
+    mock_parser.parse_string.return_value = ast
+
+    # Mock 'mock_ok' to succeed
+    mock_ok_executor = MagicMock(return_value=TaskResult(status="COMPLETE", content="OK"))
+    mock_fail_executor = MagicMock() # Will configure side effect later
+    mock_handler.tool_executors = {
+        "mock_ok": mock_ok_executor,
+        "fail_sometimes": mock_fail_executor
+    }
+    # Mock the _execute_tool wrapper as well
+    mock_handler._execute_tool.side_effect = lambda name, params: mock_handler.tool_executors[name](params)
+
+
+    # Mock 'fail_sometimes' executor to fail on the second call using side_effect
+    fail_error = SexpEvaluationError("Intentional body failure")
+    call_count = 0
+    def fail_side_effect(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 2:
+            raise fail_error
+        return TaskResult(status="COMPLETE", content="OK") # Simulate success on other calls
+
+    mock_fail_executor.side_effect = fail_side_effect
+
+    # No need to patch _eval directly if the tool executor raises the error
+    with pytest.raises(SexpEvaluationError, match="Error during loop iteration 2/3: Intentional body failure"):
+        evaluator.evaluate_string(sexp_str)
+
+    # Verify mock_ok was called only once (because loop stopped on iteration 2)
+    assert mock_ok_executor.call_count == 1
+    # Verify fail_sometimes was called twice (failed on the second)
+    assert mock_fail_executor.call_count == 2

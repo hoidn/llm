@@ -183,18 +183,11 @@ class SexpEvaluator:
             logging.debug(f"  _eval_list: Operator is Symbol: '{operator_target_name}'")
 
             # 1a. Check if it's a Special Form
-            # =========================================================== #
-            # ===================== FIX AREA START ====================== #
-            # =========================================================== #
-            # Ensure this set is correctly defined and checked
-            special_forms = {"if", "let", "bind", "progn", "quote", "defatom"}
+            special_forms = {"if", "let", "bind", "progn", "quote", "defatom", "loop"} # ADDED "loop"
             if operator_target_name in special_forms:
                 logging.debug(f"  _eval_list: Dispatching to Special Form: {operator_target_name}")
                 # Special forms handle their own *unevaluated* args
                 return self._eval_special_form(operator_target_name, args, env)
-            # =========================================================== #
-            # ====================== FIX AREA END ======================= #
-            # =========================================================== #
 
             # 1b. Check if it's a Primitive
             primitives = {"list", "get_context"}
@@ -250,6 +243,8 @@ class SexpEvaluator:
             return self._eval_progn(args, env)
         elif op_str == "quote":
             return self._eval_quote(args, env)
+        elif op_str == "loop": # ADDED LOOP DISPATCH
+            return self._eval_loop(args, env)
         else:
             # This path should ideally not be reached if called correctly
             raise SexpEvaluationError(f"Internal error: Unknown special form '{op_str}' encountered in dispatcher.", generic_node_repr)
@@ -462,6 +457,91 @@ class SexpEvaluator:
         # 4. Return Task Name Symbol
         return task_name_node
 
+    def _eval_loop(self, args: list, env: SexpEnvironment) -> Any:
+        """
+        Evaluates the 'loop' special form.
+
+        Syntax: (loop <count-expr> <body-expr>)
+
+        Behavior:
+        1. Evaluates <count-expr> once to get a non-negative integer 'n'.
+        2. Evaluates <body-expr> exactly 'n' times sequentially in the current environment.
+        3. Returns the result of the *last* evaluation of <body-expr>.
+        4. If 'n' is 0, returns nil ([]).
+
+        Args:
+            args: The list of unevaluated arguments following 'loop'.
+                  Expected: [<count-expr>, <body-expr>].
+            env: The current SexpEnvironment.
+
+        Returns:
+            The result of the last evaluation of <body-expr>, or [] if count is 0.
+
+        Raises:
+            SexpEvaluationError: If the argument count is wrong, if <count-expr>
+                                 doesn't evaluate to a non-negative integer, or
+                                 if <body-expr> evaluation raises an error.
+        """
+        # Construct node representation for error messages
+        count_expr_str = str(args[0]) if len(args) > 0 else "<missing_count>"
+        body_expr_str = str(args[1]) if len(args) > 1 else "<missing_body>"
+        node_repr = f"(loop {count_expr_str} {body_expr_str})" # Approximate
+
+        logging.debug(f"Eval 'loop' START: {node_repr}")
+
+        # 1. Argument Validation
+        if len(args) != 2:
+            raise SexpEvaluationError(f"Loop requires exactly 2 arguments: count and body. Got {len(args)}.", node_repr)
+        count_expr, body_expr = args
+
+        # 2. Evaluate Count Expression
+        try:
+            logging.debug(f"  Evaluating loop count expression: {count_expr}")
+            count_value = self._eval(count_expr, env)
+            logging.debug(f"  Loop count expression evaluated to: {count_value} (Type: {type(count_value)})")
+        except SexpEvaluationError as e:
+            # Propagate error, adding loop context
+            logging.error(f"Error evaluating loop count expression in {node_repr}: {e}")
+            raise SexpEvaluationError(f"Error evaluating loop count expression: {e}", node_repr, error_details=str(e)) from e
+        except Exception as e:
+            # Catch other unexpected errors during count evaluation
+            logging.exception(f"Unexpected error evaluating loop count expression in {node_repr}: {e}")
+            raise SexpEvaluationError(f"Unexpected error evaluating loop count expression: {e}", node_repr, error_details=str(e)) from e
+
+        # 3. Validate Count Value
+        if not isinstance(count_value, int):
+            raise SexpEvaluationError(f"Loop count must evaluate to an integer.", node_repr, f"Got type: {type(count_value)}")
+        if count_value < 0:
+            raise SexpEvaluationError(f"Loop count must be non-negative.", node_repr, f"Got value: {count_value}")
+
+        n = count_value
+
+        # 4. Handle Zero Count
+        if n == 0:
+            logging.debug("Loop count is 0, skipping body execution and returning [].")
+            return [] # Return nil representation
+
+        # 5. Execute Loop Body
+        last_result = [] # Default result if loop runs (but e.g. n=1 and body returns [])
+        logging.debug(f"Starting loop execution for {n} iterations.")
+        for i in range(n):
+            iteration = i + 1
+            logging.debug(f"  Loop iteration {iteration}/{n}. Evaluating body: {body_expr}")
+            try:
+                last_result = self._eval(body_expr, env)
+                logging.debug(f"  Iteration {iteration}/{n} result: {last_result}")
+            except SexpEvaluationError as e:
+                # Propagate error from body, adding iteration context
+                logging.error(f"Error evaluating loop body during iteration {iteration}/{n} in {node_repr}: {e}")
+                raise SexpEvaluationError(f"Error during loop iteration {iteration}/{n}: {e}", node_repr, error_details=str(e)) from e
+            except Exception as e:
+                # Catch other unexpected errors during body evaluation
+                logging.exception(f"Unexpected error evaluating loop body during iteration {iteration}/{n} in {node_repr}: {e}")
+                raise SexpEvaluationError(f"Unexpected error during loop iteration {iteration}/{n}: {e}", node_repr, error_details=str(e)) from e
+
+        # 6. Return Value
+        logging.debug(f"Loop finished after {n} iterations. Returning last result: {last_result}")
+        return last_result
 
     # --- Primitive Handlers ---
 
@@ -537,7 +617,7 @@ class SexpEvaluator:
                     # Otherwise, evaluate the value expression normally.
                     logging.debug(f"  _parse_get_context: Evaluating value for key '{key_str}'...")
                     value = self._eval(value_expr, env)
-                
+
                 logging.debug(f"  _parse_get_context: Evaluated arg '{key_str}' to: {value} (Type: {type(value)})")
 
                 # Special handling and validation for matching_strategy
