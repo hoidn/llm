@@ -110,6 +110,27 @@ def test_lookup_shadowing():
     # Check that parent_env is not affected by child's shadowing for its own lookups
     assert parent_env.lookup("x") == 10
 
+    # Simulate lambda lexical scope and parameter shadowing
+    global_env = SexpEnvironment(bindings={"global_z": 500, "x": 1}) # Global 'x'
+    
+    # def_env captures 'global_z' and shadows global 'x' with its own 'x'
+    def_env = global_env.extend({"x": 10, "captured_y": 20}) # Lambda defined here
+    
+    # call_env is for a call to the lambda. 'x' is a parameter, shadowing def_env's 'x'.
+    # 'param_arg' is another parameter.
+    call_env = def_env.extend({"x": 100, "param_arg": 30}) # Lambda called here
+
+    assert call_env.lookup("x") == 100  # 'x' from call_env (parameter)
+    assert call_env.lookup("param_arg") == 30 # 'param_arg' from call_env (parameter)
+    assert call_env.lookup("captured_y") == 20 # 'captured_y' from def_env (lexical capture)
+    assert call_env.lookup("global_z") == 500 # 'global_z' from global_env (lexical capture)
+    
+    # Verify original environments are untouched
+    assert def_env.lookup("x") == 10
+    with pytest.raises(NameError): # param_arg not in def_env
+        def_env.lookup("param_arg")
+    assert global_env.lookup("x") == 1
+
 
 def test_lookup_not_found_local():
     """Test looking up a non-existent variable in a top-level scope."""

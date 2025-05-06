@@ -842,7 +842,7 @@ class SexpEvaluator:
         task_name: str,
         template_def: Dict[str, Any],
         arg_exprs: List[SexpNode], # UNEVALUATED arg expressions [(key value_expr), ...]
-        env: SexpEnvironment,
+        calling_env: SexpEnvironment, # Renamed from env for clarity
         original_expr_str: str
     ) -> TaskResult:
         logging.debug(f"--- _invoke_task_system START: task_name='{task_name}', arg_exprs={arg_exprs}")
@@ -859,14 +859,21 @@ class SexpEvaluator:
             value_expr_node = arg_expr_pair[1] # This is the UNEVALUATED value expression
             key_str = key_symbol.value()
 
-            # Evaluate the value_expr_node here
+            # Evaluate the value_expr_node here, in the calling_env
             try:
-                evaluated_value = self._eval(value_expr_node, env) 
+                evaluated_value = self._eval(value_expr_node, calling_env) 
                 logging.debug(f"  _invoke_task_system: Evaluated value for key '{key_str}' ('{value_expr_node}'): {evaluated_value}")
-            except Exception as e_val_eval:
-                logging.exception(f"  _invoke_task_system: Error evaluating value for key '{key_str}' ('{value_expr_node}'): {e_val_eval}")
-                if isinstance(e_val_eval, SexpEvaluationError): raise
-                raise SexpEvaluationError(f"Error evaluating value for '{key_str}' in task '{task_name}': {value_expr_node}", original_expr_str, error_details=str(e_val_eval)) from e_val_eval
+            except SexpEvaluationError as e_val_eval:
+                # If _eval raises SexpEvaluationError, it should already have the specific failing sub-expression.
+                # We want to add the context of the task call.
+                raise SexpEvaluationError(
+                    f"Error evaluating value for '{key_str}' in task '{task_name}': {e_val_eval.args[0] if e_val_eval.args else str(e_val_eval)}",
+                    expression=original_expr_str, # The full task call expression
+                    error_details=f"Failed on value_expr='{e_val_eval.expression if hasattr(e_val_eval, 'expression') else value_expr_node}'. Original detail: {e_val_eval.error_details if hasattr(e_val_eval, 'error_details') else str(e_val_eval)}"
+                ) from e_val_eval
+            except Exception as e_val_eval: # Catch other unexpected errors during value evaluation
+                logging.exception(f"  _invoke_task_system: Unexpected error evaluating value for key '{key_str}' ('{value_expr_node}'): {e_val_eval}")
+                raise SexpEvaluationError(f"Unexpected error evaluating value for '{key_str}' in task '{task_name}': {value_expr_node}", original_expr_str, error_details=str(e_val_eval)) from e_val_eval
 
             # Process special keys or add to named_params
             if key_str == "files":
@@ -933,7 +940,7 @@ class SexpEvaluator:
         self,
         tool_name: str,
         arg_exprs: List[SexpNode], # UNEVALUATED arg expressions [(key value_expr), ...]
-        env: SexpEnvironment,
+        calling_env: SexpEnvironment, # Renamed from env for clarity
         original_expr_str: str
     ) -> TaskResult:
         logging.debug(f"--- _invoke_handler_tool START: tool_name='{tool_name}', arg_exprs={arg_exprs}")
@@ -949,14 +956,21 @@ class SexpEvaluator:
             value_expr_node = arg_expr_pair[1] # This is the UNEVALUATED value expression
             key_str = key_symbol.value()
 
-            # Evaluate the value_expr_node here
+            # Evaluate the value_expr_node here, in the calling_env
             try:
-                evaluated_value = self._eval(value_expr_node, env) 
+                evaluated_value = self._eval(value_expr_node, calling_env) 
                 logging.debug(f"  _invoke_handler_tool: Evaluated value for key '{key_str}' ('{value_expr_node}'): {evaluated_value}")
-            except Exception as e_val_eval:
-                logging.exception(f"  _invoke_handler_tool: Error evaluating value for key '{key_str}' ('{value_expr_node}'): {e_val_eval}")
-                if isinstance(e_val_eval, SexpEvaluationError): raise
-                raise SexpEvaluationError(f"Error evaluating value for '{key_str}' in tool '{tool_name}': {value_expr_node}", original_expr_str, error_details=str(e_val_eval)) from e_val_eval
+            except SexpEvaluationError as e_val_eval:
+                # If _eval raises SexpEvaluationError, it should already have the specific failing sub-expression.
+                # We want to add the context of the tool call.
+                raise SexpEvaluationError(
+                    f"Error evaluating value for '{key_str}' in tool '{tool_name}': {e_val_eval.args[0] if e_val_eval.args else str(e_val_eval)}",
+                    expression=original_expr_str, # The full tool call expression
+                    error_details=f"Failed on value_expr='{e_val_eval.expression if hasattr(e_val_eval, 'expression') else value_expr_node}'. Original detail: {e_val_eval.error_details if hasattr(e_val_eval, 'error_details') else str(e_val_eval)}"
+                ) from e_val_eval
+            except Exception as e_val_eval: # Catch other unexpected errors during value evaluation
+                logging.exception(f"  _invoke_handler_tool: Unexpected error evaluating value for key '{key_str}' ('{value_expr_node}'): {e_val_eval}")
+                raise SexpEvaluationError(f"Unexpected error evaluating value for '{key_str}' in tool '{tool_name}': {value_expr_node}", original_expr_str, error_details=str(e_val_eval)) from e_val_eval
             
             named_params[key_str] = evaluated_value
         

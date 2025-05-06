@@ -2139,3 +2139,54 @@ class TestSexpEvaluatorLambdaClosures:
         # No special eval mocking needed, rely on correct env behavior
         result = evaluator.evaluate_string(sexp_str)
         assert result == 10
+
+    def test_closure_returned_from_function_retains_lexical_scope(self, evaluator, mock_parser):
+        """
+        Test that closures created by a 'maker' function at different times
+        with different captured values maintain their distinct lexical environments.
+        """
+        sexp_str = """
+        (let ((maker (lambda (captured_val) 
+                       (lambda () captured_val)))) ; maker returns a closure that captures 'captured_val'
+          (let ((closure_A (maker 100))
+                (closure_B (maker 200)))
+            (list (closure_A) (closure_B))))
+        """
+        
+        let_s, lambda_s, list_s = S('let'), S('lambda'), S('list')
+        maker_s, captured_val_s = S('maker'), S('captured_val')
+        closure_A_s, closure_B_s = S('closure_A'), S('closure_B')
+
+        # Inner lambda for returned closure: (lambda () captured_val)
+        returned_closure_body_ast = captured_val_s
+        returned_closure_ast = [lambda_s, [], returned_closure_body_ast]
+
+        # Maker lambda: (lambda (captured_val) <returned_closure_ast>)
+        maker_lambda_ast = [lambda_s, [captured_val_s], returned_closure_ast]
+
+        # (maker 100)
+        maker_call_A_ast = [maker_s, 100]
+        # (maker 200)
+        maker_call_B_ast = [maker_s, 200]
+
+        # (closure_A)
+        closure_A_call_ast = [closure_A_s]
+        # (closure_B)
+        closure_B_call_ast = [closure_B_s]
+        
+        # (list (closure_A) (closure_B))
+        list_call_ast = [list_s, closure_A_call_ast, closure_B_call_ast]
+
+        # Inner let: (let ((closure_A (maker 100)) (closure_B (maker 200))) <list_call_ast>)
+        inner_let_bindings = [[closure_A_s, maker_call_A_ast], [closure_B_s, maker_call_B_ast]]
+        inner_let_ast = [let_s, inner_let_bindings, list_call_ast]
+        
+        # Outer let: (let ((maker <maker_lambda_ast>)) <inner_let_ast>)
+        outer_let_bindings = [[maker_s, maker_lambda_ast]]
+        full_ast = [let_s, outer_let_bindings, inner_let_ast]
+
+        mock_parser.parse_string.return_value = full_ast
+        
+        # No special eval mocking needed, rely on correct env, lambda, and list primitive behavior
+        result = evaluator.evaluate_string(sexp_str)
+        assert result == [100, 200]
