@@ -5,7 +5,7 @@ Provides safe access to the file system based on the FileAccessManager IDL.
 import os
 import logging # Add logging import
 from datetime import datetime
-from typing import Optional, Dict, Union
+from typing import Optional, Dict, Union, List # Add List and Union
 
 # Default max size from IDL description (100KB)
 DEFAULT_MAX_FILE_SIZE = 100 * 1024
@@ -15,7 +15,8 @@ logger = logging.getLogger(__name__)
 
 class FileAccessManager:
     """
-    Manages safe reading and metadata retrieval for files within a specified base path.
+    Manages safe reading, writing, listing, and metadata retrieval for files
+    within a specified base path.
 
     Implements the contract defined in src/handler/file_access_IDL.md.
     Depends on the FileSystem resource implicitly via the 'os' module.
@@ -273,3 +274,41 @@ class FileAccessManager:
         except Exception as e:
             logger.error(f"insert_content: Unexpected error inserting content into '{file_path}': {e}")
             return False
+
+    def list_directory(self, directory_path: str) -> Union[List[str], Dict[str, str]]:
+        """
+        Lists the contents (files and subdirectories) of a specified directory.
+
+        Args:
+            directory_path: Path to the directory (relative to base_path).
+
+        Returns:
+            A list of names of files and subdirectories on success.
+            A dictionary with an 'error' key on failure (e.g., path not found,
+            not a directory, permission denied, outside base path).
+        """
+        try:
+            resolved_path = self._resolve_path(directory_path)
+            if not self._is_path_safe(resolved_path):
+                # Error logged in _is_path_safe
+                return {"error": f"Access denied: Path '{directory_path}' is outside the allowed base directory."}
+
+            if not os.path.exists(resolved_path):
+                logger.warning(f"list_directory: Path not found: {resolved_path}")
+                return {"error": f"Path not found: {directory_path}"}
+
+            if not os.path.isdir(resolved_path):
+                logger.warning(f"list_directory: Path is not a directory: {resolved_path}")
+                return {"error": f"Path is not a valid directory: {directory_path}"}
+
+            try:
+                contents = os.listdir(resolved_path)
+                logger.debug(f"list_directory: Successfully listed {len(contents)} items in {resolved_path}")
+                return contents
+            except (PermissionError, OSError) as e:
+                logger.error(f"list_directory: Error listing directory '{resolved_path}': {e}")
+                return {"error": f"Permission denied or OS error listing directory '{directory_path}'."}
+
+        except Exception as e:
+            logger.error(f"list_directory: Unexpected error listing directory '{directory_path}': {e}")
+            return {"error": f"Unexpected error listing directory '{directory_path}': {e}"}

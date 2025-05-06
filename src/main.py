@@ -104,7 +104,8 @@ class Application:
 
             # 2. Instantiate Handler (needs TaskSystem)
             handler_config = self.config.get('handler_config', {})
-            handler_config['file_manager_base_path'] = fm_base_path
+            # Pass FileAccessManager instance to Handler during init
+            handler_config['file_manager'] = self.file_access_manager
             default_model = handler_config.get('default_model_identifier', "anthropic:claude-3-5-sonnet-latest")
             self.passthrough_handler = PassthroughHandler(
                 task_system=self.task_system, # Pass TaskSystem instance
@@ -347,7 +348,7 @@ Select the best matching paths *from the provided metadata* and output the JSON.
                 # tool_data IS the spec dictionary here
                 if tool_name.startswith('system:'):
                     # --- START FIX: Append tool_data directly ---
-                    active_tool_specs.append(tool_data)
+                    active_tool_specs.append(tool_data['spec']) # Get the spec dict from the stored data
                     # --- END FIX ---
                     logger.debug(f"Including system tool spec: {tool_name}")
                     # Removed warning as tool_data is the spec
@@ -361,7 +362,7 @@ Select the best matching paths *from the provided metadata* and output the JSON.
                      for tool_name, tool_data in self.passthrough_handler.registered_tools.items():
                          if tool_name.startswith('anthropic:'):
                              # --- START FIX: Append tool_data directly ---
-                             active_tool_specs.append(tool_data)
+                             active_tool_specs.append(tool_data['spec']) # Get the spec dict
                              # --- END FIX ---
                              logger.debug(f"Including Anthropic tool spec: {tool_name}")
                              # Removed warning
@@ -378,7 +379,7 @@ Select the best matching paths *from the provided metadata* and output the JSON.
                  for tool_name, tool_data in self.passthrough_handler.registered_tools.items():
                      if tool_name.startswith('aider:'):
                          # --- START FIX: Append tool_data directly ---
-                         active_tool_specs.append(tool_data)
+                         active_tool_specs.append(tool_data['spec']) # Get the spec dict
                          # --- END FIX ---
                          logger.debug(f"Including Aider tool spec: {tool_name}")
                          # Removed warning
@@ -397,23 +398,35 @@ Select the best matching paths *from the provided metadata* and output the JSON.
              # Decide whether to continue or raise
              # return # Or raise an error
         if not self.passthrough_handler.file_manager: # Check file manager dependency
-            logger.error("Cannot register system:read_files tool: FileAccessManager not initialized.")
+            logger.error("Cannot register system tools: FileAccessManager not initialized in handler.")
             # return # Or raise an error
 
         # --- START System Wrapper Refactor ---
         # --- Wrapper for get_context ---
         def _get_context_wrapper(params: Dict[str, Any], mem_sys=self.memory_system) -> Dict[str, Any]:
             """Wrapper for SystemExecutorFunctions.execute_get_context."""
-            if not mem_sys: return {"status": "FAILED", "content": "Memory system not available"}
+            if not mem_sys: return _create_failed_result_dict("dependency_error", "Memory system not available.")
             # Assuming execute_get_context is synchronous
             return SystemExecutorFunctions.execute_get_context(params, mem_sys)
 
         # --- Wrapper for read_files ---
         def _read_files_wrapper(params: Dict[str, Any], fm=self.passthrough_handler.file_manager) -> Dict[str, Any]:
             """Wrapper for SystemExecutorFunctions.execute_read_files."""
-            if not fm: return {"status": "FAILED", "content": "File manager not available"}
+            if not fm: return _create_failed_result_dict("dependency_error", "File manager not available.")
             # Assuming execute_read_files is synchronous
             return SystemExecutorFunctions.execute_read_files(params, fm)
+
+        # --- Wrapper for list_directory ---
+        def _list_directory_wrapper(params: Dict[str, Any], fm=self.passthrough_handler.file_manager) -> Dict[str, Any]:
+            """Wrapper for SystemExecutorFunctions.execute_list_directory."""
+            if not fm: return _create_failed_result_dict("dependency_error", "File manager not available.")
+            return SystemExecutorFunctions.execute_list_directory(params, fm)
+
+        # --- Wrapper for write_file ---
+        def _write_file_wrapper(params: Dict[str, Any], fm=self.passthrough_handler.file_manager) -> Dict[str, Any]:
+            """Wrapper for SystemExecutorFunctions.execute_write_file."""
+            if not fm: return _create_failed_result_dict("dependency_error", "File manager not available.")
+            return SystemExecutorFunctions.execute_write_file(params, fm)
         # --- END System Wrapper Refactor ---
 
         tools_to_register = [
@@ -454,7 +467,39 @@ Select the best matching paths *from the provided metadata* and output the JSON.
                 # --- START System Wrapper Refactor ---
                 "executor": _read_files_wrapper # Pass the defined function
                 # --- END System Wrapper Refactor ---
+            },
+            # --- Add new tools ---
+            {
+                "spec": {
+                    "name": "system:list_directory",
+                    "description": "Lists the contents of a specified directory.",
+                    "input_schema": {
+                        "type": "object",
+                        "properties": {
+                            "directory_path": {"type": "string", "description": "Path to the directory to list."}
+                        },
+                        "required": ["directory_path"]
+                    }
+                },
+                "executor": _list_directory_wrapper
+            },
+            {
+                "spec": {
+                    "name": "system:write_file",
+                    "description": "Writes content to a specified file.",
+                    "input_schema": {
+                        "type": "object",
+                        "properties": {
+                            "file_path": {"type": "string", "description": "Path to the file to write."},
+                            "content": {"type": "string", "description": "Content to write to the file."},
+                            "overwrite": {"type": "boolean", "description": "Whether to overwrite if the file exists (default: false)."}
+                        },
+                        "required": ["file_path", "content"]
+                    }
+                },
+                "executor": _write_file_wrapper
             }
+            # --- End add new tools ---
         ]
 
         registered_count = 0
@@ -464,8 +509,9 @@ Select the best matching paths *from the provided metadata* and output the JSON.
                 if tool['spec']['name'] == 'system:get_context' and not self.memory_system:
                     logger.error("Skipping registration of system:get_context: MemorySystem not initialized.")
                     continue
-                if tool['spec']['name'] == 'system:read_files' and not self.passthrough_handler.file_manager:
-                    logger.error("Skipping registration of system:read_files: FileAccessManager not initialized.")
+                # All other system tools depend on file_manager
+                if tool['spec']['name'] != 'system:get_context' and not self.passthrough_handler.file_manager:
+                    logger.error(f"Skipping registration of {tool['spec']['name']}: FileAccessManager not initialized in handler.")
                     continue
 
                 success = self.passthrough_handler.register_tool(tool["spec"], tool["executor"])
@@ -532,18 +578,18 @@ Select the best matching paths *from the provided metadata* and output the JSON.
         # Check if config was actually found and passed
         aider_server_id = "aider-mcp-server"  # The key used in .mcp.json
         aider_mcp_config_loaded = self.mcp_server_configs.get(aider_server_id)
-        
+
         if aider_mcp_config_loaded is None:
             logger.warning("Aider initialization skipped: Configuration for Aider not found in loaded MCP configs.")
             self.aider_bridge = None
             return
-            
+
         # Check if transport is stdio
         if aider_mcp_config_loaded.get("transport") != "stdio":
             logger.error(f"Aider initialization skipped: Configuration requires 'stdio' transport, found '{aider_mcp_config_loaded.get('transport')}'.")
             self.aider_bridge = None
             return
-            
+
         # Check if command is present (AiderBridge init will also check, but good here too)
         if not aider_mcp_config_loaded.get("command"):
             logger.error("Aider initialization skipped: STDIO configuration missing 'command'.")
@@ -848,13 +894,13 @@ if __name__ == "__main__":
         query_result = app.handle_query("What is the capital of France?")
         print("\nQuery Result:")
         import json
-        
+
         # Add a custom serializer to handle non-serializable objects like methods
         def json_serializable(obj):
             if callable(obj):
                 return str(obj)
             raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
-        
+
         print(json.dumps(query_result, indent=2, default=json_serializable))
 
         # Example: Handle a task command (assuming a core:echo template exists or Sexp works)
