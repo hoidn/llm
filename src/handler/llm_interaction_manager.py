@@ -313,10 +313,18 @@ class LLMInteractionManager:
 
         # Ensure target_agent is valid before proceeding
         if not target_agent:
-             logger.error("Cannot execute call: Target agent is None (Initialization likely failed or default agent missing).")
-             error_msg = "LLM Agent not available."
-             error_details = TaskFailureError(type="TASK_FAILURE", reason="dependency_error", message=error_msg)
-             return TaskResult(status="FAILED", content=error_msg, notes={"error": error_details.model_dump(exclude_none=True)}).model_dump(exclude_none=True)
+             error_msg = "LLM Agent not available (Initialization likely failed or default agent missing)."
+             logger.error(f"Cannot execute call: {error_msg}")
+             # --- START FIX: Return consistent failure dict ---
+             return {
+                 "success": False,
+                 "content": None,
+                 "tool_calls": None,
+                 "usage": None,
+                 "error": "AgentNotInitializedError: LLM Agent not initialized.",
+                 "parsed_content": None # Ensure all keys are present
+             }
+             # --- END FIX ---
 
         # Original check for default agent initialization (still relevant if no override)
         # if self.agent is None: # This check is now covered by the target_agent check above
@@ -359,17 +367,15 @@ class LLMInteractionManager:
             except Exception as _e:
                 logger.error(f"Failed to write full LLM prompt to file: {_e}")
 
-            # Handle tools_override and active_tools (passed to Agent constructor, not run_sync)
-            # The tools are now part of the target_agent instance (either default or temporary)
-            # So, we don't need to pass 'tools' or 'active_tools' to run_sync here.
-            # However, pydantic-ai might allow passing tools to run_sync as well,
-            # need to confirm library behavior. Assuming tools are set at Agent init for now.
-            # if tools_override:
-            #     run_kwargs["tools"] = tools_override # Check if run_sync accepts this
-            #     logging.debug(f"Executing agent call with {len(tools_override)} tool executors.")
-            # elif active_tools:
-            #     run_kwargs["tools"] = active_tools # Check if run_sync accepts this
-            #     logging.debug(f"Executing agent call with {len(active_tools)} tool definitions.")
+            # Handle tools_override and active_tools
+            # --- START FIX for tools precedence ---
+            if tools_override:
+                run_kwargs["tools"] = tools_override # Prioritize tools_override
+                logging.debug(f"Using tools_override ({len(tools_override)}) for agent.run_sync")
+            elif active_tools:
+                run_kwargs["tools"] = active_tools # Fallback to active_tools (definitions)
+                logging.debug(f"Using active_tools ({len(active_tools)}) for agent.run_sync")
+            # --- END FIX for tools precedence ---
 
             if output_type_override:
                 run_kwargs["output_type"] = output_type_override
