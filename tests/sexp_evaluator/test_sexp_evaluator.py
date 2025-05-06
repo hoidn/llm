@@ -1055,9 +1055,16 @@ def test_eval_special_form_loop_error_body_eval_fails(evaluator, mock_parser, mo
     mock_fail_executor.side_effect = fail_side_effect
 
     expected_error_pattern = re.compile(
-        r"Error during loop iteration 2/3: Intentional body failure from test\s*"
-        r"Expression: \[Symbol\('loop'\), 3, \[Symbol\('progn'\), \[Symbol\('mock_ok'\)\], \[Symbol\('fail_sometimes'\)\]\]\]\s*"
-        r"Details: Failed on body_expr='\s*\[Symbol\('progn'\), \[Symbol\('mock_ok'\)\], \[Symbol\('fail_sometimes'\)\]\]\s*'. Original detail: Test-induced failure in body",
+        # Line 1 of message (start of outer error's message, which includes start of e_body's message)
+        r"Error during loop iteration 2/3: Intentional body failure from test"
+        # Line 2 of message (e_body.expression part)
+        r"\s*Expression: '\[Symbol\('progn'\), \[Symbol\('mock_ok'\)\], \[Symbol\('fail_sometimes'\)\]\]'"
+        # Line 3 of message (e_body.error_details part)
+        r"\s*Details: Test-induced failure in body"
+        # Line 4: The "Expression: '...'" part from the SexpEvaluationError in _eval_loop_form itself
+        r"\s*Expression: '\[Symbol\('loop'\), 3, \[Symbol\('progn'\), \[Symbol\('mock_ok'\)\], \[Symbol\('fail_sometimes'\)\]\]\]'"
+        # Line 5: The "Details: ..." part from the SexpEvaluationError in _eval_loop_form itself
+        r"\s*Details: Failed on body_expr='\[Symbol\('progn'\), \[Symbol\('mock_ok'\)\], \[Symbol\('fail_sometimes'\)\]\]'\. Original detail: Test-induced failure in body",
         re.DOTALL
     )
     with pytest.raises(SexpEvaluationError, match=expected_error_pattern):
