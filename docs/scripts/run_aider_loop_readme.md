@@ -67,4 +67,3 @@ python scripts/run_aider_loop.py \
 *   Aider MCP Server must be configured in `.mcp.json` in the project root (see `docs/librarydocs/aider_MCP_server.md`).
 *   Required Python dependencies must be installed (`pip install -r requirements.txt` or `uv sync`).
 *   Environment variables for LLM API keys (e.g., `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`) must be set as required by the chosen models and `pydantic-ai`.
-```

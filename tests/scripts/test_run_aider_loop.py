@@ -8,7 +8,8 @@ import sys
 import os
 import json
 import argparse
-from unittest.mock import patch, MagicMock, mock_open, call
+import logging # Added import
+from unittest.mock import patch, MagicMock, mock_open, call, ANY # Added ANY
 
 # Ensure src and scripts directory are in path for imports
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
