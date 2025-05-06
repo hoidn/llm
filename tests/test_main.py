@@ -389,8 +389,9 @@ def test_application_init_with_aider(mock_load_config, app_components):
     }
     
     # Configure the mocked _load_mcp_config to set the expected config
-    def load_config_side_effect(self):
-        self.mcp_server_configs = {"aider-mcp-server": expected_aider_config}
+    # The side_effect function needs to accept the Application instance as first parameter
+    def load_config_side_effect(instance):
+        instance.mcp_server_configs = {"aider-mcp-server": expected_aider_config}
     
     mock_load_config.side_effect = load_config_side_effect
 
