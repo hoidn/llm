@@ -91,7 +91,14 @@ module src.sexp_evaluator.sexp_evaluator {
         //     - **Note:** This definition is global for the current session/evaluator instance. It does not currently support lexical scoping for task definitions.
         
         // **Note on Closures:** A Closure is a runtime object representing a function created by `lambda` (or potentially `define` if added later). It bundles the function's code (parameter list and body AST) with a reference to the environment where it was defined, enabling lexical scoping. It is a first-class value that can be passed around, stored in variables, and invoked later.
-        
+         //
+         // - `(loop <count-expr> <body-expr>)`: **Special Form.** Executes a body expression a fixed number of times.
+         //   - **Argument Processing:** Evaluates `<count-expr>` *once*. Expects a non-negative integer result (`n`). Raises `SexpEvaluationError` if the result is not a valid count.
+         //   - **Behavior:** Evaluates `<body-expr>` exactly `n` times sequentially in the *current* environment.
+         //   - **Returns:** The result of the *last* evaluation of `<body-expr>`. If `n` is 0, returns `nil` (represented as `[]` in Python).
+         //   - **Errors:** Can propagate `SexpEvaluationError` from evaluation of `<count-expr>` or `<body-expr>`. Raises `SexpEvaluationError` if count is invalid.
+         //
+          //
         // - `(get_context (key1 value_expr1) (key2 value_expr2) ...)`: **Primitive.**
         //   - **Action:** Retrieves relevant context from the MemorySystem.
         //   - **Argument Processing:** Parses `(key value_expr)` pairs. Evaluates each `value_expr`. Recognizes keys like `query`, `history`, `inputs`, `matching_strategy`, etc., corresponding to `ContextGenerationInput` v5.0 fields. Validates argument structure and types.
@@ -123,6 +130,7 @@ module src.sexp_evaluator.sexp_evaluator {
         // This evaluator does not handle XML composite types.
         // @raises_error(...) // Various evaluation errors
         // Any _eval(Any node, object env); // Arg represents SexpEnvironment
+         // @raises_error(condition="SexpEvaluationError", description="Raised for invalid loop count, or errors during body evaluation.")
     };
 
     // Interface for the S-expression evaluation environment.
