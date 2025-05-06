@@ -20,6 +20,18 @@ from src.system.models import (
 # from src.handler.file_access import FileAccessManager
 # from src.memory.memory_system import MemorySystem
 
+# Define logger for this module
+logger = logging.getLogger(__name__)
+
+# Helper function to create a standard FAILED TaskResult dictionary
+# Copied from main.py for self-containment, consider moving to a shared utils module later
+def _create_failed_result_dict(reason: TaskFailureReason, message: str, details: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Creates a dictionary representing a FAILED TaskResult."""
+    error_obj = TaskFailureError(type="TASK_FAILURE", reason=reason, message=message, details=details or {})
+    task_result = TaskResult(status="FAILED", content=message, notes={"error": error_obj})
+    # Use exclude_none=True to avoid sending null fields if not set
+    return task_result.model_dump(exclude_none=True)
+
 
 class SystemExecutorFunctions:
     """
@@ -51,35 +63,16 @@ class SystemExecutorFunctions:
         if 'query' not in params:
             error_msg = "Missing required parameter: 'query'"
             logging.error(f"execute_get_context: {error_msg}")
-            error_details = TaskFailureError(
-                type="TASK_FAILURE",
-                # FIX: Use string literal for reason
-                reason="input_validation_failure",
-                message=error_msg
-            )
-            # Use .model_dump() for Pydantic v2
-            return TaskResult(
-                status="FAILED",
-                content=error_msg,
-                notes={"error": error_details.model_dump(exclude_none=True)}
-            ).model_dump(exclude_none=True)
+            # Use local helper
+            return _create_failed_result_dict("input_validation_failure", error_msg)
 
         query = params['query']
         # Check if query is None or empty string
         if not query:
             error_msg = "The 'query' parameter cannot be empty or null"
             logging.error(f"execute_get_context: {error_msg}")
-            error_details = TaskFailureError(
-                type="TASK_FAILURE",
-                # FIX: Use string literal for reason
-                reason="input_validation_failure",
-                message=error_msg
-            )
-            return TaskResult(
-                status="FAILED",
-                content=error_msg,
-                notes={"error": error_details.model_dump(exclude_none=True)}
-            ).model_dump(exclude_none=True)
+            # Use local helper
+            return _create_failed_result_dict("input_validation_failure", error_msg)
 
         # 2. Prepare context input object
         # Use Pydantic model for validation and clarity if desired, but IDL implies dict input
@@ -107,17 +100,8 @@ class SystemExecutorFunctions:
         except Exception as validation_err: # Catch Pydantic validation error specifically if possible
             error_msg = f"Input validation failed for ContextGenerationInput: {validation_err}"
             logging.error(f"execute_get_context: {error_msg}")
-            error_details = TaskFailureError(
-                type="TASK_FAILURE",
-                # FIX: Use string literal for reason
-                reason="input_validation_failure",
-                message=error_msg
-            )
-            return TaskResult(
-                status="FAILED",
-                content=error_msg,
-                notes={"error": error_details.model_dump(exclude_none=True)}
-            ).model_dump(exclude_none=True)
+            # Use local helper
+            return _create_failed_result_dict("input_validation_failure", error_msg)
 
 
         # 3. Call memory_system to get context
@@ -155,17 +139,8 @@ class SystemExecutorFunctions:
             # Handle errors from memory system call itself
             error_msg = f"Context retrieval failed: {type(e).__name__}: {e}"
             logging.exception(f"execute_get_context: {error_msg}") # Use logging.exception to include traceback
-            error_details = TaskFailureError(
-                type="TASK_FAILURE",
-                # FIX: Use string literal for reason
-                reason="context_retrieval_failure",
-                message=error_msg
-            )
-            return TaskResult(
-                status="FAILED",
-                content=error_msg,
-                notes={"error": error_details.model_dump(exclude_none=True)}
-            ).model_dump(exclude_none=True)
+            # Use local helper
+            return _create_failed_result_dict("context_retrieval_failure", error_msg)
 
     @staticmethod
     def execute_read_files(params: Dict[str, Any], file_manager: Any) -> Dict[str, Any]:
@@ -189,34 +164,15 @@ class SystemExecutorFunctions:
         if 'file_paths' not in params:
             error_msg = "Missing required parameter: 'file_paths'"
             logging.error(f"execute_read_files: {error_msg}")
-            error_details = TaskFailureError(
-                type="TASK_FAILURE",
-                # FIX: Use string literal for reason
-                reason="input_validation_failure",
-                message=error_msg
-            )
-            # Use .model_dump() for Pydantic v2
-            return TaskResult(
-                status="FAILED",
-                content=error_msg,
-                notes={"error": error_details.model_dump(exclude_none=True)}
-            ).model_dump(exclude_none=True)
+            # Use local helper
+            return _create_failed_result_dict("input_validation_failure", error_msg)
 
         file_paths = params['file_paths']
         if not isinstance(file_paths, list):
             error_msg = "The 'file_paths' parameter must be a list of strings"
             logging.error(f"execute_read_files: {error_msg}")
-            error_details = TaskFailureError(
-                type="TASK_FAILURE",
-                # FIX: Use string literal for reason
-                reason="input_validation_failure",
-                message=error_msg
-            )
-            return TaskResult(
-                status="FAILED",
-                content=error_msg,
-                notes={"error": error_details.model_dump(exclude_none=True)}
-            ).model_dump(exclude_none=True)
+            # Use local helper
+            return _create_failed_result_dict("input_validation_failure", error_msg)
 
         # 2. Handle empty file_paths list
         if not file_paths:
@@ -297,3 +253,116 @@ class SystemExecutorFunctions:
             notes=notes
         ).model_dump(exclude_none=True)
 
+    @staticmethod
+    def execute_list_directory(params: Dict[str, Any], file_manager: Any) -> Dict[str, Any]:
+        """
+        Executor logic for the 'system:list_directory' Direct Tool.
+        Lists the contents of a specified directory using FileAccessManager.
+
+        Args:
+            params: Dictionary containing:
+                - 'directory_path': string (required) - Path to the directory.
+            file_manager: A valid instance implementing FileAccessManager.
+
+        Returns:
+            A TaskResult dictionary.
+        """
+        # 1. Validate input parameters
+        directory_path = params.get('directory_path')
+        if not directory_path or not isinstance(directory_path, str):
+            error_msg = "Missing or invalid required parameter: 'directory_path' (must be a non-empty string)"
+            logger.error(f"execute_list_directory: {error_msg}")
+            return _create_failed_result_dict("input_validation_failure", error_msg)
+
+        # 2. Call file_manager method
+        try:
+            result = file_manager.list_directory(directory_path)
+
+            # 3. Process result
+            if isinstance(result, list):
+                # Success case
+                content = json.dumps(result)
+                notes = {"directory_contents": result}
+                logger.info(f"execute_list_directory: Successfully listed directory '{directory_path}'. Found {len(result)} items.")
+                return TaskResult(
+                    status="COMPLETE",
+                    content=content,
+                    notes=notes
+                ).model_dump(exclude_none=True)
+            elif isinstance(result, dict) and 'error' in result:
+                # Failure case reported by file_manager
+                error_msg = result.get('error', 'Unknown error listing directory.')
+                logger.error(f"execute_list_directory: File manager failed for '{directory_path}': {error_msg}")
+                return _create_failed_result_dict("tool_execution_error", error_msg)
+            else:
+                # Unexpected return type from file_manager
+                error_msg = f"Unexpected return type from file_manager.list_directory for '{directory_path}'"
+                logger.error(f"execute_list_directory: {error_msg}")
+                return _create_failed_result_dict("unexpected_error", error_msg)
+
+        except Exception as e:
+            # Handle unexpected errors during the call
+            error_msg = f"Unexpected error executing list_directory for '{directory_path}': {type(e).__name__}: {e}"
+            logger.exception(f"execute_list_directory: {error_msg}")
+            return _create_failed_result_dict("unexpected_error", error_msg)
+
+    @staticmethod
+    def execute_write_file(params: Dict[str, Any], file_manager: Any) -> Dict[str, Any]:
+        """
+        Executor logic for the 'system:write_file' Direct Tool.
+        Writes content to a specified file using FileAccessManager.
+
+        Args:
+            params: Dictionary containing:
+                - 'file_path': string (required) - Path to the file.
+                - 'content': string (required) - Content to write.
+                - 'overwrite': boolean (optional, default=False) - Whether to overwrite.
+            file_manager: A valid instance implementing FileAccessManager.
+
+        Returns:
+            A TaskResult dictionary.
+        """
+        # 1. Validate input parameters
+        file_path = params.get('file_path')
+        content = params.get('content') # Content can be empty string, so check for presence
+        overwrite = params.get('overwrite', False) # Default to False
+
+        if not file_path or not isinstance(file_path, str):
+            error_msg = "Missing or invalid required parameter: 'file_path' (must be a non-empty string)"
+            logger.error(f"execute_write_file: {error_msg}")
+            return _create_failed_result_dict("input_validation_failure", error_msg)
+
+        if content is None or not isinstance(content, str):
+            # Allow empty string, but not None or other types
+            error_msg = "Missing or invalid required parameter: 'content' (must be a string)"
+            logger.error(f"execute_write_file: {error_msg}")
+            return _create_failed_result_dict("input_validation_failure", error_msg)
+
+        if not isinstance(overwrite, bool):
+            error_msg = "Invalid parameter type: 'overwrite' must be a boolean"
+            logger.error(f"execute_write_file: {error_msg}")
+            return _create_failed_result_dict("input_validation_failure", error_msg)
+
+        # 2. Call file_manager method
+        try:
+            success = file_manager.write_file(file_path, content, overwrite=overwrite)
+
+            # 3. Process result
+            if success:
+                logger.info(f"execute_write_file: Successfully wrote to file '{file_path}'.")
+                return TaskResult(
+                    status="COMPLETE",
+                    content=f"File '{file_path}' written successfully."
+                ).model_dump(exclude_none=True)
+            else:
+                # Failure reported by file_manager (reason should be logged there)
+                error_msg = f"Failed to write file '{file_path}'. Check logs for details (e.g., permissions, path safety, overwrite=False)."
+                logger.error(f"execute_write_file: {error_msg}")
+                # Use tool_execution_error as the reason
+                return _create_failed_result_dict("tool_execution_error", error_msg)
+
+        except Exception as e:
+            # Handle unexpected errors during the call
+            error_msg = f"Unexpected error executing write_file for '{file_path}': {type(e).__name__}: {e}"
+            logger.exception(f"execute_write_file: {error_msg}")
+            return _create_failed_result_dict("unexpected_error", error_msg)

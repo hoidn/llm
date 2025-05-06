@@ -21,21 +21,24 @@ module src.handler.file_access {
         // - Returns None if the file is not found or another reading error occurs.
         // Behavior:
         // - Resolves relative paths using the configured base_path.
+        // - Performs path safety check to ensure path is within base_path.
         // - Checks file existence and size limits.
         // - Reads file content using UTF-8 encoding, replacing errors.
         // @raises_error(condition="FileNotFound", description="Implicitly handled by returning None.")
         // @raises_error(condition="ReadError", description="Implicitly handled by returning None.")
         // @raises_error(condition="FileTooLarge", description="Handled by returning specific string.")
+        // @raises_error(condition="AccessDenied", description="Implicitly handled by returning None if path is outside base_path.")
         optional string read_file(string file_path, optional int max_size);
 
         // Retrieves metadata information about a specified file.
         // Preconditions:
         // - file_path is a string representing the path to the file (can be relative to base_path).
         // Postconditions:
-        // - If the file exists, returns a dictionary containing file 'path' (absolute), 'size' (string), and 'modified' timestamp (string).
-        // - If the file does not exist or an error occurs, returns a dictionary containing an 'error' key with a descriptive message.
+        // - If the file exists and is within base_path, returns a dictionary containing file 'path' (absolute), 'size' (string), and 'modified' timestamp (string).
+        // - If the file does not exist, is not a file, is outside base_path, or an error occurs, returns a dictionary containing an 'error' key with a descriptive message.
         // Behavior:
         // - Resolves relative paths.
+        // - Performs path safety check.
         // - Uses OS functions to get file status (size, modification time).
         // Expected JSON format for success return value: { "path": "string", "size": "string", "modified": "string" }
         // Expected JSON format for error return value: { "error": "string" }
@@ -54,6 +57,22 @@ module src.handler.file_access {
         // Behavior: Performs path safety check. Reads existing content, inserts new content at position, writes back the modified content.
         // @raises_error(None) // Errors handled internally by returning False
         boolean insert_content(string file_path, string content, int position);
+
+        // Lists the contents (files and subdirectories) of a specified directory. Constrained by base_path.
+        // Preconditions: directory_path is a string representing the path to the directory (can be relative to base_path).
+        // Postconditions:
+        // - If the path is valid, within base_path, is a directory, and readable, returns a list of strings (names of files/subdirs).
+        // - Otherwise, returns a dictionary containing an 'error' key with a descriptive message.
+        // Behavior:
+        // - Resolves relative paths.
+        // - Performs path safety check.
+        // - Checks if path exists and is a directory.
+        // - Uses OS functions to list directory contents.
+        // - Handles potential PermissionError or OSError during listing.
+        // Expected JSON format for success return value: list<string>
+        // Expected JSON format for error return value: { "error": "string" }
+        // @raises_error(None) // Errors handled internally by returning error dictionary
+        union<list<string>, dict<string, string>> list_directory(string directory_path);
     };
 };
 // == !! END IDL TEMPLATE !! ===
