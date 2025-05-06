@@ -164,12 +164,13 @@
 
     **Phase 10b: DSL Primitives for Feedback Loop and Data Manipulation**
 
-    *   **Status:** PENDING / NEW REQUIREMENT
+    *   **Status:** **PARTIALLY IMPLEMENTED (Placeholders for Demo)**
     *   **Goal:** Enhance the S-expression DSL with necessary primitives for data structure access, comparison, and potentially state updates, enabling the full expression of conditional feedback loops (like the Aider retry loop) within the DSL itself. This phase complements Phase 10 (`lambda`) and Phase 9b (`loop`).
     *   **Prerequisites:** Phase 10 (`lambda` and closures) implemented. Existing `if` special form.
     *   **Components & Tasks:**
         1.  **`SexpEvaluator`: Implement Data Access Primitives:**
             *   **Primitive:** `(get-field <object-or-dict> <field-name-string-or-symbol>)` or `(access <object-or-dict> <field-name-string-or-symbol>)`
+                *   **Status:** Placeholder implemented for demo script `lambda_llm_code_processing_demo.py`.
                 *   **Behavior:** If `<object-or-dict>` is a dictionary, return the value associated with `<field-name-string-or-symbol>` (after evaluating it if it's a symbol representing a string key). If `<object-or-dict>` is a Pydantic model instance (or other custom object recognized by the evaluator), attempt to get an attribute with that name.
                 *   **Error Handling:** Raise `SexpEvaluationError` if the field/attribute doesn't exist or if the first argument is not a suitable type.
                 *   **Example:** `(get-field feedback-result "status")`
@@ -182,6 +183,7 @@
                 *   **Behavior:** Performs general equality comparison between two evaluated S-expression values. Should handle numbers, strings, booleans, symbols (by name), and potentially lists (structural equality).
                 *   **Returns:** `true` or `false`.
             *   **Primitive:** `(string=? <str1> <str2>)`
+                *   **Status:** Placeholder implemented for demo script `lambda_llm_code_processing_demo.py`.
                 *   **Behavior:** Performs case-sensitive string equality.
                 *   **Returns:** `true` or `false`.
                 *   **Error Handling:** Raise `SexpEvaluationError` if arguments are not strings.
@@ -203,9 +205,13 @@
             *   **Primitive:** `(- <num1> <num2>)`
             *   **Behavior:** Standard arithmetic operations.
             *   **Error Handling:** Raise `SexpEvaluationError` for non-numeric arguments.
+        4.  **`SexpEvaluator`: Implement Utility Primitives (for Demo):**
+            *   **Primitive:** `(log-message <expr1> ...)`
+                *   **Status:** Placeholder implemented for demo script `lambda_llm_code_processing_demo.py`.
+                *   **Behavior:** Evaluates arguments, converts to string, and logs them.
 
         5.  **Documentation & IDL Updates:**
-            *   Update `src/sexp_evaluator/sexp_evaluator_IDL.md` to document all new primitives, their syntax, behavior, and error conditions.
+            *   Update `src/sexp_evaluator/sexp_evaluator_IDL.md` to document all new primitives (`get-field`, `string=?`, `log-message`), their syntax, behavior, and error conditions.
             *   Update `src/sexp_evaluator/sexp_environment_IDL.md` if `set!` requires changes to the environment interface.
             *   Update DSL guides and examples to showcase usage of these new primitives, especially in the context of conditional loops and data handling.
 

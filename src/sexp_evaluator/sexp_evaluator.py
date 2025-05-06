@@ -103,6 +103,9 @@ class SexpEvaluator:
         self.PRIMITIVE_APPLIERS: Dict[str, Callable] = {
             "list": self._apply_list_primitive,
             "get_context": self._apply_get_context_primitive,
+            "get-field": self._apply_get_field_primitive,
+            "string=?": self._apply_string_equal_primitive,
+            "log-message": self._apply_log_message_primitive,
         }
         logging.info("SexpEvaluator initialized.")
 
@@ -830,6 +833,105 @@ class SexpEvaluator:
         file_paths = [m.path for m in match_result.matches if isinstance(m, MatchTuple)]
         logging.debug(f"Apply 'get_context' primitive END: -> {file_paths}")
         return file_paths
+
+    def _apply_get_field_primitive(
+        self,
+        arg_exprs: List[SexpNode], # Expecting (object-or-dict-expr field-name-expr)
+        calling_env: SexpEnvironment,
+        original_call_expr_str: str
+    ) -> Any:
+        logger.debug(f"Apply 'get-field' primitive: {original_call_expr_str}")
+        if len(arg_exprs) != 2:
+            raise SexpEvaluationError("'get-field' requires exactly two arguments: (get-field <object/dict> <field-name>)", original_call_expr_str)
+
+        obj_expr = arg_exprs[0]
+        field_name_expr = arg_exprs[1]
+
+        # Evaluate arguments
+        try:
+            target_obj = self._eval(obj_expr, calling_env)
+            field_name_val = self._eval(field_name_expr, calling_env)
+        except Exception as e_eval:
+            raise SexpEvaluationError(f"Error evaluating arguments for 'get-field': {e_eval}", original_call_expr_str, error_details=str(e_eval)) from e_eval
+
+        if not isinstance(field_name_val, str):
+            # Allow Symbol for field name too, convert to string
+            if isinstance(field_name_val, Symbol):
+                field_name_val = field_name_val.value()
+            else:
+                raise SexpEvaluationError(f"'get-field' field name must be a string or symbol, got {type(field_name_val)}: {field_name_val!r}", original_call_expr_str)
+        
+        logger.debug(f"  'get-field': target_obj type={type(target_obj)}, field_name_val='{field_name_val}'")
+
+        try:
+            if isinstance(target_obj, dict):
+                if field_name_val not in target_obj:
+                    logger.warning(f"  'get-field': Key '{field_name_val}' not found in dict {list(target_obj.keys())}. Returning None.")
+                    return None 
+                return target_obj.get(field_name_val)
+            # Check for Pydantic BaseModel or similar attribute access
+            elif hasattr(target_obj, '__class__') and hasattr(target_obj.__class__, 'model_fields') and hasattr(target_obj, field_name_val):
+                logger.debug(f"  'get-field': Accessing attribute '{field_name_val}' from Pydantic-like object.")
+                return getattr(target_obj, field_name_val)
+            elif hasattr(target_obj, field_name_val):
+                logger.debug(f"  'get-field': Accessing attribute '{field_name_val}' from object.")
+                return getattr(target_obj, field_name_val)
+            else:
+                # Check if target_obj is a TaskResult and field_name_val is 'content' or 'status' etc.
+                # This case might be covered by Pydantic check if TaskResult is a Pydantic model.
+                # If TaskResult is returned as a dict from some layers, the dict check above handles it.
+                logger.warning(f"  'get-field': Field or attribute '{field_name_val}' not found in object of type {type(target_obj)}. Returning None.")
+                return None
+        except Exception as e_access:
+            logger.exception(f"  Error accessing field '{field_name_val}' in 'get-field': {e_access}")
+            raise SexpEvaluationError(f"Error accessing field '{field_name_val}': {e_access}", original_call_expr_str, error_details=str(e_access)) from e_access
+
+    def _apply_string_equal_primitive(
+        self,
+        arg_exprs: List[SexpNode], # Expecting (str1-expr str2-expr)
+        calling_env: SexpEnvironment,
+        original_call_expr_str: str
+    ) -> bool:
+        logger.debug(f"Apply 'string=?' primitive: {original_call_expr_str}")
+        if len(arg_exprs) != 2:
+            raise SexpEvaluationError("'string=?' requires exactly two string arguments.", original_call_expr_str)
+
+        # Evaluate arguments
+        try:
+            str1 = self._eval(arg_exprs[0], calling_env)
+            str2 = self._eval(arg_exprs[1], calling_env)
+        except Exception as e_eval:
+            raise SexpEvaluationError(f"Error evaluating arguments for 'string=?': {e_eval}", original_call_expr_str, error_details=str(e_eval)) from e_eval
+
+        if not isinstance(str1, str) or not isinstance(str2, str):
+            raise SexpEvaluationError(f"'string=?' arguments must be strings. Got: {type(str1)}, {type(str2)}", original_call_expr_str)
+        
+        result = (str1 == str2)
+        logger.debug(f"  'string=?': '{str1}' == '{str2}' -> {result}")
+        return result
+
+    def _apply_log_message_primitive(
+        self,
+        arg_exprs: List[SexpNode],
+        calling_env: SexpEnvironment,
+        original_call_expr_str: str
+    ) -> Any: # Returns the message or nil
+        logger.debug(f"Apply 'log-message' primitive: {original_call_expr_str}")
+        if not arg_exprs:
+            logger.info("SexpLog: (log-message) called with no arguments.") # Use info for user-facing logs
+            return [] # nil
+        
+        evaluated_args = []
+        for arg_expr in arg_exprs:
+            try:
+                evaluated_args.append(self._eval(arg_expr, calling_env))
+            except Exception as e_eval:
+                logger.error(f"SexpLog: Error evaluating arg for log-message: {arg_expr} -> {e_eval}")
+                evaluated_args.append(f"<Error evaluating: {arg_expr}>")
+
+        log_output = " ".join(map(str, evaluated_args))
+        logger.info(f"SexpLog: {log_output}") # Use standard logger.info for SexpLog output
+        return log_output # Return the logged string, or [] for nil if preferred
 
     # --- Invocation Helpers (Updated Signatures & Logic) ---
 

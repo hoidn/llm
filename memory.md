@@ -51,11 +51,16 @@
     - Added comprehensive tests for `lambda` definition, closure application, lexical scoping, higher-order functions, and error conditions. Enhanced environment tests. Commit `9c126c9`.
     - Refined argument evaluation in task/tool invokers, reconciled IDL docstrings, simplified `Closure` validation, and added more lexical scope tests. Commits `88642e8`, `1eb7205`.
     - Fixed `test_lambda_recursive_closure` to use correct `let` semantics. Commit `c3b6a3d`.
-- **Documentation Update (Post Phase 10):** Update relevant guides (`implementation_rules.md`, `start_here.md`) to reflect `lambda` capabilities. Update `memory.md`. (This commit).
+- **Documentation Update (Post Phase 10):** Update relevant guides (`implementation_rules.md`, `start_here.md`) to reflect `lambda` capabilities. Update `memory.md`.
+- **Phase 10b (Demo Primitives) & Lambda Demo Script:**
+    - Added placeholder primitives `get-field`, `string=?`, `log-message` to `SexpEvaluator`.
+    - Created `src/scripts/lambda_llm_code_processing_demo.py` to showcase `lambda` orchestrating mock LLM tasks, using the new primitives.
+    - Updated `sexp_evaluator_IDL.md`, `plan.md`, `project_rules.md`, and `memory.md`.
 
 ## Next Steps
 
 1.  **Phase 9.3 Testing:** Implement unit tests for `LLMInteractionManager` and `BaseHandler` to verify the `model_override` logic, including success and failure cases (config lookup, agent creation). Add optional integration test for Dispatcher.
+2.  **Full Phase 10b Implementation:** Replace placeholder primitives in `SexpEvaluator` with robust implementations for `get-field`, `string=?`, `eq?`, `null?`, `set!`, and basic arithmetic, along with comprehensive tests.
 2.  **Phase 8: Aider Integration:**
     *   Implement `AiderBridge` (likely as an MCP client or direct wrapper).
     *   Define Aider tool specifications (`src/aider_bridge/tools.py`).
