@@ -317,11 +317,14 @@ class BaseHandler:
         system_prompt_override: Optional[str] = None,
         tools_override: Optional[List[Callable]] = None, # Explicitly list of callables
         output_type_override: Optional[Type] = None,
+        model_override: Optional[str] = None, # ADDED PARAMETER
     ) -> TaskResult:
         """
         Internal method to execute a call via the LLMInteractionManager and update history.
         """
         self.log_debug(f"Executing LLM call for prompt: '{prompt[:100]}...'")
+        if model_override:
+            self.log_debug(f"  with model override: {model_override}")
 
         # Log full LLM payload for debugging
         try:
@@ -332,6 +335,7 @@ class BaseHandler:
                 "output_type_override": str(output_type_override),
                 "conversation_history": self.conversation_history,
                 "active_tool_definitions": self.active_tool_definitions, # Log active defs
+                "model_override": model_override, # Log override
             }
             with open("basehandler_llm_payload.log", "w") as _f:
                 _f.write(json.dumps(payload_log, indent=2))
@@ -356,7 +360,7 @@ class BaseHandler:
                 notes={"error": error_details},
             )
 
-        # --- START FIX: Prepare tools correctly ---
+        # --- Prepare tools correctly ---
         executors_for_agent: Optional[List[Callable]] = None
         definitions_for_agent: Optional[List[Dict[str, Any]]] = None
 
@@ -364,10 +368,7 @@ class BaseHandler:
             # Highest precedence: Explicit tools_override (must be callables)
             self.log_debug("Using explicitly provided tools_override (executors) for LLM call")
             executors_for_agent = tools_override
-            # We don't have the specs if only executors were passed in override
-            # If specs are needed by the manager, the caller must provide them somehow
-            # or the manager needs to adapt. Assuming manager primarily needs executors for now.
-            definitions_for_agent = None # Or try to find specs based on function objects if needed? Complex.
+            definitions_for_agent = None # Assume manager doesn't need specs if executors are passed
         elif self.active_tool_definitions:
             # Second precedence: Use active_tool_definitions
             self.log_debug(f"Using active tool definitions ({len(self.active_tool_definitions)}) for LLM call")
@@ -399,7 +400,7 @@ class BaseHandler:
             self.log_debug(f"Passing {len(executors_for_agent)} tool executors to LLM manager")
         if definitions_for_agent:
              self.log_debug(f"Passing {len(definitions_for_agent)} tool definitions to LLM manager")
-        # --- END FIX ---
+        # --- End Prepare tools ---
 
         # Store history *before* the call
         history_before_call = list(self.conversation_history)
@@ -409,11 +410,10 @@ class BaseHandler:
             "prompt": prompt,
             "conversation_history": history_before_call,
             "system_prompt_override": system_prompt_override,
-            # Pass the resolved executors here, matching pydantic-ai's expected format
-            "tools_override": executors_for_agent,
+            "tools_override": executors_for_agent, # Pass resolved executors
             "output_type_override": output_type_override,
-            # Pass the definitions separately if the manager needs them
-            "active_tools": definitions_for_agent
+            "active_tools": definitions_for_agent, # Pass resolved definitions
+            "model_override": model_override, # PASS THE OVERRIDE
         }
 
         manager_result = self.llm_manager.execute_call(**call_kwargs)

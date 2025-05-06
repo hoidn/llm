@@ -3,6 +3,9 @@ import logging
 import os  # Add os import for environment variable checking
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Type
 
+# Import models needed for error handling
+from src.system.models import TaskResult, TaskFailureError
+
 # Define module-level logger
 logger = logging.getLogger(__name__)
 
@@ -54,7 +57,7 @@ class LLMInteractionManager:
 
         Args:
             default_model_identifier: String identifying the pydantic-ai model (e.g., "openai:gpt-4o").
-            config: Dictionary for configuration (e.g., API keys, base_system_prompt).
+            config: Dictionary for configuration (e.g., API keys, base_system_prompt, llm_providers).
         """
         self.config = config or {}
         self.default_model_identifier = default_model_identifier or self.config.get(
@@ -64,10 +67,10 @@ class LLMInteractionManager:
             "base_system_prompt", "You are a helpful assistant."
         )
         self.debug_mode = False
-        self._model_id = self.default_model_identifier
+        self._model_id = self.default_model_identifier # Keep track of the default
         self._base_prompt = self.base_system_prompt
         self._agent_config = self.config.get("pydantic_ai_agent_config", {})
-        self.agent: Optional[Any] = None
+        self.agent: Optional[Any] = None # The default, pre-initialized agent
         logging.info("LLMInteractionManager initialized (Agent creation deferred).")
 
     def _initialize_pydantic_ai_agent(self) -> Optional[Any]:
@@ -110,9 +113,6 @@ class LLMInteractionManager:
         )
 
         if not self.default_model_identifier:
-            logger.error(
-                "Cannot initialize agent: No default_model_identifier provided or found in config."
-            )
             logger.error(
                 "Cannot initialize agent: No default_model_identifier provided or found in config."
             )
@@ -225,9 +225,10 @@ class LLMInteractionManager:
         tools_override: Optional[List[Callable]] = None,  # Executors
         output_type_override: Optional[Type] = None,
         active_tools: Optional[List[Dict[str, Any]]] = None,  # Tool definitions
+        model_override: Optional[str] = None, # ADDED PARAMETER
     ) -> Dict[str, Any]:
         """
-        Executes a call to the configured pydantic-ai agent.
+        Executes a call to the configured pydantic-ai agent, potentially using an override model.
 
         Args:
             prompt: The user's input prompt for the current turn.
@@ -235,6 +236,8 @@ class LLMInteractionManager:
             system_prompt_override: An optional system prompt to use for this specific call.
             tools_override: Optional list of tools (functions or specs) for this call.
             output_type_override: Optional Pydantic model for structured output.
+            active_tools: Optional list of tool definitions (specs) for this call.
+            model_override: Optional string identifying a specific model to use for this call.
 
         Returns:
             A dictionary containing the result:
@@ -247,24 +250,89 @@ class LLMInteractionManager:
             }
         """
         logger = logging.getLogger(__name__)  # Use specific logger
-        if self.agent is None:
-            logger.error(
-                "Cannot execute LLM call: Agent not initialized. Call initialize_agent first."
-            )
-            return {
-                "success": False,
-                "content": None,
-                "tool_calls": None,
-                "usage": None,
-                "error": "AgentNotInitializedError: LLM Agent not initialized.",
-            }
 
-        if not self.agent:
-            logger.error("Cannot execute LLM call: Agent is not initialized.")
-            return {"success": False, "error": "LLM Agent not initialized."}
+        # --- START: Model Override Logic ---
+        target_agent = self.agent # Start with the default agent
+        target_model_id_for_log = self.default_model_identifier
+
+        if model_override and model_override != self.default_model_identifier:
+            logger.info(f"Model override requested: '{model_override}'")
+            target_model_id_for_log = model_override # Update for logging
+            try:
+                # Look up configuration for the override model
+                # Assumes config structure: self.config['llm_providers'][model_override]
+                override_provider_config = self.config.get('llm_providers', {}).get(model_override)
+                if override_provider_config is None: # Check explicitly for None
+                    error_msg = f"Configuration not found for model override: {model_override}"
+                    logger.error(error_msg)
+                    error_details = TaskFailureError(type="TASK_FAILURE", reason="configuration_error", message=error_msg)
+                    return TaskResult(status="FAILED", content=error_msg, notes={"error": error_details.model_dump(exclude_none=True)}).model_dump(exclude_none=True)
+
+                # Get tools from the default agent (assuming tools are compatible)
+                # Ensure self.agent is initialized before accessing .tools
+                if not self.agent or not hasattr(self.agent, 'tools'):
+                     error_msg = "Default agent or its tools not available for override."
+                     logger.error(error_msg)
+                     error_details = TaskFailureError(type="TASK_FAILURE", reason="dependency_error", message=error_msg)
+                     return TaskResult(status="FAILED", content=error_msg, notes={"error": error_details.model_dump(exclude_none=True)}).model_dump(exclude_none=True)
+
+                current_tools = self.agent.tools # Get tools from the initialized default agent
+
+                # Combine base agent config with specific override config
+                # Ensure override_provider_config only contains valid Agent args
+                combined_agent_config = self._agent_config.copy()
+                # Filter override_provider_config for valid Agent kwargs if necessary, or assume it's clean
+                combined_agent_config.update(override_provider_config) # Override specific keys
+
+                logger.debug(f"Instantiating temporary Agent for override: {model_override}")
+                # Ensure Agent class is available
+                if not Agent:
+                    raise RuntimeError("pydantic-ai Agent class not imported/available")
+
+                # Determine the system prompt for the temporary agent
+                temp_agent_system_prompt = system_prompt_override if system_prompt_override is not None else self.base_system_prompt
+
+                # Instantiate the temporary agent
+                temp_agent = Agent(
+                    model=model_override,
+                    system_prompt=temp_agent_system_prompt,
+                    tools=current_tools, # Pass tools from default agent
+                    **combined_agent_config # Pass combined config
+                )
+                target_agent = temp_agent # Use the temporary agent for this call
+                logger.info(f"Temporary Agent created for model: {model_override}")
+
+            except Exception as agent_init_error:
+                logger.exception(f"Failed to initialize temporary Agent for override '{model_override}': {agent_init_error}")
+                error_msg = f"Failed to initialize agent for model: {model_override}"
+                error_details = TaskFailureError(type="TASK_FAILURE", reason="llm_error", message=f"{error_msg}: {agent_init_error}")
+                return TaskResult(status="FAILED", content=error_msg, notes={"error": error_details.model_dump(exclude_none=True)}).model_dump(exclude_none=True)
+        else:
+             logger.debug(f"Using default agent: {self.default_model_identifier}")
+        # --- END: Model Override Logic ---
+
+        # Ensure target_agent is valid before proceeding
+        if not target_agent:
+             logger.error("Cannot execute call: Target agent is None (Initialization likely failed or default agent missing).")
+             error_msg = "LLM Agent not available."
+             error_details = TaskFailureError(type="TASK_FAILURE", reason="dependency_error", message=error_msg)
+             return TaskResult(status="FAILED", content=error_msg, notes={"error": error_details.model_dump(exclude_none=True)}).model_dump(exclude_none=True)
+
+        # Original check for default agent initialization (still relevant if no override)
+        # if self.agent is None: # This check is now covered by the target_agent check above
+        #     logger.error(
+        #         "Cannot execute LLM call: Agent not initialized. Call initialize_agent first."
+        #     )
+        #     return {
+        #         "success": False,
+        #         "content": None,
+        #         "tool_calls": None,
+        #         "usage": None,
+        #         "error": "AgentNotInitializedError: LLM Agent not initialized.",
+        #     }
 
         try:
-            # Determine the system prompt to use
+            # Determine the system prompt to use for the call
             current_system_prompt = (
                 system_prompt_override
                 if system_prompt_override is not None
@@ -283,22 +351,26 @@ class LLMInteractionManager:
                     "system_prompt": current_system_prompt,
                     "conversation_history": conversation_history,
                     "prompt": prompt,
+                    "model_used": target_model_id_for_log, # Log which model was used
                 }
                 with open("llm_full_prompt.log", "w") as _f:
                     _f.write(json.dumps(log_data, indent=2))
                 logger.info("LLM full prompt written to llm_full_prompt.log")
             except Exception as _e:
                 logger.error(f"Failed to write full LLM prompt to file: {_e}")
-            if tools_override:
-                run_kwargs["tools"] = tools_override
-                logging.debug(
-                    f"Executing agent call with {len(tools_override)} tool executors."
-                )
-            elif active_tools:
-                run_kwargs["tools"] = active_tools
-                logging.debug(
-                    f"Executing agent call with {len(active_tools)} tool definitions."
-                )
+
+            # Handle tools_override and active_tools (passed to Agent constructor, not run_sync)
+            # The tools are now part of the target_agent instance (either default or temporary)
+            # So, we don't need to pass 'tools' or 'active_tools' to run_sync here.
+            # However, pydantic-ai might allow passing tools to run_sync as well,
+            # need to confirm library behavior. Assuming tools are set at Agent init for now.
+            # if tools_override:
+            #     run_kwargs["tools"] = tools_override # Check if run_sync accepts this
+            #     logging.debug(f"Executing agent call with {len(tools_override)} tool executors.")
+            # elif active_tools:
+            #     run_kwargs["tools"] = active_tools # Check if run_sync accepts this
+            #     logging.debug(f"Executing agent call with {len(active_tools)} tool definitions.")
+
             if output_type_override:
                 run_kwargs["output_type"] = output_type_override
                 logging.debug(
@@ -307,7 +379,7 @@ class LLMInteractionManager:
 
             # Log the arguments being passed
             logger.debug(
-                f"LLMInteractionManager: Calling agent.run_sync with prompt='{prompt[:100]}...' and kwargs={run_kwargs}"
+                f"LLMInteractionManager: Calling agent.run_sync (Model: '{target_model_id_for_log}') with prompt='{prompt[:100]}...' and kwargs={run_kwargs}"
             )
 
             if self.debug_mode:
@@ -317,8 +389,8 @@ class LLMInteractionManager:
                 )
 
             # Call the agent with prompt as positional arg, others as kwargs
-            # Use Optional[Any] for the type hint as AIResponse import failed
-            response: Optional[Any] = self.agent.run_sync(prompt, **run_kwargs)
+            # Use the determined target_agent
+            response: Optional[Any] = target_agent.run_sync(prompt, **run_kwargs)
 
             if self.debug_mode:
                 logging.debug(f"Agent response received: {response}")

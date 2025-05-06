@@ -88,7 +88,7 @@ module src.handler.base_handler {
         // - Configures debug mode on the LLMInteractionManager if applicable.
         void set_debug_mode(boolean enabled);
 
-        
+
         // Retrieves the configured LLM provider/model identifier string.
         // Preconditions:
         // - LLMInteractionManager must be initialized.
@@ -98,7 +98,7 @@ module src.handler.base_handler {
         // Behavior:
         // - Delegates the call to the internal LLMInteractionManager instance.
         optional string get_provider_identifier();
-        
+
     // Sets the list of *active tool definitions* (specifications) to be used by the LLM.
     // This is typically called once by the Application after determining the appropriate tools
     // based on the configured provider.
@@ -119,9 +119,9 @@ module src.handler.base_handler {
     // Behavior:
     // - Extracts executor functions from the internal `tool_executors` dictionary.
     list<function> get_tools_for_agent();
-        
+
     boolean set_active_tool_definitions(list<dict<string, Any>> tool_definitions);
-    
+
     // Retrieves the registered tools in the format required by the pydantic-ai Agent constructor.
     // Preconditions: Tools should have been registered via `register_tool`.
     // Postconditions:
@@ -135,7 +135,7 @@ module src.handler.base_handler {
         // Preconditions:
         // - LLMInteractionManager's `initialize_agent` must have been called.
         // - prompt is the user's input string.
-        // - Optional overrides for system prompt, tools, and output type can be provided.
+        // - Optional overrides for system prompt, tools, output type, and model can be provided.
         // Postconditions:
         // - Returns the result from the LLM call, typically structured like a TaskResult.
         // - Updates the internal conversation history if the call is successful.
@@ -146,13 +146,15 @@ module src.handler.base_handler {
         //   - If `tools_override` (list of callables/specs) is provided, it takes precedence and is passed to the LLMInteractionManager.
         //   - Otherwise, the list of tool *definitions* stored internally by `set_active_tool_definitions` (i.e., `self.active_tool_definitions`) is retrieved and passed to the LLMInteractionManager's `execute_call` via the `active_tools` parameter.
         //   - If neither is available, `None` is passed for tools.
+        // - Passes the `model_override` parameter down to the LLMInteractionManager.
         // - Handles potential errors during the LLM call.
         // @raises_error(condition="LLMInteractionError", description="If the LLM call fails.")
         Any _execute_llm_call(
             string prompt,
             optional string system_prompt_override,
             optional list<function> tools_override,
-            optional type output_type_override
+            optional type output_type_override,
+            optional string model_override // ADDED PARAMETER
         );
 
         // Builds the complete system prompt for an LLM call.

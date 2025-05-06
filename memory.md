@@ -5,24 +5,22 @@
 
 **Goal:** Phase 9: System Tool Implementation & Refinement.
 
-**Current Sub-task:** Phase 9.2: Implement Shell Execution Tool (`system:execute_shell_command`).
+**Current Sub-task:** Phase 9.3: Implement Multi-LLM Routing/Execution.
 
 **Relevant Files:**
-- `src/executors/system_executors.py`
-- `src/executors/system_executors_IDL.md`
-- `src/handler/command_executor.py` (Dependency)
-- `src/handler/command_executor_IDL.md` (Dependency)
-- `src/main.py`
-- `tests/executors/test_system_executors.py`
-- `tests/test_main.py`
-- `src/main_IDL.md`
+- `src/handler/llm_interaction_manager.py`
+- `src/handler/llm_interaction_manager_IDL.md`
+- `src/handler/base_handler.py`
+- `src/handler/base_handler_IDL.md`
+- `tests/handler/test_llm_interaction_manager.py`
+- `tests/handler/test_base_handler.py`
+- `src/main.py` (For config structure context)
 - `docs/implementation_rules.md`
 - `docs/system/contracts/types.md`
 
 **Related IDLs:**
-- `src/executors/system_executors_IDL.md`
-- `src/handler/command_executor_IDL.md`
-- `src/main_IDL.md`
+- `src/handler/llm_interaction_manager_IDL.md`
+- `src/handler/base_handler_IDL.md`
 
 ## Recent Activity Log
 
@@ -51,32 +49,35 @@
 - **Phase 7: Documentation Update (Cycle 1):** Updated IDLs (`main`, `base_handler`, `llm_interaction_manager`), core guides (`start_here`, `implementation_rules`), and library docs (`pydanticai`, `pydanticai_details`, `MCP_TOOL_GUIDE`). Updated `memory.md`.
 - **Phase 7: Documentation Update (Cycle 2):** Performed final review and refinement of documentation related to tool handling logic (`llm_interaction_manager_IDL.md`, `implementation_rules.md`, `start_here.md`, `pydanticai.md`, `pydanticai_details.md`). Updated `memory.md`.
 - **Phase 7: Documentation Update (Cycle 3):** Reviewed `atomic_executor_IDL.md` and `phase6.py`. Confirmed consistency with recent changes. Updated `memory.md`.
-- **Phase 9.2: Implement Shell Execution Tool:** Added `execute_shell_command` instance method to `SystemExecutorFunctions`. Updated IDL. Registered tool in `Application._register_system_tools`. Added tests in `test_system_executors.py`. Updated `test_main.py` to verify registration. Updated `memory.md`. (This commit).
+- **Phase 9.2: Implement Shell Execution Tool:** Added `execute_shell_command` instance method to `SystemExecutorFunctions`. Updated IDL. Registered tool in `Application._register_system_tools`. Added tests in `test_system_executors.py`. Updated `test_main.py` to verify registration. Updated `memory.md`.
+- **Phase 9.3: Implement Multi-LLM Routing/Execution:** Added `model_override` parameter to `LLMInteractionManager.execute_call` and `BaseHandler._execute_llm_call`. Implemented logic in `LLMInteractionManager` to handle override by looking up config and instantiating a temporary `pydantic-ai Agent`. Updated relevant IDLs. Updated `memory.md`. (This commit).
 
 ## Next Steps
 
-1.  **Phase 8: Aider Integration:**
+1.  **Phase 9.3 Testing:** Implement unit tests for `LLMInteractionManager` and `BaseHandler` to verify the `model_override` logic, including success and failure cases (config lookup, agent creation). Add optional integration test for Dispatcher.
+2.  **Phase 8: Aider Integration:**
     *   Implement `AiderBridge` (likely as an MCP client or direct wrapper).
     *   Define Aider tool specifications (`src/aider_bridge/tools.py`).
     *   Implement Aider executor functions (`src/executors/aider_executors.py`).
     *   Add logic to `Application.initialize_aider` to register Aider tools conditionally or based on configuration.
     *   Update `Application._determine_active_tools` if needed.
     *   Add integration tests for Aider workflows.
-2.  **Merge Streams:** Ensure all Phase 4-9 changes are integrated cleanly.
-3.  **Implement Remaining Deferred Methods (Phase 2 Dependencies):**
+3.  **Merge Streams:** Ensure all Phase 4-9 changes are integrated cleanly.
+4.  **Implement Remaining Deferred Methods (Phase 2 Dependencies):**
     *   Review and finalize implementations for:
         *   `TaskSystem`: `execute_atomic_template`, find/generate/resolve methods.
         *   `MemorySystem`: `get_relevant_context_for` (sharding/mediation logic).
         *   Other deferred methods.
-4.  **Write Tests for Deferred Methods:** Add tests for the methods implemented in step 3.
-5.  **Integration Testing:** Enhance integration tests covering workflows involving SexpEvaluator -> TaskSystem -> AtomicTaskExecutor -> Handler -> LLMManager and MemorySystem indexing/retrieval. Ensure integration tests cover key scenarios previously handled by removed unit tests where appropriate.
-6.  **Review Tool Registration & Execution:** Finalize how tools registered in `BaseHandler` are made available during `SexpEvaluator` execution (via `Handler._execute_tool`) and LLM calls.
-7.  **Update Documentation:** Ensure IDLs, rules, and diagrams reflect the fully implemented state after Phase 8.
+5.  **Write Tests for Deferred Methods:** Add tests for the methods implemented in step 4.
+6.  **Integration Testing:** Enhance integration tests covering workflows involving SexpEvaluator -> TaskSystem -> AtomicTaskExecutor -> Handler -> LLMManager and MemorySystem indexing/retrieval. Ensure integration tests cover key scenarios previously handled by removed unit tests where appropriate.
+7.  **Review Tool Registration & Execution:** Finalize how tools registered in `BaseHandler` are made available during `SexpEvaluator` execution (via `Handler._execute_tool`) and LLM calls.
+8.  **Update Documentation:** Ensure IDLs, rules, and diagrams reflect the fully implemented state after Phase 8.
 
 ## Notes & Context
 
-- Phase 9.2 successfully implemented the `system:execute_shell_command` tool.
-- The `SystemExecutorFunctions` class now correctly uses the injected `command_executor` module via `self.command_executor`.
-- The tool is registered in `Application` using the instance method directly.
-- Tests have been added and updated to verify the implementation and registration.
-- The system is now ready for Phase 8 (Aider Integration).
+- Phase 9.3 successfully added the `model_override` parameter and the core logic for handling it in `LLMInteractionManager`.
+- The implementation assumes a configuration structure like `config['llm_providers'][model_id]` for override details.
+- Error handling for missing configuration and temporary agent initialization failures has been added.
+- The temporary agent reuses tools from the default agent.
+- IDLs have been updated to reflect the new parameter.
+- Next step is to write tests for this new functionality.
