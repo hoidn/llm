@@ -14,8 +14,9 @@ This script showcases:
 - Use of `(log-message ...)` for S-expression level logging.
 """
 
-import logging
 import os
+os.environ['AIDER_ENABLED'] = 'true' # SET THIS VERY EARLY
+import logging
 import sys
 from typing import Any, Dict, Optional
 

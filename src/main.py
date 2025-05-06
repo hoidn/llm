@@ -214,6 +214,17 @@ class Application:
                 self.passthrough_handler.memory_system = self.memory_system # Set memory_system on Handler
             else:
                 logger.warning("PassthroughHandler instance does not have a 'memory_system' attribute to set.")
+            
+            # Re-initialize FileContextManager in BaseHandler with the correct MemorySystem
+            if self.passthrough_handler and self.passthrough_handler.file_manager and self.memory_system:
+                self.passthrough_handler.file_context_manager = FileContextManager(
+                    memory_system=self.memory_system,
+                    file_manager=self.passthrough_handler.file_manager
+                )
+                logger.info("Re-initialized FileContextManager in BaseHandler with correct MemorySystem.")
+            else:
+                logger.warning("Could not re-initialize FileContextManager: handler, file_manager, or memory_system missing.")
+
             logger.info("Cross-dependencies wired.")
             # --- END MODIFICATION ---
 
@@ -934,7 +945,7 @@ Select the best matching paths *from the provided metadata* and output the JSON.
                 flags=flags or {},
                 handler_instance=self.passthrough_handler,
                 task_system_instance=self.task_system,
-                memory_system=self.memory_system
+                memory_system=self.memory_system # Pass memory_system here
                 # optional_history_str=self.passthrough_handler.get_history_string() # If needed
             )
             logger.debug(f"Task command result status: {result_dict.get('status')}")
