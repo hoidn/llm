@@ -112,6 +112,13 @@ module src.sexp_evaluator.sexp_evaluator {
         //   - **Returns:** The result of the *last* evaluation of `<body-expr>`. If `n` is 0, returns `nil` (represented as `[]` in Python).
         //   - **Errors:** Raises `SexpEvaluationError` if argument count is not exactly 2. Propagates `SexpEvaluationError` from evaluation of `<count-expr>` or `<body-expr>`. Raises `SexpEvaluationError` if count is invalid.
         //
+        // - `(director-evaluator-loop ...)`: **Special Form.** Implements the Director-Executor-Evaluator-Controller pattern for iterative workflows.
+        //   - **Syntax:** See ADR_director_evaluator_loop.md for full syntax details.
+        //   - **Argument Processing:** Evaluates configuration expressions and function expressions as specified in the ADR.
+        //   - **Behavior:** Executes the Director-Executor-Evaluator-Controller cycle up to max-iterations times, with each phase function receiving appropriate inputs.
+        //   - **Returns:** The final result as determined by the controller's 'stop' decision or the last execution result if max iterations is reached.
+        //   - **Errors:** Raises `SexpEvaluationError` for various validation failures or if any phase function raises an error.
+        //
         // **Note on Closures:** A Closure is a runtime object representing a function created by `lambda` (or potentially `define` if added later). It bundles the function's code (parameter list and body AST) with a reference to the environment where it was defined, enabling lexical scoping. It is a first-class value that can be passed around, stored in variables, and invoked later.
          //
           //
