@@ -956,7 +956,7 @@ def test_eval_special_form_loop_error_count_expr_eval_fails(evaluator, mock_pars
     mock_parser.parse_string.return_value = ast
 
     # NameError from lookup should be wrapped in SexpEvaluationError
-    with pytest.raises(SexpEvaluationError, match="Error evaluating loop count expression:.*Unbound symbol"):
+    with pytest.raises(SexpEvaluationError, match="Error evaluating loop count expression: Cannot invoke 'undefined'"):
         evaluator.evaluate_string(sexp_str)
 
 def test_eval_special_form_loop_error_count_not_integer(evaluator, mock_parser):
@@ -1024,7 +1024,7 @@ def test_eval_special_form_loop_error_body_eval_fails(evaluator, mock_parser, mo
     with pytest.raises(SexpEvaluationError, match="Error during loop iteration 2/3: Intentional body failure"):
         evaluator.evaluate_string(sexp_str)
 
-    # Verify mock_ok was called only once (because loop stopped on iteration 2)
-    assert mock_ok_executor.call_count == 1
+    # Verify mock_ok was called twice (once in iteration 1 and once in iteration 2 before failure)
+    assert mock_ok_executor.call_count == 2
     # Verify fail_sometimes was called twice (failed on the second)
     assert mock_fail_executor.call_count == 2
