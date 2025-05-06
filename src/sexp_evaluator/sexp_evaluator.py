@@ -207,22 +207,40 @@ class SexpEvaluator:
                 # Special forms handle their own argument evaluation.
                 return handler_method(arg_exprs, env, original_expr_str)
         
-        # 2. Standard Evaluation Path - First, evaluate the operator itself
+        # 2. Standard Evaluation Path - Determine the resolved_operator
         logging.debug(f"  _eval_list_form: Standard evaluation path for operator expression: {op_expr}")
         
-        try:
-            # Evaluate the operator expression (e.g., if op_expr is a symbol, it's looked up)
-            resolved_operator = self._eval(op_expr, env) 
-        except NameError as ne: 
-            # This specifically catches if the op_expr (as a Symbol) was not found during its _eval
-            op_name_str = op_expr.value() if isinstance(op_expr, Symbol) else str(op_expr)
-            logging.error(f"  _eval_list_form: Operator symbol '{op_name_str}' is unbound.")
-            raise SexpEvaluationError(f"Unbound symbol or unrecognized operator: {op_name_str}", original_expr_str) from ne
-        except Exception as e_op_eval:
-            logging.exception(f"  _eval_list_form: Error evaluating operator expression '{op_expr}': {e_op_eval}")
-            if isinstance(e_op_eval, SexpEvaluationError): raise # Re-raise if already our type
-            # Wrap other exceptions
-            raise SexpEvaluationError(f"Error evaluating operator expression: {op_expr}", original_expr_str, error_details=str(e_op_eval)) from e_op_eval
+        resolved_operator: Any
+
+        if isinstance(op_expr, Symbol):
+            op_name_str = op_expr.value()
+            # Check if the symbol is a known primitive, task, or tool name FIRST
+            is_primitive = op_name_str in self.PRIMITIVE_APPLIERS
+            template_def = self.task_system.find_template(op_name_str)
+            is_atomic_task = template_def and template_def.get("type") == "atomic"
+            is_handler_tool = op_name_str in self.handler.tool_executors
+
+            if is_primitive or is_atomic_task or is_handler_tool:
+                resolved_operator = op_name_str # Use the name string directly
+                logging.debug(f"  _eval_list_form: Operator '{op_name_str}' identified as a known primitive/task/tool name.")
+            else:
+                # If it's a symbol but not a known fixed operator, then evaluate (lookup) it.
+                logging.debug(f"  _eval_list_form: Operator symbol '{op_name_str}' is not a known fixed operator. Evaluating (looking up) '{op_name_str}'...")
+                try:
+                    resolved_operator = self._eval(op_expr, env) # This will perform env.lookup
+                except NameError as ne: 
+                    logging.error(f"  _eval_list_form: Operator symbol '{op_name_str}' is unbound during lookup.")
+                    raise SexpEvaluationError(f"Unbound symbol or unrecognized operator: {op_name_str}", original_expr_str) from ne
+        elif isinstance(op_expr, list): # Operator is a sub-expression, e.g., ((lambda (x) x) 5)
+            logging.debug(f"  _eval_list_form: Operator is a complex expression, evaluating it: {op_expr}")
+            try:
+                resolved_operator = self._eval(op_expr, env)
+            except Exception as e_op_eval: 
+                logging.exception(f"  _eval_list_form: Error evaluating complex operator expression '{op_expr}': {e_op_eval}")
+                if isinstance(e_op_eval, SexpEvaluationError): raise 
+                raise SexpEvaluationError(f"Error evaluating operator expression: {op_expr}", original_expr_str, error_details=str(e_op_eval)) from e_op_eval
+        else: # Operator is a literal, e.g. (1 2 3) - this is an error
+            raise SexpEvaluationError(f"Operator in list form must be a symbol or another list, got {type(op_expr)}: {op_expr}", original_expr_str)
 
         logging.debug(f"  _eval_list_form: Resolved operator to: {resolved_operator} (Type: {type(resolved_operator)})")
         
