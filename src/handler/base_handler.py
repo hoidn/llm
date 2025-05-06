@@ -325,9 +325,17 @@ class BaseHandler:
         """
         Internal method to execute a call via the LLMInteractionManager and update history.
         """
-        # Import message types for pydantic-ai
-        from pydantic_ai.messages import ModelMessage
-        from typing import Union
+        # Import message types for pydantic-ai with an alias to avoid name clashes
+        try:
+            from pydantic_ai.messages import ModelMessage as PydanticModelMessage
+            PydanticMessagesAvailable = True
+        except ImportError:
+            logging.error("Failed to import ModelMessage from pydantic_ai.messages.")
+            PydanticMessagesAvailable = False
+            # Create a placeholder if import fails
+            class PydanticModelMessage:
+                def __init__(self, content=""):
+                    self.content = content
 
         self.log_debug(f"Executing LLM call for prompt: '{prompt[:100]}...'")
         if model_override:
@@ -413,43 +421,49 @@ class BaseHandler:
         history_dicts_before_call = list(self.conversation_history)
 
         # --- Convert History to Objects ---
-        message_objects_for_agent: List[ModelMessage] = [] # Only ModelMessage is used
-        for msg_dict in history_dicts_before_call:
-            role = msg_dict.get("role")
-            content = msg_dict.get("content", "") # Default to empty string if missing
+        message_objects_for_agent = [] # Will hold PydanticModelMessage objects
+        
+        if PydanticMessagesAvailable:
+            for msg_dict in history_dicts_before_call:
+                role = msg_dict.get("role")
+                content = msg_dict.get("content", "") # Default to empty string if missing
 
-            # --- START: Ensure content is always string for ModelMessage ---
-            # Convert potential Pydantic models/JSON strings in history to simple strings
-            # before creating the ModelMessage object.
-            if role == "assistant" and not isinstance(content, str):
-                # Example: If content might be a Pydantic model or dict
-                if hasattr(content, 'model_dump_json'):
-                    try:
-                        content_str = content.model_dump_json()
-                    except Exception:
-                        content_str = str(content) # Fallback
-                elif isinstance(content, dict):
-                    try:
-                        content_str = json.dumps(content)
-                    except Exception:
-                         content_str = str(content) # Fallback
+                # --- START: Ensure content is always string for ModelMessage ---
+                # Convert potential Pydantic models/JSON strings in history to simple strings
+                # before creating the ModelMessage object.
+                if role == "assistant" and not isinstance(content, str):
+                    # Example: If content might be a Pydantic model or dict
+                    if hasattr(content, 'model_dump_json'):
+                        try:
+                            content_str = content.model_dump_json()
+                        except Exception:
+                            content_str = str(content) # Fallback
+                    elif isinstance(content, dict):
+                        try:
+                            content_str = json.dumps(content)
+                        except Exception:
+                             content_str = str(content) # Fallback
+                    else:
+                        content_str = str(content) # General fallback
+                    content = content_str # Update content variable
+                # --- END: Ensure content is always string for ModelMessage ---
+
+                # Only include assistant messages in the history objects
+                # User messages are handled by the prompt parameter
+                if role == "assistant":
+                    # Use the aliased class to avoid name clashes
+                    message_objects_for_agent.append(PydanticModelMessage(content=content)) # content is now guaranteed string
+                elif role == "user":
+                    # Skip user messages - they're handled by the prompt parameter
+                    pass
                 else:
-                    content_str = str(content) # General fallback
-                content = content_str # Update content variable
-            # --- END: Ensure content is always string for ModelMessage ---
+                    logging.warning(f"Unsupported role '{role}' found in history, skipping.")
+                    continue # Skip unknown roles
 
-            # Only include assistant messages in the history objects
-            # User messages are handled by the prompt parameter
-            if role == "assistant":
-                message_objects_for_agent.append(ModelMessage(content=content)) # content is now guaranteed string
-            elif role == "user":
-                # Skip user messages - they're handled by the prompt parameter
-                pass
-            else:
-                logging.warning(f"Unsupported role '{role}' found in history, skipping.")
-                continue # Skip unknown roles
-
-        logging.debug(f"Converted history to {len(message_objects_for_agent)} pydantic-ai message objects.")
+            logging.debug(f"Converted history to {len(message_objects_for_agent)} pydantic-ai message objects.")
+        else:
+            logging.error("Cannot convert history to ModelMessage objects: pydantic_ai.messages not available")
+            # Create empty list - the LLM manager will need to handle this case
         # --- End History Conversion ---
         
         # Delegate the call to the manager
