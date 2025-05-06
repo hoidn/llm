@@ -61,6 +61,9 @@ from src.tools.anthropic_tools import (
     ANTHROPIC_INSERT_SPEC
 )
 
+# Import the new template definitions from main to check against
+from src.main import GENERATE_PLAN_TEMPLATE, ANALYZE_AIDER_RESULT_TEMPLATE
+
 
 # Define dummy tool specs used in Application init
 # Aider specs removed as Aider integration is deferred
@@ -266,7 +269,7 @@ def test_application_init_wiring(app_components):
     # Expecting system:get_context, system:read_files, system:list_directory, system:write_file, and system:execute_shell_command wrappers
     assert len(actual_tools_passed) == 5
     assert all(callable(tool) for tool in actual_tools_passed)
-    
+
     # Check for shell command tool registration
     shell_command_call = next((c for c in app_components['mock_handler_instance'].register_tool.call_args_list if c.args[0].get('name') == 'system:execute_shell_command'), None)
     assert shell_command_call is not None, "system:execute_shell_command tool was not registered"
@@ -396,7 +399,7 @@ def test_application_init_with_aider(app_components):
     # Access the mocked class methods
     mock_aider_auto_func = app_components['MockAiderExec'].execute_aider_automatic
     mock_aider_inter_func = app_components['MockAiderExec'].execute_aider_interactive
-    
+
     # Define the expected Aider config that should be passed to AiderBridge
     expected_aider_config = {
         "transport": "stdio",
@@ -404,7 +407,7 @@ def test_application_init_with_aider(app_components):
         "args": ["--test-arg"],
         "env": {"TEST_VAR": "true"}
     }
-    
+
     # Prepare the JSON structure expected by _load_mcp_config
     mock_config_data = {"mcpServers": {"aider-mcp-server": expected_aider_config}}
     mock_json_string = json.dumps(mock_config_data)
@@ -414,11 +417,11 @@ def test_application_init_with_aider(app_components):
          patch('src.main.os.path.exists') as mock_exists, \
          patch('src.main.open', mock_open(read_data=mock_json_string)), \
          patch('src.main.json.load') as mock_json_load:
-        
+
         # Configure mocks for file loading
         mock_exists.return_value = True  # Simulate .mcp.json exists
         mock_json_load.return_value = mock_config_data  # Simulate json.load returning our data
-        
+
         # Act
         app = Application(config={"aider": {"enabled": True}})
 
@@ -436,7 +439,7 @@ def test_application_init_with_aider(app_components):
     assert 'aider:interactive' in registered_tools
     assert callable(registered_tools['aider:automatic']['executor'])
     assert callable(registered_tools['aider:interactive']['executor'])
-    
+
     # Check that register_tool was called for aider tools
     mock_handler = app_components['mock_handler_instance']
     aider_auto_call = next((c for c in mock_handler.register_tool.call_args_list if c.args[0].get('name') == 'aider:automatic'), None)
@@ -509,3 +512,40 @@ def test_application_init_without_anthropic(app_components):
     assert 'anthropic:create' not in registered_tools
     assert 'anthropic:str_replace' not in registered_tools
     assert 'anthropic:insert' not in registered_tools
+
+def test_application_init_registers_user_tasks(app_components):
+    """Verify that user:generate-plan and user:analyze-aider-result templates are registered."""
+    # Arrange
+    mock_task_system_instance = app_components['mock_task_system_instance']
+
+    # Act
+    app = Application() # Initialization triggers registration
+
+    # Assert
+    # Check that register_template was called with the correct template structures
+    calls = mock_task_system_instance.register_template.call_args_list
+
+    # Check for generate-plan template
+    generate_plan_call = next((c for c in calls if c.args[0].get('name') == 'user:generate-plan'), None)
+    assert generate_plan_call is not None, "'user:generate-plan' template was not registered"
+    # Verify key fields match the definition in main.py
+    registered_gen_plan = generate_plan_call.args[0]
+    assert registered_gen_plan['name'] == GENERATE_PLAN_TEMPLATE['name']
+    assert registered_gen_plan['type'] == 'atomic'
+    assert 'user_prompts' in registered_gen_plan['parameters']
+    assert 'initial_context' in registered_gen_plan['parameters']
+    assert registered_gen_plan['output_format']['schema'] == 'src.system.models.DevelopmentPlan'
+
+    # Check for analyze-aider-result template
+    analyze_result_call = next((c for c in calls if c.args[0].get('name') == 'user:analyze-aider-result'), None)
+    assert analyze_result_call is not None, "'user:analyze-aider-result' template was not registered"
+    # Verify key fields match the definition in main.py
+    registered_analyze = analyze_result_call.args[0]
+    assert registered_analyze['name'] == ANALYZE_AIDER_RESULT_TEMPLATE['name']
+    assert registered_analyze['type'] == 'atomic'
+    assert 'aider_result_content' in registered_analyze['parameters']
+    assert 'aider_result_status' in registered_analyze['parameters']
+    assert 'original_prompt' in registered_analyze['parameters']
+    assert 'iteration' in registered_analyze['parameters']
+    assert 'max_retries' in registered_analyze['parameters']
+    assert registered_analyze['output_format']['schema'] == 'src.system.models.FeedbackResult'

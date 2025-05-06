@@ -4,6 +4,7 @@ Unit tests for system-wide Pydantic models defined in src.system.models.
 import pytest
 from pydantic import ValidationError
 from datetime import datetime
+from typing import List, Optional, Literal # Added imports
 
 # Attempt to import models from the correct location
 try:
@@ -14,7 +15,9 @@ try:
         InvalidOutputError, ValidationError as ModelValidationError, XMLParseError, TaskError, # Alias ValidationError
         ContextManagement, SUBTASK_CONTEXT_DEFAULTS,
         ReturnStatus, TaskType, AtomicTaskSubtype,
-        HandlerConfig, TaskResult, ContextGenerationInput
+        HandlerConfig, TaskResult, ContextGenerationInput,
+        # Import new models
+        DevelopmentPlan, FeedbackResult
     )
 except ImportError:
      pytest.skip("Skipping model tests, src.system.models not found or dependencies missing", allow_module_level=True)
@@ -327,3 +330,77 @@ def test_context_generation_input_v5_invalid_strategy():
         ContextGenerationInput(query="test", matching_strategy='invalid')
     with pytest.raises(ValidationError):
         ContextGenerationInput(query="test", matching_strategy=123)
+
+# --- Test Aider Loop Specific Models ---
+
+def test_development_plan_valid():
+    """Test successful validation of DevelopmentPlan."""
+    data = {
+        "instructions": "1. Do this.\n2. Do that.",
+        "files": ["src/main.py", "tests/test_main.py"],
+        "test_command": "pytest tests/test_main.py"
+    }
+    plan = DevelopmentPlan.model_validate(data)
+    assert plan.instructions == data["instructions"]
+    assert plan.files == data["files"]
+    assert plan.test_command == data["test_command"]
+
+def test_development_plan_invalid_missing_fields():
+    """Test DevelopmentPlan validation fails with missing required fields."""
+    with pytest.raises(ValidationError):
+        DevelopmentPlan.model_validate({"instructions": "...", "files": []}) # Missing test_command
+    with pytest.raises(ValidationError):
+        DevelopmentPlan.model_validate({"instructions": "...", "test_command": "..."}) # Missing files
+    with pytest.raises(ValidationError):
+        DevelopmentPlan.model_validate({"files": [], "test_command": "..."}) # Missing instructions
+
+def test_development_plan_invalid_types():
+    """Test DevelopmentPlan validation fails with incorrect data types."""
+    with pytest.raises(ValidationError): # instructions not string
+        DevelopmentPlan.model_validate({"instructions": 123, "files": [], "test_command": "..."})
+    with pytest.raises(ValidationError): # files not list
+        DevelopmentPlan.model_validate({"instructions": "...", "files": "src/main.py", "test_command": "..."})
+    with pytest.raises(ValidationError): # files list contains non-string
+        DevelopmentPlan.model_validate({"instructions": "...", "files": ["src/main.py", 123], "test_command": "..."})
+    with pytest.raises(ValidationError): # test_command not string
+        DevelopmentPlan.model_validate({"instructions": "...", "files": [], "test_command": ["pytest"]})
+
+def test_feedback_result_valid_success():
+    """Test successful validation of FeedbackResult with SUCCESS."""
+    data = {"status": "SUCCESS", "explanation": "Looks good!"}
+    feedback = FeedbackResult.model_validate(data)
+    assert feedback.status == "SUCCESS"
+    assert feedback.next_prompt is None
+    assert feedback.explanation == "Looks good!"
+
+def test_feedback_result_valid_revise():
+    """Test successful validation of FeedbackResult with REVISE."""
+    data = {"status": "REVISE", "next_prompt": "Try adding error handling.", "explanation": "Missing edge case."}
+    feedback = FeedbackResult.model_validate(data)
+    assert feedback.status == "REVISE"
+    assert feedback.next_prompt == "Try adding error handling."
+    assert feedback.explanation == "Missing edge case."
+
+def test_feedback_result_valid_abort():
+    """Test successful validation of FeedbackResult with ABORT."""
+    data = {"status": "ABORT", "explanation": "Cannot proceed."}
+    feedback = FeedbackResult.model_validate(data)
+    assert feedback.status == "ABORT"
+    assert feedback.next_prompt is None
+    assert feedback.explanation == "Cannot proceed."
+
+def test_feedback_result_invalid_missing_fields():
+    """Test FeedbackResult validation fails with missing required fields."""
+    with pytest.raises(ValidationError):
+        FeedbackResult.model_validate({}) # Missing status
+    with pytest.raises(ValidationError): # Missing next_prompt when status is REVISE
+        FeedbackResult.model_validate({"status": "REVISE", "explanation": "Needs prompt"})
+
+def test_feedback_result_invalid_types():
+    """Test FeedbackResult validation fails with incorrect data types."""
+    with pytest.raises(ValidationError): # status not valid literal
+        FeedbackResult.model_validate({"status": "MAYBE"})
+    with pytest.raises(ValidationError): # next_prompt not string when present
+        FeedbackResult.model_validate({"status": "REVISE", "next_prompt": 123})
+    with pytest.raises(ValidationError): # explanation not string when present
+        FeedbackResult.model_validate({"status": "SUCCESS", "explanation": []})
