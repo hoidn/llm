@@ -650,9 +650,16 @@ class SexpEvaluator:
             try:
                 evaluated_value = self._eval(value_expr_node, env) 
                 logging.debug(f"  _apply_get_context: Evaluated value for key '{key_str}' ('{value_expr_node}'): {evaluated_value}")
+            except SexpEvaluationError as e_val_eval:
+                # If _eval raises SexpEvaluationError, it should already have the specific failing sub-expression.
+                # We want to add the context of the 'get_context' call.
+                raise SexpEvaluationError(
+                    f"Error evaluating value for '{key_str}' in 'get_context': {e_val_eval.args[0] if e_val_eval.args else str(e_val_eval)}",
+                    expression=original_expr_str, # The full (get_context ...)
+                    error_details=f"Failed on value_expr='{e_val_eval.expression if hasattr(e_val_eval, 'expression') else value_expr_node}'. Original detail: {e_val_eval.error_details if hasattr(e_val_eval, 'error_details') else str(e_val_eval)}"
+                ) from e_val_eval
             except Exception as e_val_eval:
                 logging.exception(f"  _apply_get_context: Error evaluating value for key '{key_str}' ('{value_expr_node}'): {e_val_eval}")
-                if isinstance(e_val_eval, SexpEvaluationError): raise
                 raise SexpEvaluationError(f"Error evaluating value for '{key_str}' in 'get_context': {value_expr_node}", original_expr_str, error_details=str(e_val_eval)) from e_val_eval
             
             # Special validation for matching_strategy
