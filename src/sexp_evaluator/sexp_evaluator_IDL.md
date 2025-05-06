@@ -122,6 +122,24 @@ module src.sexp_evaluator.sexp_evaluator {
         // **Note on Closures:** A Closure is a runtime object representing a function created by `lambda` (or potentially `define` if added later). It bundles the function's code (parameter list and body AST) with a reference to the environment where it was defined, enabling lexical scoping. It is a first-class value that can be passed around, stored in variables, and invoked later.
          //
           //
+        // - `(get-field <object-or-dict-expr> <field-name-expr>)`: **Primitive.**
+        //   - **Action:** Extracts a field or attribute from an object or dictionary.
+        //   - **Argument Processing:** Evaluates `<object-or-dict-expr>` to get the target object/dictionary. Evaluates `<field-name-expr>` to get the field name (string or symbol).
+        //   - **Behavior:** If the target is a dictionary, performs a key lookup. If the target is an object, performs an attribute lookup. Handles Pydantic models.
+        //   - **Returns:** The value of the field/attribute. Returns `None` (or `nil`) if the field/attribute is not found (for demo purposes, actual primitive might error).
+        //   - **Raises:** `SexpEvaluationError` if arguments are invalid or access fails unexpectedly.
+        // - `(string=? <str1-expr> <str2-expr>)`: **Primitive.**
+        //   - **Action:** Compares two strings for equality.
+        //   - **Argument Processing:** Evaluates both `<str1-expr>` and `<str2-expr>`.
+        //   - **Behavior:** Checks if the two evaluated strings are identical.
+        //   - **Returns:** `true` if the strings are equal, `false` otherwise.
+        //   - **Raises:** `SexpEvaluationError` if arguments do not evaluate to strings.
+        // - `(log-message <expr1> <expr2> ...)`: **Primitive.**
+        //   - **Action:** Logs a message to the system's logger (typically at INFO level).
+        //   - **Argument Processing:** Evaluates all argument expressions.
+        //   - **Behavior:** Converts evaluated arguments to strings and concatenates them with spaces. Logs the resulting string.
+        //   - **Returns:** The logged string (or `nil`).
+        //   - **Raises:** `SexpEvaluationError` if argument evaluation fails (though the primitive itself tries to be robust).
         // - `(get_context (key1 value_expr1) (key2 value_expr2) ...)`: **Primitive.**
         //   - **Action:** Retrieves relevant context from the MemorySystem.
         //   - **Argument Processing:** Parses `(key value_expr)` pairs. Evaluates each `value_expr`. Recognizes keys like `query`, `history`, `inputs`, `matching_strategy`, etc., corresponding to `ContextGenerationInput` v5.0 fields. Validates argument structure and types.
