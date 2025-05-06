@@ -451,6 +451,31 @@ class BaseHandler:
                 # Only include assistant messages in the history objects
                 # User messages are handled by the prompt parameter
                 if role == "assistant":
+                    # --- START INTROSPECTION LOGGING ---
+                    logging.debug(f"--- Before Instantiation ---")
+                    logging.debug(f"Alias 'PydanticModelMessage' points to: {PydanticModelMessage!r}")
+                    logging.debug(f"Type of alias 'PydanticModelMessage': {type(PydanticModelMessage)}")
+                    # Check if it's the Union type directly
+                    from typing import Union # Ensure Union is imported for comparison
+                    is_union = PydanticModelMessage is Union
+                    logging.debug(f"Is 'PydanticModelMessage' the same object as typing.Union? {is_union}")
+                    
+                    # Check module origin
+                    if hasattr(PydanticModelMessage, '__module__'):
+                        logging.debug(f"Module of 'PydanticModelMessage': {PydanticModelMessage.__module__}")
+                    
+                    # Try to get more info about the object
+                    logging.debug(f"Dir of 'PydanticModelMessage': {dir(PydanticModelMessage)[:10]}...")
+                    
+                    # Check if we can access the original ModelMessage directly
+                    try:
+                        import pydantic_ai.messages
+                        logging.debug(f"Direct import of pydantic_ai.messages.ModelMessage: {pydantic_ai.messages.ModelMessage!r}")
+                        logging.debug(f"Is direct import same as alias? {pydantic_ai.messages.ModelMessage is PydanticModelMessage}")
+                    except (ImportError, AttributeError) as e:
+                        logging.debug(f"Error accessing direct import: {e}")
+                    # --- END INTROSPECTION LOGGING ---
+                    
                     # Use the aliased class to avoid name clashes
                     message_objects_for_agent.append(PydanticModelMessage(content=content)) # content is now guaranteed string
                 elif role == "user":
