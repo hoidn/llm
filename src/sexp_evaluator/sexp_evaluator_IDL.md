@@ -48,6 +48,9 @@ module src.sexp_evaluator.sexp_evaluator {
         // (+) - The S-expression logic typically references variables bound in the `initial_env`
         // (+)   for complex inputs (like prompts built from multiple sources) rather than
         // (+)   performing complex data manipulation itself.
+        // (+) - Supports anonymous function definition via `(lambda (params...) body...)` which creates
+        // (+)   a first-class Closure object capturing the current lexical environment.
+        // (+) - Supports application of these Closures, enabling lexical scoping.
         // @raises_error(condition="SexpSyntaxError", description="Raised by internal parser if the input string has invalid S-expression syntax.")
         // @raises_error(condition="SexpEvaluationError", description="Raised by internal _eval if runtime errors occur during S-expression evaluation (e.g., unbound symbol, invalid arguments to primitive, type mismatch).")
         // @raises_error(condition="TaskError", description="Propagated if an underlying TaskSystem/Handler call invoked by the S-expression fails (e.g., RESOURCE_EXHAUSTION, TASK_FAILURE from atomic task).")
@@ -64,24 +67,25 @@ module src.sexp_evaluator.sexp_evaluator {
         // - Handles different node types:
         //   - Literals (string, number, bool, null, empty list): Return the value directly.
         //   - Symbols: Look up the symbol in the `env`. Raise error if unbound.
-        //   - Lists: Delegates processing to `_eval_list` to determine if it's a special form, primitive call, function/task/tool invocation, or invalid.
-        // - **Guideline:** Focuses on returning the value; the *application* of functions/operators happens within the logic called by `_eval_list`.
-        //     - **Dispatch Order & Explicitness:** Follows a strict dispatch order:
-        //   1. Check if operator is a symbol matching a **Special Form** (`if`, `let`, `bind`, `progn`, `quote`, `lambda`, `defatom`, `loop`). If yes, execute special form logic (which handles its own argument evaluation or definition).
-        //   2. Else, check if operator is a symbol matching a **Primitive** (`list`, `get_context`). If yes, execute primitive logic (which evaluates necessary arguments internally).
-        //   3. Else (operator is not a special form or primitive symbol, OR operator is a complex expression like another list): Evaluate the operator expression itself using `_eval`. Let the result be `evaluated_operator`.
-        //      a. If `evaluated_operator` is a **Closure object** (a function created by `lambda`): Trigger the **Function Application** process:
-        //          i.   Evaluate the argument expressions (`<arg1>`, `<arg2>`, ...) provided in the *call* within the *current calling environment*.
-        //          ii.  Create a *new environment frame* for the function execution.
-        //          iii. Link the new frame's parent to the environment **captured within the Closure object** (this provides lexical scope).
-        //          iv.  Bind the function's formal parameter names (from the Closure) to the evaluated argument values in the new frame. Check for correct argument count.
-        //          v.   Evaluate the function's body expression(s) (from the Closure) sequentially within the new environment frame.
-        //          vi.  The result of the last body expression is the result of the function application. Return this result.
-        //      b. Else, if `evaluated_operator` is a **known Task/Tool name string**, delegate to `_handle_invocation` (passing the *name* and *unevaluated* args from the original list).
-        //      c. Else, if `evaluated_operator` is a **Python callable** (but not a Closure, e.g., a built-in function exposed directly), delegate to `_handle_invocation` (passing the *callable* and *unevaluated* args).
-        //      d. Else, if `evaluated_operator` is a symbol but **not recognized** as executable (special form, primitive, task, tool, Closure, callable), raise an "Undefined function or task" error.
-        //      e. Else (e.g., `evaluated_operator` is a non-callable value like a list or number), raise a "Cannot apply non-callable operator" error.
-        // - `(lambda (param...) body...)`: **Special Form.** Creates and returns a first-class function object (a Closure). Does *not* evaluate the parameter list or body immediately. The returned Closure captures the parameter list (symbols), the body AST nodes, and the current lexical environment (the environment where the lambda expression itself was evaluated). This captured environment enables lexical scoping when the function is later applied.
+        //   - Lists: 
+        //     - If the list starts with the symbol `lambda`, it's a **lambda definition**. This is handled directly by `_eval`. It parses the parameter list and body expressions, creates a `Closure` object (capturing the current `env` as the definition environment), and returns this `Closure`. It does *not* evaluate the parameters or body at this stage.
+        //     - Otherwise (not a `lambda` definition), delegates processing to `_eval_list_form` to determine if it's a special form call, primitive call, function/task/tool invocation, or invalid.
+        // - **Guideline:** Focuses on returning the value; the *application* of functions/operators happens within the logic called by `_eval_list_form` (specifically, `_apply_operator`).
+        //
+        // - **Dispatch Order in `_eval_list_form` (after operator is resolved by `_eval`):**
+        //   1. If the resolved operator is a **`Closure` object**: Trigger the **Function Application** process:
+        //      a. Evaluate the argument expressions (`<arg1>`, `<arg2>`, ...) provided in the *call* within the *current calling environment*.
+        //      b. Create a *new environment frame*. The parent of this new frame is the environment **captured within the `Closure` object** (this provides lexical scope).
+        //      c. Bind the function's formal parameter names (from the `Closure`) to the evaluated argument values in the new frame. Check for correct argument count (arity).
+        //      d. Evaluate the function's body expression(s) (from the `Closure`) sequentially within this new environment frame.
+        //      e. The result of the last body expression is the result of the function application. Return this result.
+        //   2. Else, if operator is a symbol matching a **Special Form** (e.g., `if`, `let`, `bind`, `progn`, `quote`, `defatom`, `loop` - *excluding* `lambda` which is handled by `_eval`): Execute special form logic (which handles its own argument evaluation or definition as needed).
+        //   3. Else, if operator is a symbol matching a **Primitive** (`list`, `get_context`): Execute primitive logic (which evaluates necessary arguments internally from the unevaluated argument expressions).
+        //   4. Else, if operator is a **known Task/Tool name string**: Delegate to task/tool invocation logic (passing the *name* and *unevaluated* argument expressions, which are then evaluated by the invoker).
+        //   5. Else, if operator is a **Python callable** (but not a `Closure`): Evaluate all argument expressions, then call the Python callable with these evaluated arguments.
+        //   6. Else (e.g., operator is a symbol not recognized, or a non-callable value like a list or number): Raise an appropriate "Undefined function/operator" or "Cannot apply non-callable" error.
+        //
+        // - `(lambda (param...) body...)`: **Special Form (handled by `_eval`).** Creates and returns a first-class function object (a `Closure`). Does *not* evaluate the parameter list or body immediately. The returned `Closure` captures the parameter list (symbols), the body AST nodes, and the current lexical environment (the environment where the `lambda` expression itself was evaluated). This captured environment enables lexical scoping when the function is later applied.
         // - `(defatom task-name (params ...) (instructions ...) ...)`: **Special Form.** Defines a new atomic task template.
         //     - Parses its *unevaluated* arguments to extract the task name (Symbol), parameter definitions (`(params (p1 type?) ...)`), instructions string (`(instructions "...")`), and optional key-value pairs (e.g., `(subtype "subtask")`, `(description "...")`).
         //     - Constructs a template dictionary conforming to the atomic task structure.
