@@ -325,16 +325,19 @@ class BaseHandler:
         """
         Internal method to execute a call via the LLMInteractionManager and update history.
         """
-        # Import message types for pydantic-ai with an alias to avoid name clashes
+        # Import specific message types for pydantic-ai
         try:
-            from pydantic_ai.messages import ModelMessage as PydanticModelMessage
+            # Import the specific class needed for assistant messages, not the Union alias
+            from pydantic_ai.messages import ModelResponse
             PydanticMessagesAvailable = True
+            logging.info("Successfully imported ModelResponse from pydantic_ai.messages.")
         except ImportError:
-            logging.error("Failed to import ModelMessage from pydantic_ai.messages.")
+            logging.error("Failed to import ModelResponse from pydantic_ai.messages.", exc_info=True)
             PydanticMessagesAvailable = False
             # Create a placeholder if import fails
-            class PydanticModelMessage:
+            class ModelResponse:
                 def __init__(self, content=""):
+                    logging.error("!!! Using Dummy ModelResponse fallback class !!!")
                     self.content = content
 
         self.log_debug(f"Executing LLM call for prompt: '{prompt[:100]}...'")
@@ -427,33 +430,33 @@ class BaseHandler:
 
         # Check the crucial variable right before the loop where it's used
         print(f"--- DEBUG MARKER: PydanticMessagesAvailable = {PydanticMessagesAvailable}", flush=True)
-        print(f"--- DEBUG MARKER: Type of PydanticModelMessage = {type(PydanticModelMessage)}", flush=True)
-        print(f"--- DEBUG MARKER: Value of PydanticModelMessage = {PydanticModelMessage!r}", flush=True)
+        print(f"--- DEBUG MARKER: Type of ModelResponse = {type(ModelResponse)}", flush=True)
+        print(f"--- DEBUG MARKER: Value of ModelResponse = {ModelResponse!r}", flush=True)
         from typing import Union
-        is_union = PydanticModelMessage is Union
-        print(f"--- DEBUG MARKER: Is PydanticModelMessage typing.Union? {is_union}", flush=True)
+        is_union = ModelResponse is Union
+        print(f"--- DEBUG MARKER: Is ModelResponse typing.Union? {is_union}", flush=True)
         print("--- DEBUG MARKER: BEFORE History Conversion Loop ---", flush=True)
         # --- END DIAGNOSTIC PRINT STATEMENTS ---
 
         # --- START MOVED INTROSPECTION LOGGING ---
         logging.debug(f"--- Before History Conversion Loop ---")
-        logging.debug(f"Alias 'PydanticModelMessage' points to: {PydanticModelMessage!r}")
-        logging.debug(f"Type of alias 'PydanticModelMessage': {type(PydanticModelMessage)}")
+        logging.debug(f"ModelResponse points to: {ModelResponse!r}")
+        logging.debug(f"Type of ModelResponse: {type(ModelResponse)}")
         # Union already imported above
-        logging.debug(f"Is 'PydanticModelMessage' the same object as typing.Union? {is_union}")
+        logging.debug(f"Is 'ModelResponse' the same object as typing.Union? {is_union}")
         
         # Check module origin
-        if hasattr(PydanticModelMessage, '__module__'):
-            logging.debug(f"Module of 'PydanticModelMessage': {PydanticModelMessage.__module__}")
+        if hasattr(ModelResponse, '__module__'):
+            logging.debug(f"Module of 'ModelResponse': {ModelResponse.__module__}")
         
         # Try to get more info about the object
-        logging.debug(f"Dir of 'PydanticModelMessage': {dir(PydanticModelMessage)[:10]}...")
+        logging.debug(f"Dir of 'ModelResponse': {dir(ModelResponse)[:10]}...")
         
         # Check if we can access the original ModelMessage directly
         try:
             import pydantic_ai.messages
             logging.debug(f"Direct import of pydantic_ai.messages.ModelMessage: {pydantic_ai.messages.ModelMessage!r}")
-            logging.debug(f"Is direct import same as alias? {pydantic_ai.messages.ModelMessage is PydanticModelMessage}")
+            logging.debug(f"Is ModelResponse same as ModelMessage? {pydantic_ai.messages.ModelMessage is ModelResponse}")
         except (ImportError, AttributeError) as e:
             logging.debug(f"Error accessing direct import: {e}")
         # --- END MOVED INTROSPECTION LOGGING ---
@@ -489,8 +492,8 @@ class BaseHandler:
                 # Only include assistant messages in the history objects
                 # User messages are handled by the prompt parameter
                 if role == "assistant":
-                    # Use the aliased class to avoid name clashes
-                    message_objects_for_agent.append(PydanticModelMessage(content=content)) # content is now guaranteed string
+                    # Use the directly imported concrete class instead of the Union alias
+                    message_objects_for_agent.append(ModelResponse(content=content)) # content is now guaranteed string
                 elif role == "user":
                     # Skip user messages - they're handled by the prompt parameter
                     pass
