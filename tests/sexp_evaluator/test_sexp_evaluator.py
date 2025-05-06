@@ -1386,3 +1386,360 @@ class TestSexpEvaluatorInternals:
         evaluated_args_3 = ["some_value_3"]
         with pytest.raises(SexpEvaluationError, match="Invalid argument format for invocation. Expected \\(key_symbol value_expression\\)"):
             evaluator._parse_invocation_arguments(evaluated_args_3, original_arg_exprs_3, original_expr_str_3)
+
+
+# --- New Unit Tests for Refactored Internal Methods ---
+
+class TestSexpEvaluatorInternals:
+
+    def test_eval_list_form_dispatches_special_form(self, evaluator, mock_parser, mocker):
+        """Test _eval_list_form correctly dispatches to a special form handler."""
+        env = SexpEnvironment()
+        original_expr_str = "(if true 1 0)"
+        arg_exprs = [Symbol("true"), 1, 0] # Unevaluated args for 'if'
+
+        # Mock the specific special form handler (e.g., _eval_if_form)
+        # The handler itself is an instance method, so it's already part of 'evaluator'
+        # We need to patch it on the 'evaluator' instance or its class.
+        mock_if_handler = mocker.patch.object(evaluator, '_eval_if_form', return_value="if_result")
+        
+        # Make SPECIAL_FORM_HANDLERS point to this mock for 'if'
+        evaluator.SPECIAL_FORM_HANDLERS['if'] = mock_if_handler
+
+        # AST for (if true 1 0)
+        expr_list = [Symbol("if"), Symbol("true"), 1, 0]
+        
+        result = evaluator._eval_list_form(expr_list, env)
+
+        assert result == "if_result"
+        mock_if_handler.assert_called_once_with(arg_exprs, env, original_expr_str)
+        # Restore original handler if necessary for other tests, or use fresh evaluator
+        evaluator.SPECIAL_FORM_HANDLERS['if'] = evaluator._eval_if_form
+
+
+    def test_eval_list_form_standard_path_evaluates_op_and_args_and_applies(self, evaluator, mocker):
+        """Test _eval_list_form's standard path: evaluates operator, evaluates args, then applies."""
+        env = SexpEnvironment()
+        op_expr = Symbol("my_func_name") # Operator expression (a symbol)
+        arg1_expr = 10 # Argument expression 1
+        arg2_expr = Symbol("var_a") # Argument expression 2
+        expr_list = [op_expr, arg1_expr, arg2_expr] # (my_func_name 10 var_a)
+        original_expr_str = str(expr_list)
+
+        env.define("var_a", 20) # For evaluating arg2_expr
+
+        # Mock _eval to control evaluation of operator and arguments
+        # op_expr ("my_func_name") -> "resolved_func_name" (string)
+        # arg1_expr (10) -> 10 (literal)
+        # arg2_expr ("var_a") -> 20 (lookup)
+        def eval_side_effect(node, e):
+            if node == op_expr: return "resolved_func_name"
+            if node == arg1_expr: return 10
+            if node == arg2_expr: return e.lookup("var_a") # 20
+            raise ValueError(f"Unexpected node for _eval mock: {node}")
+
+        mock_internal_eval = mocker.patch.object(evaluator, '_eval', side_effect=eval_side_effect)
+        
+        # Mock _apply_operator
+        mock_apply_op = mocker.patch.object(evaluator, '_apply_operator', return_value="apply_result")
+
+        result = evaluator._eval_list_form(expr_list, env)
+
+        assert result == "apply_result"
+        
+        # Check calls to _eval
+        # Call 1: op_expr
+        # Call 2: arg1_expr
+        # Call 3: arg2_expr
+        assert mock_internal_eval.call_count == 3 
+        mock_internal_eval.assert_any_call(op_expr, env)
+        mock_internal_eval.assert_any_call(arg1_expr, env)
+        mock_internal_eval.assert_any_call(arg2_expr, env)
+        
+        # Check call to _apply_operator
+        resolved_operator_expected = "resolved_func_name"
+        evaluated_args_expected = [10, 20]
+        original_arg_exprs_expected = [arg1_expr, arg2_expr]
+        mock_apply_op.assert_called_once_with(
+            resolved_operator_expected,
+            evaluated_args_expected,
+            original_arg_exprs_expected,
+            env,
+            original_expr_str
+        )
+
+    def test_apply_operator_dispatches_primitive(self, evaluator, mocker):
+        env = SexpEnvironment()
+        original_expr_str = "(list 1 2)"
+        evaluated_args = [1, 2]
+        original_arg_exprs = [1, 2] # For 'list', these happen to be the same as evaluated
+
+        mock_list_applier = mocker.patch.object(evaluator, '_apply_list_primitive', return_value="list_applied")
+        evaluator.PRIMITIVE_APPLIERS['list'] = mock_list_applier # Ensure dispatcher uses mock
+
+        result = evaluator._apply_operator("list", evaluated_args, original_arg_exprs, env, original_expr_str)
+        
+        assert result == "list_applied"
+        mock_list_applier.assert_called_once_with(evaluated_args, original_arg_exprs, env, original_expr_str)
+        evaluator.PRIMITIVE_APPLIERS['list'] = evaluator._apply_list_primitive # Restore
+
+    def test_apply_operator_dispatches_task(self, evaluator, mock_task_system, mocker):
+        env = SexpEnvironment()
+        task_name = "my_atomic_task"
+        original_expr_str = f"({task_name} (p 1))"
+        evaluated_args = [1] # e.g., (p 1) -> p's value is 1
+        original_arg_exprs = [[Symbol("p"), 1]] # e.g. (p 1)
+
+        mock_task_system.find_template.return_value = {"name": task_name, "type": "atomic"}
+        mock_invoke_task = mocker.patch.object(evaluator, '_invoke_task_system', return_value=TaskResult(status="COMPLETE", content="task_done"))
+
+        result = evaluator._apply_operator(task_name, evaluated_args, original_arg_exprs, env, original_expr_str)
+
+        assert result.content == "task_done"
+        mock_task_system.find_template.assert_called_once_with(task_name)
+        mock_invoke_task.assert_called_once_with(
+            task_name, 
+            {"name": task_name, "type": "atomic"}, 
+            evaluated_args, 
+            original_arg_exprs, 
+            env, 
+            original_expr_str
+        )
+
+    def test_apply_operator_dispatches_tool(self, evaluator, mock_handler, mocker):
+        env = SexpEnvironment()
+        tool_name = "my_direct_tool"
+        original_expr_str = f"({tool_name} (arg 'foo'))"
+        evaluated_args = ["foo"]
+        original_arg_exprs = [[Symbol("arg"), Symbol("'foo")]] # Example original structure
+
+        mock_handler.tool_executors = {tool_name: MagicMock()} # Tool must exist
+        mock_invoke_tool = mocker.patch.object(evaluator, '_invoke_handler_tool', return_value=TaskResult(status="COMPLETE", content="tool_done"))
+
+        result = evaluator._apply_operator(tool_name, evaluated_args, original_arg_exprs, env, original_expr_str)
+        
+        assert result.content == "tool_done"
+        mock_invoke_tool.assert_called_once_with(tool_name, evaluated_args, original_arg_exprs, env, original_expr_str)
+
+    def test_apply_operator_calls_python_callable(self, evaluator, mocker):
+        env = SexpEnvironment()
+        original_expr_str = "(py_func 10)"
+        evaluated_args = [10]
+        original_arg_exprs = [10]
+
+        mock_callable = MagicMock(return_value="callable_result")
+        
+        result = evaluator._apply_operator(mock_callable, evaluated_args, original_arg_exprs, env, original_expr_str)
+
+        assert result == "callable_result"
+        mock_callable.assert_called_once_with(*evaluated_args)
+
+    def test_apply_operator_error_unrecognized_name(self, evaluator):
+        with pytest.raises(SexpEvaluationError, match="Unrecognized operator name: unknown_op"):
+            evaluator._apply_operator("unknown_op", [], [], SexpEnvironment(), "(unknown_op)")
+
+    def test_apply_operator_error_non_callable(self, evaluator):
+        with pytest.raises(SexpEvaluationError, match="Cannot apply non-callable operator: 123"):
+            evaluator._apply_operator(123, [], [], SexpEnvironment(), "(123)") # 123 is not a string name or callable
+
+    # --- Tests for Special Form Handlers (Example: _eval_if_form) ---
+    def test_eval_if_form_true_condition(self, evaluator, mocker):
+        env = SexpEnvironment()
+        original_expr_str = "(if cond_expr then_expr else_expr)"
+        cond_expr, then_expr, else_expr = Symbol("cond"), "then_val", "else_val"
+        arg_exprs = [cond_expr, then_expr, else_expr]
+
+        # Mock _eval: cond_expr -> True, then_expr -> "THEN", else_expr -> "ELSE"
+        def eval_side_effect(node, e):
+            if node == cond_expr: return True
+            if node == then_expr: return "THEN"
+            if node == else_expr: return "ELSE"
+            return mocker.DEFAULT # Should not be called for others
+        
+        mock_internal_eval = mocker.patch.object(evaluator, '_eval', side_effect=eval_side_effect)
+        
+        result = evaluator._eval_if_form(arg_exprs, env, original_expr_str)
+        
+        assert result == "THEN"
+        mock_internal_eval.assert_any_call(cond_expr, env)
+        mock_internal_eval.assert_any_call(then_expr, env)
+        # Assert that else_expr was NOT evaluated
+        for call_args in mock_internal_eval.call_args_list:
+            assert call_args[0][0] != else_expr 
+
+    def test_eval_if_form_false_condition(self, evaluator, mocker):
+        env = SexpEnvironment()
+        original_expr_str = "(if cond_expr then_expr else_expr)"
+        cond_expr, then_expr, else_expr = Symbol("cond"), "then_val", "else_val"
+        arg_exprs = [cond_expr, then_expr, else_expr]
+
+        def eval_side_effect(node, e):
+            if node == cond_expr: return False
+            if node == then_expr: return "THEN"
+            if node == else_expr: return "ELSE"
+            return mocker.DEFAULT
+        
+        mock_internal_eval = mocker.patch.object(evaluator, '_eval', side_effect=eval_side_effect)
+        
+        result = evaluator._eval_if_form(arg_exprs, env, original_expr_str)
+        
+        assert result == "ELSE"
+        mock_internal_eval.assert_any_call(cond_expr, env)
+        mock_internal_eval.assert_any_call(else_expr, env)
+        for call_args in mock_internal_eval.call_args_list:
+            assert call_args[0][0] != then_expr
+
+    def test_eval_if_form_arity_error(self, evaluator):
+        with pytest.raises(SexpEvaluationError, match="'if' requires 3 arguments"):
+            evaluator._eval_if_form([Symbol("true"), 1], SexpEnvironment(), "(if true 1)")
+    
+    # (Similar focused tests should be added for _eval_let_form, _eval_bind_form, etc.)
+
+    # --- Tests for Primitive Appliers (Example: _apply_list_primitive) ---
+    def test_apply_list_primitive_returns_evaluated_args(self, evaluator):
+        evaluated_args = [1, "two", True]
+        result = evaluator._apply_list_primitive(evaluated_args, [], SexpEnvironment(), "(list ...)")
+        assert result == evaluated_args
+        assert result is evaluated_args # Should be the same list object
+
+    # (Tests for _apply_get_context_primitive would be more involved, mocking memory_system)
+    # Example structure for _apply_get_context_primitive test:
+    def test_apply_get_context_primitive_parses_and_calls_memory(self, evaluator, mock_memory_system, mocker):
+        env = SexpEnvironment()
+        original_expr_str = "(get_context (query \"search\") (matching_strategy content))"
+        # original_arg_exprs are the unevaluated (key value_expr) pairs
+        original_arg_exprs = [
+            [Symbol("query"), "search"], 
+            [Symbol("matching_strategy"), Symbol("content")]
+        ]
+        # evaluated_args are the results of _eval on each value_expr
+        evaluated_args = ["search", "content"] # "content" symbol evaluates to "content" string
+
+        expected_cg_input = ContextGenerationInput(query="search", matching_strategy="content")
+        mock_memory_system.get_relevant_context_for.return_value = AssociativeMatchResult(
+            context_summary="ctx", matches=[MatchTuple(path="/f.py", relevance=0.9)]
+        )
+
+        result = evaluator._apply_get_context_primitive(evaluated_args, original_arg_exprs, env, original_expr_str)
+
+        assert result == ["/f.py"]
+        mock_memory_system.get_relevant_context_for.assert_called_once_with(expected_cg_input)
+
+
+    # --- Tests for Invocation Helpers (Example: _invoke_task_system) ---
+    def test_invoke_task_system_parses_args_and_calls(self, evaluator, mock_task_system, mocker):
+        env = SexpEnvironment()
+        task_name = "my_task"
+        template_def = {"name": task_name, "type": "atomic"}
+        original_expr_str = f"({task_name} (param1 val1_eval) (files (list \"/a.txt\")))"
+        
+        # original_arg_exprs: [(param1 val1_expr_node), (files (list "/a.txt"))]
+        original_arg_exprs = [
+            [Symbol("param1"), Symbol("val1_expr_node")], # val1_expr_node would be some AST
+            [Symbol("files"), [Symbol("list"), "/a.txt"]]
+        ]
+        # evaluated_args: [result_of_eval_val1_expr_node, result_of_eval_(list "/a.txt")]
+        evaluated_args = ["actual_val1", ["/a.txt"]]
+
+
+        mock_task_system.execute_atomic_template.return_value = TaskResult(status="COMPLETE", content="task_res")
+
+        # Mock the internal argument parser if it's complex enough, or test its effects directly
+        # For this test, we'll assume _parse_invocation_arguments works and test its integration.
+        # If _parse_invocation_arguments is complex, it needs its own unit tests.
+        
+        result = evaluator._invoke_task_system(task_name, template_def, evaluated_args, original_arg_exprs, env, original_expr_str)
+
+        assert result.content == "task_res"
+        
+        expected_subtask_request = SubtaskRequest(
+            task_id=ANY, # task_id is dynamically generated
+            type="atomic",
+            name=task_name,
+            inputs={"param1": "actual_val1"},
+            file_paths=["/a.txt"],
+            context_management=None 
+        )
+        mock_task_system.execute_atomic_template.assert_called_once_with(expected_subtask_request)
+
+    def test_invoke_handler_tool_parses_args_and_calls(self, evaluator, mock_handler, mocker):
+        env = SexpEnvironment()
+        tool_name = "my_tool"
+        original_expr_str = f"({tool_name} (arg1 123))"
+        original_arg_exprs = [[Symbol("arg1"), 123]]
+        evaluated_args = [123] # Result of _eval(123, env)
+
+        # Tool executor itself is usually a function, _execute_tool is the method on handler
+        mock_handler._execute_tool.return_value = TaskResult(status="COMPLETE", content="tool_res")
+        
+        result = evaluator._invoke_handler_tool(tool_name, evaluated_args, original_arg_exprs, env, original_expr_str)
+
+        assert result.content == "tool_res"
+        mock_handler._execute_tool.assert_called_once_with(tool_name, {"arg1": 123})
+
+    # Test _parse_invocation_arguments separately if complex
+    def test_parse_invocation_arguments_full(self, evaluator):
+        original_expr_str = "(cmd (p1 v1) (files (list \"/f\")) (context (quote ((c1 v1)))))"
+        original_arg_exprs = [
+            [Symbol("p1"), Symbol("v1_node")],
+            [Symbol("files"), [Symbol("list"), "/f"]],
+            [Symbol("context"), [Symbol("quote"), [[Symbol("c1"), Symbol("v1_val_node")]]]]
+        ]
+        evaluated_args = [ # Results of _eval on value expressions
+            "evaluated_v1", # for v1_node
+            ["/f"],         # for (list "/f")
+            [[Symbol("c1"), Symbol("v1_val_node")]] # for (quote ((c1 v1_val_node)))
+        ]
+
+        parsed = evaluator._parse_invocation_arguments(evaluated_args, original_arg_exprs, original_expr_str)
+
+        assert parsed["named_params"] == {"p1": "evaluated_v1"}
+        assert parsed["file_paths"] == ["/f"]
+        assert parsed["context_settings"] == {"c1": Symbol("v1_val_node")} # Note: symbol keys from quote
+
+    def test_parse_invocation_arguments_only_named(self, evaluator):
+        original_expr_str = "(cmd (p1 v1))"
+        original_arg_exprs = [[Symbol("p1"), Symbol("v1_node")]]
+        evaluated_args = ["evaluated_v1"]
+        
+        parsed = evaluator._parse_invocation_arguments(evaluated_args, original_arg_exprs, original_expr_str)
+        
+        assert parsed["named_params"] == {"p1": "evaluated_v1"}
+        assert parsed["file_paths"] is None
+        assert parsed["context_settings"] is None
+
+    def test_parse_invocation_arguments_invalid_files_type(self, evaluator):
+        original_expr_str = "(cmd (files \"not-a-list\"))"
+        original_arg_exprs = [[Symbol("files"), "not-a-list-node"]]
+        evaluated_args = ["not-a-list"] # _eval("not-a-list-node") -> "not-a-list" string
+        
+        with pytest.raises(SexpEvaluationError, match="'files' argument must evaluate to a list of strings"):
+            evaluator._parse_invocation_arguments(evaluated_args, original_arg_exprs, original_expr_str)
+
+    def test_parse_invocation_arguments_invalid_context_type(self, evaluator):
+        original_expr_str = "(cmd (context \"not-a-dict-or-list\"))"
+        original_arg_exprs = [[Symbol("context"), "str_node"]]
+        evaluated_args = ["not-a-dict-or-list"]
+        
+        with pytest.raises(SexpEvaluationError, match="'context' argument must evaluate to a dictionary or a list of pairs"):
+            evaluator._parse_invocation_arguments(evaluated_args, original_arg_exprs, original_expr_str)
+
+    def test_parse_invocation_arguments_invalid_arg_pair_format(self, evaluator):
+        original_expr_str = "(cmd not-a-list)" # Arg is not a list
+        original_arg_exprs = [Symbol("not-a-list")]
+        evaluated_args = ["some_value"] # Dummy, parsing fails before using this
+        
+        with pytest.raises(SexpEvaluationError, match="Invalid argument format for invocation. Expected \\(key_symbol value_expression\\)"):
+            evaluator._parse_invocation_arguments(evaluated_args, original_arg_exprs, original_expr_str)
+
+        original_expr_str_2 = "(cmd (key-only))" # Arg list has only one element
+        original_arg_exprs_2 = [[Symbol("key-only")]]
+        evaluated_args_2 = ["some_value_2"]
+        with pytest.raises(SexpEvaluationError, match="Invalid argument format for invocation. Expected \\(key_symbol value_expression\\)"):
+            evaluator._parse_invocation_arguments(evaluated_args_2, original_arg_exprs_2, original_expr_str_2)
+
+        original_expr_str_3 = "(cmd (123 value))" # Key is not a symbol
+        original_arg_exprs_3 = [[123, Symbol("value_node")]]
+        evaluated_args_3 = ["some_value_3"]
+        with pytest.raises(SexpEvaluationError, match="Invalid argument format for invocation. Expected \\(key_symbol value_expression\\)"):
+            evaluator._parse_invocation_arguments(evaluated_args_3, original_arg_exprs_3, original_expr_str_3)
