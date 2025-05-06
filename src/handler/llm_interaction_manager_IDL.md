@@ -7,9 +7,9 @@ module src.handler.llm_interaction_manager {
         // Constructor: Initializes the LLM interaction manager.
         // Preconditions:
         // - default_model_identifier is an optional string identifying the pydantic-ai model (e.g., "anthropic:claude-3-5-sonnet-latest").
-        // - config is an optional dictionary for configuration settings (e.g., base_system_prompt, API keys for pydantic-ai).
+        // - config is an optional dictionary for configuration settings (e.g., base_system_prompt, API keys for pydantic-ai, llm_providers).
         // Postconditions:
-        // - Stores configuration (model ID, base prompt, agent config) internally.
+        // - Stores configuration (model ID, base prompt, agent config, llm_providers) internally.
         // - The internal `pydantic-ai Agent` instance (`self.agent`) is initialized to None.
         // - Agent creation is deferred until `initialize_agent` is called.
         // Behavior:
@@ -42,24 +42,34 @@ module src.handler.llm_interaction_manager {
         // - `initialize_agent` must have been called successfully (`self.agent` is not `None`).
         // - prompt is a non-empty string.
         // - conversation_history is a list of message dictionaries (typically with 'role' and 'content' keys).
-        // - Optional overrides for system prompt, tools, and output type can be provided.
+        // - Optional overrides for system prompt, tools, output type, and model can be provided.
         // Postconditions:
         // - Returns a dictionary containing the LLM response, typically structured like a TaskResult.
         // Behavior:
-        // - Checks if `self.agent` is initialized, raises error if not.
-        // - Delegates to the pydantic-ai Agent's run_sync method.
+        // - Checks if `model_override` is provided and differs from the default.
+        // - If override requested:
+        //   - Looks up configuration for the override model in `self.config['llm_providers']`.
+        //   - If config found, retrieves tools from the default agent (`self.agent.tools`).
+        //   - Instantiates a temporary `pydantic-ai Agent` with the override model, combined config, and tools.
+        //   - Uses the temporary agent for the `run_sync` call.
+        //   - Handles configuration lookup errors and temporary agent initialization errors by returning a FAILED TaskResult.
+        // - If no override or override matches default, uses the default `self.agent`.
+        // - Ensures a valid agent (default or temporary) is available before calling `run_sync`.
+        // - Delegates to the target agent's `run_sync` method.
         // - Handles potential errors during the LLM call.
         // - Formats the result into a TaskResult-like structure.
-        // - Passes the `active_tools` list (received from BaseHandler) to `agent.run_sync(tools=...)`.
+        // - Note: `tools_override` and `active_tools` parameters are less relevant now as tools are typically set during Agent initialization (default or temporary).
         // @raises_error(condition="LLMInteractionError", description="If the LLM call fails.")
-        // @raises_error(condition="AgentNotInitializedError", description="Raised if called before `initialize_agent`.")
+        // @raises_error(condition="AgentNotInitializedError", description="Raised if the default agent is needed but not initialized.")
+        // @raises_error(condition="ConfigurationError", description="Returned via FAILED TaskResult if override model config is missing.")
         dict<string, Any> execute_call(
             string prompt,
             list<dict<string, Any>> conversation_history,
             optional string system_prompt_override,
-            optional list<function> tools_override, // Keep for now
+            optional list<function> tools_override, // Keep for now, but usage might change
             optional type output_type_override,
-            optional list<dict<string, Any>> active_tools // ADDED PARAMETER (list of tool specs/definitions)
+            optional list<dict<string, Any>> active_tools, // Keep for now, but usage might change
+            optional string model_override // ADDED PARAMETER
         );
 
         // Enables or disables the internal debug logging flag.
