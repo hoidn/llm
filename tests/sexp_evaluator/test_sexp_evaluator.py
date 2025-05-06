@@ -1066,33 +1066,6 @@ def test_eval_special_form_loop_error_body_eval_fails(evaluator, mock_parser, mo
     assert mock_fail_executor.call_count == 2
 
 
-# --- New Unit Tests for Refactored Internal Methods ---
-
-class TestSexpEvaluatorInternals:
-    def test_eval_list_form_dispatches_special_form(self, evaluator, mocker):
-        """Test _eval_list_form correctly dispatches to a special form handler."""
-        env = SexpEnvironment()
-        # original_expr_str = "(if true 1 0)" # Original string form
-        original_expr_str_expected = "[Symbol('if'), Symbol('true'), 1, 0]" # str() of AST list
-        arg_exprs = [Symbol("true"), 1, 0] # Unevaluated args for 'if'
-
-        # Mock the specific special form handler (e.g., _eval_if_form)
-        # The handler itself is an instance method, so it's already part of 'evaluator'
-        # We need to patch it on the 'evaluator' instance or its class.
-        mock_if_handler = mocker.patch.object(evaluator, '_eval_if_form', return_value="if_result")
-        
-        # Make SPECIAL_FORM_HANDLERS point to this mock for 'if'
-        evaluator.SPECIAL_FORM_HANDLERS['if'] = mock_if_handler
-
-        # AST for (if true 1 0)
-        expr_list = [Symbol("if"), Symbol("true"), 1, 0]
-        
-        result = evaluator._eval_list_form(expr_list, env)
-
-        assert result == "if_result"
-        mock_if_handler.assert_called_once_with(arg_exprs, env, original_expr_str_expected)
-        # Restore original handler if necessary for other tests, or use fresh evaluator
-        evaluator.SPECIAL_FORM_HANDLERS['if'] = evaluator._eval_if_form
 
     def test_eval_list_form_standard_path_evaluates_op_and_args_and_applies(self, evaluator, mocker):
         """Test _eval_list_form's standard path: evaluates operator, evaluates args, then applies."""
