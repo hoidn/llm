@@ -20,8 +20,8 @@ from src.system.models import (
 @pytest.fixture
 def mock_memory_system():
     """Fixture providing a mock MemorySystem instance."""
-    # Use spec=MemorySystem if MemorySystem is importable and you want stricter mocking
-    memory_system = MagicMock() # spec=MemorySystem
+    # Use spec=MemorySystem for stricter mocking
+    memory_system = MagicMock(spec=MemorySystem)
     # Configure default behavior for get_relevant_context_for
     mock_result = AssociativeMatchResult(
         context_summary="Test context summary",
@@ -36,8 +36,8 @@ def mock_memory_system():
 @pytest.fixture
 def mock_file_manager():
     """Fixture providing a mock FileAccessManager instance."""
-    # Use spec=FileAccessManager if importable
-    file_manager = MagicMock() # spec=FileAccessManager
+    # Use spec=FileAccessManager for stricter mocking
+    file_manager = MagicMock(spec=FileAccessManager)
     # Configure default behavior for read_file - returns content for valid paths, None for invalid
     # Ensure the mock signature matches the expected call (with max_size)
     file_manager.read_file.side_effect = lambda path, max_size=None: (
@@ -45,38 +45,61 @@ def mock_file_manager():
     )
     return file_manager
 
+@pytest.fixture
+def mock_command_executor():
+    """Fixture providing a mock command_executor module."""
+    command_executor = MagicMock()
+    # Configure default behavior for execute_command_safely
+    command_executor.execute_command_safely.return_value = {
+        'success': True,
+        'exit_code': 0,
+        'stdout': 'Command output',
+        'stderr': ''
+    }
+    return command_executor
+
+@pytest.fixture
+def system_executor_instance(mock_memory_system, mock_file_manager, mock_command_executor):
+    """Fixture providing an instance of SystemExecutorFunctions with mock dependencies."""
+    return SystemExecutorFunctions(
+        memory_system=mock_memory_system,
+        file_manager=mock_file_manager,
+        command_executor_module=mock_command_executor
+    )
+
 # --- Basic Module/Class Tests ---
 
-def test_module_structure():
+def test_module_structure(system_executor_instance):
     """Verify the SystemExecutorFunctions class has the required methods."""
-    # Check that both required methods exist
-    assert hasattr(SystemExecutorFunctions, "execute_get_context")
-    assert hasattr(SystemExecutorFunctions, "execute_read_files")
+    # Check that all required methods exist
+    assert hasattr(system_executor_instance, "execute_get_context")
+    assert hasattr(system_executor_instance, "execute_read_files")
+    assert hasattr(system_executor_instance, "execute_list_directory")
+    assert hasattr(system_executor_instance, "execute_write_file")
+    assert hasattr(system_executor_instance, "execute_shell_command")
 
     # Check method signatures
     # Check execute_get_context signature
-    sig = signature(SystemExecutorFunctions.execute_get_context)
+    sig = signature(system_executor_instance.execute_get_context)
     params = list(sig.parameters.keys())
-    assert len(params) == 2
+    assert len(params) == 1
     assert params[0] == "params"
-    assert params[1] == "memory_system"
 
     # Check execute_read_files signature
-    sig = signature(SystemExecutorFunctions.execute_read_files)
+    sig = signature(system_executor_instance.execute_read_files)
     params = list(sig.parameters.keys())
-    assert len(params) == 2
+    assert len(params) == 1
     assert params[0] == "params"
-    assert params[1] == "file_manager"
 
 # --- Tests for execute_get_context ---
 
-def test_execute_get_context_success(mock_memory_system):
+def test_execute_get_context_success(system_executor_instance):
     """Test successful context retrieval with valid query."""
     # Setup
     params = {"query": "search term"}
 
     # Act
-    result = SystemExecutorFunctions.execute_get_context(params, mock_memory_system)
+    result = system_executor_instance.execute_get_context(params)
 
     # Assert
     assert isinstance(result, dict) # Should return a dict (TaskResult structure)
@@ -95,9 +118,9 @@ def test_execute_get_context_success(mock_memory_system):
     assert result["notes"]["context_summary"] == "Test context summary"
 
     # Verify memory_system was called with correct parameters
-    mock_memory_system.get_relevant_context_for.assert_called_once()
+    system_executor_instance.memory_system.get_relevant_context_for.assert_called_once()
     # Get the call arguments
-    call_args = mock_memory_system.get_relevant_context_for.call_args[0][0]
+    call_args = system_executor_instance.memory_system.get_relevant_context_for.call_args[0][0]
     assert isinstance(call_args, ContextGenerationInput)
     assert call_args.query == "search term"
     # FIX: Check inheritedContext instead of history
@@ -105,7 +128,7 @@ def test_execute_get_context_success(mock_memory_system):
     # FIX: Check inputs instead of target_files directly
     assert call_args.inputs is None
 
-def test_execute_get_context_with_history(mock_memory_system):
+def test_execute_get_context_with_history(system_executor_instance):
     """Test context retrieval with history parameter."""
     # Setup
     params = {
@@ -114,21 +137,21 @@ def test_execute_get_context_with_history(mock_memory_system):
     }
 
     # Act
-    result = SystemExecutorFunctions.execute_get_context(params, mock_memory_system)
+    result = system_executor_instance.execute_get_context(params)
 
     # Assert
     assert result["status"] == "COMPLETE"
 
     # Verify memory_system was called with history included
-    mock_memory_system.get_relevant_context_for.assert_called_once()
-    call_args = mock_memory_system.get_relevant_context_for.call_args[0][0]
+    system_executor_instance.memory_system.get_relevant_context_for.assert_called_once()
+    call_args = system_executor_instance.memory_system.get_relevant_context_for.call_args[0][0]
     assert isinstance(call_args, ContextGenerationInput)
     assert call_args.query == "search term"
     # FIX: Check inheritedContext instead of history
     assert call_args.inheritedContext == "Previous conversation context"
     assert call_args.inputs is None # Check inputs is None when only history is passed
 
-def test_execute_get_context_with_target_files(mock_memory_system):
+def test_execute_get_context_with_target_files(system_executor_instance):
     """Test context retrieval with target_files parameter."""
     # Setup
     target_list = ["/target/file1.py", "/target/file2.py"]
@@ -138,14 +161,14 @@ def test_execute_get_context_with_target_files(mock_memory_system):
     }
 
     # Act
-    result = SystemExecutorFunctions.execute_get_context(params, mock_memory_system)
+    result = system_executor_instance.execute_get_context(params)
 
     # Assert
     assert result["status"] == "COMPLETE"
 
     # Verify memory_system was called with target_files included
-    mock_memory_system.get_relevant_context_for.assert_called_once()
-    call_args = mock_memory_system.get_relevant_context_for.call_args[0][0]
+    system_executor_instance.memory_system.get_relevant_context_for.assert_called_once()
+    call_args = system_executor_instance.memory_system.get_relevant_context_for.call_args[0][0]
     assert isinstance(call_args, ContextGenerationInput)
     assert call_args.query == "search term"
     # FIX: Check inheritedContext instead of history
@@ -155,13 +178,13 @@ def test_execute_get_context_with_target_files(mock_memory_system):
     assert "target_files" in call_args.inputs
     assert call_args.inputs["target_files"] == target_list
 
-def test_execute_get_context_missing_query(mock_memory_system):
+def test_execute_get_context_missing_query(system_executor_instance):
     """Test validation failure when query parameter is missing."""
     # Setup
     params = {"history": "Some history"}  # Missing required 'query'
 
     # Act
-    result = SystemExecutorFunctions.execute_get_context(params, mock_memory_system)
+    result = system_executor_instance.execute_get_context(params)
 
     # Assert
     assert result["status"] == "FAILED"
@@ -172,15 +195,15 @@ def test_execute_get_context_missing_query(mock_memory_system):
     assert error_details["type"] == "TASK_FAILURE"
     # FIX: Use string literal for reason check
     assert error_details["reason"] == "input_validation_failure"
-    mock_memory_system.get_relevant_context_for.assert_not_called()
+    system_executor_instance.memory_system.get_relevant_context_for.assert_not_called()
 
-def test_execute_get_context_empty_query(mock_memory_system):
+def test_execute_get_context_empty_query(system_executor_instance):
     """Test validation failure when query parameter is empty."""
     # Setup
     params = {"query": ""}  # Empty query
 
     # Act
-    result = SystemExecutorFunctions.execute_get_context(params, mock_memory_system)
+    result = system_executor_instance.execute_get_context(params)
 
     # Assert
     assert result["status"] == "FAILED"
@@ -188,16 +211,16 @@ def test_execute_get_context_empty_query(mock_memory_system):
     assert "error" in result["notes"]
     # FIX: Use string literal for reason check
     assert result["notes"]["error"]["reason"] == "input_validation_failure"
-    mock_memory_system.get_relevant_context_for.assert_not_called()
+    system_executor_instance.memory_system.get_relevant_context_for.assert_not_called()
 
-def test_execute_get_context_memory_system_error(mock_memory_system):
+def test_execute_get_context_memory_system_error(system_executor_instance):
     """Test handling of errors from MemorySystem."""
     # Setup
-    mock_memory_system.get_relevant_context_for.side_effect = Exception("Memory error")
+    system_executor_instance.memory_system.get_relevant_context_for.side_effect = Exception("Memory error")
     params = {"query": "search term"}
 
     # Act
-    result = SystemExecutorFunctions.execute_get_context(params, mock_memory_system)
+    result = system_executor_instance.execute_get_context(params)
 
     # Assert
     assert result["status"] == "FAILED"
@@ -206,7 +229,7 @@ def test_execute_get_context_memory_system_error(mock_memory_system):
     # FIX: Use string literal for reason check
     assert result["notes"]["error"]["reason"] == "context_retrieval_failure"
 
-def test_execute_get_context_memory_system_returns_error(mock_memory_system):
+def test_execute_get_context_memory_system_returns_error(system_executor_instance):
     """Test handling when MemorySystem returns result with error."""
     # Setup
     error_result = AssociativeMatchResult(
@@ -214,11 +237,11 @@ def test_execute_get_context_memory_system_returns_error(mock_memory_system):
         matches=[],
         error="Failed to match query"
     )
-    mock_memory_system.get_relevant_context_for.return_value = error_result
+    system_executor_instance.memory_system.get_relevant_context_for.return_value = error_result
     params = {"query": "search term"}
 
     # Act
-    result = SystemExecutorFunctions.execute_get_context(params, mock_memory_system)
+    result = system_executor_instance.execute_get_context(params)
 
     # Assert
     # Even though there's an error in the result, the function itself worked correctly
@@ -235,7 +258,7 @@ def test_execute_get_context_memory_system_returns_error(mock_memory_system):
 
 # --- Tests for execute_read_files ---
 
-def test_execute_read_files_success(mock_file_manager):
+def test_execute_read_files_success(system_executor_instance):
     """Test successful reading of files."""
     # Setup
     # Use a more specific side effect for this test
@@ -249,12 +272,12 @@ def test_execute_read_files_success(mock_file_manager):
         else:
             return None # Default for unexpected paths
 
-    mock_file_manager.read_file.side_effect = read_side_effect
+    system_executor_instance.file_manager.read_file.side_effect = read_side_effect
 
     params = {"file_paths": ["/path/file1.txt", "/path/file2.txt", "/path/nonexistent.txt"]}
 
     # Act
-    result = SystemExecutorFunctions.execute_read_files(params, mock_file_manager)
+    result = system_executor_instance.execute_read_files(params)
 
     # Assert
     assert isinstance(result, dict)
@@ -274,22 +297,22 @@ def test_execute_read_files_success(mock_file_manager):
     assert "errors" not in result["notes"] # No unexpected errors
 
     # Verify read_file was called for each path
-    assert mock_file_manager.read_file.call_count == 3
+    assert system_executor_instance.file_manager.read_file.call_count == 3
     # FIX: Assertions now match the expected call signature
-    mock_file_manager.read_file.assert_any_call("/path/file1.txt", max_size=None)
-    mock_file_manager.read_file.assert_any_call("/path/file2.txt", max_size=None)
-    mock_file_manager.read_file.assert_any_call("/path/nonexistent.txt", max_size=None)
+    system_executor_instance.file_manager.read_file.assert_any_call("/path/file1.txt", max_size=None)
+    system_executor_instance.file_manager.read_file.assert_any_call("/path/file2.txt", max_size=None)
+    system_executor_instance.file_manager.read_file.assert_any_call("/path/nonexistent.txt", max_size=None)
 
 
-def test_execute_read_files_all_files_missing(mock_file_manager):
+def test_execute_read_files_all_files_missing(system_executor_instance):
     """Test behavior when all files are missing/unreadable."""
     # Setup
-    mock_file_manager.read_file.return_value = None  # All files fail to read
+    system_executor_instance.file_manager.read_file.return_value = None  # All files fail to read
 
     params = {"file_paths": ["/path/nonexistent1.txt", "/path/nonexistent2.txt"]}
 
     # Act
-    result = SystemExecutorFunctions.execute_read_files(params, mock_file_manager)
+    result = system_executor_instance.execute_read_files(params)
 
     # Assert
     assert result["status"] == "COMPLETE"  # Still COMPLETE as the function worked
@@ -299,15 +322,15 @@ def test_execute_read_files_all_files_missing(mock_file_manager):
     assert "errors" not in result["notes"]
 
     # Verify read_file was called for each path
-    assert mock_file_manager.read_file.call_count == 2
+    assert system_executor_instance.file_manager.read_file.call_count == 2
 
-def test_execute_read_files_empty_paths_list(mock_file_manager):
+def test_execute_read_files_empty_paths_list(system_executor_instance):
     """Test behavior with empty file_paths list."""
     # Setup
     params = {"file_paths": []}
 
     # Act
-    result = SystemExecutorFunctions.execute_read_files(params, mock_file_manager)
+    result = system_executor_instance.execute_read_files(params)
 
     # Assert
     assert result["status"] == "COMPLETE"  # Still COMPLETE as the function worked
@@ -317,15 +340,15 @@ def test_execute_read_files_empty_paths_list(mock_file_manager):
     assert "errors" not in result["notes"]
 
     # Verify read_file was not called
-    mock_file_manager.read_file.assert_not_called()
+    system_executor_instance.file_manager.read_file.assert_not_called()
 
-def test_execute_read_files_missing_paths_param(mock_file_manager):
+def test_execute_read_files_missing_paths_param(system_executor_instance):
     """Test validation failure when file_paths parameter is missing."""
     # Setup
     params = {}  # Missing required 'file_paths'
 
     # Act
-    result = SystemExecutorFunctions.execute_read_files(params, mock_file_manager)
+    result = system_executor_instance.execute_read_files(params)
 
     # Assert
     assert result["status"] == "FAILED"
@@ -333,15 +356,15 @@ def test_execute_read_files_missing_paths_param(mock_file_manager):
     assert "error" in result["notes"]
     # FIX: Use string literal for reason check
     assert result["notes"]["error"]["reason"] == "input_validation_failure"
-    mock_file_manager.read_file.assert_not_called()
+    system_executor_instance.file_manager.read_file.assert_not_called()
 
-def test_execute_read_files_invalid_paths_type(mock_file_manager):
+def test_execute_read_files_invalid_paths_type(system_executor_instance):
     """Test validation failure when file_paths is not a list."""
     # Setup
     params = {"file_paths": "not_a_list"}  # Wrong type
 
     # Act
-    result = SystemExecutorFunctions.execute_read_files(params, mock_file_manager)
+    result = system_executor_instance.execute_read_files(params)
 
     # Assert
     assert result["status"] == "FAILED"
@@ -349,9 +372,9 @@ def test_execute_read_files_invalid_paths_type(mock_file_manager):
     assert "error" in result["notes"]
     # FIX: Use string literal for reason check
     assert result["notes"]["error"]["reason"] == "input_validation_failure"
-    mock_file_manager.read_file.assert_not_called()
+    system_executor_instance.file_manager.read_file.assert_not_called()
 
-def test_execute_read_files_with_unexpected_error(mock_file_manager):
+def test_execute_read_files_with_unexpected_error(system_executor_instance):
     """Test handling of unexpected exceptions during file reading."""
     # Setup
     # Make read_file raise an exception for a specific path
@@ -365,12 +388,12 @@ def test_execute_read_files_with_unexpected_error(mock_file_manager):
         else:
             return None # Default for other paths
 
-    mock_file_manager.read_file.side_effect = side_effect
+    system_executor_instance.file_manager.read_file.side_effect = side_effect
 
     params = {"file_paths": ["/path/file1.txt", "/path/error.txt", "/path/file2.txt"]}
 
     # Act
-    result = SystemExecutorFunctions.execute_read_files(params, mock_file_manager)
+    result = system_executor_instance.execute_read_files(params)
 
     # Assert
     assert result["status"] == "COMPLETE"  # Still COMPLETE as two files were read successfully
@@ -389,4 +412,4 @@ def test_execute_read_files_with_unexpected_error(mock_file_manager):
     assert "Unexpected file error" in result["notes"]["errors"][0] # Error message should contain exception detail
 
     # Verify read_file was called for each path
-    assert mock_file_manager.read_file.call_count == 3
+    assert system_executor_instance.file_manager.read_file.call_count == 3

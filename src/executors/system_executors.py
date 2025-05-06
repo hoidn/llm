@@ -16,9 +16,10 @@ from src.system.models import (
     ContextGenerationInput, TaskResult, TaskFailureError,
     TaskFailureReason, AssociativeMatchResult
 )
-# Import FileAccessManager and MemorySystem for type hinting if available/desired
-# from src.handler.file_access import FileAccessManager
-# from src.memory.memory_system import MemorySystem
+# Import dependencies for type hinting
+from src.handler.file_access import FileAccessManager
+from src.memory.memory_system import MemorySystem
+from src.handler import command_executor
 
 # Define logger for this module
 logger = logging.getLogger(__name__)
@@ -35,13 +36,35 @@ def _create_failed_result_dict(reason: TaskFailureReason, message: str, details:
 
 class SystemExecutorFunctions:
     """
-    Interface aggregating system-level Direct Tool executor functions.
-
-    These functions are typically registered with a handler (e.g., PassthroughHandler)
+    Class providing system-level Direct Tool executor functions.
+    
+    These functions are registered with a handler (e.g., PassthroughHandler)
     and invoked programmatically, often via the Dispatcher.
+    
+    Requires dependencies to be injected via constructor.
     """
-
-    @staticmethod
+    
+    def __init__(self, memory_system: MemorySystem, file_manager: FileAccessManager, command_executor_module: Any):
+        """
+        Initializes the SystemExecutorFunctions instance with dependencies.
+        
+        Args:
+            memory_system: MemorySystem instance for context retrieval
+            file_manager: FileAccessManager instance for file operations
+            command_executor_module: Module containing command execution functions
+        """
+        if not memory_system:
+            raise ValueError("MemorySystem dependency is required.")
+        if not file_manager:
+            raise ValueError("FileAccessManager dependency is required.")
+        if not command_executor_module:
+            raise ValueError("command_executor module dependency is required.")
+            
+        self.memory_system = memory_system
+        self.file_manager = file_manager
+        self.command_executor = command_executor_module
+        logger.info("SystemExecutorFunctions instance created with dependencies.")
+    
     def execute_get_context(params: Dict[str, Any], memory_system: Any) -> Dict[str, Any]:
         """
         Executor logic for the 'system:get_context' Direct Tool.
@@ -142,8 +165,7 @@ class SystemExecutorFunctions:
             # Use local helper
             return _create_failed_result_dict("context_retrieval_failure", error_msg)
 
-    @staticmethod
-    def execute_read_files(params: Dict[str, Any], file_manager: Any) -> Dict[str, Any]:
+    def execute_read_files(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """
         Executor logic for the 'system:read_files' Direct Tool.
         Reads the content of specified files using FileAccessManager.
@@ -151,7 +173,6 @@ class SystemExecutorFunctions:
         Args:
             params: Dictionary containing:
                 - 'file_paths': list<string> (required) - List of file paths to read.
-            file_manager: A valid instance implementing FileAccessManager.
 
         Returns:
             A TaskResult dictionary with:
@@ -203,7 +224,7 @@ class SystemExecutorFunctions:
             try:
                 # Assuming file_manager.read_file returns Optional[str]
                 # FIX: Explicitly pass max_size=None
-                file_content: Optional[str] = file_manager.read_file(file_path, max_size=None)
+                file_content: Optional[str] = self.file_manager.read_file(file_path, max_size=None)
                 if file_content is not None:
                     # Add a delimiter before the file content, using basename for readability
                     # Use os.path.basename for cross-platform compatibility
@@ -253,8 +274,7 @@ class SystemExecutorFunctions:
             notes=notes
         ).model_dump(exclude_none=True)
 
-    @staticmethod
-    def execute_list_directory(params: Dict[str, Any], file_manager: Any) -> Dict[str, Any]:
+    def execute_list_directory(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """
         Executor logic for the 'system:list_directory' Direct Tool.
         Lists the contents of a specified directory using FileAccessManager.
@@ -262,7 +282,6 @@ class SystemExecutorFunctions:
         Args:
             params: Dictionary containing:
                 - 'directory_path': string (required) - Path to the directory.
-            file_manager: A valid instance implementing FileAccessManager.
 
         Returns:
             A TaskResult dictionary.
@@ -276,7 +295,7 @@ class SystemExecutorFunctions:
 
         # 2. Call file_manager method
         try:
-            result = file_manager.list_directory(directory_path)
+            result = self.file_manager.list_directory(directory_path)
 
             # 3. Process result
             if isinstance(result, list):
@@ -305,9 +324,80 @@ class SystemExecutorFunctions:
             error_msg = f"Unexpected error executing list_directory for '{directory_path}': {type(e).__name__}: {e}"
             logger.exception(f"execute_list_directory: {error_msg}")
             return _create_failed_result_dict("unexpected_error", error_msg)
+            
+    def execute_shell_command(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Executor logic for the 'system:execute_shell_command' Direct Tool.
+        Executes a shell command safely using CommandExecutorFunctions.
 
-    @staticmethod
-    def execute_write_file(params: Dict[str, Any], file_manager: Any) -> Dict[str, Any]:
+        Args:
+            params: Dictionary containing:
+                - 'command': string (required) - The shell command to execute.
+                - 'cwd': string (optional) - The working directory for the command.
+                - 'timeout': int (optional) - Timeout in seconds.
+
+        Returns:
+            A TaskResult dictionary with command execution results or error details.
+        """
+        # 1. Validate input parameters
+        command = params.get('command')
+        if not command or not isinstance(command, str):
+            error_msg = "Missing or invalid required parameter: 'command' (must be a non-empty string)"
+            logger.error(f"execute_shell_command: {error_msg}")
+            return _create_failed_result_dict("input_validation_failure", error_msg)
+            
+        # Extract optional parameters
+        cwd = params.get('cwd')
+        timeout = params.get('timeout')
+        
+        # 2. Call command_executor method
+        try:
+            # Call the execute_command_safely function from the injected module
+            result = self.command_executor.execute_command_safely(
+                command=command,
+                cwd=cwd,
+                timeout=timeout
+            )
+            
+            # 3. Process result
+            if result.get('success', False):
+                # Command executed successfully
+                return TaskResult(
+                    status="COMPLETE",
+                    content=result.get('stdout', ''),
+                    notes={
+                        'success': True,
+                        'exit_code': result.get('exit_code', 0),
+                        'stdout': result.get('stdout', ''),
+                        'stderr': result.get('stderr', '')
+                    }
+                ).model_dump(exclude_none=True)
+            else:
+                # Command execution failed
+                error_msg = result.get('stderr', '') or result.get('error', 'Unknown command execution error')
+                return TaskResult(
+                    status="FAILED",
+                    content=error_msg,
+                    notes={
+                        'success': False,
+                        'exit_code': result.get('exit_code'),
+                        'stdout': result.get('stdout', ''),
+                        'stderr': result.get('stderr', ''),
+                        'error': TaskFailureError(
+                            type="TASK_FAILURE",
+                            reason="command_execution_failure",
+                            message=error_msg
+                        )
+                    }
+                ).model_dump(exclude_none=True)
+                
+        except Exception as e:
+            # Handle unexpected errors during the call
+            error_msg = f"Unexpected error executing command '{command}': {type(e).__name__}: {e}"
+            logger.exception(f"execute_shell_command: {error_msg}")
+            return _create_failed_result_dict("unexpected_error", error_msg)
+
+    def execute_write_file(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """
         Executor logic for the 'system:write_file' Direct Tool.
         Writes content to a specified file using FileAccessManager.
@@ -317,7 +407,6 @@ class SystemExecutorFunctions:
                 - 'file_path': string (required) - Path to the file.
                 - 'content': string (required) - Content to write.
                 - 'overwrite': boolean (optional, default=False) - Whether to overwrite.
-            file_manager: A valid instance implementing FileAccessManager.
 
         Returns:
             A TaskResult dictionary.
@@ -345,7 +434,7 @@ class SystemExecutorFunctions:
 
         # 2. Call file_manager method
         try:
-            success = file_manager.write_file(file_path, content, overwrite=overwrite)
+            success = self.file_manager.write_file(file_path, content, overwrite=overwrite)
 
             # 3. Process result
             if success:

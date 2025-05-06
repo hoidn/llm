@@ -393,41 +393,9 @@ Select the best matching paths *from the provided metadata* and output the JSON.
         if not self.passthrough_handler:
             logger.error("Cannot register system tools: Handler not initialized.")
             return
-        if not self.memory_system:
-             logger.error("Cannot register system:get_context tool: MemorySystem not initialized.")
-             # Decide whether to continue or raise
-             # return # Or raise an error
-        if not self.passthrough_handler.file_manager: # Check file manager dependency
-            logger.error("Cannot register system tools: FileAccessManager not initialized in handler.")
-            # return # Or raise an error
-
-        # --- START System Wrapper Refactor ---
-        # --- Wrapper for get_context ---
-        def _get_context_wrapper(params: Dict[str, Any], mem_sys=self.memory_system) -> Dict[str, Any]:
-            """Wrapper for SystemExecutorFunctions.execute_get_context."""
-            if not mem_sys: return _create_failed_result_dict("dependency_error", "Memory system not available.")
-            # Assuming execute_get_context is synchronous
-            return SystemExecutorFunctions.execute_get_context(params, mem_sys)
-
-        # --- Wrapper for read_files ---
-        def _read_files_wrapper(params: Dict[str, Any], fm=self.passthrough_handler.file_manager) -> Dict[str, Any]:
-            """Wrapper for SystemExecutorFunctions.execute_read_files."""
-            if not fm: return _create_failed_result_dict("dependency_error", "File manager not available.")
-            # Assuming execute_read_files is synchronous
-            return SystemExecutorFunctions.execute_read_files(params, fm)
-
-        # --- Wrapper for list_directory ---
-        def _list_directory_wrapper(params: Dict[str, Any], fm=self.passthrough_handler.file_manager) -> Dict[str, Any]:
-            """Wrapper for SystemExecutorFunctions.execute_list_directory."""
-            if not fm: return _create_failed_result_dict("dependency_error", "File manager not available.")
-            return SystemExecutorFunctions.execute_list_directory(params, fm)
-
-        # --- Wrapper for write_file ---
-        def _write_file_wrapper(params: Dict[str, Any], fm=self.passthrough_handler.file_manager) -> Dict[str, Any]:
-            """Wrapper for SystemExecutorFunctions.execute_write_file."""
-            if not fm: return _create_failed_result_dict("dependency_error", "File manager not available.")
-            return SystemExecutorFunctions.execute_write_file(params, fm)
-        # --- END System Wrapper Refactor ---
+        if not hasattr(self, 'system_executors') or not self.system_executors:
+            logger.error("Cannot register system tools: SystemExecutorFunctions not initialized.")
+            return
 
         tools_to_register = [
             {
@@ -443,9 +411,7 @@ Select the best matching paths *from the provided metadata* and output the JSON.
                         "required": ["query"]
                     }
                 },
-                # --- START System Wrapper Refactor ---
-                "executor": _get_context_wrapper # Pass the defined function
-                # --- END System Wrapper Refactor ---
+                "executor": self.system_executors.execute_get_context # Pass instance method directly
             },
             {
                 "spec": {
@@ -464,11 +430,8 @@ Select the best matching paths *from the provided metadata* and output the JSON.
                         "required": ["file_paths"]
                     }
                 },
-                # --- START System Wrapper Refactor ---
-                "executor": _read_files_wrapper # Pass the defined function
-                # --- END System Wrapper Refactor ---
+                "executor": self.system_executors.execute_read_files # Pass instance method directly
             },
-            # --- Add new tools ---
             {
                 "spec": {
                     "name": "system:list_directory",
@@ -481,7 +444,7 @@ Select the best matching paths *from the provided metadata* and output the JSON.
                         "required": ["directory_path"]
                     }
                 },
-                "executor": _list_directory_wrapper
+                "executor": self.system_executors.execute_list_directory # Pass instance method directly
             },
             {
                 "spec": {
@@ -497,9 +460,24 @@ Select the best matching paths *from the provided metadata* and output the JSON.
                         "required": ["file_path", "content"]
                     }
                 },
-                "executor": _write_file_wrapper
+                "executor": self.system_executors.execute_write_file # Pass instance method directly
+            },
+            {
+                "spec": {
+                    "name": "system:execute_shell_command",
+                    "description": "Executes a shell command safely.",
+                    "input_schema": {
+                        "type": "object",
+                        "properties": {
+                            "command": {"type": "string", "description": "The shell command to execute."},
+                            "cwd": {"type": "string", "description": "Optional working directory for the command."},
+                            "timeout": {"type": "integer", "description": "Optional timeout in seconds."}
+                        },
+                        "required": ["command"]
+                    }
+                },
+                "executor": self.system_executors.execute_shell_command # Pass instance method directly
             }
-            # --- End add new tools ---
         ]
 
         registered_count = 0

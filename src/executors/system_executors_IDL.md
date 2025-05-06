@@ -1,4 +1,6 @@
 // == !! BEGIN IDL TEMPLATE !! ===
+// Note: While this IDL defines static functions, the implementation is now an instantiable class
+// that receives its dependencies (MemorySystem, FileAccessManager, command_executor) via constructor.
 module src.executors.system_executors {
 
     # @depends_on(src.memory.memory_system.MemorySystem) // For context retrieval
