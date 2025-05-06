@@ -235,14 +235,13 @@ def test_eval_primitive_get_context_with_content_strategy(evaluator, mock_parser
     get_context_sym = Symbol("get_context")
     query_sym = Symbol("query")
     strategy_sym = Symbol("matching_strategy")
-    content_sym = Symbol("content") 
 
-    sexp_str = "(get_context (query \"q\") (matching_strategy content))" # Use symbol 'content'
-    # AST: [get_context, [query, "q"], [matching_strategy, content_symbol]]
+    sexp_str = "(get_context (query \"q\") (matching_strategy \"content\"))" # Use string literal 'content'
+    # AST: [get_context, [query, "q"], [matching_strategy, "content"]]
     ast = [
         get_context_sym,
         [query_sym, "q"],
-        [strategy_sym, content_sym] 
+        [strategy_sym, "content"] # Pass as string literal
     ]
     mock_parser.parse_string.return_value = ast
     
@@ -260,13 +259,12 @@ def test_eval_primitive_get_context_with_metadata_strategy(evaluator, mock_parse
     get_context_sym = Symbol("get_context")
     query_sym = Symbol("query")
     strategy_sym = Symbol("matching_strategy")
-    metadata_sym = Symbol("metadata")
 
-    sexp_str = "(get_context (query \"q\") (matching_strategy metadata))" # Use symbol 'metadata'
+    sexp_str = "(get_context (query \"q\") (matching_strategy \"metadata\"))" # Use string literal 'metadata'
     ast = [
         get_context_sym,
         [query_sym, "q"],
-        [strategy_sym, metadata_sym]
+        [strategy_sym, "metadata"] # Pass as string literal
     ]
     mock_parser.parse_string.return_value = ast
     
@@ -1040,7 +1038,12 @@ def test_eval_special_form_loop_error_body_eval_fails(evaluator, mock_parser, mo
 
 
     # Mock 'fail_sometimes' executor to fail on the second call using side_effect
-    fail_error = SexpEvaluationError("Intentional body failure")
+    body_expr_for_error_str = str([S('progn'), [S('mock_ok')], [S('fail_sometimes')]])
+    fail_error = SexpEvaluationError(
+        "Intentional body failure from test",
+        expression=body_expr_for_error_str,
+        error_details="Test-induced failure in body"
+    )
     call_count = 0
     def fail_side_effect(*args, **kwargs):
         nonlocal call_count
@@ -1052,9 +1055,9 @@ def test_eval_special_form_loop_error_body_eval_fails(evaluator, mock_parser, mo
     mock_fail_executor.side_effect = fail_side_effect
 
     expected_error_pattern = re.compile(
-        r"Error during loop iteration 2/3:.*Intentional body failure.*"
-        r"Expression:.*\[Symbol\('loop'\).*3.*\[Symbol\('progn'\).*\[Symbol\('mock_ok'\)\].*\[Symbol\('fail_sometimes'\)\].*"
-        r"Details:.*body_expr.*Intentional body failure",
+        r"Error during loop iteration 2/3: Intentional body failure from test\s*"
+        r"Expression: \[Symbol\('loop'\), 3, \[Symbol\('progn'\), \[Symbol\('mock_ok'\)\], \[Symbol\('fail_sometimes'\)\]\]\]\s*"
+        r"Details: Failed on body_expr='\s*\[Symbol\('progn'\), \[Symbol\('mock_ok'\)\], \[Symbol\('fail_sometimes'\)\]\]\s*'. Original detail: Test-induced failure in body",
         re.DOTALL
     )
     with pytest.raises(SexpEvaluationError, match=expected_error_pattern):
