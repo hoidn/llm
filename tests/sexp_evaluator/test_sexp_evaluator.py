@@ -219,7 +219,7 @@ def test_eval_primitive_get_context_failure(evaluator, mock_parser, mock_memory_
     # Updated match to be more flexible with re.compile and re.DOTALL
     expected_error_pattern = re.compile(
         r"Context retrieval failed \(MemorySystem error\).*"
-        r"Expression: \(get_context \(query \"find stuff\"\)\).*" # Check for expression
+        r"Expression: \[Symbol\('get_context'\), \[Symbol\('query'\), 'find stuff'\]\].*" # Check for expression
         r"Details: Database connection failed", # Check for details
         re.DOTALL
     )
@@ -969,7 +969,7 @@ def test_eval_special_form_loop_error_count_expr_eval_fails(evaluator, mock_pars
     # NameError from lookup should be wrapped in SexpEvaluationError
     expected_error_pattern = re.compile(
         r"Error evaluating loop count expression: Unbound symbol or unrecognized operator: undefined.*"
-        r"Expression: \(loop \(undefined\) \(body\)\)", # Check for expression
+        r"Expression: \[Symbol\('loop'\), \[Symbol\('undefined'\)\], \[Symbol\('body'\)\]\]", # Check for expression
         re.DOTALL
     )
     with pytest.raises(SexpEvaluationError, match=expected_error_pattern):
@@ -982,7 +982,7 @@ def test_eval_special_form_loop_error_count_not_integer(evaluator, mock_parser):
     mock_parser.parse_string.return_value = ast_str
     expected_error_pattern_str = re.compile(
         r"Loop count must evaluate to an integer.*"
-        r"Expression: \(loop \"two\" \(body\)\)",
+        r"Expression: \[Symbol\('loop'\), 'two', \[Symbol\('body'\)\]\]",
         re.DOTALL
     )
     with pytest.raises(SexpEvaluationError, match=expected_error_pattern_str):
@@ -1014,7 +1014,7 @@ def test_eval_special_form_loop_error_count_negative(evaluator, mock_parser):
     mock_parser.parse_string.return_value = ast
     expected_error_pattern = re.compile(
         r"Loop count must be non-negative.*"
-        r"Expression: \(loop -2 \(body\)\)",
+        r"Expression: \[Symbol\('loop'\), -2, \[Symbol\('body'\)\]\]",
         re.DOTALL
     )
     with pytest.raises(SexpEvaluationError, match=expected_error_pattern):
@@ -1053,7 +1053,7 @@ def test_eval_special_form_loop_error_body_eval_fails(evaluator, mock_parser, mo
     expected_error_pattern = re.compile(
         r"Error during loop iteration 2/3: Intentional body failure.*"
         # The expression in the error will be the body_expr of the loop
-        r"Expression: \(progn \(mock_ok\) \(fail_sometimes\)\).*" 
+        r"Expression: \[Symbol\('progn'\), \[Symbol\('mock_ok'\)\], \[Symbol\('fail_sometimes'\)\]\].*" 
         r"Details: Intentional body failure",
         re.DOTALL
     )
