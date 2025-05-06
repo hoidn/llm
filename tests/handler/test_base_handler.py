@@ -400,7 +400,8 @@ def test_base_handler_execute_llm_call_failure(base_handler_instance):
         system_prompt_override=None,
         tools_override=None, # No tools passed
         output_type_override=None,
-        active_tools=None # Expecting None
+        active_tools=None, # Expecting None
+        model_override=None # Add model_override parameter
     )
     # Assert history was NOT updated on failure
     assert base_handler_instance.conversation_history == initial_history
@@ -739,6 +740,7 @@ def test_execute_llm_call_no_tools(base_handler_instance):
     # Fix: Assert both are None
     assert call_kwargs.get("tools_override") is None
     assert call_kwargs.get("active_tools") is None
+    assert call_kwargs.get("model_override") is None
 
 
 def test_execute_llm_call_missing_executor_in_active_definitions(base_handler_instance):
