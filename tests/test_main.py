@@ -252,8 +252,8 @@ def test_application_init_wiring(app_components):
 
     # Assert based on what _register_system_tools actually registers
     assert isinstance(actual_tools_passed, list)
-    # Expecting system:get_context and system:read_files wrappers
-    assert len(actual_tools_passed) == 2
+    # Expecting system:get_context, system:read_files, system:list_directory, and system:write_file wrappers
+    assert len(actual_tools_passed) == 4
     assert all(callable(tool) for tool in actual_tools_passed)
 
 
@@ -372,23 +372,38 @@ def test_handle_task_command_dispatcher_error(app_components):
         assert result.get("notes", {}).get("error", {}).get("reason") == "unexpected_error"
 
 
-def test_application_init_with_aider(app_components):
+@patch('src.main.Application._load_mcp_config')
+def test_application_init_with_aider(mock_load_config, app_components):
     """Verify AiderBridge is initialized and tools registered when available."""
     # Arrange (Mocks are already configured in the fixture)
     # Access the mocked class methods
     mock_aider_auto_func = app_components['MockAiderExec'].execute_aider_automatic
     mock_aider_inter_func = app_components['MockAiderExec'].execute_aider_interactive
+    
+    # Define the expected Aider config that should be passed to AiderBridge
+    expected_aider_config = {
+        "transport": "stdio",
+        "command": "aider_server_command_from_test",
+        "args": ["--test-arg"],
+        "env": {"TEST_VAR": "true"}
+    }
+    
+    # Configure the mocked _load_mcp_config to set the expected config
+    def load_config_side_effect(self):
+        self.mcp_server_configs = {"aider-mcp-server": expected_aider_config}
+    
+    mock_load_config.side_effect = load_config_side_effect
 
     # Use patch.dict to set the environment variable for the duration of the test
     with patch.dict(os.environ, {'AIDER_ENABLED': 'true'}, clear=False):
         # Act
-        app = Application(config={"aider_config": {"mcp_stdio_command": "aider_server"}})
+        app = Application(config={"aider": {"enabled": True}})
 
-    # Assert AiderBridge was instantiated
+    # Assert AiderBridge was instantiated with the expected config
     app_components['MockAiderBridge'].assert_called_once_with(
         memory_system=app.memory_system,
         file_access_manager=app.file_access_manager,
-        config={"mcp_stdio_command": "aider_server"}
+        config=expected_aider_config
     )
     assert app.aider_bridge == app_components['mock_aider_bridge_instance']
 
@@ -398,9 +413,15 @@ def test_application_init_with_aider(app_components):
     assert 'aider:interactive' in registered_tools
     assert callable(registered_tools['aider:automatic']['executor'])
     assert callable(registered_tools['aider:interactive']['executor'])
-    # Check that the executor wrapper correctly points to the mocked function
-    # This requires calling the lambda, which might be complex to set up here.
-    # Rely on the fact that the correct function was patched and passed during registration.
+    
+    # Check that register_tool was called for aider tools
+    mock_handler = app_components['mock_handler_instance']
+    aider_auto_call = next((c for c in mock_handler.register_tool.call_args_list if c.args[0].get('name') == 'aider:automatic'), None)
+    aider_inter_call = next((c for c in mock_handler.register_tool.call_args_list if c.args[0].get('name') == 'aider:interactive'), None)
+    assert aider_auto_call is not None, "aider:automatic tool was not registered"
+    assert aider_inter_call is not None, "aider:interactive tool was not registered"
+    assert callable(aider_auto_call.args[1]), "Executor for aider:automatic is not callable"
+    assert callable(aider_inter_call.args[1]), "Executor for aider:interactive is not callable"
 
 def test_application_init_without_aider(app_components):
     """Verify AiderBridge is NOT initialized and tools NOT registered when unavailable."""

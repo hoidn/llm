@@ -153,9 +153,11 @@ class FileAccessManager:
             size_str = f"{size_bytes} bytes"
             modified_str = modified_dt.isoformat() # Using ISO format for clarity
 
-            logger.debug(f"get_file_info: Successfully retrieved info for {resolved_path}")
+            # Use canonical path to resolve symlinks like /var -> /private/var on macOS
+            canonical_path = os.path.realpath(resolved_path)
+            logger.debug(f"get_file_info: Successfully retrieved info for {resolved_path} (canonical: {canonical_path})")
             return {
-                "path": resolved_path,
+                "path": canonical_path, # Use canonical path
                 "size": size_str,
                 "modified": modified_str
             }
@@ -302,8 +304,11 @@ class FileAccessManager:
                 return {"error": f"Path is not a valid directory: {directory_path}"}
 
             try:
-                contents = os.listdir(resolved_path)
-                logger.debug(f"list_directory: Successfully listed {len(contents)} items in {resolved_path}")
+                # Use canonical path to resolve symlinks like /var -> /private/var on macOS
+                canonical_path = os.path.realpath(resolved_path)
+                logger.debug(f"list_directory: Using canonical path: {canonical_path}")
+                contents = os.listdir(canonical_path)
+                logger.debug(f"list_directory: Successfully listed {len(contents)} items in {canonical_path}")
                 return contents
             except (PermissionError, OSError) as e:
                 logger.error(f"list_directory: Error listing directory '{resolved_path}': {e}")
