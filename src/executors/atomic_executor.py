@@ -136,7 +136,7 @@ class AtomicTaskExecutor:
             param_types = {k: type(v).__name__ for k, v in params.items()}
             logging.debug(f"AtomicTaskExecutor received params: {params}")
             logging.debug(f"AtomicTaskExecutor received param types: {param_types}")
-            
+                
             # Additional detailed logging for complex objects
             for k, v in params.items():
                 if not isinstance(v, (str, int, float, bool, type(None))):
@@ -149,6 +149,42 @@ class AtomicTaskExecutor:
         except Exception as log_e:
             logging.error(f"Error logging params in AtomicTaskExecutor: {log_e}")
         # --- END ADDED LOGGING ---
+
+        # --- START: Manual str() Conversion Test ---
+        logging.debug("--- Manually testing str() conversion on params ---")
+        problematic_key = None
+        problematic_value = None
+        problematic_type = None
+        for k, v in params.items():
+            try:
+                logging.debug(f"Testing str() on key='{k}', value={v!r}, type={type(v).__name__}")
+                _ = str(v) # Attempt conversion
+                logging.debug(f"  str() conversion successful for key='{k}'")
+            except TypeError as te:
+                # Check if it's the specific error we're looking for
+                if "Cannot instantiate typing.Union" in str(te):
+                    problematic_key = k
+                    problematic_value = v
+                    problematic_type = type(v)
+                    logging.error(f"!!! Found the problematic parameter during manual str() test !!!")
+                    logging.error(f"!!! Key: {problematic_key}, Value: {problematic_value!r}, Type: {problematic_type} !!!")
+                    logging.exception(f"Underlying TypeError for key '{k}'") # Log full traceback
+                    # Exit the loop early once the error is found
+                    break
+                else:
+                    # Log other TypeErrors but don't mark as the specific problem yet
+                    logging.exception(f"Unexpected TypeError during manual str() test for key '{k}'")
+            except Exception as e:
+                # Log any other unexpected errors during the test
+                logging.exception(f"Unexpected error during manual str() test for key '{k}'")
+
+        # If the specific TypeError was found, return a FAILED result immediately
+        if problematic_key:
+            error_msg = f"Failed manual str() conversion for param '{problematic_key}' (Type: {problematic_type}): Underlying error likely 'Cannot instantiate typing.Union'"
+            error_details = TaskFailureError(type="TASK_FAILURE", reason="unexpected_error", message=error_msg)
+            return TaskResult(content=error_msg, status="FAILED", notes={"error": error_details.model_dump(exclude_none=True)}).model_dump(exclude_none=True)
+        logging.debug("--- Manual str() conversion test complete (No Union error found) ---")
+        # --- END: Manual str() Conversion Test ---
 
         try:
             # --- 1. Parameter Substitution (Strictly from params) ---

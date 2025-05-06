@@ -99,13 +99,25 @@ ANALYZE_AIDER_RESULT_TEMPLATE = {
         "iteration": {"type": "integer", "description": "The current iteration number."},
         "max_retries": {"type": "integer", "description": "The maximum number of retries allowed."}
     },
-    "instructions": """Simple Test: Iteration {{iteration}} / {{max_retries}}. Status: {{aider_result_status}}.
+    "instructions": """Analyze the Aider execution result from iteration {{iteration}} of {{max_retries}}.
+
+Aider Status: {{aider_result_status}}
+Aider Output/Error: {{aider_result_content}}
+
+Original Prompt: {{original_prompt}}
+
+Based on the above information, determine if:
+1. The execution was successful and the task is complete
+2. The execution failed but can be retried with a revised prompt
+3. The execution failed and should be aborted
+
 Output the result ONLY as a valid JSON object conforming to the FeedbackResult schema:
 {
-  "status": "SUCCESS",
-  "next_prompt": null,
-  "explanation": "Test with simplified template."
+  "status": "SUCCESS" | "REVISE" | "ABORT",
+  "next_prompt": "string or null (provide a revised prompt if status is REVISE, otherwise null)",
+  "explanation": "string (brief explanation of your decision)"
 }
+
 **IMPORTANT:** Your response MUST contain ONLY the valid JSON object conforming to the FeedbackResult structure specified above. Do NOT include any introductory text, explanations, apologies, or concluding remarks. Your entire output must be the JSON object itself, starting with `{` and ending with `}`.""",
     "output_format": {"type": "json", "schema": "src.system.models.FeedbackResult"}
 }
