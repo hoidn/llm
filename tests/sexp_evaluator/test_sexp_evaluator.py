@@ -2053,49 +2053,72 @@ class TestSexpEvaluatorLambdaClosures:
             evaluator.evaluate_string(sexp_str)
 
     def test_lambda_recursive_closure(self, evaluator, mock_parser):
-        """Test a recursive closure (e.g., factorial)."""
-        # (let ((fact (lambda (n) (if (= n 0) 1 (* n (fact (- n 1))))))) (fact 3))
-        sexp_str = "(let ((fact (lambda (n) (if (= n 0) 1 (* n (fact (- n 1))))))) (fact 3))"
+        """Test a recursive closure (e.g., factorial) using standard let and lambda."""
+        # New S-expression:
+        # (let ((fact-body (lambda (self n)
+        #                    (if (= n 0)
+        #                        1
+        #                        (* n (self self (- n 1)))))))
+        #   (fact-body fact-body 3))
+        sexp_str = "(let ((fact-body (lambda (self n) (if (= n 0) 1 (* n (self self (- n 1))))))) (fact-body fact-body 3))"
         
-        fact, n, if_s, eq, mul, sub = S('fact'), S('n'), S('if'), S('='), S('*'), S('-')
+        fact_body_s, self_s, n_s, if_s, eq_s, mul_s, sub_s = \
+            S('fact-body'), S('self'), S('n'), S('if'), S('='), S('*'), S('-')
         lambda_s, let_s = S('lambda'), S('let')
 
-        # Body of lambda: (if (= n 0) 1 (* n (fact (- n 1))))
-        fact_call_recursive = [fact, [sub, n, 1]]
-        if_body_ast = [if_s, [eq, n, 0], 1, [mul, n, fact_call_recursive]]
-        
-        # Lambda for fact: (lambda (n) <if_body_ast>)
-        fact_lambda_ast = [lambda_s, [n], if_body_ast]
-        
-        # Let expr: (let ((fact <fact_lambda_ast>)) (fact 3))
-        let_binding_ast = [[fact, fact_lambda_ast]]
-        final_call_ast = [fact, 3]
+        # Body of lambda: (if (= n 0) 1 (* n (self self (- n 1))))
+        recursive_call_ast = [self_s, self_s, [sub_s, n_s, 1]] # (self self (- n 1))
+        if_body_ast = [if_s, [eq_s, n_s, 0], 1, [mul_s, n_s, recursive_call_ast]]
+
+        # Lambda for fact-body: (lambda (self n) <if_body_ast>)
+        fact_lambda_ast = [lambda_s, [self_s, n_s], if_body_ast] # Parameters are (self n)
+
+        # Let expr: (let ((fact-body <fact_lambda_ast>)) (fact-body fact-body 3))
+        let_binding_ast = [[fact_body_s, fact_lambda_ast]]
+        final_call_ast = [fact_body_s, fact_body_s, 3] # Call is (fact-body fact-body 3)
         full_ast = [let_s, let_binding_ast, final_call_ast]
         
         mock_parser.parse_string.return_value = full_ast
 
-        # We need to mock the behavior of '=', '*', '-' primitives for this to work.
-        # This is becoming a complex integration test for _eval.
         original_eval = evaluator._eval
-        
-        memo_eval_calls = []
+        memo_eval_calls = [] # Keep for debugging if needed
+
         def eval_side_effect(node, env):
-            memo_eval_calls.append((node, id(env)))
-            # Simulate primitive operations
+            memo_eval_calls.append((node, id(env))) # Keep for debugging
+
+            # Simulate primitive operations within the lambda's body
             if isinstance(node, list) and len(node) > 0:
-                op_sym = node[0]
-                if op_sym == eq: # (= n 0)
-                    val_n = eval_side_effect(node[1], env)
-                    val_0 = eval_side_effect(node[2], env)
-                    return val_n == val_0
-                if op_sym == sub: # (- n 1)
-                    val_n = eval_side_effect(node[1], env)
-                    val_1 = eval_side_effect(node[2], env)
-                    return val_n - val_1
-                if op_sym == mul: # (* n <recursive_call_result>)
-                    val_n = eval_side_effect(node[1], env)
-                    val_rec = eval_side_effect(node[2], env) # This will eval (fact (- n 1))
-                    return val_n * val_rec
+                op_sym_node = node[0]
+                # Ensure op_sym_node is a Symbol before calling .value()
+                if isinstance(op_sym_node, Symbol):
+                    op_name = op_sym_node.value()
+
+                    if op_name == '=': # (= n 0)
+                        # Args are node[1] (n_s) and node[2] (0)
+                        # These args themselves need to be evaluated by the mock if they are symbols
+                        val_n = eval_side_effect(node[1], env) # Evaluate n
+                        val_0 = eval_side_effect(node[2], env) # Evaluate 0
+                        return val_n == val_0
+                    
+                    if op_name == '-': # (- n 1)
+                        val_n = eval_side_effect(node[1], env) # Evaluate n
+                        val_1 = eval_side_effect(node[2], env) # Evaluate 1
+                        return val_n - val_1
+                    
+                    if op_name == '*': # (* n <recursive_call_result>)
+                        val_n = eval_side_effect(node[1], env) # Evaluate n
+                        # node[2] will be the recursive call `(self self (- n 1))`
+                        # The SexpEvaluator's main _eval and _apply_operator should handle this call.
+                        # eval_side_effect will be called again for the parts of this recursive call.
+                        # So, we just need to evaluate node[2] using the mock to continue the chain.
+                        val_rec_result = eval_side_effect(node[2], env)
+                        return val_n * val_rec_result
+            
+            # For any other node (including symbols like 'n', 'self', or the recursive call list itself),
+            # fall back to the original _eval. The original _eval will handle:
+            # - Symbol lookup (e.g., looking up 'n', 'self')
+            # - Closure creation for the lambda
+            # - Closure application for (self self ...) and (fact-body fact-body ...)
             return original_eval(node, env)
 
         with patch.object(evaluator, '_eval', side_effect=eval_side_effect):
