@@ -394,7 +394,8 @@ class SystemExecutorFunctions:
                 reason: TaskFailureReason = "tool_execution_error"
                 if "Unsafe command" in error_msg:
                     reason = "input_validation_failure"
-                elif "Timeout" in error_msg:
+                # Check for timeout indicators in the error message
+                elif "Timeout" in error_msg or "timed out" in error_msg.lower() or "TimeoutExpired" in error_msg:
                     reason = "execution_timeout"
                     
                 return TaskResult(

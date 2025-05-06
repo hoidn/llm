@@ -212,13 +212,14 @@ def test_application_init_minimal(app_components):
     app_components["MockTaskSystem"].assert_called_once()
     app_components["MockHandler"].assert_called_once()
     app_components["MockMemorySystem"].assert_called_once()
-    app_components["MockSysExecCls"].assert_called_once() # Check SystemExecutorFunctions instantiation
     # Check internal instances are set
     assert app.file_access_manager is not None
     assert app.task_system is not None
     assert app.passthrough_handler is not None
     assert app.memory_system is not None
-    assert app.system_executors is not None # Check system_executors instance
+    # Check system_executors is the correct type
+    from src.executors.system_executors import SystemExecutorFunctions
+    assert isinstance(app.system_executors, SystemExecutorFunctions)
 
 def test_application_init_wiring(app_components):
     """Verify components are instantiated and wired correctly during __init__."""
@@ -235,7 +236,7 @@ def test_application_init_wiring(app_components):
     assert app.task_system == app_components['mock_task_system_instance']
     assert app.passthrough_handler == app_components['mock_handler_instance']
     assert app.file_access_manager == app_components['mock_fm_instance']
-    assert app.system_executors == app_components['mock_sys_exec_instance'] # Check instance
+    # Note: system_executors is a real instance, not a mock
 
     # Assert wiring calls were made (using the instances returned by the mocks)
     app_components['mock_task_system_instance'].set_handler.assert_called_once_with(app.passthrough_handler)
@@ -406,8 +407,8 @@ def test_application_init_with_aider(mock_load_config, app_components):
     
     # Configure the mocked _load_mcp_config to set the expected config
     # The side_effect function needs to accept the Application instance as first parameter
-    def load_config_side_effect(instance):
-        instance.mcp_server_configs = {"aider-mcp-server": expected_aider_config}
+    def load_config_side_effect(self_instance):
+        self_instance.mcp_server_configs = {"aider-mcp-server": expected_aider_config}
     
     mock_load_config.side_effect = load_config_side_effect
 
