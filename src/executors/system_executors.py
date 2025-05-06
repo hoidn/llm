@@ -384,7 +384,7 @@ class SystemExecutorFunctions:
                         'stderr': result.get('stderr', ''),
                         'error': TaskFailureError(
                             type="TASK_FAILURE",
-                            reason="command_execution_failure",
+                            reason="tool_execution_error",
                             message=error_msg
                         )
                     }
