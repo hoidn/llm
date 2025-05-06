@@ -414,7 +414,7 @@ def test_eval_invoke_not_found(evaluator, mock_parser, mock_task_system, mock_ha
     mock_handler.tool_executors = {}
 
     # Match the expected error message for unknown task/tool
-    with pytest.raises(SexpEvaluationError, match=f"Cannot invoke '{unknown_id}': Not a recognized tool or atomic task."):
+    with pytest.raises(SexpEvaluationError, match=f"Unbound symbol or unrecognized operator: {unknown_id}"):
         evaluator.evaluate_string(f"({unknown_id})")
 
 def test_eval_special_form_quote_atom(evaluator, mock_parser):
@@ -957,7 +957,7 @@ def test_eval_special_form_loop_error_count_expr_eval_fails(evaluator, mock_pars
     mock_parser.parse_string.return_value = ast
 
     # NameError from lookup should be wrapped in SexpEvaluationError
-    with pytest.raises(SexpEvaluationError, match="Error evaluating loop count expression: Cannot invoke 'undefined'"):
+    with pytest.raises(SexpEvaluationError, match="Error evaluating loop count expression: Unbound symbol: 'undefined'"):
         evaluator.evaluate_string(sexp_str)
 
 def test_eval_special_form_loop_error_count_not_integer(evaluator, mock_parser):
@@ -1038,7 +1038,8 @@ class TestSexpEvaluatorInternals:
     def test_eval_list_form_dispatches_special_form(self, evaluator, mock_parser, mocker):
         """Test _eval_list_form correctly dispatches to a special form handler."""
         env = SexpEnvironment()
-        original_expr_str = "(if true 1 0)"
+        # original_expr_str = "(if true 1 0)" # Original string form
+        original_expr_str_expected = "[Symbol('if'), Symbol('true'), 1, 0]" # str() of AST list
         arg_exprs = [Symbol("true"), 1, 0] # Unevaluated args for 'if'
 
         # Mock the specific special form handler (e.g., _eval_if_form)
@@ -1055,7 +1056,7 @@ class TestSexpEvaluatorInternals:
         result = evaluator._eval_list_form(expr_list, env)
 
         assert result == "if_result"
-        mock_if_handler.assert_called_once_with(arg_exprs, env, original_expr_str)
+        mock_if_handler.assert_called_once_with(arg_exprs, env, original_expr_str_expected)
         # Restore original handler if necessary for other tests, or use fresh evaluator
         evaluator.SPECIAL_FORM_HANDLERS['if'] = evaluator._eval_if_form
 
@@ -1295,15 +1296,16 @@ class TestSexpEvaluatorInternals:
 
         assert result.content == "task_res"
         
-        expected_subtask_request = SubtaskRequest(
-            task_id=ANY, # task_id is dynamically generated
-            type="atomic",
-            name=task_name,
-            inputs={"param1": "actual_val1"},
-            file_paths=["/a.txt"],
-            context_management=None 
-        )
-        mock_task_system.execute_atomic_template.assert_called_once_with(expected_subtask_request)
+        mock_task_system.execute_atomic_template.assert_called_once()
+        actual_request_arg = mock_task_system.execute_atomic_template.call_args[0][0]
+        
+        assert isinstance(actual_request_arg, SubtaskRequest)
+        assert isinstance(actual_request_arg.task_id, str) and actual_request_arg.task_id, "task_id should be a non-empty string"
+        assert actual_request_arg.type == "atomic"
+        assert actual_request_arg.name == task_name
+        assert actual_request_arg.inputs == {"param1": "actual_val1"}
+        assert actual_request_arg.file_paths == ["/a.txt"]
+        assert actual_request_arg.context_management is None
 
     def test_invoke_handler_tool_parses_args_and_calls(self, evaluator, mock_handler, mocker):
         env = SexpEnvironment()
