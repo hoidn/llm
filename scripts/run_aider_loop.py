@@ -18,23 +18,35 @@ from typing import Optional, List, Dict, Any
 
 # --- Setup Project Path ---
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, '..', '..')) # Assumes scripts/ is one level below project root
+# Project root is one level up from the script directory (scripts -> PROJECT_ROOT)
+PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, '..'))
 SRC_PATH = os.path.join(PROJECT_ROOT, 'src')
-if SRC_PATH not in sys.path: sys.path.insert(0, SRC_PATH)
-if PROJECT_ROOT not in sys.path: sys.path.insert(1, PROJECT_ROOT)
+if SRC_PATH not in sys.path: 
+    sys.path.insert(0, SRC_PATH)
+    print(f"[Setup] Added {SRC_PATH} to sys.path")
+if PROJECT_ROOT not in sys.path: 
+    sys.path.insert(1, PROJECT_ROOT)
+    print(f"[Setup] Added {PROJECT_ROOT} to sys.path")
 
 # --- Import Application & Models ---
 try:
     # Using a placeholder name that might exist during development
-    # try:
-    #     from src.scripts.main_implementation import Application # If main is refactored
-    # except ImportError:
-    from src.main import Application # Use standard main
+    try:
+        from src.scripts.main_implementation import Application # Try implementation first
+    except ImportError:
+        from src.main import Application # Fallback to standard main
     from src.system.models import TaskResult, DevelopmentPlan, FeedbackResult
+    print("[Setup] Successfully imported Application and models.")
 except ImportError as e:
     print(f"Error importing project modules: {e}")
-    print(f"PROJECT_ROOT: {PROJECT_ROOT}")
-    print(f"sys.path: {sys.path}")
+    print(f"PROJECT_ROOT calculated as: {PROJECT_ROOT}")
+    print(f"SRC_PATH calculated as: {SRC_PATH}")
+    print(f"Current sys.path: {sys.path}")
+    print("Please ensure the project structure is correct, dependencies are installed,")
+    print("and you are running this script from the project root directory.")
+    sys.exit(1)
+except Exception as e:
+    print(f"An unexpected error occurred during import: {e}")
     sys.exit(1)
 
 # --- Logging Setup ---
