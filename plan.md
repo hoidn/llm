@@ -162,6 +162,67 @@
     *   **Outcome:** DSL gains first-class functions and lexical scoping, dramatically increasing its expressive power.
     *   **Readiness:** Core Language Enhancement.
 
+    **Phase 10b: DSL Primitives for Feedback Loop and Data Manipulation**
+
+    *   **Status:** PENDING / NEW REQUIREMENT
+    *   **Goal:** Enhance the S-expression DSL with necessary primitives for data structure access, comparison, and potentially state updates, enabling the full expression of conditional feedback loops (like the Aider retry loop) within the DSL itself. This phase complements Phase 10 (`lambda`) and Phase 9b (`loop`).
+    *   **Prerequisites:** Phase 10 (`lambda` and closures) implemented. Existing `if` special form.
+    *   **Components & Tasks:**
+        1.  **`SexpEvaluator`: Implement Data Access Primitives:**
+            *   **Primitive:** `(get-field <object-or-dict> <field-name-string-or-symbol>)` or `(access <object-or-dict> <field-name-string-or-symbol>)`
+                *   **Behavior:** If `<object-or-dict>` is a dictionary, return the value associated with `<field-name-string-or-symbol>` (after evaluating it if it's a symbol representing a string key). If `<object-or-dict>` is a Pydantic model instance (or other custom object recognized by the evaluator), attempt to get an attribute with that name.
+                *   **Error Handling:** Raise `SexpEvaluationError` if the field/attribute doesn't exist or if the first argument is not a suitable type.
+                *   **Example:** `(get-field feedback-result "status")`
+            *   **Primitive (Optional but Recommended):** `(get-path <object-or-dict> <path-string-or-list-of-keys>)`
+                *   **Behavior:** Accesses nested data. `<path-string-or-list-of-keys>` could be a dot-separated string like `"notes.error.reason"` or a list of keys `'(notes error reason)`.
+                *   **Error Handling:** Raise `SexpEvaluationError` for invalid paths or types.
+
+        2.  **`SexpEvaluator`: Implement Comparison Primitives:**
+            *   **Primitive:** `(eq? <val1> <val2>)` or `(equal? <val1> <val2>)`
+                *   **Behavior:** Performs general equality comparison between two evaluated S-expression values. Should handle numbers, strings, booleans, symbols (by name), and potentially lists (structural equality).
+                *   **Returns:** `true` or `false`.
+            *   **Primitive:** `(string=? <str1> <str2>)`
+                *   **Behavior:** Performs case-sensitive string equality.
+                *   **Returns:** `true` or `false`.
+                *   **Error Handling:** Raise `SexpEvaluationError` if arguments are not strings.
+            *   **Primitive:** `(null? <val>)` or `(nil? <val>)`
+                *   **Behavior:** Checks if `<val>` evaluates to `None` (Python `None`) or potentially an empty list `[]` (if `nil` is treated as empty list).
+                *   **Returns:** `true` or `false`.
+            *   **Numeric Comparison Primitives (Optional, but useful):** `(> <n1> <n2>)`, `(< <n1> <n2>)`, `(>= <n1> <n2>)`, `(<= <n1> <n2>)`.
+
+        3.  **`SexpEvaluator` & `SexpEnvironment`: Implement State Update Primitive (Rebinding):**
+            *   **Primitive:** `(set! <symbol-name> <new-value-expr>)`
+                *   **Behavior:** Evaluates `<new-value-expr>`. Finds `<symbol-name>` in the current environment or its parent scopes. Updates (rebinds) the existing variable in the scope where it was *first found* to the new value.
+                *   **Error Handling:** Raise `SexpEvaluationError` if `<symbol-name>` is not already bound in any accessible scope (i.e., `set!` cannot define new variables, only update existing ones).
+                *   **Returns:** The `<new-value-expr>`.
+                *   **Environment Change:** `SexpEnvironment.set_value(name, value)` method would be needed, which searches up the parent chain to find and update the binding.
+            *   **Alternative/Consideration:** Instead of `set!`, a more constrained approach might be to enhance `let` or introduce a new binding form that allows rebinding only within its lexical scope, to avoid widespread side effects. However, for direct feedback loop state management, `set!` is more idiomatic in Lisp-like languages.
+
+        4.  **`SexpEvaluator`: Implement Basic Arithmetic (for retry counters):**
+            *   **Primitive:** `(+ <num1> <num2> ...)`
+            *   **Primitive:** `(- <num1> <num2>)`
+            *   **Behavior:** Standard arithmetic operations.
+            *   **Error Handling:** Raise `SexpEvaluationError` for non-numeric arguments.
+
+        5.  **Documentation & IDL Updates:**
+            *   Update `src/sexp_evaluator/sexp_evaluator_IDL.md` to document all new primitives, their syntax, behavior, and error conditions.
+            *   Update `src/sexp_evaluator/sexp_environment_IDL.md` if `set!` requires changes to the environment interface.
+            *   Update DSL guides and examples to showcase usage of these new primitives, especially in the context of conditional loops and data handling.
+
+        6.  **Testing:**
+            *   Write comprehensive unit tests for each new primitive in `SexpEvaluator`, covering:
+                *   Correct evaluation with valid inputs.
+                *   Correct return types.
+                *   Proper error handling for invalid inputs or conditions (e.g., `get-field` on non-dict/obj, `string=?` on non-strings, `set!` on unbound variable).
+            *   Write integration tests demonstrating a complete feedback loop (like the Aider retry loop) implemented *entirely* using S-expressions, leveraging `lambda`, `if`, `set!`, `get-field`, `eq?`, etc. This test would mock the underlying `user:analyze-aider-result` and `aider:automatic` tasks to return controlled sequences of feedback.
+
+    *   **Integration:**
+        *   These primitives will be directly used within S-expressions passed to `SexpEvaluator.evaluate_string`.
+        *   They significantly enhance the DSL's capability to inspect results from tasks and control workflow based on that data.
+    *   **Outcome:** The S-expression DSL becomes self-sufficient for implementing the Aider-style feedback loop, including inspecting the `FeedbackResult` Pydantic model (as a dictionary), comparing its status, updating retry counters, and conditionally re-invoking tasks with new prompts. This reduces the reliance on Python orchestration for this specific loop pattern.
+    *   **Readiness:** Advanced DSL Capabilities (Enables complex internal state management and data-driven control flow within S-expressions).
+
+
 *   **Phase 11: Workflow State Management & Resumption (Interactive Mode)**
     *   **Status:** PENDING
     *   **Goal:** Enable workflows to be suspended, have their state persisted, and be resumed later, potentially after external input.
