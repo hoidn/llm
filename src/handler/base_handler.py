@@ -7,6 +7,22 @@ from typing import Any, Callable, Dict, List, Optional, Type, Union
 # Import pydantic-ai directly
 import pydantic_ai
 
+# Import specific message types needed
+try:
+    from pydantic_ai.messages import ModelResponse, TextPart, UserMessage # ADD UserMessage
+    PydanticMessagesAvailable = True
+    logging.info("Successfully imported ModelResponse, TextPart, UserMessage from pydantic_ai.messages.")
+except ImportError:
+    logging.error("Failed to import message types from pydantic_ai.messages.", exc_info=True)
+    PydanticMessagesAvailable = False
+    # Create placeholders if import fails
+    class TextPart:
+        def __init__(self, content=""): self.content = content
+    class ModelResponse:
+        def __init__(self, parts=None): self.parts = parts or []
+    class UserMessage: # ADD Placeholder
+        def __init__(self, content=""): self.content = content
+
 from src.handler import command_executor
 
 # Import Phase 0 components
@@ -325,24 +341,8 @@ class BaseHandler:
         """
         Internal method to execute a call via the LLMInteractionManager and update history.
         """
-        # Import specific message types for pydantic-ai
-        try:
-            # Import the specific classes needed for assistant messages
-            from pydantic_ai.messages import ModelResponse, TextPart
-            PydanticMessagesAvailable = True
-            logging.info("Successfully imported ModelResponse and TextPart from pydantic_ai.messages.")
-        except ImportError:
-            logging.error("Failed to import ModelResponse from pydantic_ai.messages.", exc_info=True)
-            PydanticMessagesAvailable = False
-            # Create placeholders if import fails
-            class TextPart:
-                def __init__(self, content=""): 
-                    self.content = content
-            
-            class ModelResponse:
-                def __init__(self, parts=None):
-                    logging.error("!!! Using Dummy ModelResponse fallback class !!!")
-                    self.parts = parts or []
+        # We already imported message types at the top of the file
+        # so we don't need to import them again here
 
         self.log_debug(f"Executing LLM call for prompt: '{prompt[:100]}...'")
         if model_override:
@@ -459,30 +459,12 @@ class BaseHandler:
                     content = content_str # Update content variable
                 # --- END: Ensure content is always string for ModelMessage ---
 
-                # Only include assistant messages in the history objects
-                # User messages are handled by the prompt parameter
                 if role == "assistant":
-                    # Ensure content is a string first
-                    if not isinstance(content, str):
-                        # Perform necessary string conversion if content might not be string
-                        if hasattr(content, 'model_dump_json'):
-                            try:
-                                content = content.model_dump_json()
-                            except Exception:
-                                content = str(content)
-                        elif isinstance(content, dict):
-                            try:
-                                content = json.dumps(content)
-                            except Exception:
-                                content = str(content)
-                        else:
-                            content = str(content) # General fallback
-                    
-                    # Create a TextPart and pass it to the 'parts' argument in a list
+                    # Create ModelResponse for assistant
                     message_objects_for_agent.append(ModelResponse(parts=[TextPart(content=content)]))
                 elif role == "user":
-                    # Skip user messages - they're handled by the prompt parameter
-                    pass
+                    # **FIX: Create UserMessage for user turns**
+                    message_objects_for_agent.append(UserMessage(content=content))
                 else:
                     logging.warning(f"Unsupported role '{role}' found in history, skipping.")
                     continue # Skip unknown roles
