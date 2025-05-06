@@ -13,9 +13,9 @@ from src.system.models import (
     ContextGenerationInput, AssociativeMatchResult, MatchTuple,
     TaskResult, TaskFailureError, TaskFailureReason
 )
-# Assuming MemorySystem and FileAccessManager are importable for spec/type checks if needed
-# from src.memory.memory_system import MemorySystem
-# from src.handler.file_access import FileAccessManager
+# Import classes for spec parameter in MagicMock
+from src.memory.memory_system import MemorySystem
+from src.handler.file_access import FileAccessManager
 
 @pytest.fixture
 def mock_memory_system():
