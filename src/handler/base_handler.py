@@ -326,7 +326,7 @@ class BaseHandler:
         Internal method to execute a call via the LLMInteractionManager and update history.
         """
         # Import message types for pydantic-ai
-        from pydantic_ai.messages import UserMessage, ModelMessage
+        from pydantic_ai.messages import ModelMessage
         from typing import Union
 
         self.log_debug(f"Executing LLM call for prompt: '{prompt[:100]}...'")
@@ -413,7 +413,7 @@ class BaseHandler:
         history_dicts_before_call = list(self.conversation_history)
 
         # --- Convert History to Objects ---
-        message_objects_for_agent: List[Union[UserMessage, ModelMessage]] = [] # Use Union for type hint
+        message_objects_for_agent: List[ModelMessage] = [] # Only ModelMessage is used
         for msg_dict in history_dicts_before_call:
             role = msg_dict.get("role")
             content = msg_dict.get("content", "") # Default to empty string if missing
@@ -438,11 +438,13 @@ class BaseHandler:
                 content = content_str # Update content variable
             # --- END: Ensure content is always string for ModelMessage ---
 
-            if role == "user":
-                # Ensure user content is also a string
-                message_objects_for_agent.append(UserMessage(content=str(content)))
-            elif role == "assistant":
+            # Only include assistant messages in the history objects
+            # User messages are handled by the prompt parameter
+            if role == "assistant":
                 message_objects_for_agent.append(ModelMessage(content=content)) # content is now guaranteed string
+            elif role == "user":
+                # Skip user messages - they're handled by the prompt parameter
+                pass
             else:
                 logging.warning(f"Unsupported role '{role}' found in history, skipping.")
                 continue # Skip unknown roles

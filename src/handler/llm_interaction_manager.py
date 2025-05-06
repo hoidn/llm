@@ -223,7 +223,7 @@ class LLMInteractionManager:
     def execute_call(
         self,
         prompt: str,
-        conversation_history: List[Dict[str, Any]],  # Use dictionary type hint
+        conversation_history: List[Any],  # Updated to accept ModelMessage objects
         system_prompt_override: Optional[str] = None,
         tools_override: Optional[List[Callable]] = None,  # Executors
         output_type_override: Optional[Type] = None,
