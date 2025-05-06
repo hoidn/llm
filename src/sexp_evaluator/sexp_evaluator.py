@@ -638,12 +638,12 @@ class SexpEvaluator:
             "type": "atomic",
             "subtype": optional_args_map.get("subtype", "standard"),
             "description": optional_args_map.get("description", f"Dynamically defined task: {task_name_str}"),
-            "parameters": template_params,
+            "params": template_params, # Changed "parameters" to "params"
             "instructions": instructions_str,
             "model": optional_args_map.get("model", None) # Ensure model is None if not provided
         }
         # Clean up model if it was explicitly set to None by get but shouldn't be in dict
-        if template_dict["model"] is None and "model" not in optional_args_map:
+        if "model" in template_dict and template_dict["model"] is None and "model" not in optional_args_map: # Check if model key exists before del
              del template_dict["model"]
 
 
