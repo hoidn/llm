@@ -1,5 +1,6 @@
 import pytest
-from unittest.mock import patch, MagicMock, ANY, call, AsyncMock # Ensure call is imported
+import json
+from unittest.mock import patch, MagicMock, ANY, call, AsyncMock, mock_open # Add json and mock_open imports
 import os # Import os for path manipulation
 import sys
 from typing import Callable, List, Dict, Any # Add necessary types
