@@ -539,8 +539,8 @@ def test_application_init_registers_user_tasks(app_components):
     registered_gen_plan = generate_plan_call.args[0]
     assert registered_gen_plan['name'] == GENERATE_PLAN_TEMPLATE['name']
     assert registered_gen_plan['type'] == 'atomic'
-    assert 'user_prompts' in registered_gen_plan['parameters']
-    assert 'initial_context' in registered_gen_plan['parameters']
+    assert 'user_prompts' in registered_gen_plan['params']
+    assert 'initial_context' in registered_gen_plan['params']
     assert registered_gen_plan['output_format']['schema'] == 'src.system.models.DevelopmentPlan'
 
     # Check for analyze-aider-result template
@@ -550,9 +550,9 @@ def test_application_init_registers_user_tasks(app_components):
     registered_analyze = analyze_result_call.args[0]
     assert registered_analyze['name'] == ANALYZE_AIDER_RESULT_TEMPLATE['name']
     assert registered_analyze['type'] == 'atomic'
-    assert 'aider_result_content' in registered_analyze['parameters']
-    assert 'aider_result_status' in registered_analyze['parameters']
-    assert 'original_prompt' in registered_analyze['parameters']
-    assert 'iteration' in registered_analyze['parameters']
-    assert 'max_retries' in registered_analyze['parameters']
+    assert 'aider_result_content' in registered_analyze['params']
+    assert 'aider_result_status' in registered_analyze['params']
+    assert 'original_prompt' in registered_analyze['params']
+    assert 'iteration' in registered_analyze['params']
+    assert 'max_retries' in registered_analyze['params']
     assert registered_analyze['output_format']['schema'] == 'src.system.models.FeedbackResult'

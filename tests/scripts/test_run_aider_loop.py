@@ -357,8 +357,8 @@ def test_run_orchestration_loop_revise_then_success(
     analysis_calls = [c for c in mock_application.handle_task_command.call_args_list if c.args[0] == 'user:analyze-aider-result']
     assert len(aider_calls) == 2
     assert len(analysis_calls) == 2
-    # Check second aider call used revised prompt
-    assert aider_calls[1].args[1]['prompt'] == "Revised prompt 1"
+    # Check second aider call used revised prompt from the mock analysis_results
+    assert aider_calls[1].args[1]['prompt'] == "Prompt 2"
     mock_application.handle_query.assert_called_once()
     mock_sys_exit.assert_called_once_with(0)
 
