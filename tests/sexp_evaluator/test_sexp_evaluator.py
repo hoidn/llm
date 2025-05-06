@@ -1268,33 +1268,25 @@ def test_eval_special_form_loop_error_body_eval_fails(evaluator, mock_parser, mo
         assert result == [10, 10] # Expect evaluated arguments
 
     def test_apply_get_context_primitive_parses_and_calls_memory(self, evaluator, mock_memory_system, mocker):
+        """Test the (get_context ...) primitive."""
         env = SexpEnvironment()
         original_expr_str = "(get_context (query \"search\") (matching_strategy content_var))"
-        # Unevaluated (key value_expr) pairs
-        unevaluated_arg_exprs = [
-            [Symbol("query"), "search_query_str"],  # "search_query_str" is the unevaluated value expression
-            [Symbol("matching_strategy"), Symbol("content_var_name")] # Symbol("content_var_name") is unevaluated
+        # Pre-evaluated argument values
+        evaluated_args = ["evaluated_search_query", "content"]
+        # Original (key value_expr) pairs
+        original_arg_exprs = [
+            [Symbol("query"), "search_query_str"],  # Original unevaluated expressions
+            [Symbol("matching_strategy"), Symbol("content_var_name")]
         ]
-        env.define("content_var_name", "content") # Variable holding the strategy name for symbol lookup
 
-        # Mock _eval for value expression evaluation within _apply_get_context_primitive
-        # This mock will be called by _apply_get_context_primitive.
-        def eval_side_effect_for_get_context(node, e_env):
-            if node == "search_query_str": return "evaluated_search_query"
-            # Note: matching_strategy with Symbol value is handled directly, not via _eval in the new logic.
-            # So, Symbol("content_var_name") for matching_strategy key won't hit this _eval.
-            # If content_var_name was used for a *different* key, it would be looked up:
-            # if node == Symbol("content_var_name"): return e_env.lookup("content_var_name") 
-            raise ValueError(f"Unexpected node for _eval mock in get_context: {node}")
-
-        mocker.patch.object(evaluator, '_eval', side_effect=eval_side_effect_for_get_context)
+        # No need to mock _eval since it's not called by _apply_get_context_primitive anymore
 
         expected_cg_input = ContextGenerationInput(query="evaluated_search_query", matching_strategy="content")
         mock_memory_system.get_relevant_context_for.return_value = AssociativeMatchResult(
             context_summary="ctx", matches=[MatchTuple(path="/f.py", relevance=0.9)]
         )
 
-        result = evaluator._apply_get_context_primitive(unevaluated_arg_exprs, env, original_expr_str)
+        result = evaluator._apply_get_context_primitive(evaluated_args, original_arg_exprs, env, original_expr_str)
 
         assert result == ["/f.py"]
         mock_memory_system.get_relevant_context_for.assert_called_once_with(expected_cg_input)
