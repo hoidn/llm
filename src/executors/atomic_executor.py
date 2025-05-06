@@ -61,7 +61,8 @@ class AtomicTaskExecutor:
             
         def replace_match(match):
             full_param_name = match.group(1)  # e.g., "context_input.query"
-            logging.debug(f"  _substitute_params: Found placeholder '{{{{{full_param_name}}}}}'") # Log placeholder
+            logging.debug(f"  _substitute_params: Attempting to substitute placeholder '{{{{{full_param_name}}}}}'") # Log placeholder
+            logging.debug(f"  _substitute_params: Available keys in params dict: {list(params.keys())}") # Log available keys
             try:
                 # Use helper to resolve dot notation
                 value = resolve_dot_notation(params, full_param_name)
@@ -85,7 +86,7 @@ class AtomicTaskExecutor:
                     # Re-raise with more context
                     raise TypeError(f"Cannot convert parameter '{full_param_name}' to string: {str_err}")
             except (KeyError, AttributeError, TypeError) as e:  # Catch potential errors during access
-                logging.error(f"Parameter '{full_param_name}' not found or access error in provided params: {e}")
+                logging.error(f"  _substitute_params: Parameter '{full_param_name}' not found or access error in provided params: {params}. Error: {e}")
                 missing_params.append(full_param_name)
                 # Return the placeholder itself to find all missing ones first
                 return match.group(0)
