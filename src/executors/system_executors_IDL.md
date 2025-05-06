@@ -3,6 +3,7 @@ module src.executors.system_executors {
 
     # @depends_on(src.memory.memory_system.MemorySystem) // For context retrieval
     # @depends_on(src.handler.file_access.FileAccessManager) // For reading files
+    # @depends_on(src.handler.command_executor.CommandExecutorFunctions) // For executing shell commands
 
     // Interface aggregating system-level Direct Tool executor functions.
     // These functions are typically registered with a handler (e.g., PassthroughHandler)
@@ -64,6 +65,32 @@ module src.executors.system_executors {
         // Expected JSON format for success return value: TaskResult structure.
         // Expected JSON format for failure return value: TaskResult structure.
         dict<string, Any> execute_read_files(dict<string, Any> params, object file_manager); // Second arg represents FileAccessManager
-    };
+
+            // Executor logic for the 'system:execute_shell_command' Direct Tool.
+            // Executes a shell command safely using CommandExecutorFunctions.
+            // Preconditions:
+            // - params is a dictionary containing:
+            //   - 'command': string (required) - The shell command to execute.
+            //   - 'cwd': string (optional) - The working directory for the command.
+            //   - 'timeout': int (optional) - Timeout in seconds.
+            // - command_executor is a valid instance or module providing CommandExecutorFunctions.
+            // Postconditions:
+            // - Returns a TaskResult dictionary.
+            // - On success ('status'='COMPLETE'):
+            //   - 'content' contains the standard output of the command (truncated).
+            //   - 'notes' contains 'success' (boolean, true), 'exit_code' (int, 0), 'stdout' (string), 'stderr' (string).
+            // - On failure ('status'='FAILED'):
+            //   - 'content' contains the standard error or an error message.
+            //   - 'notes' contains 'success' (boolean, false), 'exit_code' (int or null), 'stdout', 'stderr', and error details.
+            // Behavior:
+            // - Validates that 'command' parameter is present.
+            // - Calls `command_executor.execute_command_safely` with the provided parameters.
+            // - Formats the success or error result from `execute_command_safely` into a TaskResult dictionary.
+            // @raises_error(condition="INPUT_VALIDATION_FAILURE", description="Returned via FAILED TaskResult if 'command' is missing.")
+            // @raises_error(condition="COMMAND_EXECUTION_FAILURE", description="Returned via FAILED TaskResult if command execution fails, times out, or is deemed unsafe by the executor.")
+            // Expected JSON format for params: { "command": "string", "cwd?": "string", "timeout?": "int" }
+            // Expected JSON format for return value: TaskResult structure.
+            dict<string, Any> execute_shell_command(dict<string, Any> params, object command_executor); // Second arg represents CommandExecutorFunctions provider
+        };
 };
 // == !! END IDL TEMPLATE !! ===
