@@ -57,7 +57,8 @@ def execute_and_print(
     logger.info(f"Executing S-expression:\n{sexp_string}")
 
     try:
-        result_dict = app_instance.handle_query(sexp_string) # handle_query expects S-expression
+        # S-expressions should be handled as task commands
+        result_dict = app_instance.handle_task_command(identifier=sexp_string, params={})
         
         logger.info("S-expression raw result (dictionary):")
         # Basic print for readability, could use pprint for complex dicts
