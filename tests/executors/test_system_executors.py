@@ -468,7 +468,7 @@ def test_execute_shell_command_failure(system_executor_instance):
     assert result["notes"]["success"] is False
     assert result["notes"]["exit_code"] == 1
     assert result["notes"]["stderr"] == "Command failed: permission denied"
-    assert result["notes"]["error"]["reason"] == "command_execution_failure"
+    assert result["notes"]["error"]["reason"] == "tool_execution_error"
 
 def test_execute_shell_command_missing_command(system_executor_instance):
     """Test validation failure when command parameter is missing."""
