@@ -6,6 +6,8 @@ from typing import Callable, List, Dict, Any # Add necessary types
 
 # Import the class under test
 from src.handler.base_handler import BaseHandler
+# Import UserMessage for test assertions
+from pydantic_ai.messages import UserMessage
 
 # Import real classes for spec verification if needed
 from src.handler.file_access import FileAccessManager
@@ -328,11 +330,16 @@ def test_base_handler_execute_llm_call_success(base_handler_instance):
         "parsed_content": None, # Add field if manager returns it
     }
     user_prompt = "User query"
-    base_handler_instance.conversation_history = [
-        {"role": "user", "content": "Previous"}
+    # Keep the original history dict for reference if needed elsewhere,
+    # but construct the expected pydantic-ai object list for assertion.
+    initial_history_dict = [{"role": "user", "content": "Previous"}]
+    base_handler_instance.conversation_history = list(initial_history_dict) # Use a copy
+
+    # **MODIFIED: Construct the expected list of pydantic-ai objects**
+    expected_history_objects = [
+        UserMessage(content="Previous")
     ]
-    history_before_call = list(base_handler_instance.conversation_history)
-    initial_history_len = len(history_before_call)
+    initial_history_len = len(base_handler_instance.conversation_history)
 
     # Act
     result = base_handler_instance._execute_llm_call(user_prompt)
@@ -343,16 +350,16 @@ def test_base_handler_execute_llm_call_success(base_handler_instance):
     assert result.content == "Assistant response"
     assert result.notes == {"usage": {"tokens": 50}}
 
-    # Verify manager call
-    # Fix: Check active_tools is None when none are expected
+    # Verify manager call with the *expected pydantic-ai message objects*
     mock_llm_manager.execute_call.assert_called_once_with(
         prompt=user_prompt,
-        conversation_history=history_before_call,
+        # **MODIFIED: Assert against the expected object list**
+        conversation_history=expected_history_objects,
         system_prompt_override=None,
-        tools_override=None, # No tools passed in this case
+        tools_override=None,
         output_type_override=None,
-        active_tools=None, # Expecting None when active_definitions is empty
-        model_override=None # Add model_override parameter
+        active_tools=None,
+        model_override=None
     )
 
     # Assert history update
