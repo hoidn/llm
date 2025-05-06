@@ -14,7 +14,8 @@ from src.system.models import TaskResult, TaskFailureReason, TaskFailureError, r
 from pydantic import ValidationError
 
 # Regex to find {{parameter.name.access}} placeholders
-PARAM_REGEX = re.compile(r"\{\{([\w.]+)\}\}")  # Allow dots in parameter names
+# MODIFIED: Added '-' to the character set to allow hyphens in names
+PARAM_REGEX = re.compile(r"\{\{([\w.-]+)\}\}")  # Allow dots and hyphens in parameter names
 
 class ParameterMismatchError(Exception):
     """Custom exception for missing parameters during substitution."""
