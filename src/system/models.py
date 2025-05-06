@@ -7,7 +7,7 @@ import logging
 from datetime import datetime
 from typing import Any, Dict, List, Literal, Optional, Type, Union # Record is not standard, using Dict instead
 
-from pydantic import BaseModel, Field, PositiveInt, NonNegativeInt, conint, confloat
+from pydantic import BaseModel, Field, PositiveInt, NonNegativeInt, conint, confloat, model_validator
 
 # Configure logger
 logger = logging.getLogger(__name__)
