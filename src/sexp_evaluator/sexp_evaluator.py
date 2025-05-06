@@ -198,39 +198,39 @@ class SexpEvaluator:
         op_expr = expr_list[0]
         arg_exprs = expr_list[1:] # These are UNEVALUATED argument expressions
 
-        # 1. Special Form Dispatch
-        if isinstance(op_expr, Symbol):
-            op_name = op_expr.value()
-            if op_name in self.SPECIAL_FORM_HANDLERS:
-                logging.debug(f"  _eval_list_form: Dispatching to Special Form Handler: {op_name}")
-                handler_method = self.SPECIAL_FORM_HANDLERS[op_name]
-                # Special forms handle their own argument evaluation.
-                return handler_method(arg_exprs, env, original_expr_str)
-        
-        # 2. Standard Evaluation Path - Determine the resolved_operator
-        logging.debug(f"  _eval_list_form: Standard evaluation path for operator expression: {op_expr}")
-        
         resolved_operator: Any
 
         if isinstance(op_expr, Symbol):
             op_name_str = op_expr.value()
-            # Check if the symbol is a known primitive, task, or tool name FIRST
+            # Priority 1: Special Forms
+            if op_name_str in self.SPECIAL_FORM_HANDLERS:
+                logging.debug(f"  _eval_list_form: Dispatching to Special Form Handler: {op_name_str}")
+                handler_method = self.SPECIAL_FORM_HANDLERS[op_name_str]
+                return handler_method(arg_exprs, env, original_expr_str)
+            
+            # Priority 2: Primitives, Tasks, Tools (use name directly)
             is_primitive = op_name_str in self.PRIMITIVE_APPLIERS
-            template_def = self.task_system.find_template(op_name_str)
+            template_def = self.task_system.find_template(op_name_str) # Avoid calling twice
             is_atomic_task = template_def and template_def.get("type") == "atomic"
             is_handler_tool = op_name_str in self.handler.tool_executors
 
             if is_primitive or is_atomic_task or is_handler_tool:
-                resolved_operator = op_name_str # Use the name string directly
-                logging.debug(f"  _eval_list_form: Operator '{op_name_str}' identified as a known primitive/task/tool name.")
+                resolved_operator = op_name_str # The operator is the name itself
+                logging.debug(f"  _eval_list_form: Operator '{op_name_str}' identified as known primitive/task/tool name.")
             else:
-                # If it's a symbol but not a known fixed operator, then evaluate (lookup) it.
+                # Priority 3: Symbol needs to be evaluated (looked up in env)
                 logging.debug(f"  _eval_list_form: Operator symbol '{op_name_str}' is not a known fixed operator. Evaluating (looking up) '{op_name_str}'...")
                 try:
                     resolved_operator = self._eval(op_expr, env) # This will perform env.lookup
                 except NameError as ne: 
                     logging.error(f"  _eval_list_form: Operator symbol '{op_name_str}' is unbound during lookup.")
+                    # Pass original_expr_str (the full list) for context of the failed call
                     raise SexpEvaluationError(f"Unbound symbol or unrecognized operator: {op_name_str}", original_expr_str) from ne
+                except SexpEvaluationError as se: # Propagate if _eval itself raises SexpEvaluationError
+                    raise se
+                except Exception as e: # Catch other errors during _eval of operator
+                    logging.exception(f"  _eval_list_form: Unexpected error evaluating operator symbol '{op_name_str}': {e}")
+                    raise SexpEvaluationError(f"Error evaluating operator symbol '{op_name_str}': {e}", original_expr_str, error_details=str(e)) from e
         elif isinstance(op_expr, list): # Operator is a sub-expression, e.g., ((lambda (x) x) 5)
             logging.debug(f"  _eval_list_form: Operator is a complex expression, evaluating it: {op_expr}")
             try:
@@ -551,9 +551,17 @@ class SexpEvaluator:
             logging.debug(f"  Evaluating loop count expression: {count_expr}")
             count_value = self._eval(count_expr, env)
             logging.debug(f"  Loop count expression evaluated to: {count_value} (Type: {type(count_value)})")
-        except Exception as e:
+        except SexpEvaluationError as e_count: # Catch specific SexpEvaluationError
+            logging.exception(f"Error evaluating loop count expression '{count_expr}': {e_count}")
+            # Re-raise, but ensure the outer expression (original_expr_str) is part of the new error if not already
+            # The original error e_count.expression should be the count_expr itself.
+            raise SexpEvaluationError(
+                f"Error evaluating loop count expression: {e_count.args[0] if e_count.args else str(e_count)}",
+                expression=original_expr_str, # The full (loop ...)
+                error_details=f"Failed on count_expr='{e_count.expression if hasattr(e_count, 'expression') else count_expr}'. Original detail: {e_count.error_details if hasattr(e_count, 'error_details') else str(e_count)}"
+            ) from e_count
+        except Exception as e: # Catch other errors
             logging.exception(f"Error evaluating loop count expression '{count_expr}': {e}")
-            if isinstance(e, SexpEvaluationError): raise
             raise SexpEvaluationError(f"Error evaluating loop count expression: {count_expr}", original_expr_str, error_details=str(e)) from e
 
         if not isinstance(count_value, int):
@@ -566,7 +574,7 @@ class SexpEvaluator:
             logging.debug("Loop count is 0, skipping body execution and returning [].")
             return [] 
 
-        last_result = [] 
+        last_result: Any = [] # Initialize to nil/empty list
         logging.debug(f"Starting loop execution for {n} iterations.")
         for i in range(n):
             iteration = i + 1
@@ -574,20 +582,20 @@ class SexpEvaluator:
             try:
                 last_result = self._eval(body_expr, env)
                 logging.debug(f"  Iteration {iteration}/{n} result: {last_result}")
-            except Exception as e:
-                logging.exception(f"Error evaluating loop body during iteration {iteration}/{n} for '{body_expr}': {e}")
-                logging.exception(f"Error evaluating loop body during iteration {iteration}/{n} for '{body_expr}': {e}")
-                error_detail_msg_prefix = f"Error during loop iteration {iteration}/{n}"
-                body_expr_str_for_error = str(body_expr) 
-            
-                original_message = e.args[0] if isinstance(e, SexpEvaluationError) and e.args else str(e)
-                original_expr_for_error = e.expression if isinstance(e, SexpEvaluationError) and hasattr(e, 'expression') and e.expression else body_expr_str_for_error
-                original_details = e.error_details if isinstance(e, SexpEvaluationError) and hasattr(e, 'error_details') and e.error_details else str(e)
-
+            except SexpEvaluationError as e_body:
+                logging.exception(f"Error evaluating loop body during iteration {iteration}/{n} for '{body_expr}': {e_body}")
+                # Construct a new error that includes the loop context and the body error
                 raise SexpEvaluationError(
-                    f"{error_detail_msg_prefix}: {original_message}", 
-                    expression=original_expr_for_error,
-                    error_details=original_details
+                    f"Error during loop iteration {iteration}/{n}: {e_body.args[0] if e_body.args else str(e_body)}",
+                    expression=original_expr_str, # The full (loop ...) expression
+                    error_details=f"Failed on body_expr='{e_body.expression if hasattr(e_body, 'expression') else body_expr}'. Original detail: {e_body.error_details if hasattr(e_body, 'error_details') else str(e_body)}"
+                ) from e_body
+            except Exception as e: # Catch other unexpected errors
+                logging.exception(f"Unexpected error evaluating loop body during iteration {iteration}/{n} for '{body_expr}': {e}")
+                raise SexpEvaluationError(
+                    f"Unexpected error during loop iteration {iteration}/{n} processing body '{body_expr}': {str(e)}",
+                    expression=original_expr_str,
+                    error_details=str(e)
                 ) from e
                 
         logging.debug(f"Loop finished after {n} iterations. Returning last result: {last_result}")
