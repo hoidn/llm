@@ -45,7 +45,13 @@
 - **Phase 9.2: Implement Shell Execution Tool:** Added `execute_shell_command` instance method to `SystemExecutorFunctions`. Updated IDL. Registered tool in `Application._register_system_tools`. Added tests in `test_system_executors.py`. Updated `test_main.py` to verify registration. Updated `memory.md`.
 - **Phase 9.3: Implement Multi-LLM Routing/Execution:** Added `model_override` parameter to `LLMInteractionManager.execute_call` and `BaseHandler._execute_llm_call`. Implemented logic in `LLMInteractionManager` to handle override by looking up config and instantiating a temporary `pydantic-ai Agent`. Updated relevant IDLs. Updated `memory.md`.
 - **Phase 9b: Implement `loop` Special Form:** Added `_eval_loop` to `SexpEvaluator` and dispatch logic. Added tests to `test_sexp_evaluator.py`. Commit `aafbfc8`.
-- **Documentation Update (Post 9b/9.3):** Updated `src/sexp_evaluator/sexp_evaluator_IDL.md` to document the `loop` special form. Updated `memory.md`. (This commit).
+- **Documentation Update (Post 9b/9.3):** Updated `src/sexp_evaluator/sexp_evaluator_IDL.md` to document the `loop` special form.
+- **Phase 10: S-expression `lambda` and Closures:**
+    - Implemented `lambda` special form and `Closure` class in `SexpEvaluator`. Modified `_eval`, `_eval_list_form`, `_apply_operator`. Updated IDLs. Commit `f07e2ee`.
+    - Added comprehensive tests for `lambda` definition, closure application, lexical scoping, higher-order functions, and error conditions. Enhanced environment tests. Commit `9c126c9`.
+    - Refined argument evaluation in task/tool invokers, reconciled IDL docstrings, simplified `Closure` validation, and added more lexical scope tests. Commits `88642e8`, `1eb7205`.
+    - Fixed `test_lambda_recursive_closure` to use correct `let` semantics. Commit `c3b6a3d`.
+- **Documentation Update (Post Phase 10):** Update relevant guides (`implementation_rules.md`, `start_here.md`) to reflect `lambda` capabilities. Update `memory.md`. (This commit).
 
 ## Next Steps
 

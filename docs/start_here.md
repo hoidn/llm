@@ -136,7 +136,7 @@ When assigned to implement or modify a component specified by an IDL (or tacklin
 
 *   **Python Orchestration with Embedded S-expression Evaluation:**
     *   **Concept:** While the S-expression DSL is used for defining task/tool invocation sequences and basic control flow, complex data preparation, especially multi-source string construction (e.g., building prompts from multiple files), should be handled in the calling Python code.
-    *   **Practice:** Python code prepares the necessary data (like complex strings), creates a `SexpEnvironment`, binds the prepared data to variable names in the environment, and then calls `SexpEvaluator.evaluate_string` with the S-expression string (which references the bound variables) and the prepared environment. This leverages Python's strengths for data manipulation and keeps the DSL focused on orchestration, avoiding the need to implement complex data handling primitives within the DSL itself. See `docs/implementation_rules.md` for details.
+    *   **Practice:** Python code prepares the necessary data (like complex strings), creates a `SexpEnvironment`, binds the prepared data to variable names in the environment, and then calls `SexpEvaluator.evaluate_string` with the S-expression string (which references the bound variables) and the prepared environment. This leverages Python's strengths for data manipulation and keeps the DSL focused on orchestration. The addition of `lambda` expressions further enhances the DSL by allowing more sophisticated inline abstractions and helper functions to be defined directly within S-expressions. See `docs/implementation_rules.md` for details.
 
 **6. Testing Strategy**
 

@@ -511,7 +511,7 @@ When merging data from multiple sources (e.g., configuration layers, default val
         # 6. Process Result
         print(result)
         ```
-    *   **Rationale:** This pattern leverages Python's strengths for general-purpose programming and data manipulation, keeping the S-expression DSL focused on its core orchestration role and simplifying the `SexpEvaluator` implementation by reducing the need for numerous custom primitives.
+    *   **Rationale:** This pattern leverages Python's strengths for general-purpose programming and data manipulation, keeping the S-expression DSL focused on its core orchestration role and simplifying the `SexpEvaluator` implementation by reducing the need for numerous custom primitives. The introduction of `lambda` expressions with lexical closures within the S-expression DSL itself now provides more powerful capabilities for defining inline abstractions and helper functions directly within the S-expression code, complementing the Python-first data preparation approach.
 
 **12. Data Merging Conventions**
 
