@@ -157,6 +157,7 @@ When assigned to implement or modify a component specified by an IDL (or tacklin
     *   `docs/system/contracts/types.md`: Defines shared system-wide data structures (`struct`/Pydantic model definitions) used across multiple IDL interfaces (e.g., `TaskResult`).
     *   **`docs/implementation_rules.md`**: Detailed coding and testing rules.
     *   **`docs/project_rules.md`**: General project conventions (directory structure, Git workflow).
+    *   **`docs/examples/`**: Contains example usage patterns and guides, such as the `workflow_orchestrator_guide.md`.
     *   **`src/**/\*_IDL.md`**: The specific interface definitions you will implement.
 *   **`README.md`**: Top-level project overview.
 
