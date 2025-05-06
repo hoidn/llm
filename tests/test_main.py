@@ -258,17 +258,24 @@ def test_application_init_wiring(app_components):
 
     # Assert agent initialization call
     app_components['mock_handler_instance'].get_tools_for_agent.assert_called_once()
-    # Check initialize_agent call more robustly
     app_components['mock_llm_manager_instance'].initialize_agent.assert_called_once()
-    # Get the actual arguments passed to initialize_agent
-    actual_call_args, actual_call_kwargs = app_components['mock_llm_manager_instance'].initialize_agent.call_args
-    actual_tools_passed = actual_call_kwargs.get('tools')
 
-    # Assert based on what _register_system_tools actually registers
+    # Get the actual tools passed
+    actual_call_args, actual_call_kwargs = app_components['mock_llm_manager_instance'].initialize_agent.call_args
+    actual_tools_passed = actual_call_kwargs.get('tools', []) # Use get with default
+
+    # Assert that the expected system tool *executors* are present
+    # Assumes app.system_executors holds the real instance used during init
     assert isinstance(actual_tools_passed, list)
-    # Expecting system:get_context, system:read_files, system:list_directory, system:write_file, and system:execute_shell_command wrappers
-    assert len(actual_tools_passed) == 5
-    assert all(callable(tool) for tool in actual_tools_passed)
+    expected_system_executors = [
+        app.system_executors.execute_get_context,
+        app.system_executors.execute_read_files,
+        app.system_executors.execute_list_directory,
+        app.system_executors.execute_write_file,
+        app.system_executors.execute_shell_command,
+    ]
+    for executor in expected_system_executors:
+        assert executor in actual_tools_passed, f"Expected system executor {executor.__name__} not found in tools passed to initialize_agent"
 
     # Check for shell command tool registration
     shell_command_call = next((c for c in app_components['mock_handler_instance'].register_tool.call_args_list if c.args[0].get('name') == 'system:execute_shell_command'), None)
