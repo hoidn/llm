@@ -435,3 +435,165 @@ def test_get_provider_identifier_returns_none_when_no_agent(llm_manager_no_agent
     assert result is None
     mock_warning.assert_called_once()
     assert "Cannot get provider identifier: Agent is not initialized." in mock_warning.call_args[0][0]
+
+# --- Tests for Phase 9.3: Model Override ---
+
+@patch('src.handler.llm_interaction_manager.Agent')
+def test_execute_call_uses_default_agent_no_override(mock_agent_constructor, initialized_llm_manager):
+    """Test execute_call uses the default agent when no override is provided."""
+    # Arrange
+    manager = initialized_llm_manager
+    mock_default_agent = manager.agent # Get the default agent set by the fixture
+    assert mock_default_agent is not None, "Fixture should provide initialized default agent"
+    mock_default_agent.run_sync.return_value = MagicMock(output="Default response") # Configure default agent mock
+
+    prompt = "Test prompt"
+    history = []
+
+    # Act
+    result = manager.execute_call(prompt, history, model_override=None) # No override
+
+    # Assert
+    assert result["success"] is True
+    assert result["content"] == "Default response"
+    # Verify default agent was called
+    mock_default_agent.run_sync.assert_called_once()
+    # Verify constructor was NOT called again
+    mock_agent_constructor.assert_not_called()
+
+@patch('src.handler.llm_interaction_manager.Agent')
+def test_execute_call_with_model_override_success(mock_agent_constructor, initialized_llm_manager):
+    """Test execute_call successfully uses a temporary agent for a valid override."""
+    # Arrange
+    manager = initialized_llm_manager
+    mock_default_agent = manager.agent
+    override_model_id = "openai:gpt-4o-override"
+    override_config = {"api_key": "override_key", "temperature": 0.8}
+    # Add override config to the manager instance for this test
+    manager.config['llm_providers'] = {override_model_id: override_config}
+
+    # Configure the mock constructor to return a new mock agent for the override
+    mock_temp_agent = MagicMock()
+    mock_temp_agent.run_sync.return_value = MagicMock(output="Override response")
+    mock_agent_constructor.return_value = mock_temp_agent
+
+    prompt = "Test override prompt"
+    history = [{"role": "user", "content": "prev"}]
+    # Get tools from default agent to pass to temp agent
+    expected_tools = mock_default_agent.tools if hasattr(mock_default_agent, 'tools') else None
+
+    # Act
+    result = manager.execute_call(prompt, history, model_override=override_model_id)
+
+    # Assert
+    assert result["success"] is True
+    assert result["content"] == "Override response"
+    # Verify constructor was called ONCE with override details
+    mock_agent_constructor.assert_called_once()
+    # Verify temporary agent's run_sync was called
+    mock_temp_agent.run_sync.assert_called_once()
+    # Verify default agent's run_sync was NOT called
+    mock_default_agent.run_sync.assert_not_called()
+
+@patch('src.handler.llm_interaction_manager.Agent')
+def test_execute_call_override_config_lookup_fail(mock_agent_constructor, initialized_llm_manager):
+    """Test execute_call fails gracefully if config for override model is missing."""
+    # Arrange
+    manager = initialized_llm_manager
+    mock_default_agent = manager.agent
+    override_model_id = "unknown:model-v1"
+    # Ensure the override model is NOT in the config
+    manager.config['llm_providers'] = {"openai:gpt-3.5": {}}
+
+    prompt = "Test unknown override"
+    history = []
+
+    # Act
+    result = manager.execute_call(prompt, history, model_override=override_model_id)
+
+    # Assert
+    assert result["success"] is False
+    assert result["content"] is None
+    assert "Configuration not found" in result["error"]
+    # Verify constructor was NOT called
+    mock_agent_constructor.assert_not_called()
+    # Verify default agent was NOT called
+    mock_default_agent.run_sync.assert_not_called()
+    # Check error structure in notes
+    assert "error" in result["notes"]
+    assert result["notes"]["error"]["type"] == "TASK_FAILURE"
+    assert result["notes"]["error"]["reason"] == "configuration_error"
+
+@patch('src.handler.llm_interaction_manager.Agent')
+def test_execute_call_override_agent_creation_fail(mock_agent_constructor, initialized_llm_manager):
+    """Test execute_call fails gracefully if temporary agent creation fails."""
+    # Arrange
+    manager = initialized_llm_manager
+    mock_default_agent = manager.agent
+    override_model_id = "bad:init-model"
+    override_config = {"some_setting": "value"}
+    manager.config['llm_providers'] = {override_model_id: override_config}
+
+    # Configure the mock constructor to RAISE an error for the override
+    mock_agent_constructor.side_effect = Exception("Agent init failed badly")
+
+    prompt = "Test bad agent init"
+    history = []
+
+    # Act
+    result = manager.execute_call(prompt, history, model_override=override_model_id)
+
+    # Assert
+    assert result["success"] is False
+    assert result["content"] is None
+    assert "Failed to initialize agent" in result["error"]
+    # Verify constructor was called
+    mock_agent_constructor.assert_called_once()
+    # Verify run_sync was NOT called on default agent
+    mock_default_agent.run_sync.assert_not_called()
+    # Check error structure in notes
+    assert "error" in result["notes"]
+    assert result["notes"]["error"]["type"] == "TASK_FAILURE"
+    assert result["notes"]["error"]["reason"] == "llm_error"
+
+# --- Test to ensure tools_override still works with model_override ---
+@patch('src.handler.llm_interaction_manager.Agent')
+def test_execute_call_with_model_and_tool_overrides(mock_agent_constructor, initialized_llm_manager):
+    """Test execute_call uses temporary agent AND tool_override when both are provided."""
+    # Arrange
+    manager = initialized_llm_manager
+    mock_default_agent = manager.agent
+    override_model_id = "openai:gpt-4o-override"
+    override_config = {"api_key": "override_key"}
+    manager.config['llm_providers'] = {override_model_id: override_config}
+
+    # Mock temporary agent creation
+    mock_temp_agent = MagicMock()
+    mock_temp_agent.run_sync.return_value = MagicMock(output="Override model+tools response")
+    mock_agent_constructor.return_value = mock_temp_agent
+
+    prompt = "Test combined overrides"
+    history = []
+    # Define specific tools for this call
+    tool_override_list = [lambda x: f"tool_override_called_{x}"]
+
+    # Act
+    result = manager.execute_call(
+        prompt,
+        history,
+        model_override=override_model_id,
+        tools_override=tool_override_list # Pass tool override
+    )
+
+    # Assert
+    assert result["success"] is True
+    assert result["content"] == "Override model+tools response"
+    # Verify constructor was called ONCE with override details
+    mock_agent_constructor.assert_called_once()
+    # Verify temporary agent's run_sync was called with the TOOL OVERRIDE list
+    mock_temp_agent.run_sync.assert_called_once()
+    call_args, call_kwargs = mock_temp_agent.run_sync.call_args
+    assert call_args[0] == prompt
+    assert call_kwargs.get("tools") == tool_override_list
+    # Verify default agent's run_sync was NOT called
+    mock_default_agent.run_sync.assert_not_called()
