@@ -117,6 +117,7 @@ docs/
 ### Architecture
 - [Pattern Index](./system/architecture/patterns/index.md)
 - [Decision Records Index](./system/architecture/decisions/index.md)
+- [New ADRs](./new_adrs/README.md)
 - [Core Patterns](./system/architecture/patterns)
   - [Context Frame Pattern](./system/architecture/patterns/context-frames.md)
   - [Director-Evaluator Pattern](./system/architecture/patterns/director-evaluator.md)
