@@ -1595,10 +1595,6 @@ class TestSexpEvaluatorInternals:
 
 
 # --- New Unit Tests for Refactored Internal Methods ---
-
-class TestSexpEvaluatorInternals:
-
-    def test_eval_list_form_dispatches_special_form(self, evaluator, mock_parser, mocker):
         env = SexpEnvironment()
         original_expr_str = "(if cond_expr then_expr else_expr)"
         cond_expr, then_expr, else_expr = Symbol("cond"), "then_val", "else_val"
