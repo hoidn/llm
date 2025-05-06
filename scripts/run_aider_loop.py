@@ -271,13 +271,29 @@ def run_orchestration_loop(args: argparse.Namespace):
             final_loop_result_dict = aider_result_dict # Store latest result
 
             # --- 9b: Call user:analyze-aider-result ---
+            # Ensure all parameters are simple types (str, int) to avoid conversion issues
+            aider_content = aider_result_dict.get('content', '')
+            if aider_content is None:
+                aider_content = ''
+            elif not isinstance(aider_content, str):
+                aider_content = str(aider_content)
+                
+            aider_status = aider_result_dict.get('status', 'UNKNOWN')
+            if aider_status is None:
+                aider_status = 'UNKNOWN'
+            elif not isinstance(aider_status, str):
+                aider_status = str(aider_status)
+                
             analysis_params = {
-                "aider_result_content": str(aider_result_dict.get('content', '')),
-                "aider_result_status": str(aider_result_dict.get('status', 'UNKNOWN')),
+                "aider_result_content": aider_content,
+                "aider_result_status": aider_status,
                 "original_prompt": current_aider_prompt,
                 "iteration": iteration,
                 "max_retries": args.max_retries
             }
+            logger.debug(f"Analysis params prepared: {analysis_params}")
+            logger.debug(f"Analysis param types: {[(k, type(v).__name__) for k, v in analysis_params.items()]}")
+            
             analysis_task_id = "user:analyze-aider-result"
 
             logger.info("Calling user:analyze-aider-result...")
