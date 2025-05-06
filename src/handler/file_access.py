@@ -65,9 +65,9 @@ class FileAccessManager:
         # Use os.path.commonpath to check containment robustly
         # Handles edge cases like identical paths correctly
         try:
-            # Ensure both paths are absolute and normalized for reliable comparison
-            abs_base = os.path.abspath(self.base_path)
-            abs_resolved = os.path.abspath(resolved_path)
+            # Ensure both paths are absolute and canonicalized for reliable comparison
+            abs_base = os.path.realpath(os.path.abspath(self.base_path))
+            abs_resolved = os.path.realpath(os.path.abspath(resolved_path))
             is_safe = os.path.commonpath([abs_base]) == os.path.commonpath([abs_base, abs_resolved])
             if not is_safe:
                 logger.error(f"Path safety check failed: '{resolved_path}' is outside base '{self.base_path}'")
@@ -158,11 +158,9 @@ class FileAccessManager:
             size_str = f"{size_bytes} bytes"
             modified_str = modified_dt.isoformat() # Using ISO format for clarity
 
-            # Use canonical path to resolve symlinks like /var -> /private/var on macOS
-            canonical_path = os.path.realpath(resolved_path)
-            logger.debug(f"get_file_info: Successfully retrieved info for {resolved_path} (canonical: {canonical_path})")
+            logger.debug(f"get_file_info: Successfully retrieved info for {resolved_path}")
             return {
-                "path": canonical_path, # Use canonical path
+                "path": resolved_path, # resolved_path is already canonical from _resolve_path
                 "size": size_str,
                 "modified": modified_str
             }
@@ -309,11 +307,9 @@ class FileAccessManager:
                 return {"error": f"Path is not a valid directory: {directory_path}"}
 
             try:
-                # Use canonical path to resolve symlinks like /var -> /private/var on macOS
-                canonical_path = os.path.realpath(resolved_path)
-                logger.debug(f"list_directory: Using canonical path: {canonical_path}")
-                contents = os.listdir(canonical_path)
-                logger.debug(f"list_directory: Successfully listed {len(contents)} items in {canonical_path}")
+                # resolved_path is already canonical from _resolve_path
+                contents = os.listdir(resolved_path)
+                logger.debug(f"list_directory: Successfully listed {len(contents)} items in {resolved_path}")
                 return contents
             except (PermissionError, OSError) as e:
                 logger.error(f"list_directory: Error listing directory '{resolved_path}': {e}")

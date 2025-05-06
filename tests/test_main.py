@@ -252,9 +252,14 @@ def test_application_init_wiring(app_components):
 
     # Assert based on what _register_system_tools actually registers
     assert isinstance(actual_tools_passed, list)
-    # Expecting system:get_context, system:read_files, system:list_directory, and system:write_file wrappers
-    assert len(actual_tools_passed) == 4
+    # Expecting system:get_context, system:read_files, system:list_directory, system:write_file, and system:execute_shell_command wrappers
+    assert len(actual_tools_passed) == 5
     assert all(callable(tool) for tool in actual_tools_passed)
+    
+    # Check for shell command tool registration
+    shell_command_call = next((c for c in app_components['mock_handler_instance'].register_tool.call_args_list if c.args[0].get('name') == 'system:execute_shell_command'), None)
+    assert shell_command_call is not None, "system:execute_shell_command tool was not registered"
+    assert callable(shell_command_call.args[1])
 
 
 def test_index_repository_success(app_components, tmp_path):
