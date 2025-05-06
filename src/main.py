@@ -27,6 +27,7 @@ from src.memory.memory_system import MemorySystem
 from src.task_system.task_system import TaskSystem
 from src.handler.passthrough_handler import PassthroughHandler
 from src.handler.file_access import FileAccessManager # Add import
+from src.handler.file_context_manager import FileContextManager # ADDED IMPORT
 from src.memory.indexers.git_repository_indexer import GitRepositoryIndexer
 from src.system.models import TaskResult, TaskFailureError, TaskFailureReason
 from src.executors.system_executors import SystemExecutorFunctions
