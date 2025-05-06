@@ -239,25 +239,37 @@ class SexpEvaluator:
 
         logging.debug(f"  _eval_list_form: Resolved operator to: {resolved_operator} (Type: {type(resolved_operator)})")
         
-        # 2b. Pass unevaluated arguments to _apply_operator
-        # _apply_operator will be responsible for how/when arguments are evaluated.
-        logging.debug(f"  _eval_list_form: Passing {len(arg_exprs)} unevaluated argument expressions to _apply_operator.")
-        # REMOVED: evaluated_args = [self._eval(arg, env) for arg in arg_exprs]
-        return self._apply_operator(resolved_operator, arg_exprs, env, original_expr_str) # Pass unevaluated arg_exprs
+        # 2b. Eagerly evaluate argument expressions for the standard path HERE
+        evaluated_args = []
+        for i, arg_node in enumerate(arg_exprs):
+            try:
+                evaluated_args.append(self._eval(arg_node, env))
+                logging.debug(f"  _eval_list_form: Standard path, evaluated arg {i+1} ('{arg_node}') to: {evaluated_args[-1]}")
+            except Exception as e_arg_eval:
+                # Handle errors during argument evaluation
+                logging.exception(f"  _eval_list_form: Error evaluating argument {i+1} ('{arg_node}') for operator '{resolved_operator}': {e_arg_eval}")
+                if isinstance(e_arg_eval, SexpEvaluationError): raise
+                raise SexpEvaluationError(f"Error evaluating argument {i+1} for operator '{resolved_operator}': {arg_node}", original_expr_str, error_details=str(e_arg_eval)) from e_arg_eval
+
+        # Pass both evaluated_args AND original_arg_exprs to _apply_operator
+        # original_arg_exprs are needed for parameter name extraction by invokers/appliers
+        logging.debug(f"  _eval_list_form: Passing {len(evaluated_args)} evaluated arguments to _apply_operator.")
+        return self._apply_operator(resolved_operator, evaluated_args, arg_exprs, env, original_expr_str)
 
     def _apply_operator(
         self,
         resolved_op: Any, # Can be a name string, or a callable (e.g. future Closure)
-        unevaluated_arg_exprs: List[SexpNode],
+        evaluated_args: List[Any],  # Now receives already evaluated argument values
+        original_arg_exprs: List[SexpNode],  # Original unevaluated expressions (for key extraction)
         env: SexpEnvironment,
         original_expr_str: str
     ) -> Any:
         """
-        Applies a resolved operator to a list of unevaluated argument expressions.
+        Applies a resolved operator to a list of evaluated argument values.
         Dispatches to primitive appliers, task/tool invokers, or Python callables.
-        Handles argument evaluation according to the operator type.
+        Original argument expressions are passed for parameter name extraction.
         """
-        logging.debug(f"--- _apply_operator START: resolved_op={resolved_op} (Type: {type(resolved_op)}), unevaluated_arg_exprs={unevaluated_arg_exprs}, original_expr_str='{original_expr_str}'")
+        logging.debug(f"--- _apply_operator START: resolved_op={resolved_op} (Type: {type(resolved_op)}), evaluated_args={evaluated_args}, original_expr_str='{original_expr_str}'")
 
         # 1. Operator is a Name (String) - Could be Primitive, Task, or Tool
         if isinstance(resolved_op, str):
@@ -268,21 +280,21 @@ class SexpEvaluator:
             if op_name_str in self.PRIMITIVE_APPLIERS:
                 logging.debug(f"  _apply_operator: Dispatching to Primitive Applier: {op_name_str}")
                 applier_method = self.PRIMITIVE_APPLIERS[op_name_str]
-                # Primitives now receive unevaluated_arg_exprs and handle their own evaluation.
-                return applier_method(unevaluated_arg_exprs, env, original_expr_str)
+                # Primitives now receive evaluated_args and original_arg_exprs
+                return applier_method(evaluated_args, original_arg_exprs, env, original_expr_str)
 
             # 1b. Check Task System Atomic Templates
             template_def = self.task_system.find_template(op_name_str)
             if template_def and template_def.get("type") == "atomic":
                 logging.debug(f"  _apply_operator: Dispatching to Task System Invoker for: {op_name_str}")
-                # Invokers now receive unevaluated_arg_exprs.
-                return self._invoke_task_system(op_name_str, template_def, unevaluated_arg_exprs, env, original_expr_str)
+                # Invokers now receive evaluated_args and original_arg_exprs
+                return self._invoke_task_system(op_name_str, template_def, evaluated_args, original_arg_exprs, env, original_expr_str)
 
             # 1c. Check Handler Tools
             if op_name_str in self.handler.tool_executors:
                 logging.debug(f"  _apply_operator: Dispatching to Handler Tool Invoker for: {op_name_str}")
-                # Invokers now receive unevaluated_arg_exprs.
-                return self._invoke_handler_tool(op_name_str, unevaluated_arg_exprs, env, original_expr_str)
+                # Invokers now receive evaluated_args and original_arg_exprs
+                return self._invoke_handler_tool(op_name_str, evaluated_args, original_arg_exprs, env, original_expr_str)
             
             # 1d. Unrecognized Name
             logging.error(f"  _apply_operator: Unrecognized operator name: {op_name_str}")
@@ -290,19 +302,9 @@ class SexpEvaluator:
 
         # 2. Operator is a Python Callable (e.g., a function from the environment, or future Closure)
         elif callable(resolved_op):
-            logging.debug(f"  _apply_operator: Operator is a Python callable: {resolved_op}. Evaluating arguments now.")
-            evaluated_args = []
-            for i, arg_node in enumerate(unevaluated_arg_exprs):
-                try:
-                    evaluated_arg = self._eval(arg_node, env)
-                    evaluated_args.append(evaluated_arg)
-                    logging.debug(f"    Callable Arg {i+1}: {arg_node} -> {evaluated_arg}")
-                except Exception as e:
-                    logging.exception(f"  Error evaluating argument {i+1} ('{arg_node}') for callable {resolved_op}: {e}")
-                    if isinstance(e, SexpEvaluationError): raise
-                    raise SexpEvaluationError(f"Error evaluating argument {i+1} for callable {resolved_op}: {arg_node}", original_expr_str, error_details=str(e)) from e
-            
+            logging.debug(f"  _apply_operator: Operator is a Python callable: {resolved_op}. Using PRE-EVALUATED arguments.")
             try:
+                # Call directly with already evaluated args
                 result = resolved_op(*evaluated_args)
                 logging.debug(f"  _apply_operator: Callable {resolved_op} returned: {result}")
                 return result
@@ -591,61 +593,40 @@ class SexpEvaluator:
 
     def _apply_list_primitive(
         self,
-        unevaluated_arg_exprs: List[SexpNode],
+        evaluated_args: List[Any],
+        original_arg_exprs: List[SexpNode],
         env: SexpEnvironment,
         original_expr_str: str
     ) -> List[Any]:
-        """Applies the 'list' primitive. Evaluates arguments and returns them as a list."""
-        logging.debug(f"Apply 'list' primitive START: unevaluated_arg_exprs={unevaluated_arg_exprs}, original_expr_str='{original_expr_str}'")
-        evaluated_args = []
-        for i, arg_node in enumerate(unevaluated_arg_exprs):
-            try:
-                evaluated_arg = self._eval(arg_node, env) # Evaluate each argument
-                evaluated_args.append(evaluated_arg)
-                logging.debug(f"  'list' Arg {i+1}: {arg_node} -> {evaluated_arg}")
-            except Exception as e:
-                logging.exception(f"  Error evaluating argument {i+1} ('{arg_node}') for 'list': {e}")
-                if isinstance(e, SexpEvaluationError): raise
-                raise SexpEvaluationError(f"Error evaluating argument {i+1} for 'list': {arg_node}", original_expr_str, error_details=str(e)) from e
+        """Applies the 'list' primitive. Returns the pre-evaluated arguments as a list."""
+        logging.debug(f"Apply 'list' primitive START: evaluated_args={evaluated_args}, original_expr_str='{original_expr_str}'")
         logging.debug(f"Apply 'list' primitive END: -> {evaluated_args}")
         return evaluated_args
 
     def _apply_get_context_primitive(
         self,
-        unevaluated_arg_exprs: List[SexpNode],
+        evaluated_args: List[Any],
+        original_arg_exprs: List[SexpNode],
         env: SexpEnvironment,
         original_expr_str: str
     ) -> List[str]:
         """
         Applies the 'get_context' primitive.
-        Parses (key value_expr) pairs from unevaluated_arg_exprs, evaluates value_exprs,
+        Parses (key value_expr) pairs from original_arg_exprs, uses corresponding values from evaluated_args,
         constructs ContextGenerationInput, calls memory_system, and returns file paths.
         """
-        logging.debug(f"Apply 'get_context' primitive START: unevaluated_arg_exprs={unevaluated_arg_exprs}, original_expr_str='{original_expr_str}'")
+        logging.debug(f"Apply 'get_context' primitive START: evaluated_args={evaluated_args}, original_expr_str='{original_expr_str}'")
         
         context_params: Dict[str, Any] = {}
-        for arg_expr_pair in unevaluated_arg_exprs:
+        for i, arg_expr_pair in enumerate(original_arg_exprs):
             if not (isinstance(arg_expr_pair, list) and len(arg_expr_pair) == 2 and isinstance(arg_expr_pair[0], Symbol)):
                 raise SexpEvaluationError(f"Invalid argument format for 'get_context'. Expected (key_symbol value_expression), got: {arg_expr_pair}", original_expr_str)
             
             key_symbol = arg_expr_pair[0]
-            value_expr_node = arg_expr_pair[1]
             key_str = key_symbol.value()
-            evaluated_value: Any
-
-            try:
-                if key_str == "matching_strategy" and isinstance(value_expr_node, Symbol):
-                    # For matching_strategy, if the value_expr_node is a Symbol, use its value directly.
-                    evaluated_value = value_expr_node.value()
-                    logging.debug(f"  _apply_get_context: Using symbol value for key '{key_str}': {value_expr_node} -> {evaluated_value}")
-                else:
-                    # Otherwise, evaluate the value_expr_node.
-                    evaluated_value = self._eval(value_expr_node, env)
-                    logging.debug(f"  _apply_get_context: Evaluated value for key '{key_str}': {value_expr_node} -> {evaluated_value}")
-            except Exception as e:
-                logging.exception(f"  Error processing value expression '{value_expr_node}' for key '{key_str}' in 'get_context': {e}")
-                if isinstance(e, SexpEvaluationError): raise
-                raise SexpEvaluationError(f"Error processing value for '{key_str}' in 'get_context': {value_expr_node}", original_expr_str, error_details=str(e)) from e
+            evaluated_value = evaluated_args[i]  # Get the pre-evaluated value
+            
+            logging.debug(f"  _apply_get_context: Using pre-evaluated value for key '{key_str}': {evaluated_value}")
 
             # Special validation for matching_strategy
             if key_str == "matching_strategy":
@@ -698,32 +679,28 @@ class SexpEvaluator:
 
     def _invoke_task_system(
         self,
-        task_name: str, # Changed from target_name_or_callable
-        template_def: Dict[str, Any], # Added template_def
-        unevaluated_arg_exprs: List[SexpNode],
+        task_name: str,
+        template_def: Dict[str, Any],
+        evaluated_args: List[Any],  # Now receives already evaluated argument values
+        original_arg_exprs: List[SexpNode],  # Original unevaluated expressions (for key extraction)
         env: SexpEnvironment,
         original_expr_str: str
     ) -> TaskResult:
-        logging.debug(f"--- _invoke_task_system START: task_name='{task_name}', unevaluated_arg_exprs={unevaluated_arg_exprs}")
+        logging.debug(f"--- _invoke_task_system START: task_name='{task_name}', evaluated_args={evaluated_args}")
         
         named_params: Dict[str, Any] = {}
         file_paths: Optional[List[str]] = None
         context_settings: Optional[Dict[str, Any]] = None
 
-        for arg_expr_pair in unevaluated_arg_exprs: # Iterate unevaluated argument expressions
+        for i, arg_expr_pair in enumerate(original_arg_exprs):
             if not (isinstance(arg_expr_pair, list) and len(arg_expr_pair) == 2 and isinstance(arg_expr_pair[0], Symbol)):
                 raise SexpEvaluationError(f"Invalid argument format for task '{task_name}'. Expected (key_symbol value_expression), got: {arg_expr_pair}", original_expr_str)
             
             key_symbol = arg_expr_pair[0]
-            value_expr_node = arg_expr_pair[1] # This is the unevaluated value expression
             key_str = key_symbol.value()
-
-            try:
-                evaluated_value = self._eval(value_expr_node, env) # Evaluate the value expression
-            except Exception as e:
-                logging.exception(f"  Error evaluating value expression '{value_expr_node}' for key '{key_str}' in task '{task_name}': {e}")
-                if isinstance(e, SexpEvaluationError): raise
-                raise SexpEvaluationError(f"Error evaluating value for '{key_str}' in task '{task_name}': {value_expr_node}", original_expr_str, error_details=str(e)) from e
+            evaluated_value = evaluated_args[i]  # Get the pre-evaluated value
+            
+            logging.debug(f"  _invoke_task_system: Using pre-evaluated value for key '{key_str}': {evaluated_value}")
 
             if key_str == "files":
                 if not (isinstance(evaluated_value, list) and all(isinstance(item, str) for item in evaluated_value)):
@@ -784,31 +761,26 @@ class SexpEvaluator:
 
     def _invoke_handler_tool(
         self,
-        tool_name: str, # Changed from target_name_or_callable
-        unevaluated_arg_exprs: List[SexpNode],
+        tool_name: str,
+        evaluated_args: List[Any],  # Now receives already evaluated argument values
+        original_arg_exprs: List[SexpNode],  # Original unevaluated expressions (for key extraction)
         env: SexpEnvironment,
         original_expr_str: str
     ) -> TaskResult:
-        logging.debug(f"--- _invoke_handler_tool START: tool_name='{tool_name}', unevaluated_arg_exprs={unevaluated_arg_exprs}")
+        logging.debug(f"--- _invoke_handler_tool START: tool_name='{tool_name}', evaluated_args={evaluated_args}")
 
         named_params: Dict[str, Any] = {}
         # Handler tools receive all arguments as named_params.
 
-        for arg_expr_pair in unevaluated_arg_exprs: # Iterate unevaluated argument expressions
+        for i, arg_expr_pair in enumerate(original_arg_exprs):
             if not (isinstance(arg_expr_pair, list) and len(arg_expr_pair) == 2 and isinstance(arg_expr_pair[0], Symbol)):
                 raise SexpEvaluationError(f"Invalid argument format for tool '{tool_name}'. Expected (key_symbol value_expression), got: {arg_expr_pair}", original_expr_str)
             
             key_symbol = arg_expr_pair[0]
-            value_expr_node = arg_expr_pair[1] # This is the unevaluated value expression
             key_str = key_symbol.value()
-
-            try:
-                evaluated_value = self._eval(value_expr_node, env) # Evaluate the value expression
-            except Exception as e:
-                logging.exception(f"  Error evaluating value expression '{value_expr_node}' for key '{key_str}' in tool '{tool_name}': {e}")
-                if isinstance(e, SexpEvaluationError): raise
-                raise SexpEvaluationError(f"Error evaluating value for '{key_str}' in tool '{tool_name}': {value_expr_node}", original_expr_str, error_details=str(e)) from e
+            evaluated_value = evaluated_args[i]  # Get the pre-evaluated value
             
+            logging.debug(f"  _invoke_handler_tool: Using pre-evaluated value for key '{key_str}': {evaluated_value}")
             named_params[key_str] = evaluated_value
         
         logging.debug(f"  Invoking direct tool '{tool_name}' with named_params: {named_params}")

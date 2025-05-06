@@ -1097,14 +1097,17 @@ def test_eval_special_form_loop_error_body_eval_fails(evaluator, mock_parser, mo
 
         assert result == "apply_result"
         
-        # Check calls to _eval for operator resolution
-        mock_internal_eval.assert_called_once_with(op_expr, env)
+        # Check calls to _eval for operator resolution and argument evaluation
+        assert mock_internal_eval.call_count == 3  # Called for op_expr, arg1_expr, and arg2_expr
+        mock_internal_eval.assert_any_call(op_expr, env)
+        mock_internal_eval.assert_any_call(arg1_expr, env)
+        mock_internal_eval.assert_any_call(arg2_expr, env)
         
-        # Check call to _apply_operator
-        # _apply_operator now receives unevaluated_arg_exprs
+        # Check call to _apply_operator with evaluated args
         mock_apply_op.assert_called_once_with(
-            "resolved_func_name", # resolved_operator
-            [arg1_expr, arg2_expr], # unevaluated_arg_exprs
+            "resolved_func_name",  # resolved_operator
+            [10, 20],  # evaluated_args
+            [arg1_expr, arg2_expr],  # original_arg_exprs
             env,
             original_expr_str
         )
@@ -1112,36 +1115,39 @@ def test_eval_special_form_loop_error_body_eval_fails(evaluator, mock_parser, mo
     def test_apply_operator_dispatches_primitive(self, evaluator, mocker):
         env = SexpEnvironment()
         original_expr_str = "(list 1 2)"
-        unevaluated_arg_exprs = [1, 2] # For 'list', these are the unevaluated expressions
+        evaluated_args = [1, 2]  # Pre-evaluated argument values
+        original_arg_exprs = [1, 2]  # Original expressions (same as evaluated in this simple case)
 
         mock_list_applier = mocker.patch.object(evaluator, '_apply_list_primitive', return_value="list_applied")
         evaluator.PRIMITIVE_APPLIERS['list'] = mock_list_applier # Ensure dispatcher uses mock
 
-        result = evaluator._apply_operator("list", unevaluated_arg_exprs, env, original_expr_str)
+        result = evaluator._apply_operator("list", evaluated_args, original_arg_exprs, env, original_expr_str)
         
         assert result == "list_applied"
-        # Primitive applier receives unevaluated args
-        mock_list_applier.assert_called_once_with(unevaluated_arg_exprs, env, original_expr_str)
+        # Primitive applier receives evaluated_args and original_arg_exprs
+        mock_list_applier.assert_called_once_with(evaluated_args, original_arg_exprs, env, original_expr_str)
         evaluator.PRIMITIVE_APPLIERS['list'] = evaluator._apply_list_primitive # Restore
 
     def test_apply_operator_dispatches_task(self, evaluator, mock_task_system, mocker):
         env = SexpEnvironment()
         task_name = "my_atomic_task"
         original_expr_str = f"({task_name} (p 1))"
-        unevaluated_arg_exprs = [[Symbol("p"), 1]] # Unevaluated (key value_expr) pair
+        evaluated_args = [1]  # Pre-evaluated argument values
+        original_arg_exprs = [[Symbol("p"), 1]]  # Original unevaluated expressions
 
         mock_task_system.find_template.return_value = {"name": task_name, "type": "atomic"}
         mock_invoke_task = mocker.patch.object(evaluator, '_invoke_task_system', return_value=TaskResult(status="COMPLETE", content="task_done"))
 
-        result = evaluator._apply_operator(task_name, unevaluated_arg_exprs, env, original_expr_str)
+        result = evaluator._apply_operator(task_name, evaluated_args, original_arg_exprs, env, original_expr_str)
 
         assert result.content == "task_done"
         mock_task_system.find_template.assert_called_once_with(task_name)
-        # Invoker receives unevaluated args
+        # Invoker receives evaluated_args and original_arg_exprs
         mock_invoke_task.assert_called_once_with(
             task_name, 
             {"name": task_name, "type": "atomic"}, 
-            unevaluated_arg_exprs, 
+            evaluated_args,
+            original_arg_exprs, 
             env, 
             original_expr_str
         )
@@ -1150,46 +1156,35 @@ def test_eval_special_form_loop_error_body_eval_fails(evaluator, mock_parser, mo
         env = SexpEnvironment()
         tool_name = "my_direct_tool"
         original_expr_str = f"({tool_name} (arg 'foo'))"
-        unevaluated_arg_exprs = [[Symbol("arg"), Symbol("'foo")]] # Unevaluated (key value_expr) pair
+        evaluated_args = ["foo_value"]  # Pre-evaluated argument values
+        original_arg_exprs = [[Symbol("arg"), Symbol("'foo")]]  # Original unevaluated expressions
 
         mock_handler.tool_executors = {tool_name: MagicMock()} # Tool must exist
         mock_invoke_tool = mocker.patch.object(evaluator, '_invoke_handler_tool', return_value=TaskResult(status="COMPLETE", content="tool_done"))
 
-        result = evaluator._apply_operator(tool_name, unevaluated_arg_exprs, env, original_expr_str)
+        result = evaluator._apply_operator(tool_name, evaluated_args, original_arg_exprs, env, original_expr_str)
         
         assert result.content == "tool_done"
-        # Invoker receives unevaluated args
-        mock_invoke_tool.assert_called_once_with(tool_name, unevaluated_arg_exprs, env, original_expr_str)
+        # Invoker receives evaluated_args and original_arg_exprs
+        mock_invoke_tool.assert_called_once_with(tool_name, evaluated_args, original_arg_exprs, env, original_expr_str)
 
     def test_apply_operator_calls_python_callable(self, evaluator, mocker):
         env = SexpEnvironment()
         original_expr_str = "(py_func 10 (add x 5))"
-        # Unevaluated args for the callable
-        unevaluated_arg_exprs = [10, [Symbol("add"), Symbol("x"), 5]] 
+        # Pre-evaluated argument values
+        evaluated_args = [10, 7]  # These are already evaluated
+        # Original unevaluated expressions (not used for callable)
+        original_arg_exprs = [10, [Symbol("add"), Symbol("x"), 5]]
         
-        # Mock _eval for argument evaluation phase within _apply_operator for callables
-        env.define("x", 2) # For (add x 5)
-        # This mock_eval will be called by _apply_operator when it evaluates args for the callable
-        def eval_side_effect_for_callable_args(node, e_env):
-            if node == 10: return 10
-            if node == [Symbol("add"), Symbol("x"), 5]:
-                # Simulate evaluation of (add x 5)
-                x_val = e_env.lookup("x") # Should be 2
-                return x_val + 5 # Should be 7
-            # Fallback to actual _eval for other cases if any (should not happen here for this specific test)
-            # For robustness, you might call the original _eval if it's complex
-            # return evaluator._eval(node, e_env) 
-            raise ValueError(f"Unexpected node for _eval mock in callable arg evaluation: {node}")
-        
-        mocker.patch.object(evaluator, '_eval', side_effect=eval_side_effect_for_callable_args)
+        # No need to mock _eval since it's not called by _apply_operator for callables anymore
         
         mock_callable = MagicMock(return_value="callable_result")
         
-        result = evaluator._apply_operator(mock_callable, unevaluated_arg_exprs, env, original_expr_str)
+        result = evaluator._apply_operator(mock_callable, evaluated_args, original_arg_exprs, env, original_expr_str)
 
         assert result == "callable_result"
         # Assert callable was called with *evaluated* args
-        mock_callable.assert_called_once_with(10, 7) 
+        mock_callable.assert_called_once_with(10, 7)
 
     def test_apply_operator_error_unrecognized_name(self, evaluator):
         with pytest.raises(SexpEvaluationError, match="Unrecognized operator name: unknown_op"):
@@ -1306,31 +1301,26 @@ def test_eval_special_form_loop_error_body_eval_fails(evaluator, mock_parser, mo
 
 
     # --- Tests for Invocation Helpers (Example: _invoke_task_system) ---
-    def test_invoke_task_system_parses_and_evals_args_and_calls(self, evaluator, mock_task_system, mocker):
+    def test_invoke_task_system_parses_args_and_calls_task_system(self, evaluator, mock_task_system, mocker):
         env = SexpEnvironment()
         task_name = "my_task"
         template_def = {"name": task_name, "type": "atomic"}
         original_expr_str = f"({task_name} (param1 val1_expr) (files (list_files_func)))"
         
-        # Unevaluated arg expressions for the task
-        unevaluated_arg_exprs = [
+        # Pre-evaluated argument values
+        evaluated_args = ["actual_val1", ["/a.txt", "/b.txt"]]
+        
+        # Original unevaluated arg expressions for the task (for key extraction)
+        original_arg_exprs = [
             [Symbol("param1"), Symbol("val1_expr_node")], 
             [Symbol("files"), [Symbol("list_files_func")]]
         ]
         
-        # Mock _eval for value expression evaluation within _invoke_task_system
-        # This mock will be called by _invoke_task_system.
-        # env.define("val1_expr_node_resolved_to_this", "actual_val1") # If val1_expr_node is a var
-        def eval_side_effect_for_task_args(node, e_env):
-            if node == Symbol("val1_expr_node"): return "actual_val1" # Simulate eval of val1_expr_node
-            if node == [Symbol("list_files_func")]: return ["/a.txt", "/b.txt"] # Simulate eval of (list_files_func)
-            raise ValueError(f"Unexpected node for _eval mock in task invocation: {node}")
-
-        mocker.patch.object(evaluator, '_eval', side_effect=eval_side_effect_for_task_args)
+        # No need to mock _eval since it's not called by _invoke_task_system anymore
         
         mock_task_system.execute_atomic_template.return_value = TaskResult(status="COMPLETE", content="task_res")
         
-        result = evaluator._invoke_task_system(task_name, template_def, unevaluated_arg_exprs, env, original_expr_str)
+        result = evaluator._invoke_task_system(task_name, template_def, evaluated_args, original_arg_exprs, env, original_expr_str)
 
         assert result.content == "task_res"
         
@@ -1345,28 +1335,25 @@ def test_eval_special_form_loop_error_body_eval_fails(evaluator, mock_parser, mo
         assert actual_request_arg.file_paths == ["/a.txt", "/b.txt"]
         assert actual_request_arg.context_management is None
 
-    def test_invoke_handler_tool_parses_and_evals_args_and_calls(self, evaluator, mock_handler, mocker):
+    def test_invoke_handler_tool_parses_args_and_calls_handler(self, evaluator, mock_handler, mocker):
         env = SexpEnvironment()
         tool_name = "my_tool"
         original_expr_str = f"({tool_name} (arg1 123) (arg2 some_var))"
-        unevaluated_arg_exprs = [
-            [Symbol("arg1"), 123], # 123 is the unevaluated value expression
-            [Symbol("arg2"), Symbol("some_var")] # Symbol("some_var") is unevaluated
-        ]
-        env.define("some_var", "var_value")
-
-        # Mock _eval for value expression evaluation within _invoke_handler_tool
-        # This mock will be called by _invoke_handler_tool.
-        def eval_side_effect_for_tool_args(node, e_env):
-            if node == 123: return 123 # Literals evaluate to themselves
-            if node == Symbol("some_var"): return e_env.lookup("some_var") # Lookup
-            raise ValueError(f"Unexpected node for _eval mock in tool invocation: {node}")
         
-        mocker.patch.object(evaluator, '_eval', side_effect=eval_side_effect_for_tool_args)
+        # Pre-evaluated argument values
+        evaluated_args = [123, "var_value"]
+        
+        # Original unevaluated arg expressions (for key extraction)
+        original_arg_exprs = [
+            [Symbol("arg1"), 123],
+            [Symbol("arg2"), Symbol("some_var")]
+        ]
+        
+        # No need to mock _eval since it's not called by _invoke_handler_tool anymore
         
         mock_handler._execute_tool.return_value = TaskResult(status="COMPLETE", content="tool_res")
         
-        result = evaluator._invoke_handler_tool(tool_name, unevaluated_arg_exprs, env, original_expr_str)
+        result = evaluator._invoke_handler_tool(tool_name, evaluated_args, original_arg_exprs, env, original_expr_str)
 
         assert result.content == "tool_res"
         mock_handler._execute_tool.assert_called_once_with(tool_name, {"arg1": 123, "arg2": "var_value"})
@@ -1599,19 +1586,15 @@ def test_eval_special_form_loop_error_body_eval_fails(evaluator, mock_parser, mo
 
     # --- Tests for Primitive Appliers (Example: _apply_list_primitive) ---
     def test_apply_list_primitive_returns_evaluated_args(self, evaluator, mocker):
-        # This test now checks that _apply_list_primitive correctly calls _eval for its args
+        # This test checks that _apply_list_primitive correctly returns the pre-evaluated args
         env = SexpEnvironment()
         original_expr_str = "(list 1 (add 1 1))"
-        unevaluated_arg_exprs = [1, [Symbol("add"), 1, 1]]
+        evaluated_args = [1, 2]  # These are already evaluated
+        original_arg_exprs = [1, [Symbol("add"), 1, 1]]  # Original expressions (not used in this primitive)
 
-        # Mock _eval, which _apply_list_primitive will call
-        def eval_side_effect(node, e):
-            if node == 1: return 1
-            if node == [Symbol("add"), 1, 1]: return 2 # Simulate (add 1 1) -> 2
-            raise ValueError(f"Unexpected node for _eval in list primitive test: {node}")
-        mocker.patch.object(evaluator, '_eval', side_effect=eval_side_effect)
-
-        result = evaluator._apply_list_primitive(unevaluated_arg_exprs, env, original_expr_str)
+        # No need to mock _eval since it's not called by _apply_list_primitive anymore
+        
+        result = evaluator._apply_list_primitive(evaluated_args, original_arg_exprs, env, original_expr_str)
         assert result == [1, 2]
 
 
