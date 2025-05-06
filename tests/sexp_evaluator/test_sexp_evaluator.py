@@ -1116,7 +1116,6 @@ class TestSexpEvaluatorInternals:
         # Restore original handler if necessary for other tests, or use fresh evaluator
         evaluator.SPECIAL_FORM_HANDLERS['if'] = evaluator._eval_if_form
 
-
     def test_eval_list_form_standard_path_evaluates_op_and_args_and_applies(self, evaluator, mocker):
         """Test _eval_list_form's standard path: evaluates operator, evaluates args, then applies."""
         env = SexpEnvironment()
