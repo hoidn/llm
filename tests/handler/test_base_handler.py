@@ -351,7 +351,8 @@ def test_base_handler_execute_llm_call_success(base_handler_instance):
         system_prompt_override=None,
         tools_override=None, # No tools passed in this case
         output_type_override=None,
-        active_tools=None # Expecting None when active_definitions is empty
+        active_tools=None, # Expecting None when active_definitions is empty
+        model_override=None # Add model_override parameter
     )
 
     # Assert history update
