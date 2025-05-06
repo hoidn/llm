@@ -249,8 +249,8 @@ def test_application_init_wiring(app_components):
     app_components['mock_handler_instance'].register_tool.assert_called()
     system_context_call = next((c for c in app_components['mock_handler_instance'].register_tool.call_args_list if c.args[0].get('name') == 'system:get_context'), None)
     assert system_context_call is not None, "system:get_context tool was not registered"
-    # Assert the executor is the instance method from the mock instance
-    assert system_context_call.args[1] == app_components['mock_sys_exec_instance'].execute_get_context
+    # Assert the executor is the instance method from the real instance
+    assert system_context_call.args[1] == app.system_executors.execute_get_context
 
     # Assert agent initialization call
     app_components['mock_handler_instance'].get_tools_for_agent.assert_called_once()
@@ -270,8 +270,8 @@ def test_application_init_wiring(app_components):
     shell_command_call = next((c for c in app_components['mock_handler_instance'].register_tool.call_args_list if c.args[0].get('name') == 'system:execute_shell_command'), None)
     assert shell_command_call is not None, "system:execute_shell_command tool was not registered"
     assert callable(shell_command_call.args[1])
-    # Assert the executor is the instance method from the mock instance
-    assert shell_command_call.args[1] == app_components['mock_sys_exec_instance'].execute_shell_command
+    # Assert the executor is the instance method from the real instance
+    assert shell_command_call.args[1] == app.system_executors.execute_shell_command
 
 
 def test_index_repository_success(app_components, tmp_path):
@@ -389,8 +389,7 @@ def test_handle_task_command_dispatcher_error(app_components):
         assert result.get("notes", {}).get("error", {}).get("reason") == "unexpected_error"
 
 
-@patch('src.main.Application._load_mcp_config')
-def test_application_init_with_aider(mock_load_config, app_components):
+def test_application_init_with_aider(app_components):
     """Verify AiderBridge is initialized and tools registered when available."""
     # Arrange (Mocks are already configured in the fixture)
     # Access the mocked class methods
@@ -405,15 +404,20 @@ def test_application_init_with_aider(mock_load_config, app_components):
         "env": {"TEST_VAR": "true"}
     }
     
-    # Configure the mocked _load_mcp_config to set the expected config
-    # The side_effect function needs to accept the Application instance as first parameter
-    def load_config_side_effect(self_instance):
-        self_instance.mcp_server_configs = {"aider-mcp-server": expected_aider_config}
-    
-    mock_load_config.side_effect = load_config_side_effect
+    # Prepare the JSON structure expected by _load_mcp_config
+    mock_config_data = {"mcpServers": {"aider-mcp-server": expected_aider_config}}
+    mock_json_string = json.dumps(mock_config_data)
 
-    # Use patch.dict to set the environment variable for the duration of the test
-    with patch.dict(os.environ, {'AIDER_ENABLED': 'true'}, clear=False):
+    # Use patch.dict for environment variable and patch file operations
+    with patch.dict(os.environ, {'AIDER_ENABLED': 'true'}, clear=False), \
+         patch('src.main.os.path.exists') as mock_exists, \
+         patch('src.main.open', mock_open(read_data=mock_json_string)), \
+         patch('src.main.json.load') as mock_json_load:
+        
+        # Configure mocks for file loading
+        mock_exists.return_value = True  # Simulate .mcp.json exists
+        mock_json_load.return_value = mock_config_data  # Simulate json.load returning our data
+        
         # Act
         app = Application(config={"aider": {"enabled": True}})
 
