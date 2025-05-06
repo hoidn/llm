@@ -97,13 +97,16 @@ class AtomicTaskExecutor:
         try:
             substituted_text = PARAM_REGEX.sub(replace_match, text)
             if missing_params:
+                # This specific ParameterMismatchError for missing keys is fine
                 raise ParameterMismatchError(f"Missing parameter(s) or access error for substitution: {', '.join(missing_params)}")
             return substituted_text
+        except ParameterMismatchError:  # Explicitly catch the one we raise above
+            raise  # Re-raise it if it was about missing params
         except Exception as e:
             # Catch potential errors during string conversion or regex
             logging.exception(f"Unexpected error during parameter substitution: {e}")
-            # Wrap unexpected errors
-            raise ParameterMismatchError(f"Unexpected substitution error: {e}")
+            # Re-raise the original exception to get the full traceback
+            raise e  # Re-raise the original exception to get the full traceback
 
 
     def execute_body(
