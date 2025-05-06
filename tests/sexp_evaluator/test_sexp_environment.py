@@ -80,6 +80,14 @@ def test_lookup_grandparent_variable():
     assert child_env.lookup("pvar") == "parent"
     assert child_env.lookup("cvar") == [1, 2]
 
+    # Test deeper nesting
+    great_grandparent_env = SexpEnvironment()
+    great_grandparent_env.define("ggvar", "level3")
+    grandparent_env._parent = great_grandparent_env # Manually link for this test extension
+
+    assert child_env.lookup("ggvar") == "level3"
+
+
 def test_lookup_shadowing():
     """Test that local variables shadow parent variables."""
     parent_env = SexpEnvironment()
@@ -91,6 +99,17 @@ def test_lookup_shadowing():
 
     assert child_env.lookup("x") == 20 # Should get child's value
     assert child_env.lookup("y") == "parent" # Should get parent's value
+
+    # Test shadowing with deeper nesting (simulating lambda call frame shadowing definition env)
+    inner_child_env = child_env.extend({"x": 30, "y": "inner_child"}) # x shadows child, y shadows parent
+    inner_child_env.define("z_local", "local_to_inner")
+
+    assert inner_child_env.lookup("x") == 30 # Innermost x
+    assert inner_child_env.lookup("y") == "inner_child" # Innermost y
+    assert inner_child_env.lookup("z_local") == "local_to_inner"
+    # Check that parent_env is not affected by child's shadowing for its own lookups
+    assert parent_env.lookup("x") == 10
+
 
 def test_lookup_not_found_local():
     """Test looking up a non-existent variable in a top-level scope."""
@@ -119,6 +138,12 @@ def test_extend_creates_child():
 
     assert isinstance(child_env, SexpEnvironment)
     assert child_env._parent is parent_env
+    # Verify that the parent of the child_env is indeed the parent_env instance
+    # This is crucial for lexical scoping in closures.
+    # Accessing _parent directly for test verification is acceptable here.
+    assert child_env._parent is parent_env, \
+        f"Child environment's parent ID {id(child_env._parent)} does not match parent_env ID {id(parent_env)}"
+
 
 def test_extend_adds_bindings():
     """Test that extend adds the specified bindings to the child."""
