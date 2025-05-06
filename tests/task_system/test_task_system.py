@@ -430,10 +430,11 @@ def test_execute_generate_plan_task(mock_execute_body, mock_find_template, task_
     # Assert
     mock_find_template.assert_called_once_with("user:generate-plan")
     mock_execute_body.assert_called_once()
-    call_args, _ = mock_execute_body.call_args
-    assert call_args[0]['name'] == "user:generate-plan" # Check template passed
-    assert call_args[1] == request.inputs # Check params passed
-    assert call_args[2] == mock_handler # Check handler passed
+    # Access kwargs instead of positional args
+    call_kwargs = mock_execute_body.call_args.kwargs
+    assert call_kwargs['atomic_task_def']['name'] == "user:generate-plan" # Check template passed
+    assert call_kwargs['params'] == request.inputs # Check params passed
+    assert call_kwargs['handler'] == mock_handler # Check handler passed
 
     assert result.status == "COMPLETE"
     assert isinstance(result.parsedContent, DevelopmentPlan)
@@ -481,10 +482,11 @@ def test_execute_analyze_aider_result_task(mock_execute_body, mock_find_template
     # Assert
     mock_find_template.assert_called_once_with("user:analyze-aider-result")
     mock_execute_body.assert_called_once()
-    call_args, _ = mock_execute_body.call_args
-    assert call_args[0]['name'] == "user:analyze-aider-result"
-    assert call_args[1] == request.inputs
-    assert call_args[2] == mock_handler
+    # Access kwargs instead of positional args
+    call_kwargs = mock_execute_body.call_args.kwargs
+    assert call_kwargs['atomic_task_def']['name'] == "user:analyze-aider-result" # Check template passed
+    assert call_kwargs['params'] == request.inputs # Check params passed
+    assert call_kwargs['handler'] == mock_handler # Check handler passed
 
     assert result.status == "COMPLETE"
     assert isinstance(result.parsedContent, FeedbackResult)
