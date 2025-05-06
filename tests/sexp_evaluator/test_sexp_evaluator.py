@@ -572,7 +572,7 @@ class TestSexpEvaluatorDefatom:
             "type": "atomic",
             "subtype": "standard", # Default
             "description": f"Dynamically defined task: {task_name}", # Default
-            "parameters": {"p1": {"description": "Parameter p1"}},
+            "params": {"p1": {"description": "Parameter p1"}},
             "instructions": "inst {{p1}}",
             "model": None # Ensure not present if not specified
         }
@@ -618,7 +618,7 @@ class TestSexpEvaluatorDefatom:
             "type": "atomic",
             "subtype": "subtask",
             "description": "Desc",
-            "parameters": {
+            "params": {
                 "a": {"description": "Parameter a"},
                 "b": {"description": "Parameter b"}
             },
@@ -663,7 +663,7 @@ class TestSexpEvaluatorDefatom:
         expected_template_dict = {
             "name": def_task_name, "type": "atomic", "subtype": "standard",
             "description": f"Dynamically defined task: {def_task_name}",
-            "parameters": {"x": {"description": "Parameter x"}},
+            "params": {"x": {"description": "Parameter x"}},
             "instructions": "Run {{x}}", "model": None
         }
         if "model" in expected_template_dict: del expected_template_dict["model"]
