@@ -91,6 +91,12 @@ def test_module_structure(system_executor_instance):
     assert len(params) == 1
     assert params[0] == "params"
 
+    # Check execute_shell_command signature
+    sig = signature(system_executor_instance.execute_shell_command)
+    params = list(sig.parameters.keys())
+    assert len(params) == 1
+    assert params[0] == "params"
+
 # --- Tests for execute_get_context ---
 
 def test_execute_get_context_success(system_executor_instance):
@@ -434,10 +440,12 @@ def test_execute_shell_command_success(system_executor_instance):
     assert isinstance(result, dict)
     assert result["status"] == "COMPLETE"
     assert result["content"] == "Command executed successfully"
+    assert "notes" in result
     assert result["notes"]["success"] is True
     assert result["notes"]["exit_code"] == 0
     assert result["notes"]["stdout"] == "Command executed successfully"
     assert result["notes"]["stderr"] == ""
+    assert "error" not in result["notes"] # No error object on success
 
     # Verify command_executor was called with correct parameters
     system_executor_instance.command_executor.execute_command_safely.assert_called_once_with(
@@ -446,17 +454,17 @@ def test_execute_shell_command_success(system_executor_instance):
         timeout=None
     )
 
-def test_execute_shell_command_failure(system_executor_instance):
-    """Test handling of failed shell command execution."""
+def test_execute_shell_command_failure_exit_code(system_executor_instance):
+    """Test handling of failed shell command execution (non-zero exit code)."""
     # Setup
     system_executor_instance.command_executor.execute_command_safely.return_value = {
         'success': False,
         'exit_code': 1,
         'stdout': '',
         'stderr': 'Command failed: permission denied',
-        'error': 'Permission denied'
+        'error': 'Permission denied' # command_executor might add this key
     }
-    params = {"command": "sudo something"}
+    params = {"command": "cat /root/secret"}
 
     # Act
     result = system_executor_instance.execute_shell_command(params)
@@ -464,11 +472,67 @@ def test_execute_shell_command_failure(system_executor_instance):
     # Assert
     assert isinstance(result, dict)
     assert result["status"] == "FAILED"
-    assert "Command failed: permission denied" in result["content"]
+    assert "Command failed: permission denied" in result["content"] # Content should be stderr or error
+    assert "notes" in result
     assert result["notes"]["success"] is False
     assert result["notes"]["exit_code"] == 1
+    assert result["notes"]["stdout"] == ""
     assert result["notes"]["stderr"] == "Command failed: permission denied"
+    assert "error" in result["notes"]
+    assert isinstance(result["notes"]["error"], dict) # Should be dumped TaskFailureError
+    assert result["notes"]["error"]["type"] == "TASK_FAILURE"
     assert result["notes"]["error"]["reason"] == "tool_execution_error"
+    assert result["notes"]["error"]["message"] == "Command failed: permission denied"
+
+def test_execute_shell_command_timeout(system_executor_instance):
+    """Test handling of command timeout."""
+    # Setup
+    system_executor_instance.command_executor.execute_command_safely.return_value = {
+        'success': False,
+        'exit_code': None, # Typically None on timeout
+        'stdout': 'Partial output...',
+        'stderr': '',
+        'error': 'Command timed out after 5 seconds'
+    }
+    params = {"command": "sleep 10", "timeout": 5}
+
+    # Act
+    result = system_executor_instance.execute_shell_command(params)
+
+    # Assert
+    assert result["status"] == "FAILED"
+    assert "Command timed out" in result["content"]
+    assert result["notes"]["success"] is False
+    assert result["notes"]["exit_code"] is None
+    assert result["notes"]["stdout"] == "Partial output..."
+    assert result["notes"]["stderr"] == ""
+    assert "error" in result["notes"]
+    assert result["notes"]["error"]["reason"] == "execution_timeout"
+    assert "Command timed out" in result["notes"]["error"]["message"]
+
+def test_execute_shell_command_unsafe(system_executor_instance):
+    """Test handling of unsafe command detected by command_executor."""
+    # Setup
+    system_executor_instance.command_executor.execute_command_safely.return_value = {
+        'success': False,
+        'exit_code': None,
+        'stdout': '',
+        'stderr': 'Unsafe command pattern detected: rm -rf /',
+        'error': 'Unsafe command pattern detected: rm -rf /'
+    }
+    params = {"command": "rm -rf /"}
+
+    # Act
+    result = system_executor_instance.execute_shell_command(params)
+
+    # Assert
+    assert result["status"] == "FAILED"
+    assert "Unsafe command pattern detected" in result["content"]
+    assert result["notes"]["success"] is False
+    assert result["notes"]["exit_code"] is None
+    assert "error" in result["notes"]
+    assert result["notes"]["error"]["reason"] == "input_validation_failure" # Specific reason for unsafe
+    assert "Unsafe command pattern detected" in result["notes"]["error"]["message"]
 
 def test_execute_shell_command_missing_command(system_executor_instance):
     """Test validation failure when command parameter is missing."""
@@ -481,8 +545,37 @@ def test_execute_shell_command_missing_command(system_executor_instance):
     # Assert
     assert result["status"] == "FAILED"
     assert "Missing or invalid required parameter: 'command'" in result["content"]
+    assert "error" in result["notes"]
     assert result["notes"]["error"]["reason"] == "input_validation_failure"
     system_executor_instance.command_executor.execute_command_safely.assert_not_called()
+
+def test_execute_shell_command_invalid_cwd_type(system_executor_instance):
+    """Test validation failure when cwd parameter has wrong type."""
+    params = {"command": "echo test", "cwd": 123} # cwd should be string
+    result = system_executor_instance.execute_shell_command(params)
+    assert result["status"] == "FAILED"
+    assert "Invalid parameter type: 'cwd'" in result["content"]
+    assert result["notes"]["error"]["reason"] == "input_validation_failure"
+    system_executor_instance.command_executor.execute_command_safely.assert_not_called()
+
+def test_execute_shell_command_invalid_timeout_type(system_executor_instance):
+    """Test validation failure when timeout parameter has wrong type."""
+    params = {"command": "echo test", "timeout": "fast"} # timeout should be int
+    result = system_executor_instance.execute_shell_command(params)
+    assert result["status"] == "FAILED"
+    assert "Invalid parameter type or value: 'timeout'" in result["content"]
+    assert result["notes"]["error"]["reason"] == "input_validation_failure"
+    system_executor_instance.command_executor.execute_command_safely.assert_not_called()
+
+def test_execute_shell_command_invalid_timeout_value(system_executor_instance):
+    """Test validation failure when timeout parameter is not positive."""
+    params = {"command": "echo test", "timeout": 0} # timeout should be positive
+    result = system_executor_instance.execute_shell_command(params)
+    assert result["status"] == "FAILED"
+    assert "Invalid parameter type or value: 'timeout'" in result["content"]
+    assert result["notes"]["error"]["reason"] == "input_validation_failure"
+    system_executor_instance.command_executor.execute_command_safely.assert_not_called()
+
 
 def test_execute_shell_command_with_optional_params(system_executor_instance):
     """Test shell command execution with optional parameters."""
@@ -526,4 +619,5 @@ def test_execute_shell_command_unexpected_error(system_executor_instance):
     assert result["status"] == "FAILED"
     assert "Unexpected error executing command" in result["content"]
     assert "Unexpected command error" in result["content"]
+    assert "error" in result["notes"]
     assert result["notes"]["error"]["reason"] == "unexpected_error"

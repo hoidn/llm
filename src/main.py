@@ -84,6 +84,7 @@ class Application:
         self.aider_bridge: Optional['AiderBridge'] = None # Initialize as None
         self.indexed_repositories: List[str] = []
         self.file_access_manager: Optional[FileAccessManager] = None # Add attribute
+        self.system_executors: Optional[SystemExecutorFunctions] = None # Add attribute
 
         logger.info("Initializing Application components...")
         try:
@@ -498,10 +499,15 @@ Select the best matching paths *from the provided metadata* and output the JSON.
                 if tool['spec']['name'] == 'system:get_context' and not self.memory_system:
                     logger.error("Skipping registration of system:get_context: MemorySystem not initialized.")
                     continue
-                # All other system tools depend on file_manager
-                if tool['spec']['name'] != 'system:get_context' and not self.passthrough_handler.file_manager:
+                # Check file_manager dependency for file-related tools
+                if tool['spec']['name'] in ['system:read_files', 'system:list_directory', 'system:write_file'] and not self.passthrough_handler.file_manager:
                     logger.error(f"Skipping registration of {tool['spec']['name']}: FileAccessManager not initialized in handler.")
                     continue
+                # Check command_executor dependency for shell command tool
+                if tool['spec']['name'] == 'system:execute_shell_command' and not self.system_executors.command_executor:
+                    logger.error(f"Skipping registration of {tool['spec']['name']}: Command executor module not available.")
+                    continue
+
 
                 success = self.passthrough_handler.register_tool(tool["spec"], tool["executor"])
                 if success:

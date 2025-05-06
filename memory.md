@@ -3,34 +3,26 @@
 
 ## Current Task/Focus (As of: 2025-05-01)
 
-**Goal:** Phase 7: Provider-Specific Tool Integration (Anthropic Editor Tools).
+**Goal:** Phase 9: System Tool Implementation & Refinement.
 
-**Current Sub-task:** Final documentation review after Phase 7 fixes (Cycle 3).
+**Current Sub-task:** Phase 9.2: Implement Shell Execution Tool (`system:execute_shell_command`).
 
 **Relevant Files:**
+- `src/executors/system_executors.py`
+- `src/executors/system_executors_IDL.md`
+- `src/handler/command_executor.py` (Dependency)
+- `src/handler/command_executor_IDL.md` (Dependency)
 - `src/main.py`
-- `src/tools/anthropic_tools.py`
-- `src/handler/base_handler.py`
+- `tests/executors/test_system_executors.py`
 - `tests/test_main.py`
-- `tests/tools/test_anthropic_tools.py`
-- `tests/handler/test_base_handler.py`
 - `src/main_IDL.md`
-- `src/handler/base_handler_IDL.md`
-- `src/handler/llm_interaction_manager_IDL.md`
-- `src/executors/atomic_executor_IDL.md`
-- `src/scripts/phase6.py`
-- `docs/start_here.md`
 - `docs/implementation_rules.md`
-- `docs/librarydocs/pydanticai.md`
-- `docs/librarydocs/pydanticai_details.md`
-- `docs/librarydocs/MCP_TOOL_GUIDE.md`
-- `docs/documentation_update.md` (Process guide)
+- `docs/system/contracts/types.md`
 
 **Related IDLs:**
+- `src/executors/system_executors_IDL.md`
+- `src/handler/command_executor_IDL.md`
 - `src/main_IDL.md`
-- `src/handler/base_handler_IDL.md`
-- `src/handler/llm_interaction_manager_IDL.md`
-- `src/executors/atomic_executor_IDL.md`
 
 ## Recent Activity Log
 
@@ -58,7 +50,8 @@
 - **Phase 7: Fix Handler Tool Logic:** Corrected `BaseHandler._execute_llm_call` to pass executors/definitions correctly based on precedence. Fixed related tests in `test_base_handler.py`. Commit `0bc2f51`.
 - **Phase 7: Documentation Update (Cycle 1):** Updated IDLs (`main`, `base_handler`, `llm_interaction_manager`), core guides (`start_here`, `implementation_rules`), and library docs (`pydanticai`, `pydanticai_details`, `MCP_TOOL_GUIDE`). Updated `memory.md`.
 - **Phase 7: Documentation Update (Cycle 2):** Performed final review and refinement of documentation related to tool handling logic (`llm_interaction_manager_IDL.md`, `implementation_rules.md`, `start_here.md`, `pydanticai.md`, `pydanticai_details.md`). Updated `memory.md`.
-- **Phase 7: Documentation Update (Cycle 3):** Reviewed `atomic_executor_IDL.md` and `phase6.py`. Confirmed consistency with recent changes. Updated `memory.md`. (This commit).
+- **Phase 7: Documentation Update (Cycle 3):** Reviewed `atomic_executor_IDL.md` and `phase6.py`. Confirmed consistency with recent changes. Updated `memory.md`.
+- **Phase 9.2: Implement Shell Execution Tool:** Added `execute_shell_command` instance method to `SystemExecutorFunctions`. Updated IDL. Registered tool in `Application._register_system_tools`. Added tests in `test_system_executors.py`. Updated `test_main.py` to verify registration. Updated `memory.md`. (This commit).
 
 ## Next Steps
 
@@ -69,7 +62,7 @@
     *   Add logic to `Application.initialize_aider` to register Aider tools conditionally or based on configuration.
     *   Update `Application._determine_active_tools` if needed.
     *   Add integration tests for Aider workflows.
-2.  **Merge Streams:** Ensure all Phase 4-7 changes are integrated cleanly.
+2.  **Merge Streams:** Ensure all Phase 4-9 changes are integrated cleanly.
 3.  **Implement Remaining Deferred Methods (Phase 2 Dependencies):**
     *   Review and finalize implementations for:
         *   `TaskSystem`: `execute_atomic_template`, find/generate/resolve methods.
@@ -82,8 +75,8 @@
 
 ## Notes & Context
 
-- Phase 7 successfully implemented conditional registration of provider-specific tools (Anthropic Editor Tools).
-- The `Application` initialization sequence now correctly registers tools before initializing the `pydantic-ai Agent`.
-- `BaseHandler._execute_llm_call` logic was refined to correctly handle the precedence of `tools_override` vs. `active_tool_definitions` and pass the appropriate executors and definitions to the `LLMInteractionManager`.
-- Documentation has been updated and reviewed to reflect these changes accurately.
+- Phase 9.2 successfully implemented the `system:execute_shell_command` tool.
+- The `SystemExecutorFunctions` class now correctly uses the injected `command_executor` module via `self.command_executor`.
+- The tool is registered in `Application` using the instance method directly.
+- Tests have been added and updated to verify the implementation and registration.
 - The system is now ready for Phase 8 (Aider Integration).

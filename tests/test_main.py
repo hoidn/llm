@@ -65,6 +65,8 @@ from src.tools.anthropic_tools import (
 # Aider specs removed as Aider integration is deferred
 DUMMY_SYS_GET_CONTEXT_SPEC = {"name": "system:get_context", "description": "Sys Get Context", "input_schema": {}}
 DUMMY_SYS_READ_FILES_SPEC = {"name": "system:read_files", "description": "Sys Read Files", "input_schema": {}}
+# Add spec for shell command
+DUMMY_SYS_SHELL_SPEC = {"name": "system:execute_shell_command", "description": "Executes a shell command safely.", "input_schema": {}}
 
 
 # Define PROJECT_ROOT for use in the test if needed
@@ -110,6 +112,8 @@ def app_components(mocker, tmp_path): # Add tmp_path
         mock_llm_manager_instance = MagicMock() # Removed spec
         mock_aider_bridge_instance = MagicMock(spec=AiderBridge)
         mock_indexer_instance = MagicMock(spec=GitRepositoryIndexer) # Instance for indexer
+        # Instance for SystemExecutorFunctions
+        mock_sys_exec_instance = MockSysExecCls.return_value
         # No instance needed for MockPydanticAgent as LLMInteractionManager is mocked
 
         # Configure mock instances with attributes accessed during Application.__init__
@@ -125,7 +129,7 @@ def app_components(mocker, tmp_path): # Add tmp_path
         MockLLMInteractionManager.return_value = mock_llm_manager_instance # LLMManager instance mock
         MockAiderBridge.return_value = mock_aider_bridge_instance
         MockIndexer.return_value = mock_indexer_instance
-        # MockSysExecCls does not need a return_value as it only has static methods
+        # MockSysExecCls needs a return_value as it's instantiated now
         # MockAiderExec does not need a return_value as it only has static methods
         # MockPydanticAgent does not need a return_value as LLMInteractionManager is mocked
 
@@ -169,7 +173,7 @@ def app_components(mocker, tmp_path): # Add tmp_path
             "MockLLMInteractionManager": MockLLMInteractionManager,
             "MockAiderBridge": MockAiderBridge,
             "MockIndexer": MockIndexer,
-            "MockSysExecCls": MockSysExecCls,
+            "MockSysExecCls": MockSysExecCls, # The class mock
             "MockAiderExec": MockAiderExec,
             "MockPydanticAgent": MockPydanticAgent,
 
@@ -181,6 +185,7 @@ def app_components(mocker, tmp_path): # Add tmp_path
             "mock_llm_manager_instance": mock_llm_manager_instance,
             "mock_aider_bridge_instance": mock_aider_bridge_instance,
             "mock_indexer_instance": mock_indexer_instance,
+            "mock_sys_exec_instance": mock_sys_exec_instance, # The instance mock
 
             # Expose storage for assertions
             "registered_tools_storage": registered_tools_storage,
@@ -207,11 +212,13 @@ def test_application_init_minimal(app_components):
     app_components["MockTaskSystem"].assert_called_once()
     app_components["MockHandler"].assert_called_once()
     app_components["MockMemorySystem"].assert_called_once()
+    app_components["MockSysExecCls"].assert_called_once() # Check SystemExecutorFunctions instantiation
     # Check internal instances are set
     assert app.file_access_manager is not None
     assert app.task_system is not None
     assert app.passthrough_handler is not None
     assert app.memory_system is not None
+    assert app.system_executors is not None # Check system_executors instance
 
 def test_application_init_wiring(app_components):
     """Verify components are instantiated and wired correctly during __init__."""
@@ -228,6 +235,7 @@ def test_application_init_wiring(app_components):
     assert app.task_system == app_components['mock_task_system_instance']
     assert app.passthrough_handler == app_components['mock_handler_instance']
     assert app.file_access_manager == app_components['mock_fm_instance']
+    assert app.system_executors == app_components['mock_sys_exec_instance'] # Check instance
 
     # Assert wiring calls were made (using the instances returned by the mocks)
     app_components['mock_task_system_instance'].set_handler.assert_called_once_with(app.passthrough_handler)
@@ -240,7 +248,8 @@ def test_application_init_wiring(app_components):
     app_components['mock_handler_instance'].register_tool.assert_called()
     system_context_call = next((c for c in app_components['mock_handler_instance'].register_tool.call_args_list if c.args[0].get('name') == 'system:get_context'), None)
     assert system_context_call is not None, "system:get_context tool was not registered"
-    assert callable(system_context_call.args[1])
+    # Assert the executor is the instance method from the mock instance
+    assert system_context_call.args[1] == app_components['mock_sys_exec_instance'].execute_get_context
 
     # Assert agent initialization call
     app_components['mock_handler_instance'].get_tools_for_agent.assert_called_once()
@@ -260,6 +269,8 @@ def test_application_init_wiring(app_components):
     shell_command_call = next((c for c in app_components['mock_handler_instance'].register_tool.call_args_list if c.args[0].get('name') == 'system:execute_shell_command'), None)
     assert shell_command_call is not None, "system:execute_shell_command tool was not registered"
     assert callable(shell_command_call.args[1])
+    # Assert the executor is the instance method from the mock instance
+    assert shell_command_call.args[1] == app_components['mock_sys_exec_instance'].execute_shell_command
 
 
 def test_index_repository_success(app_components, tmp_path):

@@ -349,44 +349,67 @@ class SystemExecutorFunctions:
         cwd = params.get('cwd')
         timeout = params.get('timeout')
         
+        # Validate optional parameter types if present
+        if cwd is not None and not isinstance(cwd, str):
+            error_msg = "Invalid parameter type: 'cwd' must be a string if provided."
+            logger.error(f"execute_shell_command: {error_msg}")
+            return _create_failed_result_dict("input_validation_failure", error_msg)
+        if timeout is not None:
+            if not isinstance(timeout, int) or timeout <= 0:
+                error_msg = "Invalid parameter type or value: 'timeout' must be a positive integer if provided."
+                logger.error(f"execute_shell_command: {error_msg}")
+                return _create_failed_result_dict("input_validation_failure", error_msg)
+        
         # 2. Call command_executor method
         try:
             # Call the execute_command_safely function from the injected module
-            result = self.command_executor.execute_command_safely(
+            result_dict = self.command_executor.execute_command_safely(
                 command=command,
                 cwd=cwd,
                 timeout=timeout
             )
             
             # 3. Process result
-            if result.get('success', False):
+            if result_dict.get('success', False):
                 # Command executed successfully
+                logger.info(f"Shell command executed successfully: '{command}'")
                 return TaskResult(
                     status="COMPLETE",
-                    content=result.get('stdout', ''),
+                    content=result_dict.get('stdout', ''),
                     notes={
                         'success': True,
-                        'exit_code': result.get('exit_code', 0),
-                        'stdout': result.get('stdout', ''),
-                        'stderr': result.get('stderr', '')
+                        'exit_code': result_dict.get('exit_code', 0),
+                        'stdout': result_dict.get('stdout', ''),
+                        'stderr': result_dict.get('stderr', '')
                     }
                 ).model_dump(exclude_none=True)
             else:
                 # Command execution failed
-                error_msg = result.get('stderr', '') or result.get('error', 'Unknown command execution error')
+                error_msg = result_dict.get('stderr', '') or result_dict.get('error', 'Unknown command execution error')
+                logger.warning(f"Shell command failed: '{command}'. Error: {error_msg}")
+                
+                # Determine failure reason
+                # Check if the error message indicates an unsafe command (based on command_executor logic)
+                # This requires knowledge of command_executor's error messages. Assume "Unsafe command" substring for now.
+                reason: TaskFailureReason = "tool_execution_error"
+                if "Unsafe command" in error_msg:
+                    reason = "input_validation_failure"
+                elif "Timeout" in error_msg:
+                    reason = "execution_timeout"
+                    
                 return TaskResult(
                     status="FAILED",
                     content=error_msg,
                     notes={
                         'success': False,
-                        'exit_code': result.get('exit_code'),
-                        'stdout': result.get('stdout', ''),
-                        'stderr': result.get('stderr', ''),
+                        'exit_code': result_dict.get('exit_code'),
+                        'stdout': result_dict.get('stdout', ''),
+                        'stderr': result_dict.get('stderr', ''),
                         'error': TaskFailureError(
                             type="TASK_FAILURE",
-                            reason="tool_execution_error",
+                            reason=reason,
                             message=error_msg
-                        )
+                        ).model_dump(exclude_none=True) # Dump the error model too
                     }
                 ).model_dump(exclude_none=True)
                 
