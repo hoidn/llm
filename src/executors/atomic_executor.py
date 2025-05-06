@@ -153,19 +153,50 @@ class AtomicTaskExecutor:
             logging.error(f"Error logging params in AtomicTaskExecutor: {log_e}")
         # --- END ADDED LOGGING ---
 
+        # --- START REFINED EXCEPTION HANDLING ---
+        substituted_instructions = None
+        substituted_system_prompt_template = None
+        output_type_override: Optional[Type] = None
+        task_notes = {}
 
         try:
-            # --- 1. Parameter Substitution (Strictly from params) ---
+            # --- 1. Parameter Substitution (Isolate this step) ---
             logging.debug(f"Substituting parameters for task: {task_name} using params: {list(params.keys())}")
-            substituted_instructions = self._substitute_params(atomic_task_def.get("instructions"), params)
+            template_instructions = atomic_task_def.get("instructions")
+            substituted_instructions = self._substitute_params(template_instructions, params)
             substituted_system_prompt_template = self._substitute_params(atomic_task_def.get("system"), params)
-            # Note: Substitution does not access any wider environment.
+            logging.debug("Parameter substitution successful.")
 
-            # --- 2. Construct Handler Payload ---
-            # Build the final system prompt using the handler's method
-            # File context is explicitly None as per IDL/ADR for atomic execution body.
-            # Context must be prepared by the caller (e.g., TaskSystem) if needed.
-            # Build file_context string from params if available
+            # --- 2. Determine Output Type Override (Isolate this step) ---
+            output_format = atomic_task_def.get("output_format", {})
+            schema_name = output_format.get("schema")
+            if schema_name:
+                try:
+                    logging.debug(f"Attempting to resolve model class for schema: {schema_name}")
+                    output_type_override = resolve_model_class(schema_name)
+                    logging.info(f"Using output_type_override {output_type_override.__name__} for task: {task_name}")
+                except ModelNotFoundError as e:
+                    logging.warning(f"Failed to resolve model class for schema {schema_name}: {e}")
+                    task_notes["schema_warning"] = f"Failed to resolve model class for schema {schema_name}: {e}"
+                except Exception as e:
+                    logging.error(f"Unexpected error resolving model class for schema {schema_name}: {e}")
+                    task_notes["schema_error"] = f"Unexpected error resolving model class: {e}"
+
+        except (ParameterMismatchError, ValueError, TypeError) as sub_err:
+            # Catch errors ONLY from substitution or output type resolution
+            logging.error(f"Parameter substitution or type resolution failed for task '{task_name}': {sub_err}")
+            error_details = TaskFailureError(type="TASK_FAILURE", reason="input_validation_failure", message=str(sub_err))
+            return TaskResult(content=str(sub_err), status="FAILED", notes={"error": error_details.model_dump(exclude_none=True)}).model_dump(exclude_none=True)
+        except Exception as setup_err:
+            # Catch other unexpected errors during setup
+             logging.exception(f"Unexpected setup error for task '{task_name}': {setup_err}")
+             error_details = TaskFailureError(type="TASK_FAILURE", reason="unexpected_error", message=f"Task setup failed: {setup_err}")
+             return TaskResult(content=f"Task setup failed: {setup_err}", status="FAILED", notes={"error": error_details.model_dump(exclude_none=True)}).model_dump(exclude_none=True)
+
+
+        # --- 3. Construct Handler Payload & Invoke Handler ---
+        try:
+            # Build the final system prompt
             file_context_str = None
             fc = params.get("file_contents")
             if isinstance(fc, dict) and fc:
@@ -174,6 +205,7 @@ class AtomicTaskExecutor:
                     if content:
                         pieces.append(f"--- File: {path} ---\n{content}\n--- End File: {path} ---")
                 file_context_str = "\n\n".join(pieces)
+
             final_system_prompt = handler._build_system_prompt(
                 template=substituted_system_prompt_template,
                 file_context=file_context_str
@@ -182,83 +214,44 @@ class AtomicTaskExecutor:
             # Main prompt is the substituted instructions
             main_prompt = substituted_instructions
             if not main_prompt:
-                 logging.warning(f"Task '{task_name}' has empty instructions after substitution. Proceeding with empty prompt.")
-                 # raise ValueError("Substituted instructions resulted in an empty prompt.") # REMOVE or COMMENT OUT this line
-                 main_prompt = "" # Ensure it's an empty string if None/empty
+                logging.warning(f"Task '{task_name}' has empty instructions after substitution.")
+                main_prompt = ""
             elif not isinstance(main_prompt, str):
-                 logging.error(f"Substituted instructions are not a string (type: {type(main_prompt)}). Value: {main_prompt!r}")
-                 raise TypeError("Substituted instructions must result in a string.")
+                 logging.error(f"Substituted instructions are not a string (type: {type(main_prompt)}).")
+                 raise TypeError("Substituted instructions must result in a string.") # Raise specific error
 
-            # Determine model override, if any (passed to handler's call)
-            model_override = atomic_task_def.get("model") # TODO: Confirm handler._execute_llm_call supports this
-
-            # Initialize task notes that we might add to
-            task_notes = {}
-            
-            # Determine output type override based on output_format.schema if provided
-            output_format = atomic_task_def.get("output_format", {})
-            output_type_override: Optional[Type] = None
-            
-            # Check if output_format.schema is provided
-            schema_name = output_format.get("schema")
-            if schema_name:
-                try:
-                    # Try to resolve the model class from the schema name
-                    logging.debug(f"Attempting to resolve model class for schema: {schema_name}")
-                    output_type_override = resolve_model_class(schema_name)
-                    logging.info(f"Using output_type_override {output_type_override.__name__} for task: {task_name}")
-                except ModelNotFoundError as e:
-                    # Log the error but don't fail the task yet - let handler try to execute without the type
-                    logging.warning(f"Failed to resolve model class for schema {schema_name}: {e}")
-                    # Add a warning note to the task result (will be created later)
-                    task_notes["schema_warning"] = f"Failed to resolve model class for schema {schema_name}: {e}"
-                except Exception as e:
-                    # Log unexpected errors during model resolution
-                    logging.error(f"Unexpected error resolving model class for schema {schema_name}: {e}")
-                    # Add an error note to the task result (will be created later)
-                    task_notes["schema_error"] = f"Unexpected error resolving model class: {e}"
-            
-            # --- 3. Invoke Handler ---
+            # Invoke Handler - THIS is where the TypeError might happen
             logging.debug(f"Invoking handler._execute_llm_call for task: {task_name}")
-            # Add debug logging for prompt
             logging.debug(f"Passing prompt to handler (type: {type(main_prompt)}, length: {len(main_prompt)}): '{main_prompt[:200]}...'")
-            # Log if we're using an output_type_override
             if output_type_override:
                 logging.debug(f"Using output_type_override: {output_type_override.__name__}")
-            
-            # Pass necessary overrides to the handler
+                
             handler_result = handler._execute_llm_call(
                 prompt=main_prompt,
                 system_prompt_override=final_system_prompt,
-                tools_override=None, # Atomic executor doesn't handle tool registration itself
+                tools_override=None,
                 output_type_override=output_type_override,
-                # model_override=model_override # Pass if handler supports it
+                # model_override=atomic_task_def.get("model") # Pass if handler supports it
             )
 
-            # Ensure result is a dict or TaskResult object
+            # --- 4. Process Handler Result ---
             if isinstance(handler_result, dict):
-                # For the handler result dict case, convert to TaskResult for validation
                 handler_result_obj = TaskResult.model_validate(handler_result)
-                task_result_dict = handler_result  # Use the original dict
+                task_result_dict = handler_result
             elif isinstance(handler_result, TaskResult):
                 handler_result_obj = handler_result
                 task_result_dict = handler_result.model_dump(exclude_none=True)
             else:
-                logging.error(f"Handler._execute_llm_call returned unexpected type: {type(handler_result)}")
-                # This indicates a bug in the handler or its manager
                 raise TypeError("Handler call did not return a TaskResult object or dict.")
 
-            # --- 4. Handle Parsed Content ---
             # Merge task_notes into the task result notes
             if task_notes:
                 task_result_dict.setdefault("notes", {}).update(task_notes)
-            
-            # Check if parsed_content was returned by the handler (from pydantic-ai)
+
+            # Process parsed_content
             if "parsed_content" in task_result_dict and task_result_dict["status"] == "COMPLETE":
-                # Use the parsed_content from the handler if it exists
                 logging.debug(f"Using parsed_content from handler for task: {task_name}")
                 task_result_dict["parsedContent"] = task_result_dict.pop("parsed_content")
-            # Otherwise, try the old JSON parsing approach if needed
             elif task_result_dict.get("status") == "COMPLETE" and output_format.get("type") == "json" and "parsedContent" not in task_result_dict:
                 logging.debug(f"Attempting legacy JSON parsing for task: {task_name}")
                 content_to_parse = task_result_dict.get("content")
@@ -269,7 +262,6 @@ class AtomicTaskExecutor:
                         logging.debug(f"Legacy JSON parsing successful for task: {task_name}")
                     except json.JSONDecodeError as e:
                         logging.warning(f"Failed to parse JSON output for task '{task_name}': {e}")
-                        # Add parse error note, keep status COMPLETE as LLM finished
                         task_result_dict.setdefault("notes", {})["parseError"] = f"JSONDecodeError: {e}"
                     except Exception as e:
                         logging.exception(f"Unexpected error during output parsing for task '{task_name}': {e}")
@@ -278,24 +270,28 @@ class AtomicTaskExecutor:
                     logging.warning(f"Cannot parse non-string content of type {type(content_to_parse)} as JSON for task '{task_name}'.")
                     task_result_dict.setdefault("notes", {})["parseError"] = f"Cannot parse non-string content ({type(content_to_parse)}) as JSON."
 
-
             logging.info(f"Atomic task execution finished for '{task_name}' with status: {task_result_dict.get('status')}")
             return task_result_dict
 
-        except (ParameterMismatchError, ValueError, TypeError) as e:
-            logging.error(f"Parameter mismatch during execution of task '{task_name}': {e}")
-            # Create FAILED TaskResult as per IDL/ADR
-            error_details = TaskFailureError(type="TASK_FAILURE", reason="input_validation_failure", message=str(e))
-            return TaskResult(content=str(e), status="FAILED", notes={"error": error_details.model_dump(exclude_none=True)}).model_dump(exclude_none=True)
+        # --- Specific Handling for TypeError from Handler Call ---
+        except TypeError as type_err:
+             logging.exception(f"TypeError occurred during handler call for task '{task_name}': {type_err}")
+             # Check if it's the specific Union error
+             if "Cannot instantiate typing.Union" in str(type_err):
+                 error_reason = "llm_error" # Or maybe 'dependency_error'?
+                 error_msg = f"LLM interaction failed (TypeError: {type_err})"
+             else:
+                 error_reason = "unexpected_error"
+                 error_msg = f"Unexpected TypeError during handler call: {type_err}"
+             error_details = TaskFailureError(type="TASK_FAILURE", reason=error_reason, message=error_msg)
+             return TaskResult(content=error_msg, status="FAILED", notes={"error": error_details.model_dump(exclude_none=True)}).model_dump(exclude_none=True)
 
-        except Exception as e:
-            # Catch potential errors from handler call (if not caught internally) or other unexpected issues
-            logging.exception(f"Unexpected error during atomic task execution for '{task_name}': {e}")
+        # --- Catch other potential errors from the handler call ---
+        except Exception as handler_err:
+            logging.exception(f"Unexpected error during handler call for task '{task_name}': {handler_err}")
             # Determine if it's an error propagated from the handler (e.g., LLM error)
-            # For now, map general exceptions to TASK_FAILURE/unexpected_error
-            error_reason: TaskFailureReason = "unexpected_error"
+            error_reason: TaskFailureReason = "llm_error" # Assume LLM error if from handler
             error_type = "TASK_FAILURE"
-            # Example: Check if handler raised a specific exception type if applicable
-
-            error_details = TaskFailureError(type=error_type, reason=error_reason, message=f"Execution failed unexpectedly: {e}")
-            return TaskResult(content=f"Execution failed: {e}", status="FAILED", notes={"error": error_details.model_dump(exclude_none=True)}).model_dump(exclude_none=True)
+            error_details = TaskFailureError(type=error_type, reason=error_reason, message=f"Handler execution failed: {handler_err}")
+            return TaskResult(content=f"Handler execution failed: {handler_err}", status="FAILED", notes={"error": error_details.model_dump(exclude_none=True)}).model_dump(exclude_none=True)
+        # --- END REFINED EXCEPTION HANDLING ---
