@@ -85,7 +85,7 @@ def test_execute_body_missing_param(executor, mock_handler):
     # Assert
     assert result.status == "FAILED"
     # Check content and error details
-    expected_error_content = "Unexpected substitution error: Missing parameter(s) or access error for substitution: missing_param"
+    expected_error_content = "Missing parameter(s) or access error for substitution: missing_param"
     assert result.content == expected_error_content # Check exact content
     assert result.notes is not None
     assert "error" in result.notes
