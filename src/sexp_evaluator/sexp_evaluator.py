@@ -654,11 +654,15 @@ class SexpEvaluator:
 
         try:
             logging.info(f"Registering dynamic atomic task template: '{task_name_str}'")
-            # Assuming register_template returns bool or raises error
-            self.task_system.register_template(template_dict) 
-            # ADR suggests TaskSystem.register_template might warn on overwrite.
-            # If it returns False on failure (e.g. validation), that should be handled.
-        except Exception as e: # Catch specific errors from TaskSystem if possible
+            # Capture the return value to check for False
+            registration_success = self.task_system.register_template(template_dict)
+            if registration_success is False: # Explicitly check for False
+                logging.error(f"TaskSystem.register_template for '{task_name_str}' returned False.")
+                # Match test message expectation for this specific failure
+                raise SexpEvaluationError(f"TaskSystem failed to register template '{task_name_str}' (returned False).", original_expr_str)
+        except SexpEvaluationError: # Re-raise our specific error if already caught
+            raise
+        except Exception as e: # Catch other specific errors from TaskSystem if possible
             logging.exception(f"Error registering template '{task_name_str}' with TaskSystem: {e}")
             raise SexpEvaluationError(f"Failed to register template '{task_name_str}' with TaskSystem: {e}", original_expr_str, error_details=str(e)) from e
 
