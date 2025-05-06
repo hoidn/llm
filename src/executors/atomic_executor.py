@@ -60,35 +60,42 @@ class AtomicTaskExecutor:
             return val
             
         def replace_match(match):
-            full_param_name = match.group(1)  # e.g., "context_input.query"
-            logging.debug(f"  _substitute_params: Found placeholder '{{{{{full_param_name}}}}}'") # Log placeholder
-            try:
-                # Use helper to resolve dot notation
-                value = resolve_dot_notation(params, full_param_name)
-                # --- Log value BEFORE str() ---
-                logging.debug(f"  _substitute_params: Value for '{full_param_name}' is: {value!r} (Type: {type(value).__name__})")
-                # --- End log ---
-                value_type = type(value)
-                value_size = len(value) if hasattr(value, '__len__') else 'N/A'
-                logging.debug(f"  Substituting '{full_param_name}': Type={value_type}, Size/Len={value_size}")
-                
-                # Enhanced error handling for str() conversion
-                try:
-                    result = str(value)  # Try to convert to string
-                    return result
-                except TypeError as str_err:
-                    # More detailed error for str() conversion failure
-                    logging.error(f"Failed to convert parameter '{full_param_name}' to string: {str_err}")
-                    logging.error(f"Value details: type={value_type}, repr={value!r}")
-                    if hasattr(value, '__origin__'):
-                        logging.error(f"  __origin__={value.__origin__}, __args__={getattr(value, '__args__', 'N/A')}")
-                    # Re-raise with more context
-                    raise TypeError(f"Cannot convert parameter '{full_param_name}' to string: {str_err}")
-            except (KeyError, AttributeError, TypeError) as e:  # Catch potential errors during access
-                logging.error(f"Parameter '{full_param_name}' not found or access error in provided params: {e}")
-                missing_params.append(full_param_name)
-                # Return the placeholder itself to find all missing ones first
-                return match.group(0)
+            # --- START TEMPORARY SIMPLIFICATION ---
+            logging.debug(f"  _substitute_params: replace_match called for {match.group(1)}. Returning fixed string.")
+            return "TEST_REPLACEMENT"
+            # --- END TEMPORARY SIMPLIFICATION ---
+
+            # --- ORIGINAL CODE (COMMENTED OUT) ---
+            # full_param_name = match.group(1)  # e.g., "context_input.query"
+            # logging.debug(f"  _substitute_params: Found placeholder '{{{{{full_param_name}}}}}'") # Log placeholder
+            # try:
+            #     # Use helper to resolve dot notation
+            #     value = resolve_dot_notation(params, full_param_name)
+            #     # --- Log value BEFORE str() ---
+            #     logging.debug(f"  _substitute_params: Value for '{full_param_name}' is: {value!r} (Type: {type(value).__name__})")
+            #     # --- End log ---
+            #     value_type = type(value)
+            #     value_size = len(value) if hasattr(value, '__len__') else 'N/A'
+            #     logging.debug(f"  Substituting '{full_param_name}': Type={value_type}, Size/Len={value_size}")
+            #     
+            #     # Enhanced error handling for str() conversion
+            #     try:
+            #         result = str(value)  # Try to convert to string
+            #         return result
+            #     except TypeError as str_err:
+            #         # More detailed error for str() conversion failure
+            #         logging.error(f"Failed to convert parameter '{full_param_name}' to string: {str_err}")
+            #         logging.error(f"Value details: type={value_type}, repr={value!r}")
+            #         if hasattr(value, '__origin__'):
+            #             logging.error(f"  __origin__={value.__origin__}, __args__={getattr(value, '__args__', 'N/A')}")
+            #         # Re-raise with more context
+            #         raise TypeError(f"Cannot convert parameter '{full_param_name}' to string: {str_err}")
+            # except (KeyError, AttributeError, TypeError) as e:  # Catch potential errors during access
+            #     logging.error(f"Parameter '{full_param_name}' not found or access error in provided params: {e}")
+            #     missing_params.append(full_param_name)
+            #     # Return the placeholder itself to find all missing ones first
+            #     return match.group(0)
+            # --- END ORIGINAL CODE ---
 
         # --- Add logging for input text ---
         logging.debug(f"--- _substitute_params processing text (first 500 chars): --- \n{text[:500] if text else 'None'}\n-------------------------------------")
