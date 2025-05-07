@@ -116,7 +116,9 @@ MAIN_WORKFLOW_S_EXPRESSION = """
             (log-message "Plan generation: Parsed content is null despite COMPLETE status.")
             (log-message "Plan generation: Files from plan:" (get-field (get-field plan-task-result "parsedContent") "files") ". Instructions (content omitted).")
         )
-        ;; If not COMPLETE, the overall error is handled by the later 'else' for the main 'if'
+        (progn
+          (log-message "Plan generation status not COMPLETE.")
+        )
     )
 
     ;; 2. Check Plan Generation Success & Extract Data
