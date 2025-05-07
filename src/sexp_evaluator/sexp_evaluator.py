@@ -176,27 +176,25 @@ class SexpEvaluator:
                  raise 
 
         # Handle Quoted objects directly
+        # A Quoted object, e.g., from 'foo, is like Quoted(Symbol('foo')).
+        # The sexpdata.Quoted class is a namedtuple('Quoted', 'x').
+        # So, node.x should give the inner value.
         if isinstance(node, sexpdata_Quoted):
             logging.debug(f"Eval Quoted: Encountered node: {node!r}")
             logging.debug(f"Eval Quoted: Type of node: {type(node)}")
-            
-            # sexpdata.Quoted is a list-like object where the quoted value is at index 1
-            # The structure is typically [Symbol('quote'), actual_value]
             try:
-                if len(node) >= 2:
-                    actual_val = node[1]
-                    logging.debug(f"Eval Quoted: Extracted value from node[1]: {actual_val!r}")
-                    return actual_val
-                elif hasattr(node, 'data') and isinstance(node.data, list) and len(node.data) >= 2:
-                    actual_val = node.data[1]
-                    logging.debug(f"Eval Quoted: Extracted value from node.data[1]: {actual_val!r}")
-                    return actual_val
-                else:
-                    logging.error(f"Eval Quoted: Unexpected Quoted structure: {node!r}")
-                    raise SexpEvaluationError(f"Invalid Quoted object structure: {node!r}", expression=str(node))
-            except (IndexError, TypeError) as e:
-                logging.exception(f"Eval Quoted: Error accessing quoted value: {e}")
-                raise SexpEvaluationError(f"Error accessing quoted value: {e}", expression=str(node)) from e
+                # The 'sexpdata.Quoted' object is a namedtuple with a single field 'x'.
+                # This 'x' field holds the actual quoted data.
+                actual_val = node.x
+                logging.debug(f"Eval Quoted: Extracted value from node.x: {actual_val!r}")
+                return actual_val
+            except AttributeError:
+                # This might happen if our understanding of sexpdata.Quoted is off
+                # or if a different type of Quoted object is encountered.
+                # Let's log and re-raise for now, as the direct attribute access
+                # is the documented way for sexpdata.Quoted.
+                logging.exception(f"Eval Quoted: AttributeError accessing node.x for {node!r}. This is unexpected for sexpdata.Quoted.")
+                raise SexpEvaluationError(f"Invalid Quoted object structure: {node!r} does not have .x", expression=str(node))
 
         if not isinstance(node, list):
             # This branch now handles non-Symbol, non-Quoted, non-list atoms (numbers, strings, bools, None)
