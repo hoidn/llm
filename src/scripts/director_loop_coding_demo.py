@@ -100,7 +100,7 @@ MAIN_LOOP_S_EXPRESSION = """
                    (let ((plan-data (get-field plan-task-result "parsedContent"))
                          (test-cmd (get-field plan-data "test_command")))
                      (log-message "Evaluator: Running test command: " test-cmd)
-                     (let ((test-run-result (system:execute_shell_command (command test-cmd))))
+                     (let ((test-run-result (system_execute_shell_command (command test-cmd))))
                        (log-message "Evaluator: Test run TaskResult: " test-run-result)
                        (if (string=? (get-field test-run-result "status") "COMPLETE")
                            (if (eq? (get-field (get-field test-run-result "notes") "exit_code") 0)

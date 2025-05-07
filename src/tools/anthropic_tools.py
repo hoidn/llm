@@ -464,25 +464,25 @@ def insert(
 # --- Tool Specifications ---
 
 ANTHROPIC_VIEW_SPEC = {
-    "name": "anthropic:view",
+    "name": "anthropic_view",
     "description": "Views the content of a file, optionally limited by line range or size.",
     "input_schema": ViewInput.model_json_schema()
 }
 
 ANTHROPIC_STR_REPLACE_SPEC = {
-    "name": "anthropic:str_replace",
+    "name": "anthropic_str_replace",
     "description": "Replaces occurrences of a string in a file.",
     "input_schema": StrReplaceInput.model_json_schema()
 }
 
 ANTHROPIC_CREATE_SPEC = {
-    "name": "anthropic:create",
+    "name": "anthropic_create",
     "description": "Creates a new file with the specified content.",
     "input_schema": CreateInput.model_json_schema()
 }
 
 ANTHROPIC_INSERT_SPEC = {
-    "name": "anthropic:insert",
+    "name": "anthropic_insert",
     "description": "Inserts content into a file at a specific position or line number.",
     "input_schema": InsertInput.model_json_schema()
 }
