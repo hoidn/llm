@@ -204,7 +204,11 @@ class LLMInteractionManager:
         #     self.agent.instrument(enabled=enabled) # Hypothetical instrumentation call
 
     def get_provider_identifier(self) -> Optional[str]:
-        if self.agent and hasattr(self.agent, 'model') and isinstance(self.agent.model, str):
+        if not self.agent:
+            logging.warning("Cannot get provider identifier: Agent is not initialized.")
+            return None
+            
+        if hasattr(self.agent, 'model') and isinstance(self.agent.model, str):
             if self.agent.model:
                 return self.agent.model
             else:

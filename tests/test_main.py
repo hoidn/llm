@@ -201,6 +201,18 @@ def app_components(mocker, tmp_path): # Add tmp_path
             "mock_anthropic_replace_func": mock_anthropic_replace_func,
             "mock_anthropic_insert_func": mock_anthropic_insert_func,
         }
+        
+        # Set __qualname__ on the mock static methods for AiderExecutors
+        if hasattr(MockAiderExec, 'execute_aider_automatic'):
+            MockAiderExec.execute_aider_automatic.__qualname__ = 'AiderExecutorFunctions.execute_aider_automatic'
+            if not hasattr(MockAiderExec.execute_aider_automatic, '__name__'):
+                MockAiderExec.execute_aider_automatic.__name__ = 'execute_aider_automatic_mock'
+                
+        if hasattr(MockAiderExec, 'execute_aider_interactive'):
+            MockAiderExec.execute_aider_interactive.__qualname__ = 'AiderExecutorFunctions.execute_aider_interactive'
+            if not hasattr(MockAiderExec.execute_aider_interactive, '__name__'):
+                MockAiderExec.execute_aider_interactive.__name__ = 'execute_aider_interactive_mock'
+                
         # Yield the dictionary of necessary mocks
         yield mocks
         # --- END FIX ---

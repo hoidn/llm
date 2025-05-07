@@ -2465,12 +2465,12 @@ def test_director_loop_config_access_in_all_phases(evaluator, mock_parser, caplo
     # Check logs for evidence of config access
     log_records = [record.message for record in caplog.records if record.name == 'src.sexp_evaluator.sexp_primitives']
     
-    assert "DIR_MAX_ITER: 1" in log_records
-    assert "DIR_INIT_IN: start_token" in log_records
-    assert "EXEC_MAX_ITER: 1" in log_records
-    assert "EVAL_INIT_IN: start_token" in log_records
-    assert "CTRL_MAX_ITER: 1" in log_records
-    assert "CTRL_INIT_IN: start_token" in log_records
+    assert "SexpLog: DIR_MAX_ITER: 1" in log_records
+    assert "SexpLog: DIR_INIT_IN: start_token" in log_records
+    assert "SexpLog: EXEC_MAX_ITER: 1" in log_records
+    assert "SexpLog: EVAL_INIT_IN: start_token" in log_records
+    assert "SexpLog: CTRL_MAX_ITER: 1" in log_records
+    assert "SexpLog: CTRL_INIT_IN: start_token" in log_records
 
 def test_director_loop_integration_with_get_field_and_eq(evaluator, mock_parser):
     sexp_string = """
