@@ -374,3 +374,17 @@ class FeedbackResult(BaseModel):
             raise ValueError("'next_prompt' is required when status is 'REVISE'")
         # It's okay for next_prompt to be None if status is SUCCESS or ABORT
         return self
+
+class CombinedAnalysisResult(BaseModel):
+    """
+    Structured result from the combined analysis task, deciding the next step.
+    """
+    verdict: Literal['SUCCESS', 'RETRY', 'FAILURE'] = Field(description="Overall verdict: SUCCESS (tests passed), RETRY (tests failed, suggest retry), FAILURE (tests failed, stop).")
+    next_prompt: Optional[str] = Field(None, description="If verdict is RETRY, the revised prompt for the next Aider iteration.")
+    message: str = Field(description="A concise explanation of the verdict.")
+
+    @model_validator(mode='after')
+    def check_next_prompt_on_retry(self) -> 'CombinedAnalysisResult':
+        if self.verdict == 'RETRY' and self.next_prompt is None:
+            raise ValueError("'next_prompt' is required when verdict is 'RETRY'")
+        return self

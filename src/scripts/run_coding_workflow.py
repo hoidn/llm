@@ -75,71 +75,54 @@ DEFATOM_GENERATE_PLAN_S_EXPRESSION = """
 )
 """
 
-# S-expression to define the feedback analysis task
-DEFATOM_ANALYZE_AIDER_RESULT_S_EXPRESSION = """
-(defatom user:analyze-aider-result
+# S-expression to define the combined analysis task
+DEFATOM_COMBINED_ANALYSIS_S_EXPRESSION = """
+(defatom user:evaluate-and-retry-analysis
   (params
-    (aider_result_content string)
-    (aider_result_status string)
-    (original_prompt string)
+    (original_goal string)
+    (aider_instructions string) ;; The prompt given to Aider this round
+    (aider_status string) ;; Status of the aider:automatic task result
+    (aider_diff string) ;; Content (diff/error) from the aider:automatic task result
+    (test_command string)
+    (test_stdout string)
+    (test_stderr string)
     (iteration integer)
     (max_retries integer)
   )
   (instructions
-    "Analyze Aider result (Iter {{iteration}}/{{max_retries}}):
-    Status: {{aider_result_status}}
-    Output/Error: {{aider_result_content}}
-    Original Prompt: {{original_prompt}}
-    Decide: SUCCESS, REVISE (provide 'next_prompt'), or ABORT.
-    Output ONLY JSON conforming to FeedbackResult schema."
-  )
-  (output_format ((type "json") (schema "src.system.models.FeedbackResult")))
-  (description "Analyzes Aider result and provides feedback/next steps.")
-  ;; (model "...") ; Optionally specify model
-)
-"""
-
-# S-expression to define the task that analyzes test command output
-DEFATOM_ANALYZE_TEST_RESULT_S_EXPRESSION = """
-(defatom user:analyze-test-result
-  (params
-    (test_command string)
-    (test_stdout string)
-    (test_stderr string)
-    (aider_diff string) ;; Optional context: what changes were made?
-    (original_goal string) ;; Optional context: what was the goal?
-  )
-  (instructions
-    "You are an AI test evaluator. Analyze the output of a test command run after an AI coding assistant made changes.
-    Goal being worked on: {{original_goal}}
-    Changes made by AI (diff):
+    "You are an AI evaluator reviewing a coding task iteration ({{iteration}}/{{max_retries}}).
+    Goal: {{original_goal}}
+    Aider Prompt This Iteration: {{aider_instructions}}
+    Aider Task Status: {{aider_status}}
+    Aider Output/Diff/Error:
     {{aider_diff}}
 
-    Test command executed: {{test_command}}
-    Standard Output (stdout):
+    Test Command Run: {{test_command}}
+    Test Stdout:
     {{test_stdout}}
-    Standard Error (stderr):
+    Test Stderr:
     {{test_stderr}}
 
-    Based *only* on the stdout and stderr, determine if the tests passed successfully or if there were failures.
-    - If the output indicates all tests passed (e.g., pytest showing 'PASSED', no errors), status is 'TESTS_PASSED'.
-    - If the output indicates test failures, errors, or an empty test suite run, status is 'TESTS_FAILED'.
+    Analyze the test output (stdout/stderr) to determine if tests passed.
+    - If tests passed (e.g., pytest shows PASSED, no errors in stderr), verdict is 'SUCCESS'.
+    - If tests failed:
+        - Check if iteration < max_retries.
+        - If yes, analyze the failure (test output, Aider diff) and generate a *revised* 'next_prompt' for Aider to fix the issues. Verdict is 'RETRY'.
+        - If no (max retries reached or failure seems unfixable), verdict is 'FAILURE'.
+    - If the Aider task itself failed ('aider_status' != 'COMPLETE'), verdict is usually 'FAILURE' unless a simple retry seems possible (provide 'next_prompt' and verdict 'RETRY').
 
-    Output ONLY a valid JSON object strictly conforming to this structure:
-    {
-      \\"eval_status\\": \\"TESTS_PASSED\\" | \\"TESTS_FAILED\\",
-      \\"message\\": \\"Brief summary (e.g., 'All tests passed.', 'Pytest reported 3 failures.')\\"
-    }
-    Do not include any other text, explanations, or formatting."
+    Provide a concise explanation in 'message'.
+    Output ONLY JSON conforming to the CombinedAnalysisResult schema.
+    Ensure 'next_prompt' is provided *only* if verdict is 'RETRY'.
+    **IMPORTANT:** Your entire response MUST be the JSON object itself, starting with `{` and ending with `}`."
   )
-  ;; Choose a model good at analysis and JSON output
-  ;; (model "gpt-4-turbo")
-  (output_format ((type "json") (schema null))) ;; We'll parse manually or define a schema later if needed
-  (description "Analyzes test command stdout/stderr to determine pass/fail status.")
+  (output_format ((type "json") (schema "src.system.models.CombinedAnalysisResult")))
+  (description "Analyzes Aider and test results, determines success/failure/retry, and provides the next prompt if needed.")
+  ;; (model "gpt-4-turbo") ; Choose a capable model like gpt-4-turbo or claude-3-opus
 )
 """
 
-# S-expression for the main DEEC loop workflow (REVISED EVALUATOR)
+# REVISED S-expression for the main DEEC loop workflow
 MAIN_WORKFLOW_S_EXPRESSION = """
 (progn
   (log-message "Starting workflow for goal:" initial-user-goal)
@@ -357,19 +340,12 @@ def main():
              sys.exit(1)
         logger.debug("Defined 'user:generate-plan-from-goal'")
 
-        # Execute Feedback Analyzer Defatom
-        feedback_def_result = app.handle_task_command(DEFATOM_ANALYZE_AIDER_RESULT_S_EXPRESSION)
-        if feedback_def_result.get("status") == "FAILED":
-             logger.error(f"Failed to define 'user:analyze-aider-result': {feedback_def_result.get('content')}")
+        # Execute COMBINED Feedback Analyzer Defatom
+        combined_analysis_def_result = app.handle_task_command(DEFATOM_COMBINED_ANALYSIS_S_EXPRESSION)
+        if combined_analysis_def_result.get("status") == "FAILED":
+             logger.error(f"Failed to define 'user:evaluate-and-retry-analysis': {combined_analysis_def_result.get('content')}")
              sys.exit(1)
-        logger.debug("Defined 'user:analyze-aider-result'")
-
-        # Execute Test Result Analyzer Defatom
-        test_analysis_def_result = app.handle_task_command(DEFATOM_ANALYZE_TEST_RESULT_S_EXPRESSION)
-        if test_analysis_def_result.get("status") == "FAILED":
-            logger.error(f"Failed to define 'user:analyze-test-result': {test_analysis_def_result.get('content')}")
-            sys.exit(1)
-        logger.debug("Defined 'user:analyze-test-result'")
+        logger.debug("Defined 'user:evaluate-and-retry-analysis'")
 
         logger.info("Atomic tasks defined successfully.")
     except Exception as e:
