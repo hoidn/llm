@@ -181,11 +181,17 @@ module src.sexp_evaluator.sexp_evaluator {
         //   - **Returns:** The result (integer or float).
         //   - **Raises:** `SexpEvaluationError` for arity issues, if arguments are not numbers, or for evaluation errors.
         // - `(and expr1 expr2 ...)`: **Special Form.** Evaluates expressions sequentially from left to right.
-        //   - **Behavior:** If any expression evaluates to a falsey value (Python False, None, 0, empty sequence/mapping),
-        //     evaluation stops immediately and `false` is returned. If all expressions evaluate to truthy values,
-        //     `true` is returned. If no expressions are provided (`(and)`), it returns `true`.
-        //   - **Returns:** `true` or `false`.
-        //   - **Raises:** `SexpEvaluationError` if any argument evaluation fails before a falsey value is encountered.
+        //   - **Behavior:** If any expression evaluates to a falsey value (Python `False`, `None`, `0`, empty sequence/mapping, etc.),
+        //     evaluation stops immediately, and that falsey value is returned. If all expressions evaluate to truthy values,
+        //     the value of the *last* expression is returned. If no expressions are provided (`(and)`), it returns `true`.
+        //   - **Returns:** The determined value (could be any type, or `true`).
+        //   - **Raises:** `SexpEvaluationError` if any argument evaluation fails before a short-circuit condition is met.
+        // - `(or expr1 expr2 ...)`: **Special Form.** Evaluates expressions sequentially from left to right.
+        //   - **Behavior:** If any expression evaluates to a truthy value, evaluation stops immediately, and that truthy value is returned.
+        //     If all expressions evaluate to falsey values, the value of the *last* expression is returned.
+        //     If no expressions are provided (`(or)`), it returns `false`.
+        //   - **Returns:** The determined value (could be any type, or `false`).
+        //   - **Raises:** `SexpEvaluationError` if any argument evaluation fails before a short-circuit condition is met.
         // - `(not <expr>)`: **Primitive.**
         //   - **Action:** Performs logical negation.
         //   - **Argument Processing:** Evaluates `<expr>`.
