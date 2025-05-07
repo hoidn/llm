@@ -85,6 +85,14 @@ class SexpEvaluator:
             "get-field": self.primitive_processor.apply_get_field_primitive,
             "string=?": self.primitive_processor.apply_string_equal_primitive,
             "log-message": self.primitive_processor.apply_log_message_primitive,
+            # --- Phase 10b Additions ---
+            "eq?": self.primitive_processor.apply_eq_primitive,
+            "equal?": self.primitive_processor.apply_eq_primitive, # Alias for eq?
+            "null?": self.primitive_processor.apply_null_primitive,
+            "nil?": self.primitive_processor.apply_null_primitive,   # Alias for null?
+            "set!": self.primitive_processor.apply_set_bang_primitive,
+            "+": self.primitive_processor.apply_add_primitive,
+            "-": self.primitive_processor.apply_subtract_primitive,
         }
         logging.info("SexpEvaluator initialized with helper processors.")
 

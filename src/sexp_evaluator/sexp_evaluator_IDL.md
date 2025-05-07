@@ -88,7 +88,7 @@ module src.sexp_evaluator.sexp_evaluator {
         //        d. Bind the `Closure`'s parameter symbols to the `evaluated_args` in `call_frame_env`.
         //        e. Evaluate the `Closure`'s body expressions sequentially in `call_frame_env`. The result of the last body expression is returned.
         //     2. Else, if `resolved_operator` is a **string (name of a primitive, task, or tool)**:
-        //        a. If it's a **Primitive** (e.g., "list", "get_context"): Call the primitive's applier method (e.g., `_apply_list_primitive`). Primitive appliers are responsible for evaluating their own arguments from `arg_expr_nodes` as needed.
+        //        a. If it's a **Primitive** (e.g., "list", "get_context", "eq?", "null?", "set!", "+", "-"): Call the primitive's applier method (e.g., `_apply_list_primitive`). Primitive appliers are responsible for evaluating their own arguments from `arg_expr_nodes` as needed.
         //        b. If it's an **Atomic Task name**: Call `_invoke_task_system`. This invoker will evaluate arguments from `arg_expr_nodes` before creating the `SubtaskRequest`.
         //        c. If it's a **Handler Tool name**: Call `_invoke_handler_tool`. This invoker will evaluate arguments from `arg_expr_nodes` before calling the handler's tool executor.
         //        d. Else (name not recognized): Raise "Unrecognized operator" error.
@@ -146,7 +146,37 @@ module src.sexp_evaluator.sexp_evaluator {
         //   - **Behavior:** Constructs a `ContextGenerationInput` object from the evaluated arguments. Calls `MemorySystem.get_relevant_context_for` with this object.
         //   - **Returns:** A list of relevant file path strings extracted from the `AssociativeMatchResult`.
         //   - **Raises:** `SexpEvaluationError` if arguments are invalid, context retrieval fails, or `MemorySystem` returns an error.
-        
+        // - `(eq? <expr1> <expr2>)` or `(equal? <expr1> <expr2>)`: **Primitive.**
+        //   - **Action:** Compares two evaluated expressions for equality.
+        //   - **Argument Processing:** Evaluates `<expr1>` and `<expr2>`.
+        //   - **Behavior:** Performs Python's `==` comparison on the evaluated values. Symbols are compared by their string values.
+        //   - **Returns:** `true` if values are equal, `false` otherwise.
+        //   - **Raises:** `SexpEvaluationError` for arity issues or errors during argument evaluation.
+        // - `(null? <expr>)` or `(nil? <expr>)`: **Primitive.**
+        //   - **Action:** Checks if an evaluated expression is null/nil.
+        //   - **Argument Processing:** Evaluates `<expr>`.
+        //   - **Behavior:** Considers Python `None` or an empty list `[]` as null.
+        //   - **Returns:** `true` if the value is null, `false` otherwise.
+        //   - **Raises:** `SexpEvaluationError` for arity issues or errors during argument evaluation.
+        // - `(set! <symbol> <new-value-expr>)`: **Primitive.**
+        //   - **Action:** Updates the value of an *existing* variable in the current or an ancestor scope.
+        //   - **Argument Processing:** `<symbol>` must be a literal symbol. Evaluates `<new-value-expr>`.
+        //   - **Behavior:** Searches for `<symbol>` up the environment chain and updates the first binding found.
+        //   - **Returns:** The `new-value`.
+        //   - **Raises:** `SexpEvaluationError` if `<symbol>` is not a symbol, is unbound, or for arity issues/evaluation errors.
+        // - `(+ <num-expr1> <num-expr2> ...)`: **Primitive.**
+        //   - **Action:** Adds numbers. N-ary.
+        //   - **Argument Processing:** Evaluates all `<num-expr>` arguments.
+        //   - **Behavior:** Sums the evaluated numbers. If no arguments, returns 0. Promotes to float if any argument is float.
+        //   - **Returns:** The sum (integer or float).
+        //   - **Raises:** `SexpEvaluationError` if any argument is not a number or for evaluation errors.
+        // - `(- <num-expr1> <optional-num-expr2>)`: **Primitive.**
+        //   - **Action:** Subtracts numbers or negates a single number.
+        //   - **Argument Processing:** Evaluates argument(s).
+        //   - **Behavior:** If one argument, returns its negation. If two arguments, returns `num1 - num2`. Promotes to float.
+        //   - **Returns:** The result (integer or float).
+        //   - **Raises:** `SexpEvaluationError` for arity issues, if arguments are not numbers, or for evaluation errors.
+        //
         // - Parses the `args` list, expecting `(key_symbol value_expression)` pairs. **Note: `args` contains *unevaluated* argument expressions.**
         // - **Crucially, evaluates each `value_expression` using `_eval` within this handler** to get the actual argument values.
         // - Handles conversion of quoted list-of-pairs for `context` or `inputs` arguments after evaluation.
@@ -196,6 +226,17 @@ module src.sexp_evaluator.sexp_evaluator {
         // Defines a variable in the *current* environment scope.
         // Preconditions: name is a symbol string, value is the evaluated result.
         void define(string name, Any value);
+
+        // Sets the value of an *existing* variable in the current or an ancestor scope.
+        // Preconditions:
+        // - name is a symbol string representing an existing, bound variable.
+        // - value is the new evaluated result for the variable.
+        // Behavior:
+        // - Searches for the variable 'name' starting from the current environment
+        //   and going up the parent chain. The first binding found is updated.
+        // - This allows modification of variables in outer scopes, as used by `set!`.
+        // @raises_error(condition="UnboundSymbolError", description="If symbol 'name' is not found in any accessible scope.")
+        void set_value_in_scope(string name, Any value);
 
         // Creates a new child environment extending this one.
         // Preconditions: bindings is a dictionary for the child scope.

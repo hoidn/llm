@@ -211,3 +211,47 @@ def test_get_local_bindings():
     local_bindings = child_env.get_local_bindings()
     assert local_bindings == {"c": 2, "d": 3}
     assert "p" not in local_bindings # Parent binding should not be included
+
+# --- Tests for set_value_in_scope ---
+
+def test_env_set_value_updates_local():
+    env = SexpEnvironment(bindings={'x': 10})
+    env.set_value_in_scope('x', 20)
+    assert env.lookup('x') == 20
+
+def test_env_set_value_updates_parent():
+    parent_env = SexpEnvironment(bindings={'y': 100})
+    child_env = parent_env.extend({'x': 1})
+    
+    child_env.set_value_in_scope('y', 200) # Update parent's 'y'
+    
+    assert parent_env.lookup('y') == 200
+    assert child_env.lookup('y') == 200 # Child sees updated parent
+    assert child_env.lookup('x') == 1   # Child's local var unaffected
+
+def test_env_set_value_updates_grandparent():
+    grandparent_env = SexpEnvironment(bindings={'z': 50})
+    parent_env = grandparent_env.extend({'y': 60})
+    child_env = parent_env.extend({'x': 70})
+
+    child_env.set_value_in_scope('z', 500)
+
+    assert grandparent_env.lookup('z') == 500
+    assert parent_env.lookup('z') == 500
+    assert child_env.lookup('z') == 500
+
+def test_env_set_value_shadowing_preference_local_first_if_exists_at_level():
+    # If 'x' exists at multiple levels, set_value_in_scope should update the *first one it finds*
+    # when searching from the current scope upwards.
+    parent_env = SexpEnvironment(bindings={'x': 1})
+    child_env = parent_env.extend({'x': 2}) # Child shadows parent's 'x'
+    
+    child_env.set_value_in_scope('x', 3) # Should update child_env's 'x'
+    
+    assert child_env.lookup('x') == 3
+    assert parent_env.lookup('x') == 1 # Parent's 'x' should remain unchanged
+
+def test_env_set_value_raises_name_error_if_unbound():
+    env = SexpEnvironment()
+    with pytest.raises(NameError, match="Unbound symbol: Cannot set! 'unbound_var' as it's not defined."):
+        env.set_value_in_scope('unbound_var', 10)
