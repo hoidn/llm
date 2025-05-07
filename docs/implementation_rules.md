@@ -475,6 +475,7 @@ When implementing components that parse and evaluate Domain-Specific Languages o
 *   **11.1. Principle of Explicit Intent:**
     *   Ensure the DSL syntax provides unambiguous ways to express core concepts, particularly the distinction between executable code and literal data.
     *   Avoid relying on implicit evaluator heuristics where explicit syntax (e.g., a `quote` mechanism for literal data) can provide clarity. Use `quote` or specific data constructors (like `list`) for literal data.
+    *   **Quoting Symbols as Data:** When constructing literal lists that include symbols intended as data (e.g., keys in an association list), it is recommended to use `(quote your-symbol)` or the shorthand `'your-symbol` to prevent unintended evaluation if `your-symbol` could be bound. For example: `(list (quote key1) "value1" (quote key2) "value2")` or `(list 'key1 "value1" 'key2 "value2")`.
 
 **12. Data Merging Conventions**
 
@@ -494,6 +495,29 @@ When merging data from multiple sources (e.g., configuration layers, default val
     # final_data.update(orchestrator_defaults) # Avoid this if component data is primary
     ```
 
+**14. Tool Registration and Naming Conventions**
+
+When registering tools with the `BaseHandler` and using them in S-expressions or with LLM providers, adhere to these naming conventions:
+
+*   **Tool Name Constraints:** The `name` field within a tool_spec dictionary (used when calling `BaseHandler.register_tool`) **MUST** conform to the naming constraints of the target LLM providers:
+    *   For Anthropic and most providers: `^[a-zA-Z0-9_-]{1,64}$` (alphanumeric, underscore, hyphen)
+    *   Special characters like colons (`:`) are generally disallowed by providers in this field
+
+*   **Tool Lookup and Invocation:**
+    *   The key used to register the tool's executor in `BaseHandler.tool_executors` (which is taken from `tool_spec["name"]`) is the identifier that the `SexpEvaluator` will use to look up and invoke the tool if called from an S-expression.
+    *   When an S-expression like `(tool-symbol arg1 val1 ...)` is evaluated, and `tool-symbol` resolves to a string that is a key in `BaseHandler.tool_executors`, that specific executor is called.
+
+*   **Naming Recommendation:** For simplicity and to avoid complex mapping layers:
+    *   Use tool names that are valid for both LLM providers and S-expression symbols (e.g., prefer `(my_tool_name ...)` over `(my:tool:name ...)` in S-expressions if `my_tool_name` is the name registered with the handler and sent to the LLM).
+    *   If S-expression symbols must contain characters invalid for LLM tool names (e.g., colons for namespacing), then the `SexpEvaluator`'s invocation logic or the `BaseHandler`'s registration would need a translation layer, which adds complexity.
+
+*   **Registration Flow:**
+    1. Instantiate core components (Handler, TaskSystem, MemorySystem, etc.)
+    2. Register all system, provider-specific, and other tools with the Handler instance
+    3. Call `handler.get_provider_identifier()` and determine active tools
+    4. Call `handler.set_active_tool_definitions()` with these tools
+    5. Call `handler.llm_manager.initialize_agent(tools=handler.get_tools_for_agent())` to create the pydantic-ai agent with the fully resolved set of tools
+
 **13. Aider Integration (MCP Client)**
 
 *   **Standard:** The project uses the **`mcp.py`** library for integration with the Aider MCP Server. This enables delegating coding tasks to an external Aider instance.
@@ -505,12 +529,15 @@ When merging data from multiple sources (e.g., configuration layers, default val
     *   **Parameter Handling:** When constructing parameters for the Aider MCP Server, always send an empty list `[]` for `relative_readonly_files` instead of `None` to avoid server-side errors.
     *   **Response Processing:** The `AiderBridge.call_aider_tool` method must properly handle the `CallToolResult` wrapper object returned by `session.call_tool`, including checks for the wrapper type, `isError` flag, and extraction of the content list.
     *   **Error Handling:** Implement robust error handling for both client-side exceptions (connection issues, timeouts) and server-side errors (returned in the response payload).
+    *   **Server Working Directory:** The Aider MCP Server process **MUST** be launched with its current working directory set to the root of a valid Git repository. Failure to do so will result in a startup error. When configuring the server (typically via `.mcp.json`), ensure that the `cwd` parameter for `StdioServerParameters` points to a valid Git repository root. If `cwd` is not specified, the server process will inherit the CWD of the AiderBridge's host process.
+    *   **Parameter Type Handling:** When a Python function is registered as a tool executor and invoked from an S-expression, the arguments passed will be the evaluated Python objects from the S-expression. If a tool's IDL specifies a parameter as a "JSON string array" (like `file_context`), but receives a Python list directly from an S-expression, the implementation should handle both formats. It's often more robust to expect Python objects directly if frequently called from S-expressions.
 *   **Reference:** Familiarize yourself with the Aider MCP Server documentation in `docs/librarydocs/aider_MCP_server.md` for details on the server's API and behavior.
 
 *   **11.2. Separate Evaluation from Application:**
     *   Design the core evaluation function (e.g., `_eval`) with the primary responsibility of determining the *value* of a given expression/node in the current context/environment.
     *   Isolate the logic that *applies* a function, operator, or procedure to its arguments. This application logic should operate on *already evaluated* arguments.
     *   Be cautious that the process of evaluating arguments does not itself incorrectly trigger function application or execution side-effects on the intermediate results.
+    *   **Let Binding Scope:** The `let` special form evaluates all binding expressions in the outer environment before any bindings are established. This means a binding's value expression cannot reference other variables defined in the same `let` bindings list. For sequential binding (where later bindings can reference earlier ones), use nested `let` forms: `(let ((var1 <val1_expr>)) (let ((var2 (f var1))) <body>))`.
 
 *   **11.3. Implement Robust and Explicit Dispatch Logic:**
     *   For functions that handle different types of language constructs (e.g., `_eval_list` handling special forms, primitives, invocations), ensure the dispatching rules are clear, explicit, and cover all expected cases.
