@@ -1751,205 +1751,396 @@ class TestSexpEvaluatorLambdaClosures:
         assert result == [100, 200]
 
 # --- Tests for eq? ---
-def test_primitive_eq_numbers_equal(evaluator):
-    import logging
-    logging.critical("Starting test_primitive_eq_numbers_equal")
-    try:
-        result = evaluator.evaluate_string("(eq? 1 1)")
-        logging.critical(f"Result of (eq? 1 1): {result}, type: {type(result)}")
-        assert result is True
-    except Exception as e:
-        logging.critical(f"EXCEPTION in (eq? 1 1): {type(e)}: {e}")
-        raise
+def test_primitive_eq_numbers_equal(evaluator, mock_parser):
+    sexp_str = "(eq? 1 1)"
+    ast = [Symbol('eq?'), 1, 1]
+    mock_parser.parse_string.return_value = ast
+    assert evaluator.evaluate_string(sexp_str) is True
     
-    assert evaluator.evaluate_string("(eq? 1.0 1.0)") is True
-    assert evaluator.evaluate_string("(eq? 1 1.0)") is True # Numeric equality
-    assert evaluator.evaluate_string("(eq? 0 0.0)") is True
+    sexp_str = "(eq? 1.0 1.0)"
+    ast = [Symbol('eq?'), 1.0, 1.0]
+    mock_parser.parse_string.return_value = ast
+    assert evaluator.evaluate_string(sexp_str) is True
 
-def test_primitive_eq_numbers_unequal(evaluator):
-    assert evaluator.evaluate_string("(eq? 1 2)") is False
-    assert evaluator.evaluate_string("(eq? 1.0 1.1)") is False
+    sexp_str = "(eq? 1 1.0)"
+    ast = [Symbol('eq?'), 1, 1.0]
+    mock_parser.parse_string.return_value = ast
+    assert evaluator.evaluate_string(sexp_str) is True
 
-def test_primitive_eq_strings_equal(evaluator):
-    assert evaluator.evaluate_string('(eq? "hello" "hello")') is True
-    assert evaluator.evaluate_string('(eq? "" "")') is True
+    sexp_str = "(eq? 0 0.0)"
+    ast = [Symbol('eq?'), 0, 0.0]
+    mock_parser.parse_string.return_value = ast
+    assert evaluator.evaluate_string(sexp_str) is True
 
-def test_primitive_eq_strings_unequal(evaluator):
-    assert evaluator.evaluate_string('(eq? "hello" "world")') is False
-    assert evaluator.evaluate_string('(eq? "Hello" "hello")') is False # Case-sensitive
+def test_primitive_eq_numbers_unequal(evaluator, mock_parser):
+    sexp_str = "(eq? 1 2)"
+    ast = [Symbol('eq?'), 1, 2]
+    mock_parser.parse_string.return_value = ast
+    assert evaluator.evaluate_string(sexp_str) is False
 
-def test_primitive_eq_booleans_equal(evaluator):
-    assert evaluator.evaluate_string("(eq? true true)") is True
-    assert evaluator.evaluate_string("(eq? false false)") is True
+    sexp_str = "(eq? 1.0 1.1)"
+    ast = [Symbol('eq?'), 1.0, 1.1]
+    mock_parser.parse_string.return_value = ast
+    assert evaluator.evaluate_string(sexp_str) is False
 
-def test_primitive_eq_booleans_unequal(evaluator):
-    assert evaluator.evaluate_string("(eq? true false)") is False
+def test_primitive_eq_strings_equal(evaluator, mock_parser):
+    sexp_str = '(eq? "hello" "hello")'
+    ast = [Symbol('eq?'), "hello", "hello"]
+    mock_parser.parse_string.return_value = ast
+    assert evaluator.evaluate_string(sexp_str) is True
 
-def test_primitive_eq_symbols_equal(evaluator):
-    assert evaluator.evaluate_string("(eq? (quote foo) (quote foo))") is True
-    # Test with bound symbols
+    sexp_str = '(eq? "" "")'
+    ast = [Symbol('eq?'), "", ""]
+    mock_parser.parse_string.return_value = ast
+    assert evaluator.evaluate_string(sexp_str) is True
+
+def test_primitive_eq_strings_unequal(evaluator, mock_parser):
+    sexp_str = '(eq? "hello" "world")'
+    ast = [Symbol('eq?'), "hello", "world"]
+    mock_parser.parse_string.return_value = ast
+    assert evaluator.evaluate_string(sexp_str) is False
+
+    sexp_str = '(eq? "Hello" "hello")'
+    ast = [Symbol('eq?'), "Hello", "hello"]
+    mock_parser.parse_string.return_value = ast
+    assert evaluator.evaluate_string(sexp_str) is False 
+
+def test_primitive_eq_booleans_equal(evaluator, mock_parser):
+    sexp_str = "(eq? true true)"
+    ast = [Symbol('eq?'), True, True]
+    mock_parser.parse_string.return_value = ast
+    assert evaluator.evaluate_string(sexp_str) is True
+
+    sexp_str = "(eq? false false)"
+    ast = [Symbol('eq?'), False, False]
+    mock_parser.parse_string.return_value = ast
+    assert evaluator.evaluate_string(sexp_str) is True
+
+def test_primitive_eq_booleans_unequal(evaluator, mock_parser):
+    sexp_str = "(eq? true false)"
+    ast = [Symbol('eq?'), True, False]
+    mock_parser.parse_string.return_value = ast
+    assert evaluator.evaluate_string(sexp_str) is False
+
+def test_primitive_eq_symbols_equal(evaluator, mock_parser):
+    sexp_str = "(eq? (quote foo) (quote foo))"
+    ast = [Symbol('eq?'), [Symbol('quote'), Symbol('foo')], [Symbol('quote'), Symbol('foo')]]
+    mock_parser.parse_string.return_value = ast
+    assert evaluator.evaluate_string(sexp_str) is True
+    
     env = SexpEnvironment(bindings={'a': Symbol('id1'), 'b': Symbol('id1')})
-    assert evaluator.evaluate_string("(eq? a b)", env) is True
+    sexp_str_env = "(eq? a b)"
+    ast_env = [Symbol('eq?'), Symbol('a'), Symbol('b')]
+    mock_parser.parse_string.return_value = ast_env
+    assert evaluator.evaluate_string(sexp_str_env, env) is True
 
-def test_primitive_eq_symbols_unequal(evaluator):
-    assert evaluator.evaluate_string("(eq? (quote foo) (quote bar))") is False
+def test_primitive_eq_symbols_unequal(evaluator, mock_parser):
+    sexp_str = "(eq? (quote foo) (quote bar))"
+    ast = [Symbol('eq?'), [Symbol('quote'), Symbol('foo')], [Symbol('quote'), Symbol('bar')]]
+    mock_parser.parse_string.return_value = ast
+    assert evaluator.evaluate_string(sexp_str) is False
+
     env = SexpEnvironment(bindings={'a': Symbol('id1'), 'b': Symbol('id2')})
-    assert evaluator.evaluate_string("(eq? a b)", env) is False
+    sexp_str_env = "(eq? a b)"
+    ast_env = [Symbol('eq?'), Symbol('a'), Symbol('b')]
+    mock_parser.parse_string.return_value = ast_env
+    assert evaluator.evaluate_string(sexp_str_env, env) is False
 
-def test_primitive_eq_none_equal(evaluator):
-    # Assuming 'nil' symbol (parsed by sexpdata) evaluates to Python None
-    # if SexpParser configured nil=None, or if it's used directly.
-    # If nil parses to [], then test (eq? '() '())
-    assert evaluator.evaluate_string("(eq? nil nil)") is True # if nil is Python None
-    # Also test with an actual None value in the environment
+def test_primitive_eq_none_equal(evaluator, mock_parser):
+    sexp_str = "(eq? nil nil)"
+    ast = [Symbol('eq?'), None, None] # Assuming nil parses to None
+    mock_parser.parse_string.return_value = ast
+    assert evaluator.evaluate_string(sexp_str) is True 
+    
     env_with_none = SexpEnvironment(bindings={"my_none": None})
-    assert evaluator.evaluate_string("(eq? my_none nil)", env_with_none) is True
+    sexp_str_env = "(eq? my_none nil)"
+    ast_env = [Symbol('eq?'), Symbol('my_none'), None]
+    mock_parser.parse_string.return_value = ast_env
+    assert evaluator.evaluate_string(sexp_str_env, env_with_none) is True
 
-def test_primitive_eq_lists_equal_structurally(evaluator):
-    assert evaluator.evaluate_string("(eq? (list 1 2) (list 1 2))") is True
-    assert evaluator.evaluate_string("(eq? (list (list 'a') 'b') (list (list 'a') 'b'))") is True
-    assert evaluator.evaluate_string("(eq? (list) (list))") is True
-    assert evaluator.evaluate_string("(eq? '() '())") is True # Quoted empty lists
+def test_primitive_eq_lists_equal_structurally(evaluator, mock_parser):
+    sexp_str = "(eq? (list 1 2) (list 1 2))"
+    ast = [Symbol('eq?'), [Symbol('list'), 1, 2], [Symbol('list'), 1, 2]]
+    mock_parser.parse_string.return_value = ast
+    assert evaluator.evaluate_string(sexp_str) is True
 
-def test_primitive_eq_lists_unequal_structurally(evaluator):
-    assert evaluator.evaluate_string("(eq? (list 1 2) (list 1 3))") is False
-    assert evaluator.evaluate_string("(eq? (list 1 2) (list 1))") is False
-    assert evaluator.evaluate_string("(eq? (list) (list 1))") is False
+    sexp_str = "(eq? (list (list 'a') 'b') (list (list 'a') 'b'))"
+    ast = [Symbol('eq?'), 
+           [Symbol('list'), [Symbol('list'), Symbol("'a")], Symbol("'b")], 
+           [Symbol('list'), [Symbol('list'), Symbol("'a")], Symbol("'b")]]
+    mock_parser.parse_string.return_value = ast
+    assert evaluator.evaluate_string(sexp_str) is True
 
-def test_primitive_eq_different_types_unequal(evaluator):
-    assert evaluator.evaluate_string('(eq? "1" 1)') is False
-    assert evaluator.evaluate_string("(eq? true (quote true))") is False # bool vs Symbol
-    assert evaluator.evaluate_string("(eq? nil false)") is False
-    assert evaluator.evaluate_string("(eq? (list 1) 1)") is False
+    sexp_str = "(eq? (list) (list))"
+    ast = [Symbol('eq?'), [Symbol('list')], [Symbol('list')]]
+    mock_parser.parse_string.return_value = ast
+    assert evaluator.evaluate_string(sexp_str) is True
 
-def test_primitive_eq_arity_errors(evaluator):
-    import logging
-    logging.critical("Starting test_primitive_eq_arity_errors")
-    
-    try:
-        evaluator.evaluate_string("(eq? 1)")
-    except SexpEvaluationError as e:
-        logging.critical(f"ACTUAL ERROR RAISED: TYPE={type(e)}, MSG='{e}'")
-        assert "'eq?' requires exactly two arguments" in str(e), f"Unexpected error message: {e}"
-    else:
-        logging.critical("No SexpEvaluationError was raised by (eq? 1)")
-        assert False, "SexpEvaluationError was not raised for arity mismatch as expected."
-    
+    sexp_str = "(eq? '() '())"
+    ast = [Symbol('eq?'), [Symbol('quote'), []], [Symbol('quote'), []]]
+    mock_parser.parse_string.return_value = ast
+    assert evaluator.evaluate_string(sexp_str) is True 
+
+def test_primitive_eq_lists_unequal_structurally(evaluator, mock_parser):
+    sexp_str = "(eq? (list 1 2) (list 1 3))"
+    ast = [Symbol('eq?'), [Symbol('list'), 1, 2], [Symbol('list'), 1, 3]]
+    mock_parser.parse_string.return_value = ast
+    assert evaluator.evaluate_string(sexp_str) is False
+
+    sexp_str = "(eq? (list 1 2) (list 1))"
+    ast = [Symbol('eq?'), [Symbol('list'), 1, 2], [Symbol('list'), 1]]
+    mock_parser.parse_string.return_value = ast
+    assert evaluator.evaluate_string(sexp_str) is False
+
+    sexp_str = "(eq? (list) (list 1))"
+    ast = [Symbol('eq?'), [Symbol('list')], [Symbol('list'), 1]]
+    mock_parser.parse_string.return_value = ast
+    assert evaluator.evaluate_string(sexp_str) is False
+
+def test_primitive_eq_different_types_unequal(evaluator, mock_parser):
+    sexp_str = '(eq? "1" 1)'
+    ast = [Symbol('eq?'), "1", 1]
+    mock_parser.parse_string.return_value = ast
+    assert evaluator.evaluate_string(sexp_str) is False
+
+    sexp_str = "(eq? true (quote true))"
+    ast = [Symbol('eq?'), True, [Symbol('quote'), Symbol('true')]]
+    mock_parser.parse_string.return_value = ast
+    assert evaluator.evaluate_string(sexp_str) is False 
+
+    sexp_str = "(eq? nil false)"
+    ast = [Symbol('eq?'), None, False]
+    mock_parser.parse_string.return_value = ast
+    assert evaluator.evaluate_string(sexp_str) is False
+
+    sexp_str = "(eq? (list 1) 1)"
+    ast = [Symbol('eq?'), [Symbol('list'), 1], 1]
+    mock_parser.parse_string.return_value = ast
+    assert evaluator.evaluate_string(sexp_str) is False
+
+def test_primitive_eq_arity_errors(evaluator, mock_parser):
+    sexp_str = "(eq? 1)"
+    ast = [Symbol('eq?'), 1]
+    mock_parser.parse_string.return_value = ast
     with pytest.raises(SexpEvaluationError, match="'eq\\?' requires exactly two arguments"):
-        evaluator.evaluate_string("(eq? 1)")
+        evaluator.evaluate_string(sexp_str)
+
+    sexp_str = "(eq? 1 2 3)"
+    ast = [Symbol('eq?'), 1, 2, 3]
+    mock_parser.parse_string.return_value = ast
     with pytest.raises(SexpEvaluationError, match="'eq\\?' requires exactly two arguments"):
-        evaluator.evaluate_string("(eq? 1 2 3)")
+        evaluator.evaluate_string(sexp_str)
+
+    sexp_str = "(eq?)"
+    ast = [Symbol('eq?')]
+    mock_parser.parse_string.return_value = ast
     with pytest.raises(SexpEvaluationError, match="'eq\\?' requires exactly two arguments"):
-        evaluator.evaluate_string("(eq?)")
+        evaluator.evaluate_string(sexp_str)
 
 # --- Tests for null? (and nil?) ---
-def test_primitive_null_is_true_for_none(evaluator):
-    assert evaluator.evaluate_string("(null? nil)") is True # If nil evaluates to None
+def test_primitive_null_is_true_for_none(evaluator, mock_parser):
+    sexp_str = "(null? nil)"
+    ast = [Symbol('null?'), None]
+    mock_parser.parse_string.return_value = ast
+    assert evaluator.evaluate_string(sexp_str) is True 
+    
     env_with_none = SexpEnvironment(bindings={"my_val": None})
-    assert evaluator.evaluate_string("(null? my_val)", env_with_none) is True
-    assert evaluator.evaluate_string("(nil? nil)") is True # Alias
+    sexp_str_env = "(null? my_val)"
+    ast_env = [Symbol('null?'), Symbol('my_val')]
+    mock_parser.parse_string.return_value = ast_env
+    assert evaluator.evaluate_string(sexp_str_env, env_with_none) is True
 
-def test_primitive_null_is_true_for_empty_list(evaluator):
-    assert evaluator.evaluate_string("(null? (list))") is True
-    assert evaluator.evaluate_string("(null? '())") is True # Quoted empty list
-    assert evaluator.evaluate_string("(nil? (list))") is True # Alias
+    sexp_str_alias = "(nil? nil)"
+    ast_alias = [Symbol('nil?'), None]
+    mock_parser.parse_string.return_value = ast_alias
+    assert evaluator.evaluate_string(sexp_str_alias) is True 
 
-def test_primitive_null_is_false_for_non_nulls(evaluator):
-    assert evaluator.evaluate_string("(null? 0)") is False
-    assert evaluator.evaluate_string("(null? 1)") is False
-    assert evaluator.evaluate_string('(null? "")') is False
-    assert evaluator.evaluate_string('(null? "text")') is False
-    assert evaluator.evaluate_string("(null? true)") is False
-    assert evaluator.evaluate_string("(null? false)") is False
-    assert evaluator.evaluate_string("(null? (quote a_symbol))") is False
-    assert evaluator.evaluate_string("(null? (list 1))") is False
+def test_primitive_null_is_true_for_empty_list(evaluator, mock_parser):
+    sexp_str = "(null? (list))"
+    ast = [Symbol('null?'), [Symbol('list')]]
+    mock_parser.parse_string.return_value = ast
+    assert evaluator.evaluate_string(sexp_str) is True
 
-def test_primitive_null_arity_errors(evaluator):
+    sexp_str = "(null? '())"
+    ast = [Symbol('null?'), [Symbol('quote'), []]]
+    mock_parser.parse_string.return_value = ast
+    assert evaluator.evaluate_string(sexp_str) is True 
+
+    sexp_str_alias = "(nil? (list))"
+    ast_alias = [Symbol('nil?'), [Symbol('list')]]
+    mock_parser.parse_string.return_value = ast_alias
+    assert evaluator.evaluate_string(sexp_str_alias) is True 
+
+def test_primitive_null_is_false_for_non_nulls(evaluator, mock_parser):
+    test_cases = [
+        ("(null? 0)", [Symbol('null?'), 0]),
+        ("(null? 1)", [Symbol('null?'), 1]),
+        ('(null? "")', [Symbol('null?'), ""]),
+        ('(null? "text")', [Symbol('null?'), "text"]),
+        ("(null? true)", [Symbol('null?'), True]),
+        ("(null? false)", [Symbol('null?'), False]),
+        ("(null? (quote a_symbol))", [Symbol('null?'), [Symbol('quote'), Symbol('a_symbol')]]),
+        ("(null? (list 1))", [Symbol('null?'), [Symbol('list'), 1]]),
+    ]
+    for sexp_str, ast in test_cases:
+        mock_parser.parse_string.return_value = ast
+        assert evaluator.evaluate_string(sexp_str) is False
+
+def test_primitive_null_arity_errors(evaluator, mock_parser):
+    sexp_str = "(null?)"
+    ast = [Symbol('null?')]
+    mock_parser.parse_string.return_value = ast
     with pytest.raises(SexpEvaluationError, match="'null\\?' requires exactly one argument"):
-        evaluator.evaluate_string("(null?)")
-    with pytest.raises(SexpEvaluationError, match="'null\\?' requires exactly one argument"):
-        evaluator.evaluate_string("(null? nil nil)")
+        evaluator.evaluate_string(sexp_str)
 
-def test_primitive_null_with_get_field_missing(evaluator):
-    # Assuming get-field returns None for missing fields
-    assert evaluator.evaluate_string("(null? (get-field (list) \"non_existent_key\"))") is True
-    # If get-field raises error, this test would need to change
+    sexp_str = "(null? nil nil)"
+    ast = [Symbol('null?'), None, None]
+    mock_parser.parse_string.return_value = ast
+    with pytest.raises(SexpEvaluationError, match="'null\\?' requires exactly one argument"):
+        evaluator.evaluate_string(sexp_str)
+
+def test_primitive_null_with_get_field_missing(evaluator, mock_parser):
+    sexp_str = "(null? (get-field (list) \"non_existent_key\"))"
+    ast = [Symbol('null?'), [Symbol('get-field'), [Symbol('list')], "non_existent_key"]]
+    mock_parser.parse_string.return_value = ast
+    assert evaluator.evaluate_string(sexp_str) is True
 
 # --- Tests for set! ---
-def test_primitive_set_bang_updates_local_var(evaluator):
+def test_primitive_set_bang_updates_local_var(evaluator, mock_parser):
     env = SexpEnvironment(bindings={'x': 10})
-    result = evaluator.evaluate_string("(set! x 20)", env)
+    sexp_str = "(set! x 20)"
+    ast = [Symbol('set!'), Symbol('x'), 20]
+    mock_parser.parse_string.return_value = ast
+    result = evaluator.evaluate_string(sexp_str, env)
     assert result == 20
     assert env.lookup('x') == 20
 
-def test_primitive_set_bang_updates_parent_var(evaluator):
+def test_primitive_set_bang_updates_parent_var(evaluator, mock_parser):
     parent_env = SexpEnvironment(bindings={'y': 100})
     child_env = parent_env.extend({})
-    result = evaluator.evaluate_string("(set! y 200)", child_env)
+    sexp_str = "(set! y 200)"
+    ast = [Symbol('set!'), Symbol('y'), 200]
+    mock_parser.parse_string.return_value = ast
+    result = evaluator.evaluate_string(sexp_str, child_env)
     assert result == 200
     assert parent_env.lookup('y') == 200
-    assert child_env.lookup('y') == 200 # Sees parent update
+    assert child_env.lookup('y') == 200 
 
-def test_primitive_set_bang_updates_grandparent_var(evaluator):
+def test_primitive_set_bang_updates_grandparent_var(evaluator, mock_parser):
     grandparent_env = SexpEnvironment(bindings={'z': 50})
     parent_env = grandparent_env.extend({})
     child_env = parent_env.extend({})
-    result = evaluator.evaluate_string("(set! z 500)", child_env)
+    sexp_str = "(set! z 500)"
+    ast = [Symbol('set!'), Symbol('z'), 500]
+    mock_parser.parse_string.return_value = ast
+    result = evaluator.evaluate_string(sexp_str, child_env)
     assert result == 500
     assert grandparent_env.lookup('z') == 500
 
-def test_primitive_set_bang_error_unbound_symbol(evaluator):
+def test_primitive_set_bang_error_unbound_symbol(evaluator, mock_parser):
     env = SexpEnvironment()
+    sexp_str = "(set! unbound_var 10)"
+    ast = [Symbol('set!'), Symbol('unbound_var'), 10]
+    mock_parser.parse_string.return_value = ast
     with pytest.raises(SexpEvaluationError, match="Cannot 'set!' unbound symbol: unbound_var"):
-        evaluator.evaluate_string("(set! unbound_var 10)", env)
+        evaluator.evaluate_string(sexp_str, env)
 
-def test_primitive_set_bang_arity_errors(evaluator):
+def test_primitive_set_bang_arity_errors(evaluator, mock_parser):
+    sexp_str = "(set! x)"
+    ast = [Symbol('set!'), Symbol('x')]
+    mock_parser.parse_string.return_value = ast
     with pytest.raises(SexpEvaluationError, match="'set!' requires exactly two arguments"):
-        evaluator.evaluate_string("(set! x)")
-    with pytest.raises(SexpEvaluationError, match="'set!' requires exactly two arguments"):
-        evaluator.evaluate_string("(set! x 1 2)")
+        evaluator.evaluate_string(sexp_str)
 
-def test_primitive_set_bang_error_target_not_symbol(evaluator):
+    sexp_str = "(set! x 1 2)"
+    ast = [Symbol('set!'), Symbol('x'), 1, 2]
+    mock_parser.parse_string.return_value = ast
+    with pytest.raises(SexpEvaluationError, match="'set!' requires exactly two arguments"):
+        evaluator.evaluate_string(sexp_str)
+
+def test_primitive_set_bang_error_target_not_symbol(evaluator, mock_parser):
+    sexp_str = '(set! "x" 10)'
+    ast = [Symbol('set!'), "x", 10]
+    mock_parser.parse_string.return_value = ast
     with pytest.raises(SexpEvaluationError, match="'set!' first argument must be a symbol"):
-        evaluator.evaluate_string('(set! "x" 10)')
+        evaluator.evaluate_string(sexp_str)
+
+    sexp_str = "(set! 10 10)"
+    ast = [Symbol('set!'), 10, 10]
+    mock_parser.parse_string.return_value = ast
     with pytest.raises(SexpEvaluationError, match="'set!' first argument must be a symbol"):
-        evaluator.evaluate_string("(set! 10 10)")
+        evaluator.evaluate_string(sexp_str)
 
 # --- Tests for + ---
-def test_primitive_add_various_cases(evaluator):
-    assert evaluator.evaluate_string("(+ 1 2)") == 3
-    assert evaluator.evaluate_string("(+ 1.0 2.5)") == 3.5
-    assert evaluator.evaluate_string("(+ 1 2.5)") == 3.5
-    assert evaluator.evaluate_string("(+ 10 20 30 40)") == 100
-    assert evaluator.evaluate_string("(+ 5)") == 5
-    assert evaluator.evaluate_string("(+)") == 0
-    assert evaluator.evaluate_string("(+ -1 1)") == 0
+def test_primitive_add_various_cases(evaluator, mock_parser):
+    test_cases = [
+        ("(+ 1 2)", [Symbol('+'), 1, 2], 3),
+        ("(+ 1.0 2.5)", [Symbol('+'), 1.0, 2.5], 3.5),
+        ("(+ 1 2.5)", [Symbol('+'), 1, 2.5], 3.5),
+        ("(+ 10 20 30 40)", [Symbol('+'), 10, 20, 30, 40], 100),
+        ("(+ 5)", [Symbol('+'), 5], 5),
+        ("(+)", [Symbol('+')], 0),
+        ("(+ -1 1)", [Symbol('+'), -1, 1], 0),
+    ]
+    for sexp_str, ast, expected in test_cases:
+        mock_parser.parse_string.return_value = ast
+        assert evaluator.evaluate_string(sexp_str) == expected
 
-def test_primitive_add_error_non_numeric(evaluator):
+def test_primitive_add_error_non_numeric(evaluator, mock_parser):
+    sexp_str = '(+ 1 "two")'
+    ast = [Symbol('+'), 1, "two"]
+    mock_parser.parse_string.return_value = ast
     with pytest.raises(SexpEvaluationError, match="must be a number"):
-        evaluator.evaluate_string('(+ 1 "two")')
+        evaluator.evaluate_string(sexp_str)
+
+    sexp_str = "(+ true 1)"
+    ast = [Symbol('+'), True, 1]
+    mock_parser.parse_string.return_value = ast
     with pytest.raises(SexpEvaluationError, match="must be a number"):
-        evaluator.evaluate_string("(+ true 1)")
+        evaluator.evaluate_string(sexp_str)
 
 # --- Tests for - ---
-def test_primitive_subtract_various_cases(evaluator):
-    assert evaluator.evaluate_string("(- 10 3)") == 7
-    assert evaluator.evaluate_string("(- 10.5 3.0)") == 7.5
-    assert evaluator.evaluate_string("(- 10 3.5)") == 6.5
-    assert evaluator.evaluate_string("(- 5)") == -5
-    assert evaluator.evaluate_string("(- 0 5)") == -5
-    assert evaluator.evaluate_string("(- -5 -2)") == -3
+def test_primitive_subtract_various_cases(evaluator, mock_parser):
+    test_cases = [
+        ("(- 10 3)", [Symbol('-'), 10, 3], 7),
+        ("(- 10.5 3.0)", [Symbol('-'), 10.5, 3.0], 7.5),
+        ("(- 10 3.5)", [Symbol('-'), 10, 3.5], 6.5),
+        ("(- 5)", [Symbol('-'), 5], -5),
+        ("(- 0 5)", [Symbol('-'), 0, 5], -5),
+        ("(- -5 -2)", [Symbol('-'), -5, -2], -3),
+    ]
+    for sexp_str, ast, expected in test_cases:
+        mock_parser.parse_string.return_value = ast
+        assert evaluator.evaluate_string(sexp_str) == expected
 
-def test_primitive_subtract_arity_errors(evaluator):
+def test_primitive_subtract_arity_errors(evaluator, mock_parser):
+    sexp_str = "(-)"
+    ast = [Symbol('-')]
+    mock_parser.parse_string.return_value = ast
     with pytest.raises(SexpEvaluationError, match="'-' requires one or two numeric arguments"):
-        evaluator.evaluate_string("(-)")
-    with pytest.raises(SexpEvaluationError, match="'-' requires one or two numeric arguments"):
-        evaluator.evaluate_string("(- 1 2 3)")
+        evaluator.evaluate_string(sexp_str)
 
-def test_primitive_subtract_error_non_numeric(evaluator):
+    sexp_str = "(- 1 2 3)"
+    ast = [Symbol('-'), 1, 2, 3]
+    mock_parser.parse_string.return_value = ast
+    with pytest.raises(SexpEvaluationError, match="'-' requires one or two numeric arguments"):
+        evaluator.evaluate_string(sexp_str)
+
+def test_primitive_subtract_error_non_numeric(evaluator, mock_parser):
+    sexp_str = '(- 10 "three")'
+    ast = [Symbol('-'), 10, "three"]
+    mock_parser.parse_string.return_value = ast
     with pytest.raises(SexpEvaluationError, match="must be a number"):
-        evaluator.evaluate_string('(- 10 "three")')
+        evaluator.evaluate_string(sexp_str)
+
+    sexp_str = "(- true)"
+    ast = [Symbol('-'), True]
+    mock_parser.parse_string.return_value = ast
     with pytest.raises(SexpEvaluationError, match="must be a number"):
-        evaluator.evaluate_string("(- true)")
+        evaluator.evaluate_string(sexp_str)
+
+    sexp_str = "(- 10 false)"
+    ast = [Symbol('-'), 10, False]
+    mock_parser.parse_string.return_value = ast
     with pytest.raises(SexpEvaluationError, match="must be a number"):
-        evaluator.evaluate_string("(- 10 false)")
+        evaluator.evaluate_string(sexp_str)
