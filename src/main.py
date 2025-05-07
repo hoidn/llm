@@ -811,9 +811,9 @@ Select the best matching paths *from the provided metadata* and output the JSON.
 
                     if success:
                         registered_count += 1
-                        # logger.debug(f"Registered Aider tool: {tool['spec']['name']}") # Covered by log above
+                        # logger.debug(f"Registered Aider tool: {tool_spec['name']}") # Covered by log above
                     else:
-                        logger.warning(f"Failed to register Aider tool: {tool['spec']['name']}")
+                        logger.warning(f"Failed to register Aider tool: {tool_spec['name']}")
                 logger.info(f"Registered {registered_count}/{len(aider_tools_to_register)} Aider tools.")
                 # --- START: Add Logging ---
                 # Add check immediately after registration
