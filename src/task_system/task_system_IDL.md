@@ -117,7 +117,7 @@ module src.task_system.task_system {
         // - May perform additional validation or preprocessing of the template.
         // - Templates with a 'type' other than "atomic" will be ignored and not registered.
         // @raises_error(condition="VALIDATION_ERROR", description="If the template is missing required fields or has invalid structure.")
-        void register_template(dict<string, Any> template);
+        boolean register_template(dict<string, Any> template);
 
         // Finds a template by its identifier.
         // Preconditions:

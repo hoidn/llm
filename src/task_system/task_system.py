@@ -288,16 +288,18 @@ class TaskSystem:
         return matches
 
 
-    def register_template(self, template: Dict[str, Any]) -> None:
+    def register_template(self, template: Dict[str, Any]) -> bool:
         """
         Delegates template registration to the internal registry.
         
         Args:
             template: A dictionary representing the template.
+            
+        Returns:
+            True if registration was successful, False otherwise.
         """
         # Validation and storage is now handled by the registry
-        self._registry.register(template)
-        # Return value from registry indicates success/failure, but TaskSystem method is void
+        return self._registry.register(template)
 
     def find_template(self, identifier: str) -> Optional[Dict[str, Any]]:
         """
