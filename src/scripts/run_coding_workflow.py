@@ -100,9 +100,7 @@ DEFATOM_ANALYZE_AIDER_RESULT_S_EXPRESSION = """
 
 # S-expression for the main DEEC loop workflow
 MAIN_WORKFLOW_S_EXPRESSION = """
-(let ((initial-user-goal initial-user-goal)      ;; Bound from Python env
-      (initial-context-data initial-context-data) ;; Bound from Python env
-      (user-test-command user-test-command))    ;; Bound from Python env
+(begin ;; Variables initial-user-goal, initial-context-data, user-test-command are expected in env
 
   (log-message "Starting workflow for goal:" initial-user-goal)
   (log-message "Using Test Command:" user-test-command)
@@ -188,10 +186,12 @@ MAIN_WORKFLOW_S_EXPRESSION = """
               ) ;; End inner let (extracted plan components)
           ) ;; End if plan-data not null
         ) ;; End if plan generation COMPLETE
-        (progn (log-message "ERROR: Plan generation failed. Status:" (get-field plan-task-result "status")) plan-task-result)
+        (progn
+          (log-message "ERROR: Plan generation failed. Status:" (get-field plan-task-result "status"))
+          plan-task-result ;; Return the failed plan result
         ) ;; End outer if
     ) ;; End outer let (plan-task-result)
-  ) ;; End outermost let
+) ;; End begin
 """
 
 def main():
@@ -269,14 +269,13 @@ def main():
          sys.exit(1)
 
 
-    # --- Prepare Initial Environment ---
-    initial_env_bindings = {
+    # --- Prepare Initial Parameters for Dispatcher ---
+    initial_params = {
         "initial-user-goal": initial_user_goal,
         "initial-context-data": initial_context_data,
         "user-test-command": user_test_command
     }
-    initial_env = SexpEnvironment(bindings=initial_env_bindings)
-    logger.debug("Initial S-expression environment prepared.")
+    logger.debug(f"Initial parameters for workflow execution: {initial_params}")
 
     # --- Execute Main Workflow ---
     logger.info("Executing main workflow S-expression...")
@@ -284,9 +283,8 @@ def main():
         # Use the main workflow string defined earlier
         final_result = app.handle_task_command(
             identifier=MAIN_WORKFLOW_S_EXPRESSION,
-            params={}, # Params are passed via environment
-            flags={"is_sexp_string": True}, # Ensure this flag is handled by your app
-            initial_env=initial_env # Pass the prepared environment
+            params=initial_params, # Pass the dictionary here
+            flags={"is_sexp_string": True} # Ensure this flag is handled
         )
         logger.info("Main workflow execution finished.")
     except Exception as e:
