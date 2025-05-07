@@ -5,17 +5,16 @@
 
 **Goal:** Refactor SexpEvaluator for modularity.
 
-**Current Sub-task:** Step 2: Introduce Helper Processor Structure.
+**Current Sub-task:** Step 4: Migrate existing logic for special forms and primitives to helper processors. (Effectively completing Step 2 and 4 together).
 
 **Relevant Files:**
 - `src/sexp_evaluator/sexp_evaluator.py`
-- `src/sexp_evaluator/sexp_special_forms.py` (New)
-- `src/sexp_evaluator/sexp_primitives.py` (New)
-- `project_rules.md`
+- `src/sexp_evaluator/sexp_special_forms.py`
+- `src/sexp_evaluator/sexp_primitives.py`
 - `memory.md` (This file)
 
 **Related IDLs:**
-- `src/sexp_evaluator/sexp_evaluator_IDL.md` (No changes in this step, but relevant for context)
+- `src/sexp_evaluator/sexp_evaluator_IDL.md`
 
 ## Recent Activity Log
 
@@ -59,21 +58,19 @@
     - Created `src/scripts/lambda_llm_code_processing_demo.py` to showcase `lambda` orchestrating mock LLM tasks, using the new primitives.
     - Updated `sexp_evaluator_IDL.md`, `plan.md`, `project_rules.md`, and `memory.md`.
 - **Refactor SexpEvaluator (Step 1):** Moved `Closure` class to `src/sexp_evaluator/sexp_closure.py`. Updated imports. Commit `f558171`.
+- **Refactor SexpEvaluator (Step 2):** Introduced `SpecialFormProcessor` and `PrimitiveProcessor` classes with stub methods. Updated `SexpEvaluator` dispatch tables. Commit `21c10a1`.
 
 ## Next Steps
 
-1.  **Refactor SexpEvaluator (Step 2 - Current):** Introduce `SpecialFormProcessor` and `PrimitiveProcessor` classes. Update `SexpEvaluator` to use them for dispatch.
-2.  **Refactor SexpEvaluator (Step 3):** Implement new features (Phase 10b primitives, Phase 10d `director-evaluator-loop`) directly in the new helper processor classes.
-3.  **Refactor SexpEvaluator (Step 4):** Gradually migrate the logic for existing special forms and primitives from `SexpEvaluator` into their respective methods in the `SpecialFormProcessor` and `PrimitiveProcessor` classes.
-4.  **Phase 9.3 Testing:** Implement unit tests for `LLMInteractionManager` and `BaseHandler` to verify the `model_override` logic.
-5.  **Full Phase 10b Implementation:** Replace placeholder primitives in `PrimitiveProcessor` with robust implementations for `get-field`, `string=?`, `eq?`, `null?`, `set!`, and basic arithmetic, along with comprehensive tests.
-6.  **Phase 8: Aider Integration:** Implement `AiderBridge`, Aider tool specs, Aider executors, and related `Application` logic. Add integration tests.
-7.  **Merge Streams & Finalize Deferred Methods:** Integrate all changes and complete any remaining deferred method implementations and their tests.
-8.  **Integration Testing & Documentation:** Enhance overall integration tests and update all documentation to reflect the final state.
+1.  **Refactor SexpEvaluator (Step 3 - Current):** Implement new features (Phase 10b primitives, Phase 10d `director-evaluator-loop`) directly in the new helper processor classes. Since the logic for existing primitives and special forms has now been moved, this step is effectively combined with the previous one. The `director-evaluator-loop` is the main new feature to implement in `SpecialFormProcessor`.
+2.  **Phase 9.3 Testing:** Implement unit tests for `LLMInteractionManager` and `BaseHandler` to verify the `model_override` logic.
+3.  **Full Phase 10b Implementation:** Replace placeholder primitives in `PrimitiveProcessor` with robust implementations for `get-field`, `string=?`, `eq?`, `null?`, `set!`, and basic arithmetic, along with comprehensive tests. (Note: `get-field`, `string=?`, `log-message` are now implemented. Others like `eq?`, `null?`, `set!`, arithmetic are pending).
+4.  **Phase 8: Aider Integration:** Implement `AiderBridge`, Aider tool specs, Aider executors, and related `Application` logic. Add integration tests.
+5.  **Merge Streams & Finalize Deferred Methods:** Integrate all changes and complete any remaining deferred method implementations and their tests.
+6.  **Integration Testing & Documentation:** Enhance overall integration tests and update all documentation to reflect the final state.
 
 ## Notes & Context
 
-- The current refactoring of `SexpEvaluator` aims to improve modularity and maintainability by separating concerns for special form handling and primitive application.
-- Step 1 (moving `Closure`) is complete.
-- Step 2 (this task) establishes the structure for helper processors. The actual logic migration will occur in Step 4.
-- New features like `director-evaluator-loop` and full Phase 10b primitives will be built into these new processor classes (Step 3).
+- The refactoring of `SexpEvaluator` to use helper processors (`SpecialFormProcessor`, `PrimitiveProcessor`) is now complete in terms of migrating existing logic.
+- The `handle_director_evaluator_loop` in `SpecialFormProcessor` is still a stub and represents the next new feature for S-expression evaluation.
+- The tests should now pass after these changes, as the `NotImplementedError`s have been replaced with actual logic.

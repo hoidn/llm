@@ -16,20 +16,19 @@ from src.memory.memory_system import MemorySystem
 from src.sexp_parser.sexp_parser import SexpParser
 from src.sexp_evaluator.sexp_environment import SexpEnvironment
 from .sexp_closure import Closure 
-from .sexp_special_forms import SpecialFormProcessor # ADDED
-from .sexp_primitives import PrimitiveProcessor     # ADDED
+from .sexp_special_forms import SpecialFormProcessor 
+from .sexp_primitives import PrimitiveProcessor     
 
 # System Models and Errors
 from src.system.models import (
     TaskResult, SubtaskRequest, ContextGenerationInput, ContextManagement,
     TaskFailureError, AssociativeMatchResult, MatchTuple,
-    TaskError # ContextGenerationInput was duplicated, removed one
+    TaskError 
 )
 from src.system.errors import SexpSyntaxError, SexpEvaluationError
 
 # Type for Sexp AST nodes (adjust based on SexpParser output)
-# Assuming sexpdata-like output: lists, tuples, strings, numbers, bools, None, Symbol objects
-from sexpdata import Symbol # Or use str if parser converts symbols
+from sexpdata import Symbol 
 
 
 SexpNode = Any # General type hint for AST nodes
@@ -70,7 +69,6 @@ class SexpEvaluator:
         self.primitive_processor = PrimitiveProcessor(self)
 
         # Dispatch dictionaries for special forms and primitives
-        # These now point to methods on the helper processor instances.
         self.SPECIAL_FORM_HANDLERS: Dict[str, Callable] = {
             "if": self.special_form_processor.handle_if_form,
             "let": self.special_form_processor.handle_let_form,
@@ -79,7 +77,7 @@ class SexpEvaluator:
             "quote": self.special_form_processor.handle_quote_form,
             "defatom": self.special_form_processor.handle_defatom_form,
             "loop": self.special_form_processor.handle_loop_form,
-            "director-evaluator-loop": self.special_form_processor.handle_director_evaluator_loop, # New
+            "director-evaluator-loop": self.special_form_processor.handle_director_evaluator_loop, 
         }
         self.PRIMITIVE_APPLIERS: Dict[str, Callable] = {
             "list": self.primitive_processor.apply_list_primitive,
@@ -98,35 +96,15 @@ class SexpEvaluator:
         """
         Parses and evaluates an S-expression string within a given environment.
         Main entry point for executing S-expression workflows.
-
-        Args:
-            sexp_string: The string containing the S-expression workflow.
-            initial_env: An optional existing SexpEnvironment. If None, a new
-                         root environment is created.
-
-        Returns:
-            The final result of evaluating the S-expression. This is often the
-            result of the last top-level expression. The caller (e.g., Dispatcher)
-            might wrap this in a TaskResult if needed.
-
-        Raises:
-            SexpSyntaxError: If the input string has invalid S-expression syntax.
-            SexpEvaluationError: If runtime errors occur during evaluation (e.g.,
-                                 unbound symbol, invalid arguments, type mismatch).
-            TaskError: Propagated if an underlying TaskSystem/Handler/MemorySystem
-                       call invoked by the S-expression fails.
         """
         logging.info(f"Evaluating S-expression string: {sexp_string[:100]}...")
         try:
-            # 1. Parse the string into an AST
             parsed_node = self.parser.parse_string(sexp_string)
             logging.debug(f"Parsed S-expression AST: {parsed_node}")
 
-            # 2. Setup Environment
             env = initial_env if initial_env is not None else SexpEnvironment()
             logging.debug(f"Using environment: {env}")
 
-            # 3. Evaluate the single node.
             result = self._eval(parsed_node, env)
             logging.info(f"Finished evaluating S-expression. Result type: {type(result)}")
             return result
@@ -242,8 +220,6 @@ class SexpEvaluator:
             if op_name_str in self.SPECIAL_FORM_HANDLERS: 
                 logger.debug(f"  _eval_list_form: Dispatching to Special Form Handler: {op_name_str}")
                 handler_method = self.SPECIAL_FORM_HANDLERS[op_name_str]
-                # Special form handlers are now methods on self.special_form_processor
-                # They will receive (arg_expr_nodes, env, original_expr_str)
                 return handler_method(arg_expr_nodes, env, original_expr_str) 
             
             is_primitive = op_name_str in self.PRIMITIVE_APPLIERS
@@ -348,8 +324,6 @@ class SexpEvaluator:
             if op_name_str in self.PRIMITIVE_APPLIERS:
                 logger.debug(f"  _apply_operator: Dispatching to Primitive Applier: {op_name_str}")
                 applier_method = self.PRIMITIVE_APPLIERS[op_name_str]
-                # Primitive appliers are now methods on self.primitive_processor
-                # They will receive (arg_expr_nodes, calling_env, original_call_expr_str)
                 return applier_method(arg_expr_nodes, calling_env, original_call_expr_str)
 
             template_def = self.task_system.find_template(op_name_str)
@@ -388,296 +362,166 @@ class SexpEvaluator:
             logger.error(f"  _apply_operator: Operator is not a name and not callable/closure: {resolved_op}")
             raise SexpEvaluationError(f"Cannot apply non-callable/non-closure operator: {resolved_op} (type: {type(resolved_op)})", original_call_expr_str)
 
-    # --- Special Form Handlers (Original implementations - to be migrated) ---
+    # --- Invocation Helpers (Remain in SexpEvaluator) ---
 
-    def _eval_if_form(self, arg_exprs: list, env: SexpEnvironment, original_expr_str: str) -> Any:
-        logging.debug(f"SexpEvaluator._eval_if_form START: original_expr_str='{original_expr_str}'")
-        if len(arg_exprs) != 3:
-            raise SexpEvaluationError("'if' requires 3 arguments: (if condition then_branch else_branch)", original_expr_str)
-        cond_expr, then_expr, else_expr = arg_exprs
-        try:
-            condition_result = self._eval(cond_expr, env)
-        except Exception as e:
-            if isinstance(e, SexpEvaluationError): raise
-            raise SexpEvaluationError(f"Error evaluating 'if' condition: {cond_expr}", original_expr_str, error_details=str(e)) from e
-        chosen_branch_expr = then_expr if condition_result else else_expr
-        try:
-            return self._eval(chosen_branch_expr, env)
-        except Exception as e:
-            if isinstance(e, SexpEvaluationError): raise
-            raise SexpEvaluationError(f"Error evaluating chosen 'if' branch: {chosen_branch_expr}", original_expr_str, error_details=str(e)) from e
-
-    def _eval_let_form(self, arg_exprs: list, env: SexpEnvironment, original_expr_str: str) -> Any:
-        logging.debug(f"SexpEvaluator._eval_let_form START: original_expr_str='{original_expr_str}'")
-        if len(arg_exprs) < 1 or not isinstance(arg_exprs[0], list):
-            raise SexpEvaluationError("'let' requires a bindings list and at least one body expression", original_expr_str)
-        bindings_list_expr = arg_exprs[0]
-        body_exprs = arg_exprs[1:]
-        if not body_exprs:
-            raise SexpEvaluationError("'let' requires at least one body expression.", original_expr_str)
-        let_env = env.extend({})
-        for binding_expr in bindings_list_expr:
-            if not (isinstance(binding_expr, list) and len(binding_expr) == 2 and isinstance(binding_expr[0], Symbol)):
-                raise SexpEvaluationError(f"Invalid 'let' binding format: {binding_expr}", original_expr_str)
-            var_name_symbol, value_expr = binding_expr
-            var_name_str = var_name_symbol.value()
-            try:
-                evaluated_value = self._eval(value_expr, env)
-                let_env.define(var_name_str, evaluated_value)
-            except Exception as e:
-                if isinstance(e, SexpEvaluationError): raise
-                raise SexpEvaluationError(f"Error evaluating value for 'let' binding '{var_name_str}'", original_expr_str, error_details=str(e)) from e
-        final_result = []
-        for body_item_expr in body_exprs:
-            try:
-                final_result = self._eval(body_item_expr, let_env)
-            except Exception as e:
-                if isinstance(e, SexpEvaluationError): raise
-                raise SexpEvaluationError(f"Error evaluating 'let' body expression: {body_item_expr}", original_expr_str, error_details=str(e)) from e
-        return final_result
-
-    def _eval_bind_form(self, arg_exprs: list, env: SexpEnvironment, original_expr_str: str) -> Any:
-        logging.debug(f"SexpEvaluator._eval_bind_form START: original_expr_str='{original_expr_str}'")
-        if len(arg_exprs) != 2 or not isinstance(arg_exprs[0], Symbol):
-            raise SexpEvaluationError("'bind' requires a symbol and a value expression", original_expr_str)
-        var_name_symbol, value_expr = arg_exprs
-        var_name_str = var_name_symbol.value()
-        try:
-            evaluated_value = self._eval(value_expr, env)
-            env.define(var_name_str, evaluated_value)
-            return evaluated_value
-        except Exception as e:
-            if isinstance(e, SexpEvaluationError): raise
-            raise SexpEvaluationError(f"Error evaluating value for 'bind' variable '{var_name_str}'", original_expr_str, error_details=str(e)) from e
-
-    def _eval_progn_form(self, arg_exprs: list, env: SexpEnvironment, original_expr_str: str) -> Any:
-        logging.debug(f"SexpEvaluator._eval_progn_form START: original_expr_str='{original_expr_str}'")
-        final_result = []
-        for expr in arg_exprs:
-            try:
-                final_result = self._eval(expr, env)
-            except Exception as e:
-                if isinstance(e, SexpEvaluationError): raise
-                raise SexpEvaluationError(f"Error evaluating 'progn' expression: {expr}", original_expr_str, error_details=str(e)) from e
-        return final_result
-
-    def _eval_quote_form(self, arg_exprs: list, env: SexpEnvironment, original_expr_str: str) -> Any:
-        logging.debug(f"SexpEvaluator._eval_quote_form START: original_expr_str='{original_expr_str}'")
-        if len(arg_exprs) != 1:
-            raise SexpEvaluationError("'quote' requires exactly one argument", original_expr_str)
-        return arg_exprs[0]
-
-    def _eval_defatom_form(self, arg_exprs: list, env: SexpEnvironment, original_expr_str: str) -> Symbol:
-        logging.debug(f"SexpEvaluator._eval_defatom_form START: original_expr_str='{original_expr_str}'")
-        if len(arg_exprs) < 3:
-            raise SexpEvaluationError("'defatom' requires name, params, and instructions", original_expr_str)
-        task_name_node, params_node, instructions_node = arg_exprs[0], arg_exprs[1], arg_exprs[2]
-        if not isinstance(task_name_node, Symbol):
-            raise SexpEvaluationError("'defatom' task name must be a Symbol", original_expr_str)
-        task_name_str = task_name_node.value()
-        if not (isinstance(params_node, list) and params_node and isinstance(params_node[0], Symbol) and params_node[0].value() == "params"):
-            raise SexpEvaluationError("'defatom' requires (params ...) definition", original_expr_str)
-        param_name_strings = []
-        for p_item in params_node[1:]:
-            if isinstance(p_item, Symbol): param_name_strings.append(p_item.value())
-            elif isinstance(p_item, list) and p_item and isinstance(p_item[0], Symbol): param_name_strings.append(p_item[0].value())
-            else: raise SexpEvaluationError("Invalid parameter definition in (params ...)", original_expr_str)
-        template_params = {name: {"description": f"Parameter {name}"} for name in param_name_strings}
-        if not (isinstance(instructions_node, list) and len(instructions_node) == 2 and isinstance(instructions_node[0], Symbol) and instructions_node[0].value() == "instructions" and isinstance(instructions_node[1], str)):
-            raise SexpEvaluationError("'defatom' requires (instructions \"string\")", original_expr_str)
-        instructions_str = instructions_node[1]
-        optional_args_map = {}
-        for opt_node in arg_exprs[3:]:
-            if not (isinstance(opt_node, list) and len(opt_node) == 2 and isinstance(opt_node[0], Symbol) and isinstance(opt_node[1], str)): # Assuming values are strings for simplicity
-                raise SexpEvaluationError("Invalid optional argument format for 'defatom'", original_expr_str)
-            optional_args_map[opt_node[0].value()] = opt_node[1]
-        template_dict = {
-            "name": task_name_str, "type": "atomic",
-            "subtype": optional_args_map.get("subtype", "standard"),
-            "description": optional_args_map.get("description", f"Dynamically defined: {task_name_str}"),
-            "params": template_params, "instructions": instructions_str,
-        }
-        if "model" in optional_args_map: template_dict["model"] = optional_args_map["model"]
-        try:
-            if self.task_system.register_template(template_dict) is False:
-                raise SexpEvaluationError(f"TaskSystem failed to register template '{task_name_str}'", original_expr_str)
-        except Exception as e:
-            if isinstance(e, SexpEvaluationError): raise
-            raise SexpEvaluationError(f"Failed to register template '{task_name_str}': {e}", original_expr_str, error_details=str(e)) from e
-        def defatom_task_wrapper(*args):
-            if len(args) != len(param_name_strings):
-                raise SexpEvaluationError(f"Task '{task_name_str}' expects {len(param_name_strings)} args, got {len(args)}.")
-            inputs_dict = {name: val for name, val in zip(param_name_strings, args)}
-            request = SubtaskRequest(task_id=f"defatom_call_{task_name_str}", type="atomic", name=task_name_str, inputs=inputs_dict)
-            try:
-                return self.task_system.execute_atomic_template(request)
-            except Exception as e_exec:
-                raise SexpEvaluationError(f"Error executing defatom task '{task_name_str}': {e_exec}", error_details=str(e_exec)) from e_exec
-        env.define(task_name_str, defatom_task_wrapper)
-        return task_name_node
-
-    def _eval_loop_form(self, arg_exprs: list, env: SexpEnvironment, original_expr_str: str) -> Any:
-        logging.debug(f"SexpEvaluator._eval_loop_form START: original_expr_str='{original_expr_str}'")
-        if len(arg_exprs) != 2:
-            raise SexpEvaluationError(f"Loop requires 2 arguments: count_expression and body_expression.", original_expr_str)
-        count_expr, body_expr = arg_exprs
-        try:
-            count_value = self._eval(count_expr, env)
-        except Exception as e:
-            if isinstance(e, SexpEvaluationError): raise
-            raise SexpEvaluationError(f"Error evaluating loop count expression: {count_expr}", original_expr_str, error_details=str(e)) from e
-        if not isinstance(count_value, int) or count_value < 0:
-            raise SexpEvaluationError(f"Loop count must be a non-negative integer.", original_expr_str, f"Got: {count_value}")
-        last_result = []
-        for i in range(count_value):
-            try:
-                last_result = self._eval(body_expr, env)
-            except Exception as e:
-                if isinstance(e, SexpEvaluationError): raise
-                raise SexpEvaluationError(f"Error evaluating loop body iteration {i+1}: {body_expr}", original_expr_str, error_details=str(e)) from e
-        return last_result
-
-    # --- Primitive Appliers (Original implementations - to be migrated) ---
-
-    def _apply_list_primitive(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> List[Any]:
-        logging.debug(f"SexpEvaluator._apply_list_primitive: arg_exprs={arg_exprs}")
-        evaluated_args = []
-        for arg_node in arg_exprs:
-            try:
-                evaluated_args.append(self._eval(arg_node, env))
-            except Exception as e:
-                if isinstance(e, SexpEvaluationError): raise
-                raise SexpEvaluationError(f"Error evaluating argument for 'list': {arg_node}", original_expr_str, error_details=str(e)) from e
-        return evaluated_args
-
-    def _apply_get_context_primitive(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> List[str]:
-        logging.debug(f"SexpEvaluator._apply_get_context_primitive: arg_exprs={arg_exprs}")
-        context_params = {}
-        for arg_pair in arg_exprs:
-            if not (isinstance(arg_pair, list) and len(arg_pair) == 2 and isinstance(arg_pair[0], Symbol)):
-                raise SexpEvaluationError("Invalid arg format for 'get_context'", original_expr_str)
-            key_str, value_expr = arg_pair[0].value(), arg_pair[1]
-            try:
-                evaluated_value = self._eval(value_expr, env)
-                if key_str == "matching_strategy" and evaluated_value not in {'content', 'metadata'}:
-                    raise SexpEvaluationError(f"Invalid 'matching_strategy': {evaluated_value}", original_expr_str)
-                context_params[key_str] = evaluated_value
-            except Exception as e:
-                if isinstance(e, SexpEvaluationError): raise
-                raise SexpEvaluationError(f"Error evaluating value for '{key_str}' in 'get_context'", original_expr_str, error_details=str(e)) from e
-        if not context_params: raise SexpEvaluationError("'get_context' requires parameters.", original_expr_str)
-        try:
-            if "inputs" in context_params and isinstance(context_params["inputs"], list): # Handle (quote ((k v)...))
-                context_params["inputs"] = { (p[0].value() if isinstance(p[0], Symbol) else str(p[0])): p[1] for p in context_params["inputs"] }
-            context_input_obj = ContextGenerationInput(**context_params)
-            match_result = self.memory_system.get_relevant_context_for(context_input_obj)
-            if match_result.error: raise SexpEvaluationError(f"MemorySystem error: {match_result.error}", original_expr_str)
-            return [m.path for m in match_result.matches if isinstance(m, MatchTuple)]
-        except Exception as e:
-            if isinstance(e, SexpEvaluationError): raise
-            raise SexpEvaluationError(f"Failed 'get_context' call: {e}", original_expr_str, error_details=str(e)) from e
-
-    def _apply_get_field_primitive(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> Any:
-        logging.debug(f"SexpEvaluator._apply_get_field_primitive: {original_expr_str}")
-        if len(arg_exprs) != 2: raise SexpEvaluationError("'get-field' needs 2 args", original_expr_str)
-        obj_expr, field_expr = arg_exprs[0], arg_exprs[1]
-        try:
-            target_obj = self._eval(obj_expr, env)
-            field_name = self._eval(field_expr, env)
-            if isinstance(field_name, Symbol): field_name = field_name.value()
-            if not isinstance(field_name, str): raise SexpEvaluationError("Field name must be string/symbol", original_expr_str)
-            if isinstance(target_obj, dict): return target_obj.get(field_name)
-            if hasattr(target_obj, field_name): return getattr(target_obj, field_name)
-            return None
-        except Exception as e:
-            if isinstance(e, SexpEvaluationError): raise
-            raise SexpEvaluationError(f"Error in 'get-field': {e}", original_expr_str, error_details=str(e)) from e
-
-    def _apply_string_equal_primitive(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> bool:
-        logging.debug(f"SexpEvaluator._apply_string_equal_primitive: {original_expr_str}")
-        if len(arg_exprs) != 2: raise SexpEvaluationError("'string=?' needs 2 args", original_expr_str)
-        try:
-            str1 = self._eval(arg_exprs[0], env)
-            str2 = self._eval(arg_exprs[1], env)
-            if not (isinstance(str1, str) and isinstance(str2, str)):
-                raise SexpEvaluationError("Args to 'string=?' must be strings", original_expr_str)
-            return str1 == str2
-        except Exception as e:
-            if isinstance(e, SexpEvaluationError): raise
-            raise SexpEvaluationError(f"Error in 'string=?': {e}", original_expr_str, error_details=str(e)) from e
-
-    def _apply_log_message_primitive(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> Any:
-        logging.debug(f"SexpEvaluator._apply_log_message_primitive: {original_expr_str}")
-        if not arg_exprs: logger.info("SexpLog: (log-message) called with no arguments."); return []
-        evaluated_args = []
-        for arg_expr in arg_exprs:
-            try: evaluated_args.append(self._eval(arg_expr, env))
-            except Exception as e: evaluated_args.append(f"<Error: {e}>")
-        log_output = " ".join(map(str, evaluated_args))
-        logger.info(f"SexpLog: {log_output}")
-        return log_output
-
-    # --- Invocation Helpers (Original implementations) ---
-
-    def _invoke_task_system(self, task_name: str, template_def: Dict[str, Any], arg_exprs: List[SexpNode], calling_env: SexpEnvironment, original_expr_str: str) -> TaskResult:
-        logging.debug(f"SexpEvaluator._invoke_task_system: task='{task_name}', arg_exprs={arg_exprs}")
-        named_params, file_paths, context_settings_dict, history_config_dict = {}, None, None, None
-        for arg_pair in arg_exprs:
-            if not (isinstance(arg_pair, list) and len(arg_pair) == 2 and isinstance(arg_pair[0], Symbol)):
-                raise SexpEvaluationError(f"Invalid arg format for task '{task_name}'", original_expr_str)
-            key_str, value_expr = arg_pair[0].value(), arg_pair[1]
-            try:
-                evaluated_value = self._eval(value_expr, calling_env)
-                if key_str == "files":
-                    if not (isinstance(evaluated_value, list) and all(isinstance(i, str) for i in evaluated_value)):
-                        raise SexpEvaluationError("'files' must be list of strings", original_expr_str)
-                    file_paths = evaluated_value
-                elif key_str == "context":
-                    if isinstance(evaluated_value, list): context_settings_dict = { (p[0].value() if isinstance(p[0], Symbol) else str(p[0])): p[1] for p in evaluated_value }
-                    elif isinstance(evaluated_value, dict): context_settings_dict = evaluated_value
-                    else: raise SexpEvaluationError("'context' must be dict or list of pairs", original_expr_str)
-                elif key_str == "history_config":
-                    if isinstance(evaluated_value, list): history_config_dict = { (p[0].value() if isinstance(p[0], Symbol) else str(p[0])): p[1] for p in evaluated_value }
-                    elif isinstance(evaluated_value, dict): history_config_dict = evaluated_value
-                    else: raise SexpEvaluationError("'history_config' must be dict or list of pairs", original_expr_str)
-                else: named_params[key_str] = evaluated_value
-            except Exception as e:
-                if isinstance(e, SexpEvaluationError): raise
-                raise SexpEvaluationError(f"Error evaluating value for '{key_str}' in task '{task_name}'", original_expr_str, error_details=str(e)) from e
+    def _invoke_task_system(
+        self,
+        task_name: str,
+        template_def: Dict[str, Any],
+        arg_exprs: List[SexpNode], 
+        calling_env: SexpEnvironment, 
+        original_expr_str: str
+    ) -> TaskResult:
+        logging.debug(f"--- _invoke_task_system START: task_name='{task_name}', arg_exprs={arg_exprs}")
         
-        context_mgmt_obj = ContextManagement(**context_settings_dict) if context_settings_dict else None
-        request = SubtaskRequest(
-            task_id=f"sexp_task_{task_name}_{id(original_expr_str)}", type="atomic", name=task_name,
-            inputs=named_params, file_paths=file_paths, context_management=context_mgmt_obj, history_config=history_config_dict
-        )
-        try:
-            task_result = self.task_system.execute_atomic_template(request)
-            if not isinstance(task_result, TaskResult):
-                 return TaskResult(status="FAILED", content=f"Task '{task_name}' bad return type: {type(task_result)}",
-                                   notes={"error": TaskFailureError(type="TASK_FAILURE", reason="output_format_failure", message="Invalid return type").model_dump()})
-            return task_result
-        except Exception as e:
-            if isinstance(e, SexpEvaluationError): raise
-            raise SexpEvaluationError(f"Error executing task '{task_name}': {e}", original_expr_str, error_details=str(e)) from e
+        named_params: Dict[str, Any] = {}
+        file_paths: Optional[List[str]] = None
+        context_settings_dict: Optional[Dict[str, Any]] = None 
+        history_config_dict: Optional[Dict[str, Any]] = None 
 
-    def _invoke_handler_tool(self, tool_name: str, arg_exprs: List[SexpNode], calling_env: SexpEnvironment, original_expr_str: str) -> TaskResult:
-        logging.debug(f"SexpEvaluator._invoke_handler_tool: tool='{tool_name}', arg_exprs={arg_exprs}")
-        named_params = {}
-        for arg_pair in arg_exprs:
-            if not (isinstance(arg_pair, list) and len(arg_pair) == 2 and isinstance(arg_pair[0], Symbol)):
-                raise SexpEvaluationError(f"Invalid arg format for tool '{tool_name}'", original_expr_str)
-            key_str, value_expr = arg_pair[0].value(), arg_pair[1]
+        for i, arg_expr_pair in enumerate(arg_exprs): 
+            if not (isinstance(arg_expr_pair, list) and len(arg_expr_pair) == 2 and isinstance(arg_expr_pair[0], Symbol)):
+                raise SexpEvaluationError(f"Invalid argument format for task '{task_name}'. Expected (key_symbol value_expression), got: {arg_expr_pair}", original_expr_str)
+            
+            key_symbol = arg_expr_pair[0]
+            value_expr_node = arg_expr_pair[1] 
+            key_str = key_symbol.value()
+
             try:
-                named_params[key_str] = self._eval(value_expr, calling_env)
-            except Exception as e:
-                if isinstance(e, SexpEvaluationError): raise
-                raise SexpEvaluationError(f"Error evaluating value for '{key_str}' in tool '{tool_name}'", original_expr_str, error_details=str(e)) from e
+                evaluated_value = self._eval(value_expr_node, calling_env) 
+                logging.debug(f"  _invoke_task_system: Evaluated value for key '{key_str}' ('{value_expr_node}'): {evaluated_value}")
+            except SexpEvaluationError as e_val_eval:
+                raise SexpEvaluationError(
+                    f"Error evaluating value for '{key_str}' in task '{task_name}': {e_val_eval.args[0] if e_val_eval.args else str(e_val_eval)}",
+                    expression=original_expr_str, 
+                    error_details=f"Failed on value_expr='{e_val_eval.expression if hasattr(e_val_eval, 'expression') else value_expr_node}'. Original detail: {e_val_eval.error_details if hasattr(e_val_eval, 'error_details') else str(e_val_eval)}"
+                ) from e_val_eval
+            except Exception as e_val_eval: 
+                logging.exception(f"  _invoke_task_system: Unexpected error evaluating value for key '{key_str}' ('{value_expr_node}'): {e_val_eval}")
+                raise SexpEvaluationError(f"Unexpected error evaluating value for '{key_str}' in task '{task_name}': {value_expr_node}", original_expr_str, error_details=str(e_val_eval)) from e_val_eval
+
+            if key_str == "files":
+                if not (isinstance(evaluated_value, list) and all(isinstance(item, str) for item in evaluated_value)):
+                    raise SexpEvaluationError(f"'files' argument for task '{task_name}' must evaluate to a list of strings, got {type(evaluated_value)}: {evaluated_value!r}", original_expr_str)
+                file_paths = evaluated_value
+            elif key_str == "context":
+                if isinstance(evaluated_value, list) and all(isinstance(p, list) and len(p)==2 for p in evaluated_value):
+                    try:
+                        context_settings_dict = { (pair[0].value() if isinstance(pair[0], Symbol) else str(pair[0])): pair[1] for pair in evaluated_value }
+                    except Exception as e_conv:
+                         raise SexpEvaluationError(f"Failed converting 'context' list {evaluated_value!r} to dict for task '{task_name}': {e_conv}", original_expr_str) from e_conv
+                elif isinstance(evaluated_value, dict):
+                    context_settings_dict = evaluated_value
+                else:
+                    raise SexpEvaluationError(f"'context' argument for task '{task_name}' must evaluate to a dictionary or a list of pairs, got {type(evaluated_value)}: {evaluated_value!r}", original_expr_str)
+            elif key_str == "history_config":
+                if isinstance(evaluated_value, list) and all(isinstance(p, list) and len(p)==2 for p in evaluated_value):
+                    try:
+                        history_config_dict = { (pair[0].value() if isinstance(pair[0], Symbol) else str(pair[0])): pair[1] for pair in evaluated_value }
+                    except Exception as e_conv:
+                         raise SexpEvaluationError(f"Failed converting 'history_config' list {evaluated_value!r} to dict for task '{task_name}': {e_conv}", original_expr_str) from e_conv
+                elif isinstance(evaluated_value, dict):
+                    history_config_dict = evaluated_value
+                else:
+                    raise SexpEvaluationError(f"'history_config' argument for task '{task_name}' must evaluate to a dictionary or a list of pairs, got {type(evaluated_value)}: {evaluated_value!r}", original_expr_str)
+            else: 
+                named_params[key_str] = evaluated_value
+        
+        context_mgmt_obj: Optional[ContextManagement] = None
+        if context_settings_dict:
+            try:
+                context_mgmt_obj = ContextManagement(**context_settings_dict) 
+            except Exception as e_cm_val: 
+                raise SexpEvaluationError(f"Invalid 'context' settings for task '{task_name}': {e_cm_val}", original_expr_str) from e_cm_val
+
+        request = SubtaskRequest(
+            task_id=f"sexp_task_{task_name}_{id(original_expr_str)}", 
+            type="atomic", 
+            name=task_name,
+            inputs=named_params,
+            file_paths=file_paths,
+            context_management=context_mgmt_obj,
+            history_config=history_config_dict  
+        )
+        logging.debug(f"  Constructed SubtaskRequest for '{task_name}': {request.model_dump_json(indent=2)}")
+
         try:
-            tool_result = self.handler._execute_tool(tool_name, named_params)
-            if not isinstance(tool_result, TaskResult):
-                return TaskResult(status="FAILED", content=f"Tool '{tool_name}' bad return type: {type(tool_result)}",
-                                  notes={"error": TaskFailureError(type="TASK_FAILURE", reason="output_format_failure", message="Invalid return type").model_dump()})
-            return tool_result
-        except Exception as e:
-            if isinstance(e, SexpEvaluationError): raise
-            raise SexpEvaluationError(f"Error executing tool '{tool_name}': {e}", original_expr_str, error_details=str(e)) from e
+            task_result_obj = self.task_system.execute_atomic_template(request)
+            if not isinstance(task_result_obj, TaskResult):
+                 logging.error(f"  Task executor for '{task_name}' did not return a TaskResult object (got {type(task_result_obj)}).")
+                 return TaskResult(
+                    status="FAILED", 
+                    content=f"Task '{task_name}' execution returned invalid type: {type(task_result_obj)}",
+                    notes={"error": TaskFailureError(
+                        type="TASK_FAILURE", 
+                        reason="output_format_failure", 
+                        message=f"Task '{task_name}' executor returned invalid type: {type(task_result_obj)}", 
+                        details={"task_name": task_name, "returned_type": str(type(task_result_obj))} 
+                    ).model_dump(exclude_none=True)}
+                 )
+            try:
+                debug_dump = task_result_obj.model_dump_json(indent=2)
+            except Exception: 
+                debug_dump = str(task_result_obj) 
+            logging.debug(f"  Task '{task_name}' execution returned: {debug_dump}")
+            return task_result_obj
+        except Exception as e_exec:
+            logging.exception(f"  Error executing atomic task '{task_name}': {e_exec}")
+            if isinstance(e_exec, SexpEvaluationError): raise 
+            raise SexpEvaluationError(f"Error executing task '{task_name}': {e_exec}", original_expr_str, error_details=str(e_exec)) from e_exec
+
+    def _invoke_handler_tool(
+        self,
+        tool_name: str,
+        arg_exprs: List[SexpNode], 
+        calling_env: SexpEnvironment, 
+        original_expr_str: str
+    ) -> TaskResult:
+        logging.debug(f"--- _invoke_handler_tool START: tool_name='{tool_name}', arg_exprs={arg_exprs}")
+
+        named_params: Dict[str, Any] = {}
+
+        for i, arg_expr_pair in enumerate(arg_exprs): 
+            if not (isinstance(arg_expr_pair, list) and len(arg_expr_pair) == 2 and isinstance(arg_expr_pair[0], Symbol)):
+                raise SexpEvaluationError(f"Invalid argument format for tool '{tool_name}'. Expected (key_symbol value_expression), got: {arg_expr_pair}", original_expr_str)
+            
+            key_symbol = arg_expr_pair[0]
+            value_expr_node = arg_expr_pair[1] 
+            key_str = key_symbol.value()
+
+            try:
+                evaluated_value = self._eval(value_expr_node, calling_env) 
+                logging.debug(f"  _invoke_handler_tool: Evaluated value for key '{key_str}' ('{value_expr_node}'): {evaluated_value}")
+            except SexpEvaluationError as e_val_eval:
+                raise SexpEvaluationError(
+                    f"Error evaluating value for '{key_str}' in tool '{tool_name}': {e_val_eval.args[0] if e_val_eval.args else str(e_val_eval)}",
+                    expression=original_expr_str, 
+                    error_details=f"Failed on value_expr='{e_val_eval.expression if hasattr(e_val_eval, 'expression') else value_expr_node}'. Original detail: {e_val_eval.error_details if hasattr(e_val_eval, 'error_details') else str(e_val_eval)}"
+                ) from e_val_eval
+            except Exception as e_val_eval: 
+                logging.exception(f"  _invoke_handler_tool: Unexpected error evaluating value for key '{key_str}' ('{value_expr_node}'): {e_val_eval}")
+                raise SexpEvaluationError(f"Unexpected error evaluating value for '{key_str}' in tool '{tool_name}': {value_expr_node}", original_expr_str, error_details=str(e_val_eval)) from e_val_eval
+            
+            named_params[key_str] = evaluated_value
+        
+        logging.debug(f"  Invoking direct tool '{tool_name}' with named_params: {named_params}")
+        try:
+            tool_result_obj = self.handler._execute_tool(tool_name, named_params)
+            if not isinstance(tool_result_obj, TaskResult):
+                 logging.error(f"  Tool executor '{tool_name}' did not return a TaskResult object (got {type(tool_result_obj)}).")
+                 return TaskResult(
+                    status="FAILED", 
+                    content=f"Tool '{tool_name}' execution returned invalid type: {type(tool_result_obj)}",
+                    notes={"error": TaskFailureError(
+                        type="TASK_FAILURE", 
+                        reason="output_format_failure", 
+                        message=f"Tool '{tool_name}' executor returned invalid type: {type(tool_result_obj)}",
+                        details={"tool_name": tool_name, "returned_type": str(type(tool_result_obj))}
+                    ).model_dump(exclude_none=True)}
+                 )
+            logging.debug(f"  Tool '{tool_name}' execution returned: {tool_result_obj.model_dump_json(indent=2)}")
+            return tool_result_obj
+        except Exception as e_exec:
+            logging.exception(f"  Error executing handler tool '{tool_name}': {e_exec}")
+            if isinstance(e_exec, SexpEvaluationError): raise
+            raise SexpEvaluationError(f"Error executing tool '{tool_name}': {e_exec}", original_expr_str, error_details=str(e_exec)) from e_exec

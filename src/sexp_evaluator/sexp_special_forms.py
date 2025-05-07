@@ -4,9 +4,14 @@ This module will contain the SpecialFormProcessor class, which centralizes
 the handling logic for all special forms in the S-expression language.
 """
 import logging
-from typing import Any, List, TYPE_CHECKING
+from typing import Any, List, TYPE_CHECKING, Dict
+
+from sexpdata import Symbol
 
 from src.sexp_evaluator.sexp_environment import SexpEnvironment
+from src.system.errors import SexpEvaluationError
+from src.system.models import TaskResult, SubtaskRequest # For defatom
+
 # SexpNode is an alias for Any, representing a parsed S-expression node.
 SexpNode = Any
 
@@ -35,45 +40,310 @@ class SpecialFormProcessor:
 
     def handle_if_form(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> Any:
         """Handles the 'if' special form: (if condition then_branch else_branch)"""
-        logger.debug(f"SpecialFormProcessor.handle_if_form called for: {original_expr_str}")
-        # Logic will be moved from SexpEvaluator._eval_if_form
-        raise NotImplementedError("handle_if_form logic not yet migrated to SpecialFormProcessor.")
+        logger.debug(f"SpecialFormProcessor.handle_if_form START: original_expr_str='{original_expr_str}'")
+        if len(arg_exprs) != 3:
+            raise SexpEvaluationError("'if' requires 3 arguments: (if condition then_branch else_branch)", original_expr_str)
+        
+        cond_expr, then_expr, else_expr = arg_exprs
+        
+        try:
+            condition_result = self.evaluator._eval(cond_expr, env)
+            logger.debug(f"  'if' condition '{cond_expr}' evaluated to: {condition_result}")
+        except Exception as e:
+            logging.exception(f"  Error evaluating 'if' condition '{cond_expr}': {e}")
+            if isinstance(e, SexpEvaluationError): raise
+            raise SexpEvaluationError(f"Error evaluating 'if' condition: {cond_expr}", original_expr_str, error_details=str(e)) from e
+
+        chosen_branch_expr = then_expr if condition_result else else_expr
+        logging.debug(f"  'if' chose branch: {chosen_branch_expr}")
+        
+        try:
+            result = self.evaluator._eval(chosen_branch_expr, env)
+            logging.debug(f"SpecialFormProcessor.handle_if_form END: -> {result}")
+            return result
+        except Exception as e:
+            logging.exception(f"  Error evaluating chosen 'if' branch '{chosen_branch_expr}': {e}")
+            if isinstance(e, SexpEvaluationError): raise
+            raise SexpEvaluationError(f"Error evaluating chosen 'if' branch: {chosen_branch_expr}", original_expr_str, error_details=str(e)) from e
 
     def handle_let_form(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> Any:
         """Handles the 'let' special form: (let ((var expr)...) body...)"""
-        logger.debug(f"SpecialFormProcessor.handle_let_form called for: {original_expr_str}")
-        # Logic will be moved from SexpEvaluator._eval_let_form
-        raise NotImplementedError("handle_let_form logic not yet migrated to SpecialFormProcessor.")
+        logger.debug(f"SpecialFormProcessor.handle_let_form START: original_expr_str='{original_expr_str}'")
+        if len(arg_exprs) < 1 or not isinstance(arg_exprs[0], list):
+            raise SexpEvaluationError("'let' requires a bindings list and at least one body expression: (let ((var expr)...) body...)", original_expr_str)
+        
+        bindings_list_expr = arg_exprs[0]
+        body_exprs = arg_exprs[1:]
+
+        if not body_exprs:
+            raise SexpEvaluationError("'let' requires at least one body expression.", original_expr_str)
+
+        logging.debug(f"  'let' processing {len(bindings_list_expr)} binding expressions.")
+        let_env = env.extend({}) # Create child environment for the 'let' scope
+
+        for binding_expr in bindings_list_expr:
+            binding_expr_repr = str(binding_expr)
+            if not (isinstance(binding_expr, list) and len(binding_expr) == 2 and isinstance(binding_expr[0], Symbol)):
+                raise SexpEvaluationError(f"Invalid 'let' binding format: expected (symbol expression), got {binding_expr_repr}", original_expr_str)
+            
+            var_name_symbol = binding_expr[0]
+            value_expr = binding_expr[1]
+            var_name_str = var_name_symbol.value()
+
+            try:
+                # Evaluate value expression in the *outer* environment (env, not let_env yet)
+                evaluated_value = self.evaluator._eval(value_expr, env)
+                let_env.define(var_name_str, evaluated_value) # Define in the *new* child environment
+                logging.debug(f"    Defined '{var_name_str}' = {evaluated_value} in 'let' scope {id(let_env)}")
+            except Exception as e:
+                logging.exception(f"  Error evaluating value for 'let' binding '{var_name_str}': {e}")
+                if isinstance(e, SexpEvaluationError): raise
+                raise SexpEvaluationError(f"Error evaluating value for 'let' binding '{var_name_str}': {value_expr}", original_expr_str, error_details=str(e)) from e
+        
+        # Evaluate body expressions in the new 'let' environment
+        final_result = [] # Default for empty body (though disallowed by check above)
+        for i, body_item_expr in enumerate(body_exprs):
+            try:
+                final_result = self.evaluator._eval(body_item_expr, let_env)
+                logging.debug(f"  'let' body expression {i+1} evaluated to: {final_result}")
+            except Exception as e:
+                logging.exception(f"  Error evaluating 'let' body expression {i+1} '{body_item_expr}': {e}")
+                if isinstance(e, SexpEvaluationError): raise
+                raise SexpEvaluationError(f"Error evaluating 'let' body expression {i+1}: {body_item_expr}", original_expr_str, error_details=str(e)) from e
+                
+        logging.debug(f"SpecialFormProcessor.handle_let_form END: -> {final_result}")
+        return final_result
 
     def handle_bind_form(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> Any:
         """Handles the 'bind' special form: (bind variable_symbol expression)"""
-        logger.debug(f"SpecialFormProcessor.handle_bind_form called for: {original_expr_str}")
-        # Logic will be moved from SexpEvaluator._eval_bind_form
-        raise NotImplementedError("handle_bind_form logic not yet migrated to SpecialFormProcessor.")
+        logger.debug(f"SpecialFormProcessor.handle_bind_form START: original_expr_str='{original_expr_str}'")
+        if len(arg_exprs) != 2 or not isinstance(arg_exprs[0], Symbol):
+            raise SexpEvaluationError("'bind' requires a symbol and a value expression: (bind variable_symbol expression)", original_expr_str)
+
+        var_name_symbol = arg_exprs[0]
+        value_expr = arg_exprs[1]
+        var_name_str = var_name_symbol.value()
+        
+        logging.debug(f"  Eval 'bind' for variable '{var_name_str}'")
+        try:
+            evaluated_value = self.evaluator._eval(value_expr, env) # Evaluate value expression in current env
+            env.define(var_name_str, evaluated_value) # Define in *current* environment
+            logging.debug(f"  SpecialFormProcessor.handle_bind_form END: defined '{var_name_str}' = {evaluated_value} in env {id(env)}")
+            return evaluated_value # 'bind' returns the assigned value
+        except Exception as e:
+            logging.exception(f"  Error evaluating value for 'bind' variable '{var_name_str}': {e}")
+            if isinstance(e, SexpEvaluationError): raise
+            raise SexpEvaluationError(f"Error evaluating value for 'bind' variable '{var_name_str}': {value_expr}", original_expr_str, error_details=str(e)) from e
 
     def handle_progn_form(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> Any:
         """Handles the 'progn' special form: (progn expr...)"""
-        logger.debug(f"SpecialFormProcessor.handle_progn_form called for: {original_expr_str}")
-        # Logic will be moved from SexpEvaluator._eval_progn_form
-        raise NotImplementedError("handle_progn_form logic not yet migrated to SpecialFormProcessor.")
+        logger.debug(f"SpecialFormProcessor.handle_progn_form START: original_expr_str='{original_expr_str}'")
+        final_result = [] # Default result for empty 'progn' is nil/[]
+        
+        for i, expr in enumerate(arg_exprs):
+            try:
+                final_result = self.evaluator._eval(expr, env) # Evaluate each expression sequentially
+                logging.debug(f"  'progn' expression {i+1} evaluated to: {final_result}")
+            except Exception as e:
+                logging.exception(f"  Error evaluating 'progn' expression {i+1} '{expr}': {e}")
+                if isinstance(e, SexpEvaluationError): raise
+                raise SexpEvaluationError(f"Error evaluating 'progn' expression {i+1}: {expr}", original_expr_str, error_details=str(e)) from e
+                
+        logging.debug(f"SpecialFormProcessor.handle_progn_form END: -> {final_result}")
+        return final_result # Return result of the last expression
 
     def handle_quote_form(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> Any:
         """Handles the 'quote' special form: (quote expression)"""
-        logger.debug(f"SpecialFormProcessor.handle_quote_form called for: {original_expr_str}")
-        # Logic will be moved from SexpEvaluator._eval_quote_form
-        raise NotImplementedError("handle_quote_form logic not yet migrated to SpecialFormProcessor.")
+        logger.debug(f"SpecialFormProcessor.handle_quote_form START: original_expr_str='{original_expr_str}'")
+        if len(arg_exprs) != 1:
+            raise SexpEvaluationError("'quote' requires exactly one argument: (quote expression)", original_expr_str)
+        
+        # Return the argument node *without* evaluating it
+        quoted_expression = arg_exprs[0]
+        logging.debug(f"SpecialFormProcessor.handle_quote_form END: -> {quoted_expression} (unevaluated)")
+        return quoted_expression
 
-    def handle_defatom_form(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> Any:
+    def handle_defatom_form(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> Symbol:
         """Handles the 'defatom' special form: (defatom name params instructions ...)"""
-        logger.debug(f"SpecialFormProcessor.handle_defatom_form called for: {original_expr_str}")
-        # Logic will be moved from SexpEvaluator._eval_defatom_form
-        raise NotImplementedError("handle_defatom_form logic not yet migrated to SpecialFormProcessor.")
+        logger.debug(f"SpecialFormProcessor.handle_defatom_form START: original_expr_str='{original_expr_str}'")
+
+        if len(arg_exprs) < 3: # Task name, params, instructions
+            raise SexpEvaluationError(
+                f"'defatom' requires at least name, params, and instructions arguments. Got {len(arg_exprs)}.",
+                original_expr_str
+            )
+
+        task_name_node = arg_exprs[0]
+        if not isinstance(task_name_node, Symbol):
+            raise SexpEvaluationError(
+                f"'defatom' task name must be a Symbol, got {type(task_name_node)}: {task_name_node}",
+                original_expr_str
+            )
+        task_name_str = task_name_node.value()
+
+        params_node = arg_exprs[1]
+        if not (isinstance(params_node, list) and len(params_node) > 0 and isinstance(params_node[0], Symbol) and params_node[0].value() == "params"):
+            raise SexpEvaluationError(
+                f"'defatom' requires a (params ...) definition as the second argument, got: {params_node}",
+                original_expr_str
+            )
+        
+        param_name_strings_for_template = [] 
+        for param_def_item in params_node[1:]:
+            if isinstance(param_def_item, Symbol): 
+                param_name_strings_for_template.append(param_def_item.value())
+            elif isinstance(param_def_item, list) and len(param_def_item) >= 1 and isinstance(param_def_item[0], Symbol): 
+                param_name_strings_for_template.append(param_def_item[0].value())
+            else:
+                 raise SexpEvaluationError(
+                    f"Invalid parameter definition format in (params ...). Expected symbol or (symbol type?), got: {param_def_item}",
+                    original_expr_str
+                )
+
+        template_params = {name: {"description": f"Parameter {name}"} for name in param_name_strings_for_template}
+
+        instructions_node = arg_exprs[2]
+        if not (isinstance(instructions_node, list) and len(instructions_node) == 2 and isinstance(instructions_node[0], Symbol) and instructions_node[0].value() == "instructions" and isinstance(instructions_node[1], str)):
+            raise SexpEvaluationError(
+                f"'defatom' requires an (instructions \"string\") definition as the third argument, got: {instructions_node}",
+                original_expr_str
+            )
+        instructions_str = instructions_node[1]
+
+        optional_args_map = {}
+        allowed_optionals = {"subtype", "description", "model"} 
+        for opt_node in arg_exprs[3:]: 
+            if not (isinstance(opt_node, list) and len(opt_node) == 2 and isinstance(opt_node[0], Symbol)):
+                raise SexpEvaluationError(
+                    f"Invalid optional argument format for 'defatom'. Expected (key value_string), got: {opt_node}",
+                    original_expr_str
+                )
+            key_node, value_node = opt_node
+            key_str = key_node.value()
+
+            if key_str not in allowed_optionals:
+                raise SexpEvaluationError(f"Unknown optional argument '{key_str}' for 'defatom'. Allowed: {allowed_optionals}", original_expr_str)
+            
+            if not isinstance(value_node, str):
+                 raise SexpEvaluationError(f"Value for optional argument '{key_str}' must be a string, got {type(value_node)}: {value_node}", original_expr_str)
+            optional_args_map[key_str] = value_node
+        
+        template_dict: Dict[str, Any] = {
+            "name": task_name_str,
+            "type": "atomic", 
+            "subtype": optional_args_map.get("subtype", "standard"),
+            "description": optional_args_map.get("description", f"Dynamically defined task: {task_name_str}"),
+            "params": template_params,
+            "instructions": instructions_str,
+        }
+        if "model" in optional_args_map: 
+            template_dict["model"] = optional_args_map["model"]
+
+        logging.debug(f"Constructed template dictionary for '{task_name_str}': {template_dict}")
+
+        try:
+            logging.info(f"Registering dynamic atomic task template: '{task_name_str}'")
+            registration_success = self.evaluator.task_system.register_template(template_dict)
+            if registration_success is False: 
+                logging.error(f"TaskSystem.register_template for '{task_name_str}' returned False.")
+                raise SexpEvaluationError(f"TaskSystem failed to register template '{task_name_str}' (returned False).", original_expr_str)
+        except SexpEvaluationError: 
+            raise
+        except Exception as e: 
+            logging.exception(f"Error registering template '{task_name_str}' with TaskSystem: {e}")
+            raise SexpEvaluationError(f"Failed to register template '{task_name_str}' with TaskSystem: {e}", original_expr_str, error_details=str(e)) from e
+
+        # Accessing self.evaluator for task_system
+        evaluator_ref = self.evaluator 
+        def defatom_task_wrapper(*args):
+            logger.debug(f"defatom_task_wrapper for '{task_name_str}' called with {len(args)} args: {args}")
+            
+            if len(args) != len(param_name_strings_for_template):
+                raise SexpEvaluationError(
+                    f"Task '{task_name_str}' (defined by defatom) expects {len(param_name_strings_for_template)} arguments, got {len(args)}.",
+                    expression=f"call to {task_name_str}" 
+                )
+            
+            inputs_dict = {name: val for name, val in zip(param_name_strings_for_template, args)}
+            
+            request = SubtaskRequest(
+                task_id=f"defatom_call_{task_name_str}_{id(args)}",
+                type="atomic",
+                name=task_name_str,
+                inputs=inputs_dict
+            )
+            logging.debug(f"  defatom_task_wrapper: Invoking TaskSystem for '{task_name_str}' with request: {request.model_dump_json(indent=2)}")
+            
+            try:
+                task_result: TaskResult = evaluator_ref.task_system.execute_atomic_template(request)
+                return task_result 
+            except Exception as e_exec:
+                logging.exception(f"  Error executing defatom task '{task_name_str}' via wrapper: {e_exec}")
+                raise SexpEvaluationError(f"Error executing defatom task '{task_name_str}': {e_exec}", expression=f"call to {task_name_str}", error_details=str(e_exec)) from e_exec
+
+        env.define(task_name_str, defatom_task_wrapper)
+        logging.info(f"Successfully registered and lexically bound dynamic task '{task_name_str}'.")
+        return task_name_node 
 
     def handle_loop_form(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> Any:
         """Handles the 'loop' special form: (loop count_expr body_expr)"""
-        logger.debug(f"SpecialFormProcessor.handle_loop_form called for: {original_expr_str}")
-        # Logic will be moved from SexpEvaluator._eval_loop_form
-        raise NotImplementedError("handle_loop_form logic not yet migrated to SpecialFormProcessor.")
+        logger.debug(f"SpecialFormProcessor.handle_loop_form START: original_expr_str='{original_expr_str}'")
+
+        if len(arg_exprs) != 2:
+            raise SexpEvaluationError(f"Loop requires exactly 2 arguments: count_expression and body_expression. Got {len(arg_exprs)}.", original_expr_str)
+        
+        count_expr, body_expr = arg_exprs
+
+        try:
+            logging.debug(f"  Evaluating loop count expression: {count_expr}")
+            count_value = self.evaluator._eval(count_expr, env)
+            logging.debug(f"  Loop count expression evaluated to: {count_value} (Type: {type(count_value)})")
+        except SexpEvaluationError as e_count: 
+            logging.exception(f"Error evaluating loop count expression '{count_expr}': {e_count}")
+            raise SexpEvaluationError(
+                f"Error evaluating loop count expression: {e_count.args[0] if e_count.args else str(e_count)}",
+                expression=original_expr_str, 
+                error_details=f"Failed on count_expr='{e_count.expression if hasattr(e_count, 'expression') else count_expr}'. Original detail: {e_count.error_details if hasattr(e_count, 'error_details') else str(e_count)}"
+            ) from e_count
+        except Exception as e: 
+            logging.exception(f"Error evaluating loop count expression '{count_expr}': {e}")
+            raise SexpEvaluationError(f"Error evaluating loop count expression: {count_expr}", original_expr_str, error_details=str(e)) from e
+
+        if not isinstance(count_value, int):
+            raise SexpEvaluationError(f"Loop count must evaluate to an integer.", original_expr_str, f"Got type: {type(count_value)} for count '{count_value}'")
+        if count_value < 0:
+            raise SexpEvaluationError(f"Loop count must be non-negative.", original_expr_str, f"Got value: {count_value}")
+
+        n = count_value
+        if n == 0:
+            logging.debug("Loop count is 0, skipping body execution and returning [].")
+            return [] 
+
+        last_result: Any = [] 
+        logging.debug(f"Starting loop execution for {n} iterations.")
+        for i in range(n):
+            iteration = i + 1
+            logging.debug(f"  Loop iteration {iteration}/{n}. Evaluating body: {body_expr}")
+            try:
+                last_result = self.evaluator._eval(body_expr, env)
+                logging.debug(f"  Iteration {iteration}/{n} result: {last_result}")
+            except SexpEvaluationError as e_body:
+                logging.exception(f"Error evaluating loop body during iteration {iteration}/{n} for '{body_expr}': {e_body}")
+                raise SexpEvaluationError(
+                    f"Error during loop iteration {iteration}/{n}: {e_body.args[0] if e_body.args else str(e_body)}",
+                    expression=original_expr_str, 
+                    error_details=f"Failed on body_expr='{e_body.expression if hasattr(e_body, 'expression') else body_expr}'. Original detail: {e_body.error_details if hasattr(e_body, 'error_details') else str(e_body)}"
+                ) from e_body
+            except Exception as e: 
+                logging.exception(f"Unexpected error evaluating loop body during iteration {iteration}/{n} for '{body_expr}': {e}")
+                raise SexpEvaluationError(
+                    f"Unexpected error during loop iteration {iteration}/{n} processing body '{body_expr}': {str(e)}",
+                    expression=original_expr_str,
+                    error_details=str(e)
+                ) from e
+                
+        logging.debug(f"SpecialFormProcessor.handle_loop_form finished after {n} iterations. Returning last result: {last_result}")
+        return last_result
 
     def handle_director_evaluator_loop(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> Any:
         """Handles the 'director-evaluator-loop' special form."""
