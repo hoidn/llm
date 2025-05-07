@@ -483,8 +483,20 @@ class SpecialFormProcessor:
                     # The original_call_expr_str for this internal call is conceptual.
                     # It's for error reporting if something goes wrong inside the phase function's body.
                     conceptual_call_str = f"({phase_name_str} {' '.join(map(str, args_list))})" # Simplified for logging
+
+                    effective_func_to_call = func_to_call
+                    if isinstance(func_to_call, Closure):
+                        # Re-wrap the closure with the execution_env_for_phase as its definition_env.
+                        # This makes *loop-config* (and other bindings in execution_env_for_phase)
+                        # lexically available to the body of the phase function for this specific call.
+                        logger.debug(f"    Re-wrapping closure for phase {phase_name_str} with execution_env_for_phase (id={id(execution_env_for_phase)}) as new definition_env.")
+                        effective_func_to_call = Closure(
+                            params_ast=func_to_call.params_ast,
+                            body_ast=func_to_call.body_ast,
+                            definition_env=execution_env_for_phase # This is phase_execution_env
+                        )
                     
-                    return self.evaluator._apply_operator(func_to_call, dummy_arg_expr_nodes, execution_env_for_phase, conceptual_call_str)
+                    return self.evaluator._apply_operator(effective_func_to_call, dummy_arg_expr_nodes, execution_env_for_phase, conceptual_call_str)
 
                 except SexpEvaluationError as e_phase:
                     raise SexpEvaluationError(f"Error in '{phase_name_str}' phase (iteration {current_iteration}): {e_phase.args[0] if e_phase.args else str(e_phase)}", original_expr_str, error_details=e_phase.error_details if hasattr(e_phase, 'error_details') else str(e_phase)) from e_phase
