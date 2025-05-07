@@ -29,7 +29,7 @@ from src.system.models import (
 from src.system.errors import SexpSyntaxError, SexpEvaluationError
 
 # Debug logging for sexpdata.Quoted import
-logging.critical(f"SexpEvaluator: Imported Quoted type: {type(sexpdata_Quoted)}, id: {id(sexpdata_Quoted)}, module: {getattr(sexpdata_Quoted, '__module__', 'N/A')}")
+logging.debug(f"SexpEvaluator: Imported Quoted type: {type(sexpdata_Quoted)}, id: {id(sexpdata_Quoted)}, module: {getattr(sexpdata_Quoted, '__module__', 'N/A')}")
 
 # Type for Sexp AST nodes (adjust based on SexpParser output)
 from sexpdata import Symbol 
@@ -106,7 +106,7 @@ class SexpEvaluator:
             "not": self.primitive_processor.apply_not_primitive,
             # --- END ADD ---
         }
-        logging.critical(f"SexpEvaluator INITIALIZED. PRIMITIVE_APPLIERS keys: {list(self.PRIMITIVE_APPLIERS.keys())}")
+        logging.debug(f"SexpEvaluator INITIALIZED. PRIMITIVE_APPLIERS keys: {list(self.PRIMITIVE_APPLIERS.keys())}")
         logging.info("SexpEvaluator initialized with helper processors.")
 
     def evaluate_string(
@@ -370,7 +370,7 @@ class SexpEvaluator:
 
         elif isinstance(resolved_op, str):
             op_name_str = resolved_op
-            logger.critical(f"_apply_operator: Checking for op_name_str '{op_name_str}'. Available primitives: {list(self.PRIMITIVE_APPLIERS.keys())}")
+            logger.debug(f"_apply_operator: Checking for op_name_str '{op_name_str}'. Available primitives: {list(self.PRIMITIVE_APPLIERS.keys())}")
             logger.debug(f"  _apply_operator: Operator is a name string: '{op_name_str}'")
 
             if op_name_str in self.PRIMITIVE_APPLIERS:
