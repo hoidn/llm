@@ -99,7 +99,47 @@ DEFATOM_ANALYZE_AIDER_RESULT_S_EXPRESSION = """
 )
 """
 
-# S-expression for the main DEEC loop workflow (Simplified Structure)
+# S-expression to define the task that analyzes test command output
+DEFATOM_ANALYZE_TEST_RESULT_S_EXPRESSION = """
+(defatom user:analyze-test-result
+  (params
+    (test_command string)
+    (test_stdout string)
+    (test_stderr string)
+    (aider_diff string) ;; Optional context: what changes were made?
+    (original_goal string) ;; Optional context: what was the goal?
+  )
+  (instructions
+    "You are an AI test evaluator. Analyze the output of a test command run after an AI coding assistant made changes.
+    Goal being worked on: {{original_goal}}
+    Changes made by AI (diff):
+    {{aider_diff}}
+
+    Test command executed: {{test_command}}
+    Standard Output (stdout):
+    {{test_stdout}}
+    Standard Error (stderr):
+    {{test_stderr}}
+
+    Based *only* on the stdout and stderr, determine if the tests passed successfully or if there were failures.
+    - If the output indicates all tests passed (e.g., pytest showing 'PASSED', no errors), status is 'TESTS_PASSED'.
+    - If the output indicates test failures, errors, or an empty test suite run, status is 'TESTS_FAILED'.
+
+    Output ONLY a valid JSON object strictly conforming to this structure:
+    {
+      \\"eval_status\\": \\"TESTS_PASSED\\" | \\"TESTS_FAILED\\",
+      \\"message\\": \\"Brief summary (e.g., 'All tests passed.', 'Pytest reported 3 failures.')\\"
+    }
+    Do not include any other text, explanations, or formatting."
+  )
+  ;; Choose a model good at analysis and JSON output
+  ;; (model "gpt-4-turbo")
+  (output_format ((type "json") (schema null))) ;; We'll parse manually or define a schema later if needed
+  (description "Analyzes test command stdout/stderr to determine pass/fail status.")
+)
+"""
+
+# S-expression for the main DEEC loop workflow (REVISED EVALUATOR)
 MAIN_WORKFLOW_S_EXPRESSION = """
 (progn
   (log-message "Starting workflow for goal:" initial-user-goal)
@@ -305,8 +345,15 @@ def main():
              sys.exit(1)
         logger.debug("Defined 'user:analyze-aider-result'")
 
-        logger.info("Atomic tasks defined successfully.")
-    except Exception as e:
+       # Execute Test Result Analyzer Defatom
+       test_analysis_def_result = app.handle_task_command(DEFATOM_ANALYZE_TEST_RESULT_S_EXPRESSION)
+       if test_analysis_def_result.get("status") == "FAILED":
+            logger.error(f"Failed to define 'user:analyze-test-result': {test_analysis_def_result.get('content')}")
+            sys.exit(1)
+       logger.debug("Defined 'user:analyze-test-result'")
+
+       logger.info("Atomic tasks defined successfully.")
+   except Exception as e:
          logger.exception("Error occurred while defining atomic tasks. Exiting.")
          sys.exit(1)
 
