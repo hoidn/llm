@@ -1859,27 +1859,40 @@ def test_primitive_eq_none_equal(evaluator, mock_parser):
     assert evaluator.evaluate_string(sexp_str_env, env_with_none) is True
 
 def test_primitive_eq_lists_equal_structurally(evaluator, mock_parser):
-    sexp_str = "(eq? (list 1 2) (list 1 2))"
-    ast = [Symbol('eq?'), [Symbol('list'), 1, 2], [Symbol('list'), 1, 2]]
-    mock_parser.parse_string.return_value = ast
-    assert evaluator.evaluate_string(sexp_str) is True
-
-    sexp_str = "(eq? (list (list 'a') 'b') (list (list 'a') 'b'))"
-    ast = [Symbol('eq?'), 
-           [Symbol('list'), [Symbol('list'), Symbol("'a")], Symbol("'b")], 
-           [Symbol('list'), [Symbol('list'), Symbol("'a")], Symbol("'b")]]
-    mock_parser.parse_string.return_value = ast
-    assert evaluator.evaluate_string(sexp_str) is True
-
-    sexp_str = "(eq? (list) (list))"
-    ast = [Symbol('eq?'), [Symbol('list')], [Symbol('list')]]
-    mock_parser.parse_string.return_value = ast
-    assert evaluator.evaluate_string(sexp_str) is True
-
-    sexp_str = "(eq? '() '())"
-    ast = [Symbol('eq?'), [Symbol('quote'), []], [Symbol('quote'), []]]
-    mock_parser.parse_string.return_value = ast
-    assert evaluator.evaluate_string(sexp_str) is True 
+    # Test 1: Simple lists of literals
+    sexp_str_simple = "(eq? (list 1 2) (list 1 2))"
+    ast_simple = [Symbol('eq?'), [Symbol('list'), 1, 2], [Symbol('list'), 1, 2]]
+    mock_parser.parse_string.return_value = ast_simple # Set mock for this call
+    assert evaluator.evaluate_string(sexp_str_simple) is True
+    
+    # Test 2: Nested lists with quoted symbols
+    # S-expression: (eq? (list (list (quote a)) (quote b)) (list (list (quote a)) (quote b)))
+    sexp_str_complex = "(eq? (list (list (quote a)) (quote b)) (list (list (quote a)) (quote b)))"
+    # AST for the above S-expression
+    ast_complex = [
+        Symbol('eq?'),
+        [Symbol('list'), [Symbol('list'), [Symbol('quote'), Symbol('a')]], [Symbol('quote'), Symbol('b')]],
+        [Symbol('list'), [Symbol('list'), [Symbol('quote'), Symbol('a')]], [Symbol('quote'), Symbol('b')]]
+    ]
+    mock_parser.parse_string.return_value = ast_complex # Set mock for this call
+    assert evaluator.evaluate_string(sexp_str_complex) is True
+    
+    # Test 3: Empty lists
+    sexp_str_empty1 = "(eq? (list) (list))"
+    ast_empty1 = [Symbol('eq?'), [Symbol('list')], [Symbol('list')]]
+    mock_parser.parse_string.return_value = ast_empty1 # Set mock for this call
+    assert evaluator.evaluate_string(sexp_str_empty1) is True
+    
+    # Test 4: Quoted empty lists '()
+    # '() is parsed by sexpdata as an empty list []. (quote ()) is parsed as [Symbol('quote'), []]
+    # The S-expression (eq? '() '()) is parsed as [Symbol('eq?'), [], []] by sexpdata if nil=None is not set.
+    # If nil='nil' (current SexpParser default), then '() still parses to [].
+    # If the SexpParser is configured to treat nil as None, then '() would still be [].
+    # The (quote form) is the explicit way.
+    sexp_str_empty2 = "(eq? (quote ()) (quote ()))"
+    ast_empty2 = [Symbol('eq?'), [Symbol('quote'), []], [Symbol('quote'), []]]
+    mock_parser.parse_string.return_value = ast_empty2 # Set mock for this call
+    assert evaluator.evaluate_string(sexp_str_empty2) is True
 
 def test_primitive_eq_lists_unequal_structurally(evaluator, mock_parser):
     sexp_str = "(eq? (list 1 2) (list 1 3))"
@@ -2087,17 +2100,17 @@ def test_primitive_add_various_cases(evaluator, mock_parser):
         assert evaluator.evaluate_string(sexp_str) == expected
 
 def test_primitive_add_error_non_numeric(evaluator, mock_parser):
-    sexp_str = '(+ 1 "two")'
-    ast = [Symbol('+'), 1, "two"]
-    mock_parser.parse_string.return_value = ast
+    sexp_str1 = '(+ 1 "two")'
+    ast1 = [Symbol('+'), 1, "two"]
+    mock_parser.parse_string.return_value = ast1 # Set mock for the first call
     with pytest.raises(SexpEvaluationError, match="must be a number"):
-        evaluator.evaluate_string(sexp_str)
-
-    sexp_str = "(+ true 1)"
-    ast = [Symbol('+'), True, 1]
-    mock_parser.parse_string.return_value = ast
+        evaluator.evaluate_string(sexp_str1)
+    
+    sexp_str2 = "(+ true 1)"
+    ast2 = [Symbol('+'), True, 1] # Assuming SexpParser converts 'true' to Python True
+    mock_parser.parse_string.return_value = ast2 # Set mock for the second call
     with pytest.raises(SexpEvaluationError, match="must be a number"):
-        evaluator.evaluate_string(sexp_str)
+        evaluator.evaluate_string(sexp_str2)
 
 # --- Tests for - ---
 def test_primitive_subtract_various_cases(evaluator, mock_parser):
@@ -2127,20 +2140,20 @@ def test_primitive_subtract_arity_errors(evaluator, mock_parser):
         evaluator.evaluate_string(sexp_str)
 
 def test_primitive_subtract_error_non_numeric(evaluator, mock_parser):
-    sexp_str = '(- 10 "three")'
-    ast = [Symbol('-'), 10, "three"]
-    mock_parser.parse_string.return_value = ast
+    sexp_str1 = '(- 10 "three")'
+    ast1 = [Symbol('-'), 10, "three"]
+    mock_parser.parse_string.return_value = ast1 # Set mock for the first call
     with pytest.raises(SexpEvaluationError, match="must be a number"):
-        evaluator.evaluate_string(sexp_str)
-
-    sexp_str = "(- true)"
-    ast = [Symbol('-'), True]
-    mock_parser.parse_string.return_value = ast
+        evaluator.evaluate_string(sexp_str1)
+    
+    sexp_str2 = "(- true)"
+    ast2 = [Symbol('-'), True] # Assuming SexpParser converts 'true' to Python True
+    mock_parser.parse_string.return_value = ast2 # Set mock for the second call
     with pytest.raises(SexpEvaluationError, match="must be a number"):
-        evaluator.evaluate_string(sexp_str)
-
-    sexp_str = "(- 10 false)"
-    ast = [Symbol('-'), 10, False]
-    mock_parser.parse_string.return_value = ast
+        evaluator.evaluate_string(sexp_str2)
+    
+    sexp_str3 = "(- 10 false)" 
+    ast3 = [Symbol('-'), 10, False] # Assuming SexpParser converts 'false' to Python False
+    mock_parser.parse_string.return_value = ast3 # Set mock for the third call
     with pytest.raises(SexpEvaluationError, match="must be a number"):
-        evaluator.evaluate_string(sexp_str)
+        evaluator.evaluate_string(sexp_str3)
