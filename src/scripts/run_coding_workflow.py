@@ -110,7 +110,14 @@ MAIN_WORKFLOW_S_EXPRESSION = """
                             (goal initial-user-goal)
                             (context initial-context-data))))
 
-    (log-message "Plan generation task result:" plan-task-result)
+    (log-message "Plan generation task. Status:" (get-field plan-task-result "status"))
+    (if (string=? (get-field plan-task-result "status") "COMPLETE")
+        (if (null? (get-field plan-task-result "parsedContent"))
+            (log-message "Plan generation: Parsed content is null despite COMPLETE status.")
+            (log-message "Plan generation: Files from plan:" (get-field (get-field plan-task-result "parsedContent") "files") ". Instructions (content omitted).")
+        )
+        ;; If not COMPLETE, the overall error is handled by the later 'else' for the main 'if'
+    )
 
     ;; 2. Check Plan Generation Success & Extract Data
     (if (string=? (get-field plan-task-result "status") "COMPLETE")
@@ -121,7 +128,7 @@ MAIN_WORKFLOW_S_EXPRESSION = """
               (let ((aider-instructions (get-field plan-data "instructions"))
                     (aider-files        (get-field plan-data "files")))
 
-                (log-message "Plan extracted successfully. Instructions:" aider-instructions)
+                (log-message "Plan extracted successfully. Instructions (content omitted).")
                 (log-message "Files:" aider-files)
 
                 ;; 3. Enter the Director-Evaluator-Executor-Controller Loop
