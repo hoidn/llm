@@ -61,8 +61,9 @@ DEFATOM_GENERATE_PLAN_S_EXPRESSION = """
 (defatom user:generate-plan-from-goal
   (params (goal string) (context_string string)) ;; <<< RENAMED HERE
   (instructions
-    "Analyze the user's goal: '{{goal}}' with the provided context: '{{context_string}}'. ;; <<< RENAMED HERE
-    Generate a development plan including ONLY:
+    "Analyze the user's goal: '{{goal}}' with the provided context: '{{context_string}}'.
+    Your *only* task is to generate a development plan. Do *not* attempt to execute any tools or commands yourself.
+    The plan must include ONLY:
     1. 'instructions': Detailed steps for an AI coder (Aider).
     2. 'files': List of relative file paths to create/modify.
     Do NOT generate a 'test_command'.
