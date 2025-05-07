@@ -265,6 +265,64 @@
     *   **Outcome:** System allows precise control over conversational history for LLM tasks, improving efficiency, reducing costs, and enabling more sophisticated task designs.
     *   **Readiness:** Core Feature Enhancement (Builds on existing LLM interaction framework). 
 
+*   **Phase 10d: `director-evaluator-loop` Special Form**
+    *   **Status:** PENDING
+    *   **Goal:** Implement the `(director-evaluator-loop ...)` special form in the S-expression DSL, as specified in `docs/new_adrs/ADR_director_evaluator_loop.md`, to provide a high-level, declarative construct for orchestrating Director-Executor-Evaluator-Controller (DEEC) iterative workflows.
+    *   **Prerequisites:**
+        *   Phase 10 (S-expression `lambda` and Closures) fully implemented and stable.
+        *   Core data access and comparison primitives from Phase 10b (e.g., `get-field`, `string=?`, `eq?`, `null?`, list construction) implemented and functional.
+    *   **Components & Tasks:**
+        1.  **`SexpEvaluator` Modifications:**
+            *   Add `director-evaluator-loop` to the list of recognized special forms.
+            *   Implement a new private handler method (e.g., `_eval_director_evaluator_loop`) for this special form.
+        2.  **Syntax Parsing & Validation:**
+            *   In `_eval_director_evaluator_loop`, parse and validate the structure of the special form's arguments, ensuring all mandatory clauses (`max-iterations`, `initial-director-input`, `director`, `executor`, `evaluator`, `controller`) are present and correctly formatted.
+            *   Raise `SexpEvaluationError` for syntax violations.
+        3.  **Loop Configuration Evaluation:**
+            *   Evaluate the `<number-expr>` for `max-iterations` and validate it's a non-negative integer.
+            *   Evaluate the `<expr>` for `initial-director-input` once at the start.
+            *   Evaluate each `<*-function-expr>` for the `director`, `executor`, `evaluator`, and `controller` clauses, ensuring they resolve to callable S-expression functions (e.g., `Closure` objects). Raise `SexpEvaluationError` if not callable.
+        4.  **Core Iteration Logic Implementation:**
+            *   Implement the main loop mechanism within `_eval_director_evaluator_loop` as detailed in `ADR_director_evaluator_loop.md` (Evaluation Logic steps 1-8).
+            *   Correctly manage `current_iteration`, `current_director_input_val`, and `loop_result`.
+            *   Ensure proper invocation of the user-supplied phase functions (lambdas) using the `SexpEvaluator`'s standard function application mechanism, passing the specified arguments (including `iteration-number`).
+            *   Correctly process the controller's decision list (`'(continue <next-input>)` or `'(stop <final-value>)`).
+        5.  **Termination and Return Value:**
+            *   Implement termination based on `max-iterations` or the controller's `'stop` signal.
+            *   Ensure the special form returns the correct final value as specified in the ADR (value from `'stop` or last `exec_result_val` if `max_iterations` is hit).
+        6.  **Error Handling:**
+            *   Implement robust error handling for all validation steps (syntax, argument types, controller decision format).
+            *   Ensure errors raised from within user-supplied phase functions are correctly propagated, leading to the failure of the `director-evaluator-loop` form.
+            *   Raise `SexpEvaluationError` with clear, informative messages for all error conditions.
+    *   **Integration:**
+        *   Leverages `lambda` (Phase 10) for user-defined phase functions.
+        *   Phase functions will utilize primitives from Phase 10b for their internal logic.
+        *   Enhances the S-expression DSL's capability for managing complex, stateful iterative workflows.
+    *   **Testing:**
+        *   **Unit Tests for `SexpEvaluator`:**
+            *   Test correct parsing and validation of the `director-evaluator-loop` syntax.
+            *   Test validation of `max-iterations` (non-negative integer).
+            *   Test validation of phase function expressions (must evaluate to callables).
+            *   Test correct evaluation of `initial-director-input`.
+            *   Mock the director, executor, evaluator, and controller functions to test:
+                *   Correct argument passing to each phase function.
+                *   Correct data flow between phases.
+                *   Loop termination via `max-iterations`.
+                *   Loop termination via controller returning `'(stop ...)` and correct return value.
+                *   Loop continuation via controller returning `'(continue ...)` and correct update of `current_director_input_val`.
+                *   Correct return value if `max_iterations` is 0.
+            *   Test error handling for malformed controller decisions.
+            *   Test error propagation if a phase function raises an error.
+        *   **Integration Tests:**
+            *   Define simple S-expression lambdas for each phase.
+            *   Test a complete `director-evaluator-loop` execution for a few iterations.
+            *   Test a loop that uses `get-field` and `string=?` (from Phase 10b) within its phase functions to make decisions.
+            *   Test interaction with mock tasks/tools called from within the phase functions.
+    *   **Documentation:**
+        *   Update `src/sexp_evaluator/sexp_evaluator_IDL.md` to fully document the `director-evaluator-loop` special form (syntax, arguments, phase function signatures, behavior, error conditions).
+        *   Update user-facing DSL guides and examples to illustrate its usage.
+    *   **Outcome:** The S-expression DSL supports a robust, declarative, high-level construct for defining and executing DEEC-style iterative workflows, simplifying complex orchestration logic.
+    *   **Readiness:** Advanced DSL Control Flow.
 
 *   **Phase 11: Workflow State Management & Resumption (Interactive Mode)**
     *   **Status:** PENDING
