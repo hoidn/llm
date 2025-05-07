@@ -481,16 +481,8 @@ class SexpEvaluator:
                 elif isinstance(evaluated_value, dict):
                     context_settings_dict = evaluated_value
                 else:
-                    # <<< REPLACE THIS ERROR MESSAGE >>>
-                    error_msg = (
-                        f"The argument key 'context' is reserved for context management settings "
-                        f"(which should evaluate to a dictionary or list of pairs). "
-                        f"If you intend to pass context *data* (like a string), use a different "
-                        f"parameter name (e.g., 'context_data', 'context_string'). "
-                        f"Got type: {type(evaluated_value)} for 'context' argument."
-                    )
+                    error_msg = f"'context' argument for task '{task_name}' must evaluate to a dictionary or a list of pairs, got {type(evaluated_value)}."
                     raise SexpEvaluationError(error_msg, original_expr_str)
-                    # <<< END REPLACEMENT >>>
             elif key_str == "history_config":
                 if isinstance(evaluated_value, list) and all(isinstance(p, list) and len(p)==2 for p in evaluated_value):
                     try:
