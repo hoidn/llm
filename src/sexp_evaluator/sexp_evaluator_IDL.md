@@ -117,6 +117,7 @@ module src.sexp_evaluator.sexp_evaluator {
         //   - **Syntax:** See ADR_director_evaluator_loop.md for full syntax details.
         //   - **Argument Processing:** Evaluates configuration expressions and function expressions as specified in the ADR.
         //   - **Behavior:** Executes the Director-Executor-Evaluator-Controller cycle up to max-iterations times, with each phase function receiving appropriate inputs.
+        //     Within each phase function's execution, a special variable `*loop-config*` is bound in the environment. This variable holds an association list (list of pairs) containing the loop's configuration: `(list (list 'max-iterations <max-iter-value>) (list 'initial-director-input <initial-input-value>))`. This allows phase functions to inspect the loop's setup.
         //   - **Returns:** The final result as determined by the controller's 'stop' decision or the last execution result if max iterations is reached.
         //   - **Errors:** Raises `SexpEvaluationError` for various validation failures or if any phase function raises an error.
         //

@@ -2395,7 +2395,83 @@ def test_director_loop_error_in_phase_function_propagates(evaluator, mock_parser
     mock_parser.parse_string.side_effect = real_parser_for_side_effect.parse_string
     with pytest.raises(SexpEvaluationError, match="Error in 'director' phase.*Unbound symbol or unrecognized operator: undefined-function"):
         evaluator.evaluate_string(sexp_string)
-        
+
+def test_director_loop_config_access_in_all_phases(evaluator, mock_parser, caplog):
+    """Test that phase functions can access *loop-config*."""
+    sexp_string = """
+    (director-evaluator-loop
+      (max-iterations 1)
+      (initial-director-input "start_token")
+      (director (lambda (current-input iter) 
+                  (log-message "DIR_MAX_ITER:" (get-field *loop-config* "max-iterations"))
+                  (log-message "DIR_INIT_IN:" (get-field *loop-config* "initial-director-input"))
+                  (list 'plan current-input iter (get-field *loop-config* "max-iterations"))))
+      (executor (lambda (plan iter) 
+                  (log-message "EXEC_MAX_ITER:" (get-field *loop-config* "max-iterations"))
+                  (list 'exec plan iter (get-field *loop-config* "initial-director-input"))))
+      (evaluator (lambda (exec-result plan iter) 
+                   (log-message "EVAL_INIT_IN:" (get-field *loop-config* "initial-director-input"))
+                   (list 'eval exec-result iter (get-field *loop-config* "max-iterations"))))
+      (controller (lambda (eval-feedback plan exec-result iter)
+                    (log-message "CTRL_MAX_ITER:" (get-field *loop-config* "max-iterations"))
+                    (log-message "CTRL_INIT_IN:" (get-field *loop-config* "initial-director-input"))
+                    (list 'stop 
+                          (list 'final_result 
+                                (get-field *loop-config* "max-iterations")
+                                (get-field *loop-config* "initial-director-input")
+                                eval-feedback
+                                iter))))
+    )
+    """
+    real_parser_for_side_effect = SexpParser()
+    mock_parser.parse_string.side_effect = real_parser_for_side_effect.parse_string
+    
+    # Enable capturing logs at INFO level for log-message primitive
+    caplog.set_level(logging.INFO)
+
+    result = evaluator.evaluate_string(sexp_string)
+
+    # Expected result structure based on the lambdas
+    # (list 'final_result max_iter init_input eval_feedback iter)
+    # eval_feedback = (list 'eval exec_result iter max_iter)
+    # exec_result = (list 'exec plan iter init_input)
+    # plan = (list 'plan current_input iter max_iter)
+    # current_input = "start_token", iter = 1, max_iter = 1, init_input = "start_token"
+
+    expected_result = [
+        Symbol('final_result'),
+        1,  # max-iterations from *loop-config* in controller
+        "start_token", # initial-director-input from *loop-config* in controller
+        [   # eval_feedback
+            Symbol('eval'),
+            [   # exec_result
+                Symbol('exec'),
+                [   # plan
+                    Symbol('plan'),
+                    "start_token",  # current-input to director
+                    1,  # iter in director
+                    1   # max-iterations from *loop-config* in director
+                ],
+                1,  # iter in executor
+                "start_token"  # initial-director-input from *loop-config* in executor
+            ],
+            1,  # iter in evaluator
+            1   # max-iterations from *loop-config* in evaluator
+        ],
+        1  # iter in controller
+    ]
+    assert result == expected_result
+
+    # Check logs for evidence of config access
+    log_records = [record.message for record in caplog.records if record.name == 'SexpPrimitiveProcessor']
+    
+    assert "DIR_MAX_ITER: 1" in log_records
+    assert "DIR_INIT_IN: start_token" in log_records
+    assert "EXEC_MAX_ITER: 1" in log_records
+    assert "EVAL_INIT_IN: start_token" in log_records
+    assert "CTRL_MAX_ITER: 1" in log_records
+    assert "CTRL_INIT_IN: start_token" in log_records
+
 def test_director_loop_integration_with_get_field_and_eq(evaluator, mock_parser):
     sexp_string = """
     (director-evaluator-loop
