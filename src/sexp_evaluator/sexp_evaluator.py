@@ -20,13 +20,16 @@ from .sexp_special_forms import SpecialFormProcessor
 from .sexp_primitives import PrimitiveProcessor     
 
 # System Models and Errors
-from sexpdata import Symbol, Quoted  # Ensure Quoted is imported
+from sexpdata import Symbol, Quoted as sexpdata_Quoted  # Renamed for clarity in debugging
 from src.system.models import (
     TaskResult, SubtaskRequest, ContextGenerationInput, ContextManagement,
     TaskFailureError, AssociativeMatchResult, MatchTuple,
     TaskError 
 )
 from src.system.errors import SexpSyntaxError, SexpEvaluationError
+
+# Debug logging for sexpdata.Quoted import
+logging.critical(f"SexpEvaluator: Imported Quoted type: {type(sexpdata_Quoted)}, id: {id(sexpdata_Quoted)}, module: {getattr(sexpdata_Quoted, '__module__', 'N/A')}")
 
 # Type for Sexp AST nodes (adjust based on SexpParser output)
 from sexpdata import Symbol 
@@ -173,11 +176,40 @@ class SexpEvaluator:
                  raise 
 
         # Handle Quoted objects directly
-        if isinstance(node, Quoted):
-            # If _eval encounters a Quoted object directly, it means the parser
-            # created it from a shorthand like 'datum. The value of 'datum is datum itself.
-            logging.debug(f"Eval Quoted node: {node}, returning its value: {node.val}")
-            return node.val
+        if isinstance(node, sexpdata_Quoted):
+            # --- START ENHANCED DEBUGGING ---
+            logging.debug(f"Eval Quoted: Encountered node: {node!r}")
+            logging.debug(f"Eval Quoted: Type of node: {type(node)}")
+            logging.debug(f"Eval Quoted: node.__class__: {node.__class__}")
+            logging.debug(f"Eval Quoted: node.__module__: {getattr(node, '__module__', 'N/A')}")
+            logging.debug(f"Eval Quoted: Is it a sexpdata.Quoted? {isinstance(node, sexpdata_Quoted)}")
+            logging.debug(f"Eval Quoted: Attributes (dir(node)): {dir(node)}")
+            
+            has_val_attr = hasattr(node, 'val')
+            logging.debug(f"Eval Quoted: hasattr(node, 'val'): {has_val_attr}")
+
+            if not has_val_attr:
+                logging.error("Eval Quoted: CRITICAL - 'Quoted' object does NOT have 'val' attribute as expected by hasattr().")
+                # Optionally, try to see if it's list-like if it's not the expected Quoted structure
+                if isinstance(node, list) and len(node) == 2 and isinstance(node[0], Symbol) and node[0].value() == 'quote':
+                    logging.warning("Eval Quoted: Node looks like (quote datum) list structure. Attempting node[1].")
+                    # This would be a fallback if it's not a true sexpdata.Quoted but a list representing it.
+                    # However, the error is AttributeError on 'val', not TypeError on indexing.
+                
+            # Attempt to access .val, but be ready for the AttributeError for logging
+            try:
+                actual_val = node.val # This is the line that might fail
+                logging.debug(f"Eval Quoted: Successfully accessed node.val, value: {actual_val!r}")
+                return actual_val
+            except AttributeError as e_val:
+                logging.exception(f"Eval Quoted: AttributeError accessing node.val. Error: {e_val}")
+                # If this happens, it means the object is not a standard sexpdata.Quoted instance
+                # or it's malformed. Re-raise to see the test fail as before, but with more logs.
+                raise
+            except Exception as e_other:
+                logging.exception(f"Eval Quoted: Other unexpected error accessing node.val. Error: {e_other}")
+                raise
+            # --- END ENHANCED DEBUGGING ---
 
         if not isinstance(node, list):
             # This branch now handles non-Symbol, non-Quoted, non-list atoms (numbers, strings, bools, None)
