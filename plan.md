@@ -229,6 +229,43 @@
     *   **Readiness:** Advanced DSL Capabilities (Enables complex internal state management and data-driven control flow within S-expressions).
 
 
+*   **Phase 10c: Granular History Control**
+    *   **Status:** PENDING
+    *   **Goal:** Implement granular control over conversational history usage for LLM tasks, as per ADR [Link to the new ADR for Granular History Control].
+    *   **Components & Tasks:**
+        1.  **Models:**
+            *   Define `HistoryConfigSettings` Pydantic model in `src.system.models`.
+            *   Extend `SubtaskRequest` model with `history_config: Optional[HistoryConfigSettings]`.
+        2.  **Task System (`src.task_system.task_system`):**
+            *   Modify `execute_atomic_template` to:
+                *   Read `history_config` from task templates and `SubtaskRequest`.
+                *   Merge these configurations (request overrides template).
+                *   Pass the effective `HistoryConfigSettings` to `AtomicTaskExecutor`.
+        3.  **Atomic Task Executor (`src.executors.atomic_executor`):**
+            *   Update `execute_body` signature to accept `history_config: Optional[HistoryConfigSettings]`.
+            *   Pass `history_config` to `handler._execute_llm_call`.
+        4.  **Base Handler (`src.handler.base_handler`):**
+            *   Update `_execute_llm_call` signature to accept `history_config: Optional[HistoryConfigSettings]`.
+            *   Implement logic to:
+                *   Use fresh/empty history if `history_config.use_session_history` is `false`.
+                *   Slice `self.conversation_history` based on `history_config.history_turns_to_include`.
+                *   Conditionally append the current turn to `self.conversation_history` based on `history_config.record_in_session_history`.
+        5.  **S-expression Evaluator (`src.sexp_evaluator.sexp_evaluator`):**
+            *   Modify `_invoke_task_system` to parse an optional `(history_config ...)` argument from S-expression task calls.
+            *   Populate `SubtaskRequest.history_config` with the parsed and evaluated settings.
+            *   Define clear syntax for how `history_config` is specified in S-expressions (e.g., quoted list of pairs).
+        6.  **Task Template Definitions:**
+            *   Update `defatom` logic in `SexpEvaluator` to allow specifying a `(history_config ...)` block.
+            *   Update documentation for XML task templates to include a `<history_config>` element.
+        7.  **Testing:**
+            *   Unit tests for new logic in `BaseHandler`, `TaskSystem`, and `SexpEvaluator`.
+            *   Integration tests verifying end-to-end flag propagation and correct history modification for LLM calls (mocking the LLM API itself). Test all flag combinations.
+        8.  **Documentation:** Implement the documentation updates outlined in the ADR's "Impact" section (IDLs, guides).
+    *   **Integration:** Affects core LLM call path and task invocation.
+    *   **Outcome:** System allows precise control over conversational history for LLM tasks, improving efficiency, reducing costs, and enabling more sophisticated task designs.
+    *   **Readiness:** Core Feature Enhancement (Builds on existing LLM interaction framework). 
+
+
 *   **Phase 11: Workflow State Management & Resumption (Interactive Mode)**
     *   **Status:** PENDING
     *   **Goal:** Enable workflows to be suspended, have their state persisted, and be resumed later, potentially after external input.
