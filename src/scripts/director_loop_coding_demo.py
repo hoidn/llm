@@ -89,7 +89,7 @@ MAIN_LOOP_S_EXPRESSION = """
   (executor (lambda (plan-task-result iter-num)
               (log-message "Executor (Iter " iter-num "): Plan TaskResult: " plan-task-result)
               (let ((plan-data (get-field plan-task-result "parsedContent"))) ;; Access DevelopmentPlan object
-                (aider:automatic
+                (aider_automatic
                   (prompt (get-field plan-data "instructions"))
                   (file_context (get-field plan-data "files"))))))
 

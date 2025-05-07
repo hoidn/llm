@@ -768,7 +768,7 @@ Select the best matching paths *from the provided metadata* and output the JSON.
             aider_tools_to_register = [
                 {
                     "spec": {
-                        "name": "aider:automatic",
+                        "name": "aider_automatic",
                         "description": "Executes an Aider coding task automatically based on a prompt and optional file context.",
                         "input_schema": {
                             "type": "object",
@@ -784,7 +784,7 @@ Select the best matching paths *from the provided metadata* and output the JSON.
                 },
                 {
                     "spec": {
-                        "name": "aider:interactive",
+                        "name": "aider_interactive",
                         "description": "Starts or continues an interactive Aider coding session.",
                         "input_schema": {
                             "type": "object",
