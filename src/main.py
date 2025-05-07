@@ -465,7 +465,7 @@ Select the best matching paths *from the provided metadata* and output the JSON.
         if self.passthrough_handler and hasattr(self.passthrough_handler, 'registered_tools'):
             for tool_name, tool_data in self.passthrough_handler.registered_tools.items():
                 # tool_data IS the spec dictionary here
-                if tool_name.startswith('system:'):
+                if tool_name.startswith('system_'):
                     # --- START FIX: Append tool_data directly ---
                     active_tool_specs.append(tool_data) # Append the spec dict itself
                     # --- END FIX ---
@@ -479,7 +479,7 @@ Select the best matching paths *from the provided metadata* and output the JSON.
                 # Add Anthropic tool specs from registered_tools
                 if self.passthrough_handler and hasattr(self.passthrough_handler, 'registered_tools'):
                      for tool_name, tool_data in self.passthrough_handler.registered_tools.items():
-                         if tool_name.startswith('anthropic:'):
+                         if tool_name.startswith('anthropic_'):
                              # --- START FIX: Append tool_data directly ---
                              active_tool_specs.append(tool_data) # Append the spec dict itself
                              # --- END FIX ---
@@ -496,7 +496,7 @@ Select the best matching paths *from the provided metadata* and output the JSON.
             logger.debug("Including Aider tool specs (dependencies present).")
             if self.passthrough_handler and hasattr(self.passthrough_handler, 'registered_tools'):
                  for tool_name, tool_data in self.passthrough_handler.registered_tools.items():
-                     if tool_name.startswith('aider:'):
+                     if tool_name.startswith('aider_'):
                          # --- START FIX: Append tool_data directly ---
                          active_tool_specs.append(tool_data) # Append the spec dict itself
                          # --- END FIX ---
@@ -519,7 +519,7 @@ Select the best matching paths *from the provided metadata* and output the JSON.
         tools_to_register = [
             {
                 "spec": {
-                    "name": "system:get_context",
+                    "name": "system_get_context",
                     "description": "Retrieves relevant context based on a query.",
                     "input_schema": { # Define expected input structure
                         "type": "object",
@@ -534,7 +534,7 @@ Select the best matching paths *from the provided metadata* and output the JSON.
             },
             {
                 "spec": {
-                    "name": "system:read_files",
+                    "name": "system_read_files",
                     "description": "Reads the content of specified files.",
                      "input_schema": {
                         "type": "object",
@@ -553,7 +553,7 @@ Select the best matching paths *from the provided metadata* and output the JSON.
             },
             {
                 "spec": {
-                    "name": "system:list_directory",
+                    "name": "system_list_directory",
                     "description": "Lists the contents of a specified directory.",
                     "input_schema": {
                         "type": "object",
@@ -567,7 +567,7 @@ Select the best matching paths *from the provided metadata* and output the JSON.
             },
             {
                 "spec": {
-                    "name": "system:write_file",
+                    "name": "system_write_file",
                     "description": "Writes content to a specified file.",
                     "input_schema": {
                         "type": "object",
@@ -583,7 +583,7 @@ Select the best matching paths *from the provided metadata* and output the JSON.
             },
             {
                 "spec": {
-                    "name": "system:execute_shell_command",
+                    "name": "system_execute_shell_command",
                     "description": "Executes a shell command safely.",
                     "input_schema": {
                         "type": "object",
