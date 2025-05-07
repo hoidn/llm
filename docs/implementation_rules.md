@@ -80,6 +80,10 @@ This document outlines the standard conventions, patterns, and rules for impleme
             print(f"Invalid task parameters: {e}")
             # Handle the validation error (e.g., return error TaskResult)
     ```
+*   **Understanding External Library Data Structures:** When your component consumes or processes objects directly instantiated or returned by an external library (e.g., AST nodes from a parser like `sexpdata`, response objects from an API client like `mcp.py`), it is crucial to consult that library's documentation (or `docs/librarydocs/` if summarized internally) to understand the precise structure, attributes, and access methods for those objects. Do not assume a generic structure. This understanding should inform both implementation and test case design.
+    *   **Example:** The `sexpdata.Quoted` object, returned by the parser for expressions like `'foo`, is a `namedtuple` and its content is accessed via `node.x`, not `node.val` or `node[1]`. Referencing `docs/librarydocs/sexpdata.md` would clarify this.
+    *   **Impact:** Failing to understand the exact structure of external library objects can lead to `AttributeError` or `IndexError` exceptions that are hard to debug, as the object might "look" like a standard Python type (e.g., list-like) but have a specific API.
+    *   **Action:** During the "Preparation & Understanding" phase (see `docs/start_here.md`), if your component relies on specific object types from an external library mentioned in `@depends_on_library` or implied by its function (e.g., a parser returning an AST), make it a point to review the documentation for those object types. This is especially important for libraries that might wrap standard types or use custom collections.
 
 **5.x Dependency Injection & Initialization**
 
