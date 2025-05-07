@@ -385,6 +385,8 @@ class PrimitiveProcessor:
         Applies the 'string-append' primitive: (string-append str1 str2 ...)
         Concatenates multiple string arguments into a single string.
         Converts None arguments to empty strings.
+        Converts numbers (int, float) to their string representation.
+        Raises SexpEvaluationError for other non-string/non-symbol types.
         """
         logger.debug(f"PrimitiveProcessor.apply_string_append_primitive: {original_expr_str}")
         
@@ -398,16 +400,26 @@ class PrimitiveProcessor:
                 if isinstance(e_eval, SexpEvaluationError): raise
                 raise SexpEvaluationError(f"Error evaluating argument {i+1} for 'string-append': {arg_expr}", original_expr_str, error_details=str(e_eval)) from e_eval
             
-            # Convert None to empty string before type check
             if evaluated_value is None:
                 logger.debug(f"  apply_string_append_primitive: Arg {i+1} was None, converting to empty string.")
-                evaluated_value = ""
+                evaluated_parts.append("")
+            elif isinstance(evaluated_value, str):
+                evaluated_parts.append(evaluated_value)
+            elif isinstance(evaluated_value, Symbol):
+                evaluated_parts.append(evaluated_value.value())
+            elif isinstance(evaluated_value, (int, float)): # Allow numbers, convert to string
+                logger.debug(f"  apply_string_append_primitive: Arg {i+1} was a number, converting to string: {str(evaluated_value)}")
+                evaluated_parts.append(str(evaluated_value))
+            else:
+                # Stricter check: if not string, symbol, None, or number, then error
+                raise SexpEvaluationError(
+                    f"'string-append' argument {i+1} must be a string, symbol, number, or nil. Got {type(evaluated_value)}: {evaluated_value!r}.",
+                    original_expr_str
+                )
             
-            if not isinstance(evaluated_value, str):
-                # If it's a Symbol, try to get its value as a string
-                if isinstance(evaluated_value, Symbol):
-                    evaluated_value = evaluated_value.value()
-                # If it's an int or float, convert to string
+        result = ''.join(evaluated_parts)
+        logger.debug(f"  'string-append': Result -> '{result}'")
+        return result
                 elif isinstance(evaluated_value, (int, float)):
                     evaluated_value = str(evaluated_value)
                 else:
