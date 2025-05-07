@@ -55,18 +55,27 @@ class AiderExecutorFunctions:
         if not prompt:
             return _create_failed_result_dict("input_validation_failure", "Missing required parameter: 'prompt'")
 
-        file_context_str = params.get("file_context")
+        file_context_param = params.get("file_context")
         relative_files: List[str] = []
-        if file_context_str:
-            try:
-                parsed_files = json.loads(file_context_str)
-                if not isinstance(parsed_files, list) or not all(isinstance(f, str) for f in parsed_files):
-                    raise ValueError("file_context must be a JSON array of strings.")
-                relative_files = parsed_files
-                logger.debug(f"Parsed file_context: {relative_files}")
-            except (json.JSONDecodeError, ValueError) as e:
-                logger.error(f"Failed to parse 'file_context': {e}. Input: '{file_context_str}'")
-                return _create_failed_result_dict("input_validation_failure", f"Failed to parse 'file_context': {e}")
+        if file_context_param:
+            if isinstance(file_context_param, list) and all(isinstance(f, str) for f in file_context_param):
+                # If it's already a list of strings, use it directly
+                relative_files = file_context_param
+                logger.debug(f"Using provided list for file_context: {relative_files}")
+            elif isinstance(file_context_param, str):
+                # If it's a string, try to parse it as JSON
+                try:
+                    parsed_files = json.loads(file_context_param)
+                    if not isinstance(parsed_files, list) or not all(isinstance(f, str) for f in parsed_files):
+                        raise ValueError("file_context JSON string must decode to a list of strings.")
+                    relative_files = parsed_files
+                    logger.debug(f"Parsed file_context from JSON string: {relative_files}")
+                except (json.JSONDecodeError, ValueError) as e:
+                    logger.error(f"Failed to parse 'file_context' string: {e}. Input: '{file_context_param}'")
+                    return _create_failed_result_dict("input_validation_failure", f"Failed to parse 'file_context' string: {e}")
+            else:
+                logger.error(f"Invalid type for 'file_context': {type(file_context_param)}. Expected list or JSON string.")
+                return _create_failed_result_dict("input_validation_failure", f"Invalid type for 'file_context': {type(file_context_param)}. Expected list or JSON string.")
 
         model_override = params.get("model")
 
@@ -115,18 +124,27 @@ class AiderExecutorFunctions:
         if not prompt:
             return _create_failed_result_dict("input_validation_failure", "Missing required parameter: 'query' or 'prompt'")
 
-        file_context_str = params.get("file_context")
+        file_context_param = params.get("file_context")
         relative_files: List[str] = []
-        if file_context_str:
-            try:
-                parsed_files = json.loads(file_context_str)
-                if not isinstance(parsed_files, list) or not all(isinstance(f, str) for f in parsed_files):
-                    raise ValueError("file_context must be a JSON array of strings.")
-                relative_files = parsed_files
-                logger.debug(f"Parsed file_context: {relative_files}")
-            except (json.JSONDecodeError, ValueError) as e:
-                logger.error(f"Failed to parse 'file_context': {e}. Input: '{file_context_str}'")
-                return _create_failed_result_dict("input_validation_failure", f"Failed to parse 'file_context': {e}")
+        if file_context_param:
+            if isinstance(file_context_param, list) and all(isinstance(f, str) for f in file_context_param):
+                # If it's already a list of strings, use it directly
+                relative_files = file_context_param
+                logger.debug(f"Using provided list for file_context: {relative_files}")
+            elif isinstance(file_context_param, str):
+                # If it's a string, try to parse it as JSON
+                try:
+                    parsed_files = json.loads(file_context_param)
+                    if not isinstance(parsed_files, list) or not all(isinstance(f, str) for f in parsed_files):
+                        raise ValueError("file_context JSON string must decode to a list of strings.")
+                    relative_files = parsed_files
+                    logger.debug(f"Parsed file_context from JSON string: {relative_files}")
+                except (json.JSONDecodeError, ValueError) as e:
+                    logger.error(f"Failed to parse 'file_context' string: {e}. Input: '{file_context_param}'")
+                    return _create_failed_result_dict("input_validation_failure", f"Failed to parse 'file_context' string: {e}")
+            else:
+                logger.error(f"Invalid type for 'file_context': {type(file_context_param)}. Expected list or JSON string.")
+                return _create_failed_result_dict("input_validation_failure", f"Invalid type for 'file_context': {type(file_context_param)}. Expected list or JSON string.")
 
         model_override = params.get("model")
 
