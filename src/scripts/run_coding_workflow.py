@@ -108,25 +108,21 @@ MAIN_WORKFLOW_S_EXPRESSION = """
   ;; 1. Generate the Plan (Instructions/Files only)
   (let ((plan-task-result (user:generate-plan-from-goal
                             (goal initial-user-goal)
-                            (context_string initial-context-data)))) ;; <<< RENAMED HERE
+                            (context_string initial-context-data))))
 
     (log-message "Plan generation task. Status:" (get-field plan-task-result "status"))
-    (if (string=? (get-field plan-task-result "status") "COMPLETE")
-        (if (null? (get-field plan-task-result "parsedContent"))
-            (log-message "Plan generation: Parsed content is null despite COMPLETE status.")
-            (log-message "Plan generation: Files from plan:" (get-field (get-field plan-task-result "parsedContent") "files") ". Instructions (content omitted).")
-        )
-        (progn
-          (log-message "Plan generation status not COMPLETE.")
-        )
-    )
 
-    ;; 2. Check Plan Generation Success & Extract Data
+    ;; 2. Check Plan Generation Success & Parse Data
     (if (string=? (get-field plan-task-result "status") "COMPLETE")
+        ;; THEN Branch (Plan Generation Task Succeeded)
         (let ((plan-data (get-field plan-task-result "parsedContent")))
           (if (null? plan-data)
-              (progn (log-message "ERROR: Failed to parse plan JSON.") (quote plan_parsing_failed))
-              ;; --- Plan successful, extract components ---
+              ;; Inner THEN (Parsing Failed)
+              (progn 
+                (log-message "ERROR: Failed to parse plan JSON from task result.") 
+                (quote plan_parsing_failed) ;; Return a symbol indicating failure
+              )
+              ;; Inner ELSE (Parsing Succeeded - Proceed to Workflow)
               (let ((aider-instructions (get-field plan-data "instructions"))
                     (aider-files        (get-field plan-data "files")))
 
@@ -193,14 +189,16 @@ MAIN_WORKFLOW_S_EXPRESSION = """
                                           (progn (log-message "Controller: Max iterations reached. Stopping.") (list 'stop eval-feedback)) ))))))
                 ) ;; End director-evaluator-loop
               ) ;; End inner let (extracted plan components)
-          ) ;; End if plan-data not null
-        ) ;; End if plan generation COMPLETE (End of THEN branch)
-        ;; --- ELSE BRANCH (Plan Generation Failed) ---
+          ) ;; End inner ELSE (Parsing Succeeded)
+        ) ;; End outer LET (plan-data)
+
+        ;; ELSE Branch (Plan Generation Task Failed)
         (progn
           (log-message "ERROR: Plan generation failed. Status:" (get-field plan-task-result "status"))
           plan-task-result ;; Return the failed plan result
-        ) ;; End of ELSE branch
-    ) ;; This closes the IF statement.
+        )
+    ) ;; End outer IF (checking plan-task-result status)
+  ) ;; End outer LET (plan-task-result)
 ) ;; End progn
 """
 
