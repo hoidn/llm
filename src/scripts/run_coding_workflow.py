@@ -227,51 +227,47 @@ MAIN_WORKFLOW_S_EXPRESSION = """
                               ) ;; end lambda evaluator
                             ) ;; end evaluator clause
 
-                  ;; --- Controller Phase --- (Should work with LLM-generated feedback)
+                  ;; --- Controller Phase --- (REVISED FIELD CHECK)
                   (controller (lambda (eval-feedback director-prompt aider-task-result iter-num)
-                                ;; eval-feedback is now the TaskResult from user:analyze-test-result
+                                ;; eval-feedback is the TaskResult from user:analyze-test-result
                                 (log-message "Controller (Iter " iter-num "): Received Eval Feedback TaskResult:" eval-feedback)
-                                (if (not (string=? (get-field eval-feedback "status") "COMPLETE"))
-                                    ;; Test analysis task itself failed! Stop the loop.
+                                (if (not (string=? (get-field eval-feedback "status") "COMPLETE")) ;; Check if the analysis task ITSELF failed
                                     (progn (log-message "Controller: Test analysis task failed!") (list 'stop eval-feedback))
-                                    ;; Test analysis succeeded, parse its result
+                                    ;; Test analysis task succeeded, parse its structured output
                                     (let ((analysis-data (get-field eval-feedback "parsedContent")))
                                       (if (null? analysis-data)
                                           (progn (log-message "Controller: Failed to parse test analysis JSON!") (list 'stop eval-feedback))
                                           ;; Successfully parsed analysis data
-                                          (let ((eval-status (get-field analysis-data "eval_status"))
+                                          (let ((eval-status (get-field analysis-data "eval_status")) ;; <<< GET eval_status FROM PARSED CONTENT
                                                 (max-iters (get-field *loop-config* "max-iterations")))
-                                            (log-message "Controller: Parsed Eval Status:" eval-status)
-                                            (if (string=? eval-status "TESTS_PASSED")
-                                                ;; Success: Stop the loop, return Aider's result
-                                                (list 'stop aider-task-result)
-                                                ;; Failure: Check if retries remain
-                                                (if (< iter-num max-iters)
-                                                    ;; Retries remain: Analyze Aider result (original logic)
-                                                    (let ((analysis-task-result
-                                                            (user:analyze-aider-result
-                                                              (aider_result_content (get-field aider-task-result "content"))
-                                                              (aider_result_status (get-field aider-task-result "status"))
-                                                              (original_prompt director-prompt)
-                                                              (iteration iter-num)
-                                                              (max_retries max-iters))))
-                                                      (log-message "Controller: Aider result analysis status:" (get-field analysis-task-result "status"))
-                                                      (if (and (string=? (get-field analysis-task-result "status") "COMPLETE")
-                                                               (not (null? (get-field analysis-task-result "parsedContent")))
-                                                               (string=? (get-field (get-field analysis-task-result "parsedContent") "status") "REVISE"))
-                                                          (list 'continue (get-field (get-field analysis-task-result "parsedContent") "next_prompt"))
-                                                          (progn (log-message "Controller: Stopping loop due to Aider analysis result (failed, abort, or parse error).") (list 'stop eval-feedback))
-                                                      ))
-                                                    ;; Max retries reached: Stop loop
-                                                    (progn (log-message "Controller: Max iterations reached. Stopping.") (list 'stop eval-feedback))
-                                                )
-                                            ) ;; end if TESTS_PASSED check
-                                          ) ;; end let eval-status
-                                      ) ;; end if null? analysis-data
-                                    ) ;; end let analysis-data
-                                ) ;; end if eval-feedback status check
-                              ) ;; end lambda controller
-                            ) ;; end controller clause
+                                              (log-message "Controller: Parsed Eval Status:" eval-status)
+                                              (if (string=? eval-status "TESTS_PASSED") ;; <<< CHECK CORRECT FIELD
+                                                  (list 'stop aider-task-result)
+                                                  ;; --- Rest of failure/retry logic (using user:analyze-aider-result for Aider feedback) ---
+                                                  (if (< iter-num max-iters)
+                                                      (let ((aider-analysis-task-result ;; Renamed variable clearly
+                                                             (user:analyze-aider-result ;; Call Aider analysis task
+                                                               (aider_result_content (get-field aider-task-result "content"))
+                                                               (aider_result_status (get-field aider-task-result "status"))
+                                                               (original_prompt director-prompt)
+                                                               (iteration iter-num)
+                                                               (max_retries max-iters))))
+                                                        (log-message "Controller: Aider result analysis status:" (get-field aider-analysis-task-result "status"))
+                                                        (if (and (string=? (get-field aider-analysis-task-result "status") "COMPLETE")
+                                                                 (not (null? (get-field aider-analysis-task-result "parsedContent")))
+                                                                 (string=? (get-field (get-field aider-analysis-task-result "parsedContent") "status") "REVISE"))
+                                                            (list 'continue (get-field (get-field aider-analysis-task-result "parsedContent") "next_prompt"))
+                                                            (progn (log-message "Controller: Stopping loop due to Aider analysis result (failed, abort, or parse error).") (list 'stop eval-feedback)) ;; Stop with TEST eval feedback if Aider analysis fails/aborts
+                                                        ))
+                                                      (progn (log-message "Controller: Max iterations reached.") (list 'stop eval-feedback)) ;; Stop with TEST eval feedback
+                                                  )
+                                                ) ;; end if TESTS_PASSED check
+                                            ) ;; end let eval-status
+                                          ) ;; end if null? analysis-data
+                                        ) ;; end let analysis-data
+                                    ) ;; end if status COMPLETE check
+                                  ) ;; end lambda controller
+                                ) ;; end controller clause
                 ) ;; End director-evaluator-loop
               ) ;; End let aider-instructions/files
           ) ;; End inner if (null? plan-data)
