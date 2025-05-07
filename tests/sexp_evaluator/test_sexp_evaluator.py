@@ -2228,8 +2228,9 @@ def test_director_loop_single_iteration_stop(evaluator, mock_parser):
       (controller (lambda (eval-feedback plan exec-result iter) (list 'stop (list 'final eval-feedback iter))))
     )
     """
-    # Use the evaluator's own parser for this complex S-expression
-    mock_parser.parse_string.side_effect = evaluator.parser.parse_string
+    # Use a real parser to avoid recursion
+    real_parser_for_side_effect = SexpParser()
+    mock_parser.parse_string.side_effect = real_parser_for_side_effect.parse_string
     
     result = evaluator.evaluate_string(sexp_string)
     
@@ -2256,7 +2257,8 @@ def test_director_loop_max_iterations_termination(evaluator, mock_parser):
                     (list 'continue (list 'next_input_for iter))))
     )
     """
-    mock_parser.parse_string.side_effect = evaluator.parser.parse_string
+    real_parser_for_side_effect = SexpParser()
+    mock_parser.parse_string.side_effect = real_parser_for_side_effect.parse_string
 
     result = evaluator.evaluate_string(sexp_string_corrected_controller)
     expected_result = [
@@ -2277,7 +2279,8 @@ def test_director_loop_max_iterations_zero(evaluator, mock_parser):
       (controller (lambda (ef p er iter) (log-message "controller should not run")))
     )
     """
-    mock_parser.parse_string.side_effect = evaluator.parser.parse_string
+    real_parser_for_side_effect = SexpParser()
+    mock_parser.parse_string.side_effect = real_parser_for_side_effect.parse_string
     result = evaluator.evaluate_string(sexp_string)
     assert result == [] 
 
@@ -2289,7 +2292,8 @@ def test_director_loop_controller_malformed_decision_not_list(evaluator, mock_pa
       (controller (lambda (f p e it) "stop")) 
     )
     """
-    mock_parser.parse_string.side_effect = evaluator.parser.parse_string
+    real_parser_for_side_effect = SexpParser()
+    mock_parser.parse_string.side_effect = real_parser_for_side_effect.parse_string
     with pytest.raises(SexpEvaluationError, match="Controller must return a list of \\(action_symbol value\\)"):
         evaluator.evaluate_string(sexp_string)
 
@@ -2301,7 +2305,8 @@ def test_director_loop_error_in_phase_function_propagates(evaluator, mock_parser
       (executor (lambda (p it) p)) (evaluator (lambda (e p it) e)) (controller (lambda (f p e it) (list 'stop e)))
     )
     """
-    mock_parser.parse_string.side_effect = evaluator.parser.parse_string
+    real_parser_for_side_effect = SexpParser()
+    mock_parser.parse_string.side_effect = real_parser_for_side_effect.parse_string
     with pytest.raises(SexpEvaluationError, match="Error in 'director' phase.*Unbound symbol or unrecognized operator: undefined-function"):
         evaluator.evaluate_string(sexp_string)
         
@@ -2328,7 +2333,8 @@ def test_director_loop_integration_with_get_field_and_eq(evaluator, mock_parser)
                         (list 'continue eval-feedback)))) 
     )
     """
-    mock_parser.parse_string.side_effect = evaluator.parser.parse_string 
+    real_parser_for_side_effect = SexpParser()
+    mock_parser.parse_string.side_effect = real_parser_for_side_effect.parse_string
 
     result = evaluator.evaluate_string(sexp_string)
     
