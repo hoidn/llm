@@ -215,6 +215,29 @@ This document outlines the standard conventions, patterns, and rules for impleme
 
 *   **[NEW] Guideline 6: Verify Mock Calls Correctly:** When asserting mock calls (`assert_called_once_with`, `assert_called`), ensure you are checking the correct mock object. If you used `with patch.object(...)` or `@patch.object(...)`, assert against the mock object created by the patcher (often passed into the test function or available as the `as` target in the `with` statement). If you passed a mock instance during DI (Guideline 1), assert against that original mock instance variable.
 
+*   **Guideline 7.X: Mock Configuration for Multiple or Complex Interactions:**
+    *   **Context:** When a single test function involves multiple calls to a method that uses a mocked dependency, or when a shared mock fixture is used by multiple tests, precise mock configuration for each interaction is crucial.
+    *   **Rule:** Ensure the mock is configured (e.g., `return_value`, `side_effect`) appropriately *before each specific interaction* you intend to test. Mocks generally do not "remember" configurations from previous calls within the same test function unless explicitly designed to do so (e.g., with a `side_effect` list that provides sequential return values). Reconfigure or reset mocks as needed if their behavior should change for different parts of a test or between tests using a shared fixture.
+    *   **Example:**
+        ```python
+        # In a test function
+        def test_component_with_multiple_dependency_calls(component_under_test, mock_dependency):
+            # Interaction 1: Configure mock for the first call
+            mock_dependency.some_method.return_value = "result_for_input1"
+            output1 = component_under_test.process("input1")
+            assert output1 == "expected_for_input1"
+            mock_dependency.some_method.assert_called_with("input1_to_mock")
+
+            # Interaction 2: Re-configure mock for the second call
+            mock_dependency.some_method.return_value = "result_for_input2"
+            output2 = component_under_test.process("input2")
+            assert output2 == "expected_for_input2"
+            # If asserting call for this specific interaction after others, consider call counts
+            # or use mock_dependency.some_method.assert_any_call("input2_to_mock")
+            # or reset the mock if appropriate: mock_dependency.some_method.reset_mock()
+        ```
+    *   **Arrange-Act-Assert:** Remember that the "Arrange" phase applies to each logical step of your test. If a step involves a mocked call, its specific arrangement (mock setup) should precede its "Act" and "Assert".
+
 *   **Guideline 7a: Maintain Test Environment Dependency Parity:** Critical runtime dependencies (e.g., `mcp.py`, `pydantic-ai`, `GitPython`, `sexpdata`) **MUST** be installed and importable in the environment used for running unit and integration tests.
     *   **Avoid Fallbacks:** Do **not** rely on dummy classes or import fallbacks (e.g., `try...except ImportError...`) within test setup code. This practice masks real environment configuration problems and leads to misleading test results where tests might pass using dummies but fail against the real implementation types (as seen with `TextContent`).
     *   **Action:** Ensure your `requirements-dev.txt`, `pyproject.toml`, or equivalent dependency management file includes all packages needed for both running the code *and* running the tests against realistic mocks. Use consistent virtual environments for development and testing. CI pipelines should build the environment from these definitions.
@@ -304,6 +327,13 @@ This document outlines the standard conventions, patterns, and rules for impleme
         # Optionally assert specific attributes of the caught exception
         assert "specific detail" in str(exc_info.value)
         ```
+
+**X.Y Host Language Semantics in DSL Implementation**
+
+When implementing a Domain-Specific Language (DSL) within a host language like Python, be mindful of how the host language's built-in type system and operator behaviors can implicitly influence your DSL's semantics.
+
+*   **Awareness:** For example, Python's `bool` type is a subclass of `int` (where `True` is `1` and `False` is `0`). If your DSL parser converts DSL boolean symbols (e.g., S-expression `true`) into Python boolean objects, then arithmetic primitives in your DSL might implicitly inherit Python's behavior (e.g., `True + 1` evaluating to `2`).
+*   **Explicit DSL Semantics:** If your DSL requires stricter or different semantics than the host language (e.g., DSL booleans should not be valid in arithmetic operations), your DSL primitives or evaluation logic must explicitly enforce these stricter type checks, even if the host language itself is more permissive. Document these DSL-specific semantics clearly.
 
 **8. Error Handling**
 
