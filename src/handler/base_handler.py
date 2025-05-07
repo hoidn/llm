@@ -6,6 +6,12 @@ from typing import Any, Callable, Dict, List, Optional, Type, Union
 
 # Import pydantic-ai directly
 import pydantic_ai
+# Import pydantic_ai.Tool for constructing tool objects
+try:
+    from pydantic_ai import Tool as PydanticTool
+except ImportError:
+    logging.error("Failed to import pydantic_ai.Tool. Tool registration will likely fail.")
+    PydanticTool = None # type: ignore
 
 # Import specific message types needed
 try:
@@ -243,12 +249,52 @@ class BaseHandler:
         self.log_debug(f"Active tool definitions set to: {[t.get('name', 'unnamed') for t in self.active_tool_definitions]}")
         return True
 
-    def get_tools_for_agent(self) -> List[Callable]:
+    def get_tools_for_agent(self) -> List[PydanticTool]: # Changed return type
         """
-        Retrieves the registered tool executor functions required by the Agent constructor.
+        Constructs and retrieves pydantic_ai.Tool objects for Agent initialization.
         """
-        logging.debug(f"Retrieving tool executors for Agent initialization: {list(self.tool_executors.keys())}")
-        return list(self.tool_executors.values())
+        if PydanticTool is None:
+            logging.error("pydantic_ai.Tool not imported. Cannot construct tools for agent.")
+            return []
+
+        agent_tools: List[PydanticTool] = []
+        for tool_name, executor_func in self.tool_executors.items():
+            tool_spec = self.registered_tools.get(tool_name)
+            if not tool_spec:
+                logging.warning(f"No spec found for tool '{tool_name}' in registered_tools. Skipping.")
+                continue
+            
+            try:
+                # Ensure input_schema is correctly structured if pydantic-ai needs it
+                # For now, assuming tool_spec['input_schema'] is directly usable
+                # or pydantic-ai handles schema generation from the executor_func if input_schema is None.
+                # If executor_func's signature is simple (e.g., (params: Dict[str, Any])),
+                # pydantic-ai might generate a basic schema for it.
+                # If a more specific schema is needed, tool_spec['input_schema'] must be valid.
+                
+                # pydantic-ai's Tool constructor primarily uses the function's signature
+                # and docstring if name, description, schema are not provided.
+                # Since we have these in tool_spec, we should use them.
+                tool_instance = PydanticTool(
+                    function=executor_func,
+                    name=tool_spec.get('name'),
+                    description=tool_spec.get('description'),
+                    # pydantic-ai's Tool takes 'schema' not 'input_schema'
+                    # and it expects a Pydantic model or a type for schema generation,
+                    # not necessarily a JSON schema dict directly.
+                    # If tool_spec['input_schema'] is a JSON schema dict,
+                    # it might not be directly usable here unless Tool handles it.
+                    # For now, let pydantic-ai infer from executor_func if schema is complex.
+                    # If tool_spec['input_schema'] is a Pydantic model, that would be ideal.
+                    # schema=tool_spec.get('input_schema') # This line might need adjustment based on what Tool expects
+                )
+                agent_tools.append(tool_instance)
+                logging.debug(f"Created pydantic_ai.Tool for: {tool_name}")
+            except Exception as e:
+                logging.error(f"Failed to create pydantic_ai.Tool for '{tool_name}': {e}", exc_info=True)
+        
+        logging.debug(f"Returning {len(agent_tools)} pydantic_ai.Tool objects for Agent initialization.")
+        return agent_tools
 
     def set_active_tools(self, tool_names: List[str]) -> bool:
         """

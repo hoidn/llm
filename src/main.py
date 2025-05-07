@@ -9,7 +9,7 @@ import os
 import sys
 import json
 import logging
-import functools # Add functools import
+# import functools # No longer needed for anthropic/aider wrappers
 import asyncio # Add asyncio import
 from typing import Dict, Any, Optional, List
 
@@ -34,6 +34,13 @@ from src.executors.system_executors import SystemExecutorFunctions
 from src import dispatcher # Import the dispatcher module
 # Import the new tools module
 from src.tools import anthropic_tools
+
+# Import pydantic_ai.Tool for constructing tool objects
+try:
+    from pydantic_ai import Tool as PydanticTool
+except ImportError:
+    logger.error("Failed to import pydantic_ai.Tool. Tool registration will likely fail.")
+    PydanticTool = None # type: ignore
 # Import Aider components conditionally
 logger.debug("Attempting to import Aider components...")
 try:
@@ -354,16 +361,16 @@ Select the best matching paths *from the provided metadata* and output the JSON.
                     # Define the wrapper function factory OUTSIDE the loop
                     def create_anthropic_wrapper(tool_func, fm_instance):
                         # This inner function is what gets registered
-                        def _anthropic_tool_wrapper(params: Dict[str, Any]) -> str: # Assuming Anthropic tools return str
+                        def _anthropic_tool_wrapper(params: Dict[str, Any]) -> str: 
                             if not fm_instance: return "Error: File manager not available"
                             try:
-                                # Call the original tool func, passing fm and unpacking params
                                 return tool_func(fm_instance, **params)
                             except Exception as e:
                                 logger.exception(f"Error executing Anthropic tool {tool_func.__name__}: {e}")
-                                return f"Error executing tool: {e}" # Return error string
-                        # Copy metadata for better introspection if needed (optional)
-                        functools.update_wrapper(_anthropic_tool_wrapper, tool_func)
+                                return f"Error executing tool: {e}" 
+                        # Manually set name and doc if pydantic_ai relies on them from the wrapper
+                        _anthropic_tool_wrapper.__name__ = tool_func.__name__ 
+                        _anthropic_tool_wrapper.__doc__ = tool_func.__doc__
                         return _anthropic_tool_wrapper
                     # --- END Anthropic Wrapper Refactor ---
 
@@ -375,10 +382,7 @@ Select the best matching paths *from the provided metadata* and output the JSON.
                     ]
 
                     for tool_spec, tool_func in anthropic_tool_pairs:
-                        # --- START Anthropic Wrapper Refactor ---
-                        # Create the specific wrapper for this tool_func and the current file_manager
                         executor_wrapper = create_anthropic_wrapper(tool_func, self.passthrough_handler.file_manager)
-                        # --- END Anthropic Wrapper Refactor ---
 
                         success = self.passthrough_handler.register_tool(tool_spec, executor_wrapper)
                         if success:
@@ -418,7 +422,7 @@ Select the best matching paths *from the provided metadata* and output the JSON.
 
             # Trigger agent initialization in the manager AFTER registration
             if self.passthrough_handler.llm_manager:
-                self.passthrough_handler.llm_manager.initialize_agent(tools=agent_tools_executors)
+                self.passthrough_handler.llm_manager.initialize_agent(tools=agent_pydantic_tools) # Pass List[PydanticTool]
                 logger.info("Triggered LLMInteractionManager agent initialization.")
             else:
                 logger.error("LLMInteractionManager not available for agent initialization.")
@@ -727,12 +731,6 @@ Select the best matching paths *from the provided metadata* and output the JSON.
             logger.info("AiderBridge (MCP Client) instantiated using specific JSON config.")
 
             def create_aider_wrapper(tool_executor_method):
-                # This wrapper is needed because the AiderExecutor methods are async
-                # and the tool registration expects sync callables.
-                # It uses asyncio.run to bridge the gap.
-                # This is a simplification; a more robust solution might involve
-                # an async-aware tool execution mechanism or making the SexpEvaluator async.
-                @functools.wraps(tool_executor_method)
                 def sync_wrapper(params: Dict[str, Any], bridge=self.aider_bridge) -> Dict[str, Any]:
                     if not bridge:
                         return _create_failed_result_dict("dependency_error", "Aider bridge not available for tool execution.")
@@ -752,6 +750,9 @@ Select the best matching paths *from the provided metadata* and output the JSON.
                     except Exception as e:
                         logger.exception(f"Error running Aider tool '{tool_executor_method.__name__}' via wrapper: {e}")
                         return _create_failed_result_dict("unexpected_error", f"Error running Aider tool '{tool_executor_method.__name__}': {e}")
+                # Manually set name and doc if needed
+                sync_wrapper.__name__ = tool_executor_method.__name__
+                sync_wrapper.__doc__ = tool_executor_method.__doc__
                 return sync_wrapper
 
             aider_tools_to_register = [
@@ -969,62 +970,37 @@ Select the best matching paths *from the provided metadata* and output the JSON.
 
 # Example Usage (Optional)
 if __name__ == "__main__":
-    # This block is for basic testing or demonstration if run directly
-    # In a real application, Application instance would likely be managed elsewhere
     logger.info("Running basic Application example...")
     try:
-        # Example with Anthropic provider to test tool registration
         app = Application(config={"handler_config": {"default_model_identifier": "anthropic:claude-3-5-sonnet-latest"}})
-
-        # Example: Index a dummy repo (replace with actual path if needed)
-        # dummy_repo_path = "./dummy_repo_for_testing"
-        # if not os.path.exists(dummy_repo_path): os.makedirs(os.path.join(dummy_repo_path, ".git"))
-        # app.index_repository(dummy_repo_path)
-
-        # Example: Handle a query
         query_result = app.handle_query("What is the capital of France?")
         print("\nQuery Result:")
         import json
-
-        # Add a custom serializer to handle non-serializable objects like methods
         def json_serializable(obj):
             if callable(obj):
                 return str(obj)
+            if isinstance(obj, PydanticTool): # Handle PydanticTool objects
+                return f"<PydanticTool name='{obj.name}'>"
             raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
-
         print(json.dumps(query_result, indent=2, default=json_serializable))
-
-        # Example: Handle a task command (assuming a core:echo template exists or Sexp works)
-        # task_result = app.handle_task_command("core:echo", {"message": "Hello Task!"})
         task_result = app.handle_task_command('(list "hello" "world")')
         print("\nTask Command Result:")
-        print(json.dumps(task_result, indent=2))
-
-        # Example: Use a system tool via task command
+        print(json.dumps(task_result, indent=2, default=json_serializable))
         tool_result = app.handle_task_command("system:read_files", {"file_paths": ["src/main.py"]})
         print("\nSystem Tool Result:")
-        print(json.dumps(tool_result, indent=2))
-
-        # Example: Use an Anthropic tool via task command (if provider is Anthropic)
+        print(json.dumps(tool_result, indent=2, default=json_serializable))
         if app.passthrough_handler.get_provider_identifier().startswith("anthropic:"):
-            # Create a dummy file first
             dummy_file = "dummy_anthropic_test.txt"
             create_params = {"file_path": dummy_file, "content": "Hello Anthropic!"}
             create_result = app.handle_task_command("anthropic:create", create_params)
             print("\nAnthropic Create Result:")
-            print(json.dumps(create_result, indent=2))
-
+            print(json.dumps(create_result, indent=2, default=json_serializable))
             if create_result.get("status") == "COMPLETE":
-                # View the created file
                 view_params = {"file_path": dummy_file}
                 view_result = app.handle_task_command("anthropic:view", view_params)
                 print("\nAnthropic View Result:")
-                print(json.dumps(view_result, indent=2))
-
-                # Clean up dummy file
+                print(json.dumps(view_result, indent=2, default=json_serializable))
                 if os.path.exists(dummy_file):
                     os.remove(dummy_file)
-
-
     except Exception as main_e:
         logger.exception(f"Error in main execution block: {main_e}")
