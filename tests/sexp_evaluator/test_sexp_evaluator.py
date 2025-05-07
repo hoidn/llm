@@ -2463,7 +2463,7 @@ def test_director_loop_config_access_in_all_phases(evaluator, mock_parser, caplo
     assert result == expected_result
 
     # Check logs for evidence of config access
-    log_records = [record.message for record in caplog.records if record.name == 'SexpPrimitiveProcessor']
+    log_records = [record.message for record in caplog.records if record.name == 'src.sexp_evaluator.sexp_primitives']
     
     assert "DIR_MAX_ITER: 1" in log_records
     assert "DIR_INIT_IN: start_token" in log_records
