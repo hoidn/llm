@@ -591,27 +591,64 @@ class SpecialFormProcessor:
         logger.debug(f"SpecialFormProcessor.handle_director_evaluator_loop END -> {str(loop_result)[:200]}...")
         return loop_result
 
-    def handle_and_form(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> bool:
-        """Handles the 'and' special form: (and expr...)"""
-        logger.debug(f"SpecialFormProcessor.handle_and_form START: original_expr_str='{original_expr_str}'")
+    def handle_and_form(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> Any:
+        """
+        Handles the 'and' special form: (and expr...)
+        Evaluates expressions from left to right. If any expression evaluates to a falsey value
+        (Python False, None, 0, empty sequence/mapping), evaluation stops and that falsey value is returned.
+        If all expressions evaluate to truthy values, the value of the last expression is returned.
+        If no expressions are provided, (and) evaluates to True.
+        """
+        logger.debug(f"SpecialFormProcessor.handle_and_form START: {original_expr_str}")
         if not arg_exprs:
             logger.debug("  'and' with no arguments returns True.")
-            return True # According to Scheme R5RS, (and) => #t
+            return True
 
+        last_value: Any = True  # Default if loop completes (e.g. if no args, though handled above)
+                                # More accurately, this will be overwritten by the first eval.
         for i, expr in enumerate(arg_exprs):
             try:
-                result = self.evaluator._eval(expr, env)
-                logger.debug(f"  'and' evaluated argument {i+1} ('{expr}') to: {result}")
-                # Use Python's boolean interpretation for short-circuiting
-                # (False, None, 0, empty sequences/mappings are False)
-                if not result:
-                    logger.debug(f"  'and' encountered falsey value {result!r}, short-circuiting to False.")
-                    return False # Short-circuit on first falsey value
+                last_value = self.evaluator._eval(expr, env)
+                logger.debug(f"  'and' evaluated argument {i+1} ('{expr}') to: {last_value!r}")
+                if not bool(last_value):  # Python's truthiness check
+                    logger.debug(f"  'and' short-circuiting on falsey value: {last_value!r}")
+                    return last_value  # Return the actual falsey value
             except Exception as e:
                 logging.exception(f"  Error evaluating 'and' argument {i+1} '{expr}': {e}")
-                if isinstance(e, SexpEvaluationError): raise
-                raise SexpEvaluationError(f"Error evaluating 'and' argument {i+1}: {expr}", original_expr_str, error_details=str(e)) from e
+                if isinstance(e, SexpEvaluationError):
+                    raise
+                raise SexpEvaluationError(f"Error evaluating argument {i+1} for 'and': {expr}", original_expr_str, error_details=str(e)) from e
 
-        # If the loop completes, all arguments were truthy
-        logger.debug("  'and' all arguments evaluated to truthy, returning True.")
-        return True # All arguments were truthy
+        logger.debug(f"SpecialFormProcessor.handle_and_form END: All args truthy, returning last value -> {last_value!r}")
+        return last_value # All arguments were truthy, return the value of the last one.
+
+    def handle_or_form(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> Any:
+        """
+        Handles the 'or' special form: (or expr...)
+        Evaluates expressions from left to right. If any expression evaluates to a truthy value,
+        evaluation stops and that truthy value is returned.
+        If all expressions evaluate to falsey values, the value of the last expression is returned.
+        If no expressions are provided, (or) evaluates to False.
+        """
+        logger.debug(f"SpecialFormProcessor.handle_or_form START: {original_expr_str}")
+        if not arg_exprs:
+            logger.debug("  'or' with no arguments returns False.")
+            return False
+
+        last_value: Any = False # Default if loop completes (e.g. if no args, though handled above)
+                                # More accurately, this will be overwritten by the first eval.
+        for i, expr in enumerate(arg_exprs):
+            try:
+                last_value = self.evaluator._eval(expr, env)
+                logger.debug(f"  'or' evaluated argument {i+1} ('{expr}') to: {last_value!r}")
+                if bool(last_value):  # Python's truthiness check
+                    logger.debug(f"  'or' short-circuiting on truthy value: {last_value!r}")
+                    return last_value  # Return the actual truthy value
+            except Exception as e:
+                logging.exception(f"  Error evaluating 'or' argument {i+1} '{expr}': {e}")
+                if isinstance(e, SexpEvaluationError):
+                    raise
+                raise SexpEvaluationError(f"Error evaluating argument {i+1} for 'or': {expr}", original_expr_str, error_details=str(e)) from e
+
+        logger.debug(f"SpecialFormProcessor.handle_or_form END: All args falsey, returning last value -> {last_value!r}")
+        return last_value # All arguments were falsey, return the value of the last one.
