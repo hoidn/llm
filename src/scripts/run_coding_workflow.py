@@ -192,12 +192,14 @@ MAIN_WORKFLOW_S_EXPRESSION = """
                 ) ;; End director-evaluator-loop
               ) ;; End inner let (extracted plan components)
           ) ;; End if plan-data not null
-        ) ;; End if plan generation COMPLETE
+        ) ;; End if plan generation COMPLETE (End of THEN branch)
+        ;; --- ELSE BRANCH (Plan Generation Failed) ---
         (progn
           (log-message "ERROR: Plan generation failed. Status:" (get-field plan-task-result "status"))
           plan-task-result ;; Return the failed plan result
-        ) ;; End outer if
-    ) ;; End outer let (plan-task-result)
+        ) ;; End of ELSE branch
+    ) ;; This closes the IF statement.
+) ;; End outer let (plan-task-result)
 ) ;; End progn
 """
 
