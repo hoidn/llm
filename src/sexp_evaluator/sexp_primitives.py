@@ -420,13 +420,3 @@ class PrimitiveProcessor:
         result = ''.join(evaluated_parts)
         logger.debug(f"  'string-append': Result -> '{result}'")
         return result
-                elif isinstance(evaluated_value, (int, float)):
-                    evaluated_value = str(evaluated_value)
-                else:
-                    raise SexpEvaluationError(f"'string-append' argument {i+1} must be a string or convertible to string (e.g. Symbol, number), got {type(evaluated_value)}: {evaluated_value!r}.", original_expr_str)
-            
-            evaluated_parts.append(evaluated_value)
-        
-        result = ''.join(evaluated_parts)
-        logger.debug(f"  'string-append': Result -> '{result}'")
-        return result
