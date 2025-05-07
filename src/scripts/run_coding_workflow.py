@@ -98,77 +98,90 @@ DEFATOM_ANALYZE_AIDER_RESULT_S_EXPRESSION = """
 )
 """
 
-# S-expression for the main DEEC loop workflow
+# S-expression for the main DEEC loop workflow (Simplified Structure)
 MAIN_WORKFLOW_S_EXPRESSION = """
-(progn ;; Variables initial-user-goal, initial-context-data, user-test-command are expected in env
-
+(progn
   (log-message "Starting workflow for goal:" initial-user-goal)
   (log-message "Using Test Command:" user-test-command)
 
-  ;; 1. Generate the Plan (Instructions/Files only)
+  ;; --- Step 1: Generate Plan ---
   (let ((plan-task-result (user:generate-plan-from-goal
                             (goal initial-user-goal)
                             (context_string initial-context-data))))
 
     (log-message "Plan generation task. Status:" (get-field plan-task-result "status"))
 
-    ;; 2. Check Plan Generation Success & Parse Data
-    (if (string=? (get-field plan-task-result "status") "COMPLETE")
-        ;; THEN Branch (Plan Generation Task Succeeded)
+    ;; --- Step 2: Check Plan Generation Success ---
+    (if (not (string=? (get-field plan-task-result "status") "COMPLETE"))
+        ;; Failure Path 1: Plan generation failed
+        (progn
+          (log-message "ERROR: Plan generation failed.")
+          plan-task-result) ;; Return the failed task result
+
+        ;; Success Path: Plan generation succeeded, try parsing
         (let ((plan-data (get-field plan-task-result "parsedContent")))
+
+          ;; --- Step 3: Check Plan Parsing Success ---
           (if (null? plan-data)
-              ;; Inner THEN (Parsing Failed)
-              (progn 
-                (log-message "ERROR: Failed to parse plan JSON from task result.") 
-                (quote plan_parsing_failed) ;; Return a symbol indicating failure
+              ;; Failure Path 2: Parsing failed
+              (progn
+                (log-message "ERROR: Failed to parse plan JSON.")
+                ;; Return a specific error structure or symbol
+                (list 'error 'plan_parsing_failed "Failed to parse plan JSON from task result.") 
               )
-              ;; Inner ELSE (Parsing Succeeded - Proceed to Workflow)
+              ;; Success Path: Plan generated and parsed successfully
               (let ((aider-instructions (get-field plan-data "instructions"))
                     (aider-files        (get-field plan-data "files")))
 
-                (log-message "Plan extracted successfully. Instructions (content omitted).")
-                (log-message "Files:" aider-files)
+                (log-message "Plan extracted successfully. Files:" aider-files)
 
-                ;; 3. Enter the Director-Evaluator-Executor-Controller Loop
+                ;; --- Step 4: Execute the DEEC Loop ---
                 (director-evaluator-loop
                   (max-iterations 3) ;; Example max retries
                   (initial-director-input aider-instructions)
 
                   ;; --- Director Phase ---
                   (director (lambda (current-aider-prompt iter-num)
-                              (log-message "Director (Iter " iter-num "): Prompting Aider with:" current-aider-prompt)
-                              current-aider-prompt ))
+                              (log-message "Director (Iter " iter-num "): Prompting Aider...")
+                              current-aider-prompt )) ;; Just pass the prompt along
 
                   ;; --- Executor Phase ---
                   (executor (lambda (aider-prompt-from-director iter-num)
                               (log-message "Executor (Iter " iter-num "): Calling aider:automatic")
                               (aider_automatic
                                 (prompt aider-prompt-from-director)
-                                (file_context aider-files) )))
+                                (file_context aider-files) ))) ;; Use files from outer scope
 
                   ;; --- Evaluator Phase ---
                   (evaluator (lambda (aider-task-result director-prompt iter-num)
-                               (log-message "Evaluator (Iter " iter-num "): Aider TaskResult:" aider-task-result)
+                               (log-message "Evaluator (Iter " iter-num "): Aider Status:" (get-field aider-task-result "status"))
                                (if (string=? (get-field aider-task-result "status") "FAILED")
-                                   (list (list 'eval_status "AIDER_FAILED") (list 'message (get-field aider-task-result "content")))
+                                   ;; Aider itself failed
+                                   (list (list 'eval_status "AIDER_FAILED") 
+                                         (list 'message (get-field aider-task-result "content")))
+                                   ;; Aider succeeded, run tests
                                    (progn
-                                     (log-message "Evaluator: Running user-provided test command:" user-test-command)
+                                     (log-message "Evaluator: Running test command:" user-test-command)
                                      (let ((test-run-result (system_execute_shell_command (command user-test-command))))
-                                       (log-message "Evaluator: Test run TaskResult:" test-run-result)
+                                       (log-message "Evaluator: Test run Status:" (get-field test-run-result "status") " Exit Code:" (get-field (get-field test-run-result "notes") "exit_code"))
                                        (if (string=? (get-field test-run-result "status") "COMPLETE")
                                            (if (eq? (get-field (get-field test-run-result "notes") "exit_code") 0)
                                                (list (list 'eval_status "TESTS_PASSED") (list 'message "Tests passed.") (list 'test_output (get-field test-run-result "content")))
                                                (list (list 'eval_status "TESTS_FAILED") (list 'message "Tests failed.") (list 'test_output (get-field test-run-result "content")) (list 'test_error (get-field (get-field test-run-result "notes") "stderr"))))
+                                           ;; Test command itself failed to execute
                                            (list (list 'eval_status "SHELL_CMD_FAILED") (list 'message "Test command execution failed.") (list 'shell_error (get-field test-run-result "content")))))))))
 
                   ;; --- Controller Phase ---
                   (controller (lambda (eval-feedback director-prompt aider-task-result iter-num)
-                                (log-message "Controller (Iter " iter-num "): Eval feedback:" eval-feedback)
+                                (log-message "Controller (Iter " iter-num "): Eval status:" (get-field eval-feedback "eval_status"))
                                 (let ((eval-status (get-field eval-feedback "eval_status"))
                                       (max-iters (get-field *loop-config* "max-iterations")))
                                   (if (string=? eval-status "TESTS_PASSED")
+                                      ;; Success: Stop the loop, return Aider's result
                                       (list 'stop aider-task-result)
+                                      ;; Failure: Check if retries remain
                                       (if (< iter-num max-iters)
+                                          ;; Retries remain: Analyze feedback and decide next prompt
                                           (let ((analysis-task-result
                                                   (user:analyze-aider-result
                                                     (aider_result_content (get-field aider-task-result "content"))
@@ -176,29 +189,31 @@ MAIN_WORKFLOW_S_EXPRESSION = """
                                                     (original_prompt director-prompt)
                                                     (iteration iter-num)
                                                     (max_retries max-iters))))
-                                            (log-message "Controller: Feedback analysis result:" analysis-task-result)
-                                            (if (string=? (get-field analysis-task-result "status") "COMPLETE")
-                                                (let ((feedback-data (get-field analysis-task-result "parsedContent")))
-                                                  (if (null? feedback-data)
-                                                      (progn (log-message "ERROR: Failed to parse FeedbackResult JSON.") (list 'stop eval-feedback))
-                                                      (let ((feedback-status (get-field feedback-data "status")))
-                                                        (if (string=? feedback-status "REVISE")
-                                                            (list 'continue (get-field feedback-data "next_prompt"))
-                                                            (list 'stop eval-feedback) ))))
-                                                (list 'stop eval-feedback) ))
-                                          (progn (log-message "Controller: Max iterations reached. Stopping.") (list 'stop eval-feedback)) ))))))
+                                            (log-message "Controller: Feedback analysis status:" (get-field analysis-task-result "status"))
+                                            ;; Check if analysis task succeeded and gave a revision
+                                            (if (and (string=? (get-field analysis-task-result "status") "COMPLETE")
+                                                     (not (null? (get-field analysis-task-result "parsedContent")))
+                                                     (string=? (get-field (get-field analysis-task-result "parsedContent") "status") "REVISE"))
+                                                ;; Analysis suggests REVISE: Continue with new prompt
+                                                (list 'continue (get-field (get-field analysis-task-result "parsedContent") "next_prompt"))
+                                                ;; Analysis failed, suggests ABORT, or other issue: Stop loop
+                                                (progn 
+                                                   (log-message "Controller: Stopping loop due to analysis result (failed, abort, or parse error).")
+                                                   (list 'stop eval-feedback) ;; Stop with the evaluator's feedback
+                                                )
+                                            ))
+                                          ;; Max retries reached: Stop loop
+                                          (progn 
+                                             (log-message "Controller: Max iterations reached. Stopping.")
+                                             (list 'stop eval-feedback) ;; Stop with the evaluator's feedback
+                                          )
+                                      ))))) ;; End controller logic
                 ) ;; End director-evaluator-loop
-              ) ;; End inner let (extracted plan components)
-          ) ;; End inner ELSE (Parsing Succeeded)
-        ) ;; End outer LET (plan-data)
-
-        ;; ELSE Branch (Plan Generation Task Failed)
-        (progn
-          (log-message "ERROR: Plan generation failed. Status:" (get-field plan-task-result "status"))
-          plan-task-result ;; Return the failed plan result
-        )
-    ) ;; End outer IF (checking plan-task-result status)
-  ) ;; End outer LET (plan-task-result)
+              ) ;; End let aider-instructions/files
+          ) ;; End inner if (null? plan-data)
+        ) ;; End outer let (plan-data)
+    ) ;; End outer if (status check)
+  ) ;; End outer let (plan-task-result)
 ) ;; End progn
 """
 
