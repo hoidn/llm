@@ -44,6 +44,7 @@ project_root/
 │   ├── scripts/             # Utility scripts (demos, tests)
 │   │   ├── phase6.py        # Example script using SexpEvaluator
 │   │   ├── lambda_llm_code_processing_demo.py # Demo for lambda with LLM orchestration
+│   │   ├── director_loop_coding_demo.py # Demo for director-evaluator-loop
 │   │   └── ...
 │   │
 │   ├── sexp_evaluator/      # S-expression evaluator components

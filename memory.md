@@ -65,7 +65,8 @@
 - **Refactor SexpEvaluator (Step 1):** Moved `Closure` class to `src/sexp_evaluator/sexp_closure.py`. Updated imports. Commit `f558171`.
 - **Refactor SexpEvaluator (Step 2):** Introduced `SpecialFormProcessor` and `PrimitiveProcessor` classes with stub methods. Updated `SexpEvaluator` dispatch tables. Commit `21c10a1`.
 - **Phase 10b: Implement Core S-expression Primitives:** Implemented `eq?`, `null?`, `set!`, `+`, `-` in `PrimitiveProcessor`. Added `set_value_in_scope` to `SexpEnvironment`. Updated `SexpEvaluator` dispatch. Added comprehensive tests. Updated IDLs.
-- **Phase 10d (director-evaluator-loop Enhancement):** Modified `director-evaluator-loop` to expose its configuration (max-iterations, initial-director-input) to phase functions via a `*loop-config*` special variable. Updated `SpecialFormProcessor`, tests, and IDL.
+- **Phase 10d (director-evaluator-loop Enhancement):** Modified `director-evaluator-loop` to expose its configuration (max-iterations, initial-director-input) to phase functions via a `*loop-config*` special variable. Updated `SpecialFormProcessor`, tests, and IDL. Commit `80b7da1`, `99095b7`, `06ae4e6`.
+- **Implement `director_loop_coding_demo.py` Script:** Created a demo script (`src/scripts/director_loop_coding_demo.py`) to showcase the `director-evaluator-loop` special form, orchestrating a mock coding task involving plan generation (LLM), code implementation (Aider), and test execution (shell command). The script includes workspace management and S-expression task definition.
 
 ## Next Steps
 
