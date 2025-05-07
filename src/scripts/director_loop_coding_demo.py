@@ -93,17 +93,17 @@ MAIN_LOOP_S_EXPRESSION = """
   (evaluator (lambda (aider-task-result plan-task-result iter-num)
                (log-message "Evaluator (Iter " iter-num "): Aider TaskResult: " aider-task-result)
                (if (string=? (get-field aider-task-result "status") "FAILED")
-                   (list (list 'eval_status "AIDER_FAILED") (list 'message (get-field aider-task-result "content")))
-                   (let ((plan-data (get-field plan-task-result "parsedContent"))
-                         (test-cmd (get-field plan-data "test_command")))
-                     (log-message "Evaluator: Running test command: " test-cmd)
-                     (let ((test-run-result (system_execute_shell_command (command test-cmd))))
-                       (log-message "Evaluator: Test run TaskResult: " test-run-result)
-                       (if (string=? (get-field test-run-result "status") "COMPLETE")
-                           (if (eq? (get-field (get-field test-run-result "notes") "exit_code") 0)
-                               (list (list 'eval_status "TESTS_PASSED") (list 'message "Tests passed.") (list 'test_output (get-field test-run-result "content")))
-                               (list (list 'eval_status "TESTS_FAILED") (list 'message "Tests failed.") (list 'test_output (get-field test-run-result "content")) (list 'test_error (get-field (get-field test-run-result "notes") "stderr"))))
-                           (list (list 'eval_status "SHELL_CMD_FAILED") (list 'message "Test command execution failed.") (list 'shell_error (get-field test-run-result "content")))))))))
+                   (list (list (quote eval_status) "AIDER_FAILED") (list (quote message) (get-field aider-task-result "content")))
+                   (let ((plan-data (get-field plan-task-result "parsedContent"))) ;; First let for plan-data
+                     (let ((test-cmd (get-field plan-data "test_command")))       ;; Nested let for test-cmd, can access plan-data
+                       (log-message "Evaluator: Running test command: " test-cmd)
+                       (let ((test-run-result (system_execute_shell_command (command test-cmd))))
+                         (log-message "Evaluator: Test run TaskResult: " test-run-result)
+                         (if (string=? (get-field test-run-result "status") "COMPLETE")
+                             (if (eq? (get-field (get-field test-run-result "notes") "exit_code") 0)
+                                 (list (list (quote eval_status) "TESTS_PASSED") (list (quote message) "Tests passed.") (list (quote test_output) (get-field test-run-result "content")))
+                                 (list (list (quote eval_status) "TESTS_FAILED") (list (quote message) "Tests failed.") (list (quote test_output) (get-field test-run-result "content")) (list (quote test_error) (get-field (get-field test-run-result "notes") "stderr"))))
+                             (list (list (quote eval_status) "SHELL_CMD_FAILED") (list (quote message) "Test command execution failed.") (list (quote shell_error) (get-field test-run-result "content"))))))))))
 
   (controller (lambda (eval-feedback plan-task-result aider-task-result iter-num)
                 (log-message "Controller (Iter " iter-num "): Eval feedback: " eval-feedback)
@@ -111,11 +111,11 @@ MAIN_LOOP_S_EXPRESSION = """
                       (max-iters (get-field *loop-config* "max-iterations"))) ;; Access max-iterations
                   (if (string=? eval-status "TESTS_PASSED")
                       (list 'stop aider-task-result)
-                      (if (< iter-num max-iters)
-                          (let ((original-instructions (get-field (get-field plan-task-result "parsedContent") "instructions"))
-                                (feedback-message (get-field eval-feedback "message")))
-                            (list 'continue (string-append original-instructions " -- Previous attempt (iteration " iter-num ") failed or tests did not pass. Feedback: " feedback-message ". Please review and try again.")))
-                          (list 'stop eval-feedback))))))
+                      (if (< iter-num max-iters) ;; Check if we can retry
+                          (let ((original-instructions (get-field (get-field plan-task-result "parsedContent") "instructions")))
+                            (let ((feedback-message (get-field eval-feedback "message")))
+                              (list 'continue (string-append original-instructions " -- Previous attempt (iteration " iter-num ") failed or tests did not pass. Feedback: " feedback-message ". Please review and try again."))))
+                          (list 'stop eval-feedback))))))) ;; Max retries reached, stop with current feedback
 )
 """
 
