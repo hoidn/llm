@@ -34,6 +34,37 @@ interface ResourceLimits {
 }
 
 /**
+ * Configuration for managing conversational history usage for an LLM task call.
+ * [Type:System:HistoryConfigSettings:1.0]
+ */
+interface HistoryConfigSettings {
+    /**
+     * If true, the task uses the BaseHandler's current session history.
+     * If false, the task effectively starts with a fresh/empty history for the LLM call.
+     * Default: true
+     */
+    use_session_history: boolean; // Defaults to true
+
+    /**
+     * If use_session_history is true and this is an integer N > 0,
+     * only the last N turns (a turn includes user + assistant messages)
+     * from the session history are included.
+     * If null, all available session history (subject to handler's own
+     * truncation logic for token limits) is used.
+     * Default: null
+     */
+    history_turns_to_include?: number; // Optional PositiveInt, defaults to null
+
+    /**
+     * If true, the prompt and response for this specific LLM task call
+     * are appended to the BaseHandler's main conversation_history.
+     * If false, this turn is not recorded in the main session history.
+     * Default: true
+     */
+    record_in_session_history: boolean; // Defaults to true
+}
+
+/**
  * Individual match result with relevance information
  * [Type:System:MatchTuple:1.0]
  */
