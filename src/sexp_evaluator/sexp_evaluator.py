@@ -15,6 +15,7 @@ from src.memory.memory_system import MemorySystem
 # Sexp Parsing and Environment
 from src.sexp_parser.sexp_parser import SexpParser
 from src.sexp_evaluator.sexp_environment import SexpEnvironment
+from .sexp_closure import Closure # MODIFIED: Import Closure from new location
 
 # System Models and Errors
 from src.system.models import (
@@ -35,32 +36,7 @@ SexpNode = Any # General type hint for AST nodes
 
 logger = logging.getLogger(__name__) # Define logger at module level if not already
 
-class Closure:
-    def __init__(self, params_ast: list, body_ast: list, definition_env: 'SexpEnvironment'): # Use forward ref for SexpEnvironment if needed
-        """
-        Represents a lexically-scoped anonymous function created by 'lambda'.
-
-        Args:
-            params_ast: A list of Symbol objects representing the function's formal parameters.
-            body_ast: A list of AST nodes representing the function's body expressions.
-                        Each element in this list is a complete S-expression AST node.
-            definition_env: The SexpEnvironment captured at the time of lambda definition.
-                            This environment is the parent for the function's call frame.
-        """
-        # Validation that params_ast contains only Symbol objects is now done
-        # in SexpEvaluator._eval before Closure instantiation.
-        
-        self.params_ast: list = params_ast # List of Symbol objects
-        self.body_ast: list = body_ast     # List of SexpNode (body expressions)
-        self.definition_env: SexpEnvironment = definition_env # Captured environment
-        
-        # For debugging purposes
-        param_names_str = ", ".join([p.value() for p in self.params_ast])
-        logger.debug(f"Closure created: params=({param_names_str}), num_body_exprs={len(self.body_ast)}, def_env_id={id(self.definition_env)}")
-
-    def __repr__(self):
-        param_names = [p.value() for p in self.params_ast]
-        return f"<Closure params=({', '.join(param_names)}) body_exprs#={len(self.body_ast)} def_env_id={id(self.definition_env)}>"
+# REMOVED: Closure class definition moved to src/sexp_evaluator/sexp_closure.py
 
 class SexpEvaluator:
     """
@@ -237,7 +213,7 @@ class SexpEvaluator:
                     expression=str(params_list_node)
                 )
 
-            lambda_params_ast = []
+            lambda_params_ast: List[Symbol] = [] # Ensure it's List[Symbol]
             for p_node in params_list_node:
                 if not isinstance(p_node, Symbol):
                     raise SexpEvaluationError(
@@ -246,7 +222,7 @@ class SexpEvaluator:
                     )
                 lambda_params_ast.append(p_node)
             
-            lambda_body_ast = node[2:] # List of body expressions
+            lambda_body_ast: List[SexpNode] = node[2:] # List of body expressions
             if not lambda_body_ast: # Should be caught by len(node) < 3, but good to be explicit
                  raise SexpEvaluationError("Lambda requires at least one body expression.", expression=str(node))
 
