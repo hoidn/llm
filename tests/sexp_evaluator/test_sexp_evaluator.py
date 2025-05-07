@@ -2167,6 +2167,63 @@ def test_primitive_subtract_error_non_numeric(evaluator, mock_parser):
     # 10 - False (0) = 10
     assert evaluator.evaluate_string(sexp_str3) == 10
 
+# --- Tests for string-append ---
+def test_string_append_no_args(evaluator, mock_parser):
+    """Test (string-append) returns an empty string."""
+    sexp_str = "(string-append)"
+    ast = [Symbol('string-append')]
+    mock_parser.parse_string.return_value = ast
+    assert evaluator.evaluate_string(sexp_str) == ""
+
+def test_string_append_one_arg(evaluator, mock_parser):
+    """Test (string-append "hello") returns "hello"."""
+    sexp_str = '(string-append "hello")'
+    ast = [Symbol('string-append'), "hello"]
+    mock_parser.parse_string.return_value = ast
+    assert evaluator.evaluate_string(sexp_str) == "hello"
+
+def test_string_append_multiple_args(evaluator, mock_parser):
+    """Test (string-append "hello" " " "world" "!") returns "hello world!"."""
+    sexp_str = '(string-append "hello" " " "world" "!")'
+    ast = [Symbol('string-append'), "hello", " ", "world", "!"]
+    mock_parser.parse_string.return_value = ast
+    assert evaluator.evaluate_string(sexp_str) == "hello world!"
+
+def test_string_append_with_empty_string_args(evaluator, mock_parser):
+    """Test (string-append "a" "" "b") returns "ab"."""
+    sexp_str = '(string-append "a" "" "b")'
+    ast = [Symbol('string-append'), "a", "", "b"]
+    mock_parser.parse_string.return_value = ast
+    assert evaluator.evaluate_string(sexp_str) == "ab"
+
+def test_string_append_with_evaluated_args(evaluator, mock_parser):
+    """Test arguments are evaluated before concatenation."""
+    sexp_str = '(let ((x "foo") (y "bar")) (string-append x y))'
+    let_sym = Symbol('let') if Symbol != str else 'let'
+    x_sym = Symbol('x') if Symbol != str else 'x'
+    y_sym = Symbol('y') if Symbol != str else 'y'
+    string_append_sym = Symbol('string-append') if Symbol != str else 'string-append'
+    
+    ast = [let_sym, [[x_sym, "foo"], [y_sym, "bar"]], [string_append_sym, x_sym, y_sym]]
+    mock_parser.parse_string.return_value = ast
+    assert evaluator.evaluate_string(sexp_str) == "foobar"
+
+def test_string_append_error_non_string_arg(evaluator, mock_parser):
+    """Test SexpEvaluationError is raised if an argument is not a string."""
+    sexp_str = '(string-append "hello" 123)'
+    ast = [Symbol('string-append'), "hello", 123]
+    mock_parser.parse_string.return_value = ast
+    with pytest.raises(SexpEvaluationError, match="must be a string"):
+        evaluator.evaluate_string(sexp_str)
+
+def test_string_append_error_evaluation_fails(evaluator, mock_parser):
+    """Test SexpEvaluationError from argument evaluation propagates."""
+    sexp_str = '(string-append "a" undefined-symbol)'
+    ast = [Symbol('string-append'), "a", Symbol('undefined-symbol')]
+    mock_parser.parse_string.return_value = ast
+    with pytest.raises(SexpEvaluationError, match="Unbound symbol"):
+        evaluator.evaluate_string(sexp_str)
+
 # --- Tests for director-evaluator-loop ---
 
 def test_minimal_quoted_eval(evaluator, mock_parser):

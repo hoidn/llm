@@ -364,3 +364,29 @@ class PrimitiveProcessor:
         result = (val1 < val2)
         logger.debug(f"  '<': {val1} < {val2} -> {result}")
         return result
+        
+    def apply_string_append_primitive(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> str:
+        """
+        Applies the 'string-append' primitive: (string-append str1 str2 ...)
+        Concatenates multiple string arguments into a single string.
+        """
+        logger.debug(f"PrimitiveProcessor.apply_string_append_primitive: {original_expr_str}")
+        
+        evaluated_strings = []
+        for i, arg_expr in enumerate(arg_exprs):
+            try:
+                evaluated_value = self.evaluator._eval(arg_expr, env)
+                logging.debug(f"  apply_string_append_primitive: Evaluated arg {i+1} ('{arg_expr}') to: {evaluated_value}")
+            except Exception as e_eval:
+                logging.exception(f"  apply_string_append_primitive: Error evaluating argument {i+1} ('{arg_expr}'): {e_eval}")
+                if isinstance(e_eval, SexpEvaluationError): raise
+                raise SexpEvaluationError(f"Error evaluating argument {i+1} for 'string-append': {arg_expr}", original_expr_str, error_details=str(e_eval)) from e_eval
+            
+            if not isinstance(evaluated_value, str):
+                raise SexpEvaluationError(f"'string-append' argument {i+1} must be a string, got {type(evaluated_value)}.", original_expr_str)
+            
+            evaluated_strings.append(evaluated_value)
+        
+        result = ''.join(evaluated_strings)
+        logger.debug(f"  'string-append': Result -> '{result}'")
+        return result
