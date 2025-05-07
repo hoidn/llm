@@ -114,16 +114,43 @@
     *   **Outcome:** System can leverage powerful provider-specific tools when the appropriate LLM is in use.
     *   **Readiness:** Feature Enhancement (Builds on Level 6 & Phase 3b).
 
-*   **Phase 8: Aider Integration (MCP Approach)**
-    *   **Status:** DONE
-    *   **Goal:** Add code editing capabilities using Aider via the MCP client/server model (as defined in ADR 19).
-    *   **Prerequisites:** Functional external `Aider MCP Server`.
-    *   **Components & Tasks:** Documented Aider MCP Server setup requirement. Refactored `AiderBridge` into an MCP Client. Updated `AiderExecutorFunctions` to use the MCP Client. Registered `aider:automatic` and `aider:interactive` tools with `BaseHandler`.
-    *   **Integration:** Connects to external Aider MCP Server. Invoked via standard tool mechanism.
-    *   **Testing:** Integration tests for `AiderBridge` (mocking MCP server), executor functions. E2E requires running server.
-    *   **Documentation:** Deprecated old Aider IDLs, updated bridge/executor IDLs to reflect MCP client role. Referenced ADR 19.
-    *   **Outcome:** System gains code editing features via Aider/MCP. **Completes Feature Readiness Level 5.**
-    *   **Readiness:** Advanced Feature Enabled (Builds on Level 6, Phase 7).
+*   **Phase 8: Correct Aider Interactive Mode (Replace MCP with CLI)** *(Revised Title & Goal)*
+    *   **Status:** PENDING (This specific correction is pending)
+    *   **Current State Before Phase:**
+        *   `AiderBridge`: **Implemented** as an MCP Client.
+        *   `AiderExecutorFunctions`: **Implemented**. `execute_aider_automatic` uses the MCP `AiderBridge`. `execute_aider_interactive` *currently* (incorrectly) uses the MCP `AiderBridge`.
+        *   `Application`: Instantiates `AiderBridge` and registers both `aider:automatic` and `aider:interactive` using the existing `AiderExecutorFunctions`.
+        *   `aider:automatic`: Functioning via MCP client/server.
+        *   `aider:interactive`: **Functioning incorrectly** (using the non-interactive MCP path).
+    *   **Goal:** Replace the current, non-functional MCP-based implementation of `aider:interactive` with a direct CLI subprocess execution method to provide the expected interactive terminal experience. Leave `aider:automatic` (MCP-based) unchanged.
+    *   **Prerequisites:**
+        *   `aider-chat` CLI tool available in the execution environment's PATH.
+        *   `FileAccessManager` implemented and available.
+        *   `MemorySystem` implemented and available (for context preparation).
+        *   `AiderBridge` (MCP Client) implemented (needed for context prep).
+    *   **Components & Tasks:**
+        1.  **Create `AiderCliRunner`:** Implement the new `AiderCliRunner` class in `src/aider_bridge/cli_runner.py` to handle finding and launching the `aider` CLI subprocess with terminal handoff. Include optional file state tracking.
+        2.  **Modify `AiderExecutorFunctions`:**
+            *   **Inject Dependency:** Update `AiderExecutorFunctions.__init__` to accept the new `AiderCliRunner` instance (in addition to the existing `AiderBridge`).
+            *   **Rewrite `execute_aider_interactive`:** Modify this method to use the injected `AiderCliRunner` instance to launch the CLI subprocess. Remove the call to `AiderBridge.call_aider_tool`. May still use `AiderBridge` context methods for file list preparation.
+            *   **(No Change)** Leave `execute_aider_automatic` as is (using `AiderBridge`).
+        3.  **Modify `Application.__init__`:**
+            *   Instantiate the new `AiderCliRunner`.
+            *   Update the instantiation of `AiderExecutorFunctions` to inject the `AiderCliRunner` instance alongside the `AiderBridge`.
+        4.  **(No Change)** Tool registration logic remains the same (`aider:interactive` now points to the corrected executor).
+    *   **Integration:** `aider:automatic` continues using MCP. `aider:interactive` now launches a local CLI subprocess.
+    *   **Testing:**
+        *   Implement tests for `AiderCliRunner` (mocking subprocess/filesystem).
+        *   Implement/Update tests for `execute_aider_interactive` to verify it uses `AiderCliRunner` correctly.
+        *   Ensure existing tests for `execute_aider_automatic` (mocking MCP server via `AiderBridge`) still pass.
+    *   **IDL / Documentation Updates:**
+        *   **`src/executors/aider_executors_IDL.md`:**
+            *   **Rewrite** `execute_aider_interactive` description (Behavior, Postconditions, Errors) to detail the CLI subprocess launch via `AiderCliRunner` and the expected session summary `TaskResult`. Remove MCP details.
+            *   **(No Change)** Confirm `execute_aider_automatic` description matches MCP interaction.
+        *   **`src/aider_bridge/cli_runner_IDL.md`:** (Optional) Create if `AiderCliRunner` warrants a formal contract.
+        *   **User Guides:** Update relevant guides to explain the *corrected* behavior of `aider:interactive`.
+    *   **Outcome:** `aider:interactive` provides the correct direct CLI user experience, while `aider:automatic` continues to function programmatically via MCP. The Aider integration is now fully functional as intended for both modes.
+    *   **Readiness:** Corrects and completes Aider Integration (Level 5).
 
 *   **Phase 9: Core Agentic Tooling & Multi-LLM Support**
     *   **Status:** **PARTIALLY IMPLEMENTED / PENDING** *(Updated)*
