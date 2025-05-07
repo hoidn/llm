@@ -52,6 +52,7 @@ module src.sexp_evaluator.sexp_evaluator {
         // (+)   a first-class Closure object capturing the current lexical environment.
         // (+) - Supports application of these Closures, enabling lexical scoping.
         // @raises_error(condition="SexpSyntaxError", description="Raised by internal parser if the input string has invalid S-expression syntax.")
+        // @raises_error(condition="SexpSyntaxError", description="Raised by internal parser if the input string has invalid S-expression syntax.")
         // @raises_error(condition="SexpEvaluationError", description="Raised by internal _eval if runtime errors occur during S-expression evaluation (e.g., unbound symbol, invalid arguments to primitive, type mismatch).")
         // @raises_error(condition="TaskError", description="Propagated if an underlying TaskSystem/Handler call invoked by the S-expression fails (e.g., RESOURCE_EXHAUSTION, TASK_FAILURE from atomic task).")
         Any evaluate_string(string sexp_string, optional object initial_env); // Arg represents SexpEnvironment
