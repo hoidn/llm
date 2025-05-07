@@ -64,6 +64,9 @@ class SexpEvaluator:
         self.memory_system = memory_system
         self.parser = SexpParser() 
 
+        # Make Closure class accessible to helper processors
+        self.Closure = Closure
+        
         # Instantiate helper processors
         self.special_form_processor = SpecialFormProcessor(self)
         self.primitive_processor = PrimitiveProcessor(self)

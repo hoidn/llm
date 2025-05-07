@@ -12,6 +12,7 @@ from src.system.models import (
     TaskResult, SubtaskRequest, ContextGenerationInput, AssociativeMatchResult,
     MatchTuple, TaskFailureError, ContextManagement, TaskError # Import TaskError model here
 )
+from src.sexp_parser.sexp_parser import SexpParser
 
 # Import Symbol if parser uses it, otherwise use str
 try:
