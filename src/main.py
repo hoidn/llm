@@ -417,8 +417,14 @@ Select the best matching paths *from the provided metadata* and output the JSON.
 
 
             # Retrieve tools for agent initialization AFTER registration
-            agent_tools_executors = self.passthrough_handler.get_tools_for_agent()
-            logger.info(f"Retrieved {len(agent_tools_executors)} tool executors for agent initialization.")
+            # Modified to get List[PydanticTool] directly
+            if PydanticTool is None:
+                logger.error("pydantic_ai.Tool not imported. Cannot prepare tools for agent.")
+                agent_pydantic_tools = []
+            else:
+                agent_pydantic_tools = self.passthrough_handler.get_tools_for_agent() # This method now returns List[PydanticTool]
+            
+            logger.info(f"Retrieved {len(agent_pydantic_tools)} pydantic_ai.Tool objects for agent initialization.")
 
             # Trigger agent initialization in the manager AFTER registration
             if self.passthrough_handler.llm_manager:
