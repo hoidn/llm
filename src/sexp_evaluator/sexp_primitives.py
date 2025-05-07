@@ -157,6 +157,27 @@ class PrimitiveProcessor:
                     logger.warning(f"  'get-field': Key '{field_name_val}' not found in dict {list(target_obj.keys())}. Returning None.")
                     return None 
                 return target_obj.get(field_name_val)
+            # Handle association lists (lists of [key, value] pairs)
+            elif isinstance(target_obj, list):
+                logger.debug(f"  'get-field': Target is a list. Attempting assoc-list lookup for key '{field_name_val}'. List: {target_obj!r}")
+                for item in target_obj:
+                    # Check if item is a list of two elements [key_node, value_node]
+                    if isinstance(item, list) and len(item) == 2:
+                        key_candidate_node = item[0]
+                        
+                        # Convert key_candidate_node to string for comparison
+                        # It could be a Symbol or already a string if (list "key" val) was used
+                        current_key_str = None
+                        if isinstance(key_candidate_node, Symbol):
+                            current_key_str = key_candidate_node.value()
+                        elif isinstance(key_candidate_node, str):
+                            current_key_str = key_candidate_node
+                        
+                        if current_key_str == field_name_val:
+                            logger.debug(f"    Found key '{field_name_val}' in assoc-list item: {item!r}")
+                            return item[1] # Return the value part
+                logger.warning(f"  'get-field': Key '{field_name_val}' not found in assoc-list: {target_obj!r}. Returning None.")
+                return None
             elif hasattr(target_obj, '__class__') and hasattr(target_obj.__class__, 'model_fields') and hasattr(target_obj, field_name_val):
                 logger.debug(f"  'get-field': Accessing attribute '{field_name_val}' from Pydantic-like object.")
                 return getattr(target_obj, field_name_val)

@@ -20,6 +20,7 @@ from .sexp_special_forms import SpecialFormProcessor
 from .sexp_primitives import PrimitiveProcessor     
 
 # System Models and Errors
+from sexpdata import Symbol, Quoted  # Ensure Quoted is imported
 from src.system.models import (
     TaskResult, SubtaskRequest, ContextGenerationInput, ContextManagement,
     TaskFailureError, AssociativeMatchResult, MatchTuple,
@@ -171,8 +172,16 @@ class SexpEvaluator:
                  logger.error(f"Eval Symbol FAILED: Unbound symbol '{symbol_name}'")
                  raise 
 
+        # Handle Quoted objects directly
+        if isinstance(node, Quoted):
+            # If _eval encounters a Quoted object directly, it means the parser
+            # created it from a shorthand like 'datum. The value of 'datum is datum itself.
+            logging.debug(f"Eval Quoted node: {node}, returning its value: {node.value()}")
+            return node.value()
+
         if not isinstance(node, list):
-            logger.debug(f"Eval Literal/Atom: {node}")
+            # This branch now handles non-Symbol, non-Quoted, non-list atoms (numbers, strings, bools, None)
+            logger.debug(f"Eval Literal/Atom (non-Symbol, non-Quoted, non-list): {node}")
             return node
 
         if not node: 
