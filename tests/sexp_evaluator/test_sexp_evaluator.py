@@ -2209,12 +2209,23 @@ def test_string_append_with_evaluated_args(evaluator, mock_parser):
     assert evaluator.evaluate_string(sexp_str) == "foobar"
 
 def test_string_append_error_non_string_arg(evaluator, mock_parser):
-    """Test SexpEvaluationError is raised if an argument is not a string."""
-    sexp_str = '(string-append "hello" 123)'
-    ast = [Symbol('string-append'), "hello", 123]
+    """Test SexpEvaluationError is raised if an argument is not string, symbol, number, or nil."""
+    # Test with a list, which should not be convertible
+    sexp_str = '(string-append "hello" (list 1 2))'
+    # AST generation for (list 1 2)
+    list_call_ast = [Symbol('list'), 1, 2]
+    ast = [Symbol('string-append'), "hello", list_call_ast]
     mock_parser.parse_string.return_value = ast
-    with pytest.raises(SexpEvaluationError, match="must be a string"):
-        evaluator.evaluate_string(sexp_str)
+    
+    original_eval = evaluator._eval
+    def eval_side_effect_for_list(node, env):
+        if node == list_call_ast:
+            return [1, 2] 
+        return original_eval(node, env)
+
+    with patch.object(evaluator, '_eval', side_effect=eval_side_effect_for_list):
+        with pytest.raises(SexpEvaluationError, match="must be a string, symbol, number, or nil. Got <class 'list'>"):
+            evaluator.evaluate_string(sexp_str)
 
 def test_string_append_error_evaluation_fails(evaluator, mock_parser):
     """Test SexpEvaluationError from argument evaluation propagates."""
@@ -2505,3 +2516,17 @@ def test_director_loop_integration_with_get_field_and_eq(evaluator, mock_parser)
         [Symbol('data'), 2]
     ]
     assert result == expected_result
+def test_string_append_with_numbers_and_none(evaluator, mock_parser):
+    """Test string-append correctly handles numbers and None."""
+    sexp_str = '(string-append "val:" 123 " " nil "end")'
+    ast = [Symbol('string-append'), "val:", 123, " ", None, "end"] # Assume nil parses to None
+    mock_parser.parse_string.return_value = ast
+    assert evaluator.evaluate_string(sexp_str) == "val:123 end"
+
+# Add this new test to ensure numbers are stringified
+def test_string_append_with_numeric_args(evaluator, mock_parser):
+    """Test (string-append "Value: " 123 " units") returns "Value: 123 units"."""
+    sexp_str = '(string-append "Value: " 123 " units" 4.5)'
+    ast = [Symbol('string-append'), "Value: ", 123, " units", 4.5]
+    mock_parser.parse_string.return_value = ast
+    assert evaluator.evaluate_string(sexp_str) == "Value: 123 units4.5"

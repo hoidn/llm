@@ -263,8 +263,8 @@ def test_application_init_wiring(app_components):
 
     # Assert tool registration calls (at least system tools should be registered)
     app_components['mock_handler_instance'].register_tool.assert_called()
-    system_context_call = next((c for c in app_components['mock_handler_instance'].register_tool.call_args_list if c.args[0].get('name') == 'system:get_context'), None)
-    assert system_context_call is not None, "system:get_context tool was not registered"
+    system_context_call = next((c for c in app_components['mock_handler_instance'].register_tool.call_args_list if c.args[0].get('name') == 'system_get_context'), None)
+    assert system_context_call is not None, "system_get_context tool was not registered"
     # Assert the executor is the instance method from the real instance
     assert system_context_call.args[1] == app.system_executors.execute_get_context
 
@@ -290,8 +290,8 @@ def test_application_init_wiring(app_components):
         assert executor in actual_tools_passed, f"Expected system executor {executor.__name__} not found in tools passed to initialize_agent"
 
     # Check for shell command tool registration
-    shell_command_call = next((c for c in app_components['mock_handler_instance'].register_tool.call_args_list if c.args[0].get('name') == 'system:execute_shell_command'), None)
-    assert shell_command_call is not None, "system:execute_shell_command tool was not registered"
+    shell_command_call = next((c for c in app_components['mock_handler_instance'].register_tool.call_args_list if c.args[0].get('name') == 'system_execute_shell_command'), None)
+    assert shell_command_call is not None, "system_execute_shell_command tool was not registered"
     assert callable(shell_command_call.args[1])
     # Assert the executor is the instance method from the real instance
     assert shell_command_call.args[1] == app.system_executors.execute_shell_command
@@ -454,19 +454,19 @@ def test_application_init_with_aider(app_components):
 
     # Assert Aider tools were registered with the handler
     registered_tools = app_components['registered_tools_storage']
-    assert 'aider:automatic' in registered_tools
-    assert 'aider:interactive' in registered_tools
-    assert callable(registered_tools['aider:automatic']['executor'])
-    assert callable(registered_tools['aider:interactive']['executor'])
+    assert 'aider_automatic' in registered_tools
+    assert 'aider_interactive' in registered_tools
+    assert callable(registered_tools['aider_automatic']['executor'])
+    assert callable(registered_tools['aider_interactive']['executor'])
 
     # Check that register_tool was called for aider tools
     mock_handler = app_components['mock_handler_instance']
-    aider_auto_call = next((c for c in mock_handler.register_tool.call_args_list if c.args[0].get('name') == 'aider:automatic'), None)
-    aider_inter_call = next((c for c in mock_handler.register_tool.call_args_list if c.args[0].get('name') == 'aider:interactive'), None)
-    assert aider_auto_call is not None, "aider:automatic tool was not registered"
-    assert aider_inter_call is not None, "aider:interactive tool was not registered"
-    assert callable(aider_auto_call.args[1]), "Executor for aider:automatic is not callable"
-    assert callable(aider_inter_call.args[1]), "Executor for aider:interactive is not callable"
+    aider_auto_call = next((c for c in mock_handler.register_tool.call_args_list if c.args[0].get('name') == 'aider_automatic'), None)
+    aider_inter_call = next((c for c in mock_handler.register_tool.call_args_list if c.args[0].get('name') == 'aider_interactive'), None)
+    assert aider_auto_call is not None, "aider_automatic tool was not registered"
+    assert aider_inter_call is not None, "aider_interactive tool was not registered"
+    assert callable(aider_auto_call.args[1]), "Executor for aider_automatic is not callable"
+    assert callable(aider_inter_call.args[1]), "Executor for aider_interactive is not callable"
 
 def test_application_init_without_aider(app_components):
     """Verify AiderBridge is NOT initialized and tools NOT registered when unavailable."""
@@ -481,8 +481,8 @@ def test_application_init_without_aider(app_components):
 
     # Assert Aider tools were NOT registered
     registered_tools = app_components['registered_tools_storage']
-    assert 'aider:automatic' not in registered_tools
-    assert 'aider:interactive' not in registered_tools
+    assert 'aider_automatic' not in registered_tools
+    assert 'aider_interactive' not in registered_tools
 
 
 def test_application_init_with_anthropic(app_components):
@@ -498,20 +498,20 @@ def test_application_init_with_anthropic(app_components):
 
     # Assert Anthropic tools were registered
     registered_tools = app_components['registered_tools_storage']
-    assert 'anthropic:view' in registered_tools
-    assert 'anthropic:create' in registered_tools
-    assert 'anthropic:str_replace' in registered_tools
-    assert 'anthropic:insert' in registered_tools
+    assert 'anthropic_view' in registered_tools
+    assert 'anthropic_create' in registered_tools
+    assert 'anthropic_str_replace' in registered_tools
+    assert 'anthropic_insert' in registered_tools
 
     # Check specs and executors
-    assert registered_tools['anthropic:view']['spec'] == ANTHROPIC_VIEW_SPEC
-    assert callable(registered_tools['anthropic:view']['executor'])
-    assert registered_tools['anthropic:create']['spec'] == ANTHROPIC_CREATE_SPEC
-    assert callable(registered_tools['anthropic:create']['executor'])
-    assert registered_tools['anthropic:str_replace']['spec'] == ANTHROPIC_STR_REPLACE_SPEC
-    assert callable(registered_tools['anthropic:str_replace']['executor'])
-    assert registered_tools['anthropic:insert']['spec'] == ANTHROPIC_INSERT_SPEC
-    assert callable(registered_tools['anthropic:insert']['executor'])
+    assert registered_tools['anthropic_view']['spec'] == ANTHROPIC_VIEW_SPEC
+    assert callable(registered_tools['anthropic_view']['executor'])
+    assert registered_tools['anthropic_create']['spec'] == ANTHROPIC_CREATE_SPEC
+    assert callable(registered_tools['anthropic_create']['executor'])
+    assert registered_tools['anthropic_str_replace']['spec'] == ANTHROPIC_STR_REPLACE_SPEC
+    assert callable(registered_tools['anthropic_str_replace']['executor'])
+    assert registered_tools['anthropic_insert']['spec'] == ANTHROPIC_INSERT_SPEC
+    assert callable(registered_tools['anthropic_insert']['executor'])
     # Check that the executor wrapper correctly points to the mocked function
     # Similar to Aider, this requires calling the lambda. Rely on patching.
 
@@ -527,10 +527,10 @@ def test_application_init_without_anthropic(app_components):
 
     # Assert Anthropic tools were NOT registered
     registered_tools = app_components['registered_tools_storage']
-    assert 'anthropic:view' not in registered_tools
-    assert 'anthropic:create' not in registered_tools
-    assert 'anthropic:str_replace' not in registered_tools
-    assert 'anthropic:insert' not in registered_tools
+    assert 'anthropic_view' not in registered_tools
+    assert 'anthropic_create' not in registered_tools
+    assert 'anthropic_str_replace' not in registered_tools
+    assert 'anthropic_insert' not in registered_tools
 
 def test_application_init_registers_user_tasks(app_components):
     """Verify that user:generate-plan and user:analyze-aider-result templates are registered."""
