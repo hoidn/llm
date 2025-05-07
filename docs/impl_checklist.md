@@ -64,6 +64,7 @@
 | 5.5 | **Data Handling:** Does the design encourage parsing into specific types (aligning with "Parse, Don't Validate") rather than passing raw dicts/lists widely? (Assessed via parameter types and JSON format comments). | ☐ ✅ ☐ ❌ ☐ N/A |  |
 | 5.6 | **IDL Versioning:** Is the interface version clearly marked (e.g., `[Interface:Memory:3.0]`) and consistent with related documentation? | ☐ ✅ ☐ ❌ ☐ N/A |  |
 | 5.7 | **LLM Interaction:** Does the interface correctly use LLMInteractionManager and pydantic-ai for LLM interactions where applicable? | ☐ ✅ ☐ ❌ ☐ N/A |  |
+| 5.8 | **History Configuration Handling:** Does the component correctly receive, pass, or act upon `HistoryConfigSettings` if it's involved in the LLM call chain or task invocation? | ☐ ✅ ☐ ❌ ☐ N/A |  |
 
 **VI. Overall Readiness**
 
