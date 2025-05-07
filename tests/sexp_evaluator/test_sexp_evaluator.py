@@ -65,6 +65,8 @@ def mock_parser(mocker):
 @pytest.fixture
 def evaluator(mock_task_system, mock_handler, mock_memory_system, mock_parser, mocker):
     """Fixture for SexpEvaluator instance with mocked parser."""
+    import logging
+    logging.critical("Creating evaluator fixture")
     # Patch the SexpParser instantiation within the evaluator's init
     with patch('src.sexp_evaluator.sexp_evaluator.SexpParser', return_value=mock_parser):
          evaluator_instance = SexpEvaluator(
@@ -72,6 +74,7 @@ def evaluator(mock_task_system, mock_handler, mock_memory_system, mock_parser, m
              handler=mock_handler,
              memory_system=mock_memory_system
          )
+    logging.critical(f"Created evaluator fixture. PRIMITIVE_APPLIERS keys: {list(evaluator_instance.PRIMITIVE_APPLIERS.keys())}")
     return evaluator_instance
 
 # --- Test Cases ---
@@ -1749,7 +1752,16 @@ class TestSexpEvaluatorLambdaClosures:
 
 # --- Tests for eq? ---
 def test_primitive_eq_numbers_equal(evaluator):
-    assert evaluator.evaluate_string("(eq? 1 1)") is True
+    import logging
+    logging.critical("Starting test_primitive_eq_numbers_equal")
+    try:
+        result = evaluator.evaluate_string("(eq? 1 1)")
+        logging.critical(f"Result of (eq? 1 1): {result}, type: {type(result)}")
+        assert result is True
+    except Exception as e:
+        logging.critical(f"EXCEPTION in (eq? 1 1): {type(e)}: {e}")
+        raise
+    
     assert evaluator.evaluate_string("(eq? 1.0 1.0)") is True
     assert evaluator.evaluate_string("(eq? 1 1.0)") is True # Numeric equality
     assert evaluator.evaluate_string("(eq? 0 0.0)") is True
@@ -1811,6 +1823,18 @@ def test_primitive_eq_different_types_unequal(evaluator):
     assert evaluator.evaluate_string("(eq? (list 1) 1)") is False
 
 def test_primitive_eq_arity_errors(evaluator):
+    import logging
+    logging.critical("Starting test_primitive_eq_arity_errors")
+    
+    try:
+        evaluator.evaluate_string("(eq? 1)")
+    except SexpEvaluationError as e:
+        logging.critical(f"ACTUAL ERROR RAISED: TYPE={type(e)}, MSG='{e}'")
+        assert "'eq?' requires exactly two arguments" in str(e), f"Unexpected error message: {e}"
+    else:
+        logging.critical("No SexpEvaluationError was raised by (eq? 1)")
+        assert False, "SexpEvaluationError was not raised for arity mismatch as expected."
+    
     with pytest.raises(SexpEvaluationError, match="'eq\\?' requires exactly two arguments"):
         evaluator.evaluate_string("(eq? 1)")
     with pytest.raises(SexpEvaluationError, match="'eq\\?' requires exactly two arguments"):
