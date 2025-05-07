@@ -100,7 +100,7 @@ DEFATOM_ANALYZE_AIDER_RESULT_S_EXPRESSION = """
 
 # S-expression for the main DEEC loop workflow
 MAIN_WORKFLOW_S_EXPRESSION = """
-(begin ;; Variables initial-user-goal, initial-context-data, user-test-command are expected in env
+(progn ;; Variables initial-user-goal, initial-context-data, user-test-command are expected in env
 
   (log-message "Starting workflow for goal:" initial-user-goal)
   (log-message "Using Test Command:" user-test-command)
@@ -191,7 +191,7 @@ MAIN_WORKFLOW_S_EXPRESSION = """
           plan-task-result ;; Return the failed plan result
         ) ;; End outer if
     ) ;; End outer let (plan-task-result)
-) ;; End begin
+) ;; End progn
 """
 
 def main():
