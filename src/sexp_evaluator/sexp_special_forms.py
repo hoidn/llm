@@ -280,7 +280,7 @@ class SpecialFormProcessor:
             success = self.evaluator.task_system.register_template(template_dict)
             if not success:
                 logging.error(f"TaskSystem.register_template for '{task_name_str}' returned False (registration failed).")
-                raise SexpEvaluationError(f"TaskSystem failed to register template '{task_name_str}'.", original_expr_str)
+                raise SexpEvaluationError(f"TaskSystem failed to register template '{task_name_str}' (register_template returned False).", original_expr_str)
         except SexpEvaluationError:
             raise
         except Exception as e:
