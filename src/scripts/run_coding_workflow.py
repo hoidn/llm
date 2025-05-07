@@ -368,15 +368,15 @@ def main():
              sys.exit(1)
         logger.debug("Defined 'user:analyze-aider-result'")
 
-       # Execute Test Result Analyzer Defatom
-       test_analysis_def_result = app.handle_task_command(DEFATOM_ANALYZE_TEST_RESULT_S_EXPRESSION)
-       if test_analysis_def_result.get("status") == "FAILED":
+        # Execute Test Result Analyzer Defatom
+        test_analysis_def_result = app.handle_task_command(DEFATOM_ANALYZE_TEST_RESULT_S_EXPRESSION)
+        if test_analysis_def_result.get("status") == "FAILED":
             logger.error(f"Failed to define 'user:analyze-test-result': {test_analysis_def_result.get('content')}")
             sys.exit(1)
-       logger.debug("Defined 'user:analyze-test-result'")
+        logger.debug("Defined 'user:analyze-test-result'")
 
-       logger.info("Atomic tasks defined successfully.")
-   except Exception as e:
+        logger.info("Atomic tasks defined successfully.")
+    except Exception as e:
          logger.exception("Error occurred while defining atomic tasks. Exiting.")
          sys.exit(1)
 
