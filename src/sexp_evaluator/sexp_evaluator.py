@@ -328,6 +328,7 @@ class SexpEvaluator:
 
         elif isinstance(resolved_op, str):
             op_name_str = resolved_op
+            logger.critical(f"_apply_operator: Checking for op_name_str '{op_name_str}'. Available primitives: {list(self.PRIMITIVE_APPLIERS.keys())}")
             logger.debug(f"  _apply_operator: Operator is a name string: '{op_name_str}'")
 
             if op_name_str in self.PRIMITIVE_APPLIERS:
