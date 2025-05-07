@@ -3,17 +3,19 @@
 
 ## Current Task/Focus (As of: 2025-05-01)
 
-**Goal:** Phase 9: System Tool Implementation & Refinement.
+**Goal:** Refactor SexpEvaluator for modularity.
 
-**Current Sub-task:** Documentation Update Cycle (Post Phase 9b/9.3).
+**Current Sub-task:** Step 2: Introduce Helper Processor Structure.
 
 **Relevant Files:**
-- `src/sexp_evaluator/sexp_evaluator_IDL.md`
+- `src/sexp_evaluator/sexp_evaluator.py`
+- `src/sexp_evaluator/sexp_special_forms.py` (New)
+- `src/sexp_evaluator/sexp_primitives.py` (New)
+- `project_rules.md`
 - `memory.md` (This file)
-- `docs/documentation_update.md`
 
 **Related IDLs:**
-- `src/sexp_evaluator/sexp_evaluator_IDL.md`
+- `src/sexp_evaluator/sexp_evaluator_IDL.md` (No changes in this step, but relevant for context)
 
 ## Recent Activity Log
 
@@ -56,32 +58,22 @@
     - Added placeholder primitives `get-field`, `string=?`, `log-message` to `SexpEvaluator`.
     - Created `src/scripts/lambda_llm_code_processing_demo.py` to showcase `lambda` orchestrating mock LLM tasks, using the new primitives.
     - Updated `sexp_evaluator_IDL.md`, `plan.md`, `project_rules.md`, and `memory.md`.
+- **Refactor SexpEvaluator (Step 1):** Moved `Closure` class to `src/sexp_evaluator/sexp_closure.py`. Updated imports. Commit `f558171`.
 
 ## Next Steps
 
-1.  **Phase 9.3 Testing:** Implement unit tests for `LLMInteractionManager` and `BaseHandler` to verify the `model_override` logic, including success and failure cases (config lookup, agent creation). Add optional integration test for Dispatcher.
-2.  **Full Phase 10b Implementation:** Replace placeholder primitives in `SexpEvaluator` with robust implementations for `get-field`, `string=?`, `eq?`, `null?`, `set!`, and basic arithmetic, along with comprehensive tests.
-2.  **Phase 8: Aider Integration:**
-    *   Implement `AiderBridge` (likely as an MCP client or direct wrapper).
-    *   Define Aider tool specifications (`src/aider_bridge/tools.py`).
-    *   Implement Aider executor functions (`src/executors/aider_executors.py`).
-    *   Add logic to `Application.initialize_aider` to register Aider tools conditionally or based on configuration.
-    *   Update `Application._determine_active_tools` if needed.
-    *   Add integration tests for Aider workflows.
-3.  **Merge Streams:** Ensure all Phase 4-9 changes are integrated cleanly.
-4.  **Implement Remaining Deferred Methods (Phase 2 Dependencies):**
-    *   Review and finalize implementations for:
-        *   `TaskSystem`: `execute_atomic_template`, find/generate/resolve methods.
-        *   `MemorySystem`: `get_relevant_context_for` (sharding/mediation logic).
-        *   Other deferred methods.
-5.  **Write Tests for Deferred Methods:** Add tests for the methods implemented in step 4.
-6.  **Integration Testing:** Enhance integration tests covering workflows involving SexpEvaluator -> TaskSystem -> AtomicTaskExecutor -> Handler -> LLMManager and MemorySystem indexing/retrieval. Ensure integration tests cover key scenarios previously handled by removed unit tests where appropriate.
-7.  **Review Tool Registration & Execution:** Finalize how tools registered in `BaseHandler` are made available during `SexpEvaluator` execution (via `Handler._execute_tool`) and LLM calls.
-8.  **Update Documentation:** Ensure IDLs, rules, and diagrams reflect the fully implemented state after Phase 8.
+1.  **Refactor SexpEvaluator (Step 2 - Current):** Introduce `SpecialFormProcessor` and `PrimitiveProcessor` classes. Update `SexpEvaluator` to use them for dispatch.
+2.  **Refactor SexpEvaluator (Step 3):** Implement new features (Phase 10b primitives, Phase 10d `director-evaluator-loop`) directly in the new helper processor classes.
+3.  **Refactor SexpEvaluator (Step 4):** Gradually migrate the logic for existing special forms and primitives from `SexpEvaluator` into their respective methods in the `SpecialFormProcessor` and `PrimitiveProcessor` classes.
+4.  **Phase 9.3 Testing:** Implement unit tests for `LLMInteractionManager` and `BaseHandler` to verify the `model_override` logic.
+5.  **Full Phase 10b Implementation:** Replace placeholder primitives in `PrimitiveProcessor` with robust implementations for `get-field`, `string=?`, `eq?`, `null?`, `set!`, and basic arithmetic, along with comprehensive tests.
+6.  **Phase 8: Aider Integration:** Implement `AiderBridge`, Aider tool specs, Aider executors, and related `Application` logic. Add integration tests.
+7.  **Merge Streams & Finalize Deferred Methods:** Integrate all changes and complete any remaining deferred method implementations and their tests.
+8.  **Integration Testing & Documentation:** Enhance overall integration tests and update all documentation to reflect the final state.
 
 ## Notes & Context
 
-- Phase 9b (`loop` special form) implementation is complete and tested (commit `aafbfc8`).
-- Documentation for `loop` has been added to the `SexpEvaluator` IDL.
-- Phase 9.3 (Multi-LLM routing) implementation is complete but requires testing.
-- Next immediate step is to write tests for Phase 9.3 functionality.
+- The current refactoring of `SexpEvaluator` aims to improve modularity and maintainability by separating concerns for special form handling and primitive application.
+- Step 1 (moving `Closure`) is complete.
+- Step 2 (this task) establishes the structure for helper processors. The actual logic migration will occur in Step 4.
+- New features like `director-evaluator-loop` and full Phase 10b primitives will be built into these new processor classes (Step 3).
