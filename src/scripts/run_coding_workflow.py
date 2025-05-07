@@ -269,6 +269,24 @@ def main():
         logger.exception("Failed to instantiate Application. Exiting.")
         sys.exit(1)
 
+    # --- !!! ADD THIS STEP: Index the Repository !!! ---
+    logger.info(f"Indexing repository: {PROJECT_ROOT}") # Assuming PROJECT_ROOT is the target
+    index_options = { # Optional: Define specific include/exclude patterns if needed
+         "include_patterns": ["src/**/*.py", "*.py", "*.md"],
+         "exclude_patterns": ["**/venv/**", "**/.*/**", "**/__pycache__/**"]
+    }
+    try:
+        success = app.index_repository(str(PROJECT_ROOT), options=index_options) # Ensure PROJECT_ROOT is string
+        if not success:
+            logger.warning("Repository indexing failed or returned False. Context might be incomplete.")
+            # Decide whether to exit or continue
+        else:
+            logger.info("Repository indexing complete.")
+    except Exception as index_err:
+        logger.exception(f"Error during repository indexing: {index_err}")
+        # Decide whether to exit or continue
+    # --- END ADDED STEP ---
+
     # --- Define Atomic Tasks ---
     logger.info("Defining atomic tasks via defatom...")
     try:
