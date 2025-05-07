@@ -205,3 +205,123 @@ class PrimitiveProcessor:
         log_output = " ".join(map(str, evaluated_args))
         logger.info(f"SexpLog: {log_output}") 
         return log_output 
+
+    def apply_eq_primitive(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> bool:
+        logger.debug(f"PrimitiveProcessor.apply_eq_primitive: {original_expr_str}")
+        if len(arg_exprs) != 2:
+            raise SexpEvaluationError("'eq?' requires exactly two arguments.", original_expr_str)
+
+        try:
+            val1 = self.evaluator._eval(arg_exprs[0], env)
+            val2 = self.evaluator._eval(arg_exprs[1], env)
+        except Exception as e_eval:
+            raise SexpEvaluationError(f"Error evaluating arguments for 'eq?': {e_eval}", original_expr_str, error_details=str(e_eval)) from e_eval
+
+        # Handle Symbol comparison by their string value
+        if isinstance(val1, Symbol): val1 = val1.value()
+        if isinstance(val2, Symbol): val2 = val2.value()
+        
+        # Python's `==` handles most cases appropriately.
+        result = (val1 == val2)
+        logger.debug(f"  'eq?': {val1} == {val2} -> {result}")
+        return result
+
+    def apply_null_primitive(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> bool:
+        logger.debug(f"PrimitiveProcessor.apply_null_primitive: {original_expr_str}")
+        if len(arg_exprs) != 1:
+            raise SexpEvaluationError("'null?' requires exactly one argument.", original_expr_str)
+        
+        try:
+            val = self.evaluator._eval(arg_exprs[0], env)
+        except Exception as e_eval:
+            raise SexpEvaluationError(f"Error evaluating argument for 'null?': {e_eval}", original_expr_str, error_details=str(e_eval)) from e_eval
+            
+        # Consider Python None or an empty list as "null"
+        result = (val is None or val == [])
+        logger.debug(f"  'null?': {val} is None or [] -> {result}")
+        return result
+
+    def apply_set_bang_primitive(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> Any:
+        logger.debug(f"PrimitiveProcessor.apply_set_bang_primitive: {original_expr_str}")
+        if len(arg_exprs) != 2:
+            raise SexpEvaluationError("'set!' requires exactly two arguments: a symbol and a new value expression.", original_expr_str)
+
+        symbol_node = arg_exprs[0]
+        new_value_expr = arg_exprs[1]
+
+        if not isinstance(symbol_node, Symbol):
+            raise SexpEvaluationError(f"'set!' first argument must be a symbol, got {type(symbol_node)}.", original_expr_str)
+        
+        symbol_name = symbol_node.value()
+        
+        try:
+            new_value = self.evaluator._eval(new_value_expr, env)
+        except Exception as e_eval:
+            raise SexpEvaluationError(f"Error evaluating new value for 'set! {symbol_name}': {e_eval}", original_expr_str, error_details=str(e_eval)) from e_eval
+
+        try:
+            env.set_value_in_scope(symbol_name, new_value)
+            logger.debug(f"  'set!': Updated '{symbol_name}' to {new_value}")
+            return new_value
+        except NameError as e: 
+            raise SexpEvaluationError(f"Cannot 'set!' unbound symbol: {symbol_name}. {e}", original_expr_str) from e
+        except Exception as e_set: # Catch other unexpected errors from set_value_in_scope
+            raise SexpEvaluationError(f"Error during 'set! {symbol_name}': {e_set}", original_expr_str, error_details=str(e_set)) from e_set
+
+    def apply_add_primitive(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> Any: # Number (int or float)
+        logger.debug(f"PrimitiveProcessor.apply_add_primitive: {original_expr_str}")
+        if not arg_exprs: # N-ary, but 0 args is allowed
+            return 0 
+        
+        total = 0
+        is_float = False
+        for i, arg_expr in enumerate(arg_exprs):
+            try:
+                val = self.evaluator._eval(arg_expr, env)
+            except Exception as e_eval:
+                raise SexpEvaluationError(f"Error evaluating argument {i+1} for '+': {e_eval}", original_expr_str, error_details=str(e_eval)) from e_eval
+
+            if not isinstance(val, (int, float)):
+                raise SexpEvaluationError(f"'+' argument {i+1} must be a number, got {type(val)}.", original_expr_str)
+            if isinstance(val, float):
+                is_float = True
+            total += val
+        
+        result = float(total) if is_float else int(total)
+        logger.debug(f"  '+': Result -> {result}")
+        return result
+
+    def apply_subtract_primitive(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> Any: # Number
+        logger.debug(f"PrimitiveProcessor.apply_subtract_primitive: {original_expr_str}")
+        if not (1 <= len(arg_exprs) <= 2): # Arity check
+            raise SexpEvaluationError("'-' requires one or two numeric arguments.", original_expr_str)
+
+        try:
+            val1 = self.evaluator._eval(arg_exprs[0], env)
+        except Exception as e_eval:
+            raise SexpEvaluationError(f"Error evaluating first argument for '-': {e_eval}", original_expr_str, error_details=str(e_eval)) from e_eval
+        
+        if not isinstance(val1, (int, float)):
+            raise SexpEvaluationError(f"'-' first argument must be a number, got {type(val1)}.", original_expr_str)
+
+        if len(arg_exprs) == 1: # Unary negation
+            result = -val1
+            logger.debug(f"  '-' (unary): -{val1} -> {result}")
+            return result
+        
+        # Binary subtraction
+        try:
+            val2 = self.evaluator._eval(arg_exprs[1], env)
+        except Exception as e_eval:
+            raise SexpEvaluationError(f"Error evaluating second argument for '-': {e_eval}", original_expr_str, error_details=str(e_eval)) from e_eval
+
+        if not isinstance(val2, (int, float)):
+            raise SexpEvaluationError(f"'-' second argument must be a number, got {type(val2)}.", original_expr_str)
+        
+        result = 0
+        if isinstance(val1, float) or isinstance(val2, float):
+            result = float(val1) - float(val2)
+        else:
+            result = int(val1) - int(val2)
+        logger.debug(f"  '-' (binary): {val1} - {val2} -> {result}")
+        return result

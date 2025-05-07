@@ -92,6 +92,34 @@ class SexpEnvironment:
         child_env = SexpEnvironment(bindings=bindings, parent=self)
         return child_env
 
+    def set_value_in_scope(self, name: str, value: Any) -> None:
+        """Sets the value of an *existing* variable in the current or an ancestor scope.
+
+        Searches for the variable 'name' starting from the current environment
+        and going up the parent chain. The first binding found is updated.
+
+        Args:
+            name: The name (symbol string) of the variable to update.
+            value: The new value for the variable.
+
+        Raises:
+            NameError: If the name is not found in this environment or any
+                       of its ancestor environments (i.e., cannot set unbound variable).
+        """
+        logging.debug(f"Attempting to set '{name}' = (type: {type(value).__name__}, value: {str(value)[:50]}{'...' if len(str(value)) > 50 else ''}) in env chain starting from {id(self)}")
+        env: Optional[SexpEnvironment] = self
+        while env is not None:
+            if name in env._bindings:
+                logging.debug(f"Found '{name}' in env {id(env)}, updating value.")
+                env._bindings[name] = value
+                return
+            logging.debug(f"'{name}' not in local bindings of env {id(env)}, checking parent ({id(env._parent) if env._parent else 'None'}).")
+            env = env._parent
+        
+        # If loop completes, name was not found in any scope
+        logging.error(f"Cannot 'set!' unbound symbol: Name '{name}' is not defined in any accessible scope.")
+        raise NameError(f"Unbound symbol: Cannot set! '{name}' as it's not defined.")
+
     # --- Optional helper methods for debugging or inspection ---
 
     def get_local_bindings(self) -> Dict[str, Any]:

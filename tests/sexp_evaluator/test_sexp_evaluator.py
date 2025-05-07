@@ -590,7 +590,6 @@ class TestSexpEvaluatorDefatom:
         # The production code for defatom does:
         # if "model" in optional_args_map: template_dict["model"] = optional_args_map["model"]
         # So if not in optional_args_map, it's not added.
-        # The expected_template_dict should reflect this.
         # The original expected_template_dict was correct in omitting "model": None.
 
         mock_task_system.register_template.assert_called_once_with(expected_template_dict)
@@ -1747,3 +1746,186 @@ class TestSexpEvaluatorLambdaClosures:
         
         result = evaluator.evaluate_string(sexp_str)
         assert result == [100, 200]
+
+# --- Tests for eq? ---
+def test_primitive_eq_numbers_equal(evaluator):
+    assert evaluator.evaluate_string("(eq? 1 1)") is True
+    assert evaluator.evaluate_string("(eq? 1.0 1.0)") is True
+    assert evaluator.evaluate_string("(eq? 1 1.0)") is True # Numeric equality
+    assert evaluator.evaluate_string("(eq? 0 0.0)") is True
+
+def test_primitive_eq_numbers_unequal(evaluator):
+    assert evaluator.evaluate_string("(eq? 1 2)") is False
+    assert evaluator.evaluate_string("(eq? 1.0 1.1)") is False
+
+def test_primitive_eq_strings_equal(evaluator):
+    assert evaluator.evaluate_string('(eq? "hello" "hello")') is True
+    assert evaluator.evaluate_string('(eq? "" "")') is True
+
+def test_primitive_eq_strings_unequal(evaluator):
+    assert evaluator.evaluate_string('(eq? "hello" "world")') is False
+    assert evaluator.evaluate_string('(eq? "Hello" "hello")') is False # Case-sensitive
+
+def test_primitive_eq_booleans_equal(evaluator):
+    assert evaluator.evaluate_string("(eq? true true)") is True
+    assert evaluator.evaluate_string("(eq? false false)") is True
+
+def test_primitive_eq_booleans_unequal(evaluator):
+    assert evaluator.evaluate_string("(eq? true false)") is False
+
+def test_primitive_eq_symbols_equal(evaluator):
+    assert evaluator.evaluate_string("(eq? (quote foo) (quote foo))") is True
+    # Test with bound symbols
+    env = SexpEnvironment(bindings={'a': Symbol('id1'), 'b': Symbol('id1')})
+    assert evaluator.evaluate_string("(eq? a b)", env) is True
+
+def test_primitive_eq_symbols_unequal(evaluator):
+    assert evaluator.evaluate_string("(eq? (quote foo) (quote bar))") is False
+    env = SexpEnvironment(bindings={'a': Symbol('id1'), 'b': Symbol('id2')})
+    assert evaluator.evaluate_string("(eq? a b)", env) is False
+
+def test_primitive_eq_none_equal(evaluator):
+    # Assuming 'nil' symbol (parsed by sexpdata) evaluates to Python None
+    # if SexpParser configured nil=None, or if it's used directly.
+    # If nil parses to [], then test (eq? '() '())
+    assert evaluator.evaluate_string("(eq? nil nil)") is True # if nil is Python None
+    # Also test with an actual None value in the environment
+    env_with_none = SexpEnvironment(bindings={"my_none": None})
+    assert evaluator.evaluate_string("(eq? my_none nil)", env_with_none) is True
+
+def test_primitive_eq_lists_equal_structurally(evaluator):
+    assert evaluator.evaluate_string("(eq? (list 1 2) (list 1 2))") is True
+    assert evaluator.evaluate_string("(eq? (list (list 'a') 'b') (list (list 'a') 'b'))") is True
+    assert evaluator.evaluate_string("(eq? (list) (list))") is True
+    assert evaluator.evaluate_string("(eq? '() '())") is True # Quoted empty lists
+
+def test_primitive_eq_lists_unequal_structurally(evaluator):
+    assert evaluator.evaluate_string("(eq? (list 1 2) (list 1 3))") is False
+    assert evaluator.evaluate_string("(eq? (list 1 2) (list 1))") is False
+    assert evaluator.evaluate_string("(eq? (list) (list 1))") is False
+
+def test_primitive_eq_different_types_unequal(evaluator):
+    assert evaluator.evaluate_string('(eq? "1" 1)') is False
+    assert evaluator.evaluate_string("(eq? true (quote true))") is False # bool vs Symbol
+    assert evaluator.evaluate_string("(eq? nil false)") is False
+    assert evaluator.evaluate_string("(eq? (list 1) 1)") is False
+
+def test_primitive_eq_arity_errors(evaluator):
+    with pytest.raises(SexpEvaluationError, match="'eq\\?' requires exactly two arguments"):
+        evaluator.evaluate_string("(eq? 1)")
+    with pytest.raises(SexpEvaluationError, match="'eq\\?' requires exactly two arguments"):
+        evaluator.evaluate_string("(eq? 1 2 3)")
+    with pytest.raises(SexpEvaluationError, match="'eq\\?' requires exactly two arguments"):
+        evaluator.evaluate_string("(eq?)")
+
+# --- Tests for null? (and nil?) ---
+def test_primitive_null_is_true_for_none(evaluator):
+    assert evaluator.evaluate_string("(null? nil)") is True # If nil evaluates to None
+    env_with_none = SexpEnvironment(bindings={"my_val": None})
+    assert evaluator.evaluate_string("(null? my_val)", env_with_none) is True
+    assert evaluator.evaluate_string("(nil? nil)") is True # Alias
+
+def test_primitive_null_is_true_for_empty_list(evaluator):
+    assert evaluator.evaluate_string("(null? (list))") is True
+    assert evaluator.evaluate_string("(null? '())") is True # Quoted empty list
+    assert evaluator.evaluate_string("(nil? (list))") is True # Alias
+
+def test_primitive_null_is_false_for_non_nulls(evaluator):
+    assert evaluator.evaluate_string("(null? 0)") is False
+    assert evaluator.evaluate_string("(null? 1)") is False
+    assert evaluator.evaluate_string('(null? "")') is False
+    assert evaluator.evaluate_string('(null? "text")') is False
+    assert evaluator.evaluate_string("(null? true)") is False
+    assert evaluator.evaluate_string("(null? false)") is False
+    assert evaluator.evaluate_string("(null? (quote a_symbol))") is False
+    assert evaluator.evaluate_string("(null? (list 1))") is False
+
+def test_primitive_null_arity_errors(evaluator):
+    with pytest.raises(SexpEvaluationError, match="'null\\?' requires exactly one argument"):
+        evaluator.evaluate_string("(null?)")
+    with pytest.raises(SexpEvaluationError, match="'null\\?' requires exactly one argument"):
+        evaluator.evaluate_string("(null? nil nil)")
+
+def test_primitive_null_with_get_field_missing(evaluator):
+    # Assuming get-field returns None for missing fields
+    assert evaluator.evaluate_string("(null? (get-field (list) \"non_existent_key\"))") is True
+    # If get-field raises error, this test would need to change
+
+# --- Tests for set! ---
+def test_primitive_set_bang_updates_local_var(evaluator):
+    env = SexpEnvironment(bindings={'x': 10})
+    result = evaluator.evaluate_string("(set! x 20)", env)
+    assert result == 20
+    assert env.lookup('x') == 20
+
+def test_primitive_set_bang_updates_parent_var(evaluator):
+    parent_env = SexpEnvironment(bindings={'y': 100})
+    child_env = parent_env.extend({})
+    result = evaluator.evaluate_string("(set! y 200)", child_env)
+    assert result == 200
+    assert parent_env.lookup('y') == 200
+    assert child_env.lookup('y') == 200 # Sees parent update
+
+def test_primitive_set_bang_updates_grandparent_var(evaluator):
+    grandparent_env = SexpEnvironment(bindings={'z': 50})
+    parent_env = grandparent_env.extend({})
+    child_env = parent_env.extend({})
+    result = evaluator.evaluate_string("(set! z 500)", child_env)
+    assert result == 500
+    assert grandparent_env.lookup('z') == 500
+
+def test_primitive_set_bang_error_unbound_symbol(evaluator):
+    env = SexpEnvironment()
+    with pytest.raises(SexpEvaluationError, match="Cannot 'set!' unbound symbol: unbound_var"):
+        evaluator.evaluate_string("(set! unbound_var 10)", env)
+
+def test_primitive_set_bang_arity_errors(evaluator):
+    with pytest.raises(SexpEvaluationError, match="'set!' requires exactly two arguments"):
+        evaluator.evaluate_string("(set! x)")
+    with pytest.raises(SexpEvaluationError, match="'set!' requires exactly two arguments"):
+        evaluator.evaluate_string("(set! x 1 2)")
+
+def test_primitive_set_bang_error_target_not_symbol(evaluator):
+    with pytest.raises(SexpEvaluationError, match="'set!' first argument must be a symbol"):
+        evaluator.evaluate_string('(set! "x" 10)')
+    with pytest.raises(SexpEvaluationError, match="'set!' first argument must be a symbol"):
+        evaluator.evaluate_string("(set! 10 10)")
+
+# --- Tests for + ---
+def test_primitive_add_various_cases(evaluator):
+    assert evaluator.evaluate_string("(+ 1 2)") == 3
+    assert evaluator.evaluate_string("(+ 1.0 2.5)") == 3.5
+    assert evaluator.evaluate_string("(+ 1 2.5)") == 3.5
+    assert evaluator.evaluate_string("(+ 10 20 30 40)") == 100
+    assert evaluator.evaluate_string("(+ 5)") == 5
+    assert evaluator.evaluate_string("(+)") == 0
+    assert evaluator.evaluate_string("(+ -1 1)") == 0
+
+def test_primitive_add_error_non_numeric(evaluator):
+    with pytest.raises(SexpEvaluationError, match="must be a number"):
+        evaluator.evaluate_string('(+ 1 "two")')
+    with pytest.raises(SexpEvaluationError, match="must be a number"):
+        evaluator.evaluate_string("(+ true 1)")
+
+# --- Tests for - ---
+def test_primitive_subtract_various_cases(evaluator):
+    assert evaluator.evaluate_string("(- 10 3)") == 7
+    assert evaluator.evaluate_string("(- 10.5 3.0)") == 7.5
+    assert evaluator.evaluate_string("(- 10 3.5)") == 6.5
+    assert evaluator.evaluate_string("(- 5)") == -5
+    assert evaluator.evaluate_string("(- 0 5)") == -5
+    assert evaluator.evaluate_string("(- -5 -2)") == -3
+
+def test_primitive_subtract_arity_errors(evaluator):
+    with pytest.raises(SexpEvaluationError, match="'-' requires one or two numeric arguments"):
+        evaluator.evaluate_string("(-)")
+    with pytest.raises(SexpEvaluationError, match="'-' requires one or two numeric arguments"):
+        evaluator.evaluate_string("(- 1 2 3)")
+
+def test_primitive_subtract_error_non_numeric(evaluator):
+    with pytest.raises(SexpEvaluationError, match="must be a number"):
+        evaluator.evaluate_string('(- 10 "three")')
+    with pytest.raises(SexpEvaluationError, match="must be a number"):
+        evaluator.evaluate_string("(- true)")
+    with pytest.raises(SexpEvaluationError, match="must be a number"):
+        evaluator.evaluate_string("(- 10 false)")

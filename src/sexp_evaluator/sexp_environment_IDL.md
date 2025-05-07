@@ -25,6 +25,17 @@ module src.sexp_evaluator.sexp_environment {
         // Preconditions: name is a symbol string, value is the evaluated result.
         void define(string name, Any value);
 
+        // Sets the value of an *existing* variable in the current or an ancestor scope.
+        // Preconditions:
+        // - name is a symbol string representing an existing, bound variable.
+        // - value is the new evaluated result for the variable.
+        // Behavior:
+        // - Searches for the variable 'name' starting from the current environment
+        //   and going up the parent chain. The first binding found is updated.
+        // - This allows modification of variables in outer scopes, as used by `set!`.
+        // @raises_error(condition="UnboundSymbolError", description="If symbol 'name' is not found in any accessible scope.")
+        void set_value_in_scope(string name, Any value);
+
         // Creates a new child environment extending this one.
         // Preconditions: bindings is a dictionary for the child scope.
         // Behavior:
