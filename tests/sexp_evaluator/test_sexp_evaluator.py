@@ -2159,3 +2159,180 @@ def test_primitive_subtract_error_non_numeric(evaluator, mock_parser):
     mock_parser.parse_string.return_value = ast3 # Set mock for the third call
     # 10 - False (0) = 10
     assert evaluator.evaluate_string(sexp_str3) == 10
+
+# --- Tests for director-evaluator-loop ---
+
+def test_director_loop_syntax_missing_clauses(evaluator, mock_parser):
+    sexp_string = "(director-evaluator-loop (max-iterations 1))"
+    # Simulate parser returning only the provided clauses
+    mock_parser.parse_string.return_value = [Symbol("director-evaluator-loop"), [Symbol("max-iterations"), 1]]
+    with pytest.raises(SexpEvaluationError, match="Missing required clauses: controller, director, evaluator, executor, initial-director-input"):
+        evaluator.evaluate_string(sexp_string)
+
+def test_director_loop_max_iterations_not_number(evaluator, mock_parser):
+    sexp_string = """
+    (director-evaluator-loop 
+      (max-iterations "one") 
+      (initial-director-input (quote "start"))
+      (director (lambda (i it) i)) 
+      (executor (lambda (p it) p)) 
+      (evaluator (lambda (e p it) e)) 
+      (controller (lambda (f p e it) (list 'stop e))))
+    """
+    # Construct AST based on the S-expression string
+    mock_parser.parse_string.return_value = [
+        Symbol("director-evaluator-loop"),
+        [Symbol("max-iterations"), "one"], # "one" is a string, not a number
+        [Symbol("initial-director-input"), [Symbol("quote"), "start"]],
+        [Symbol("director"), [Symbol("lambda"), [Symbol("i"), Symbol("it")], Symbol("i")]],
+        [Symbol("executor"), [Symbol("lambda"), [Symbol("p"), Symbol("it")], Symbol("p")]],
+        [Symbol("evaluator"), [Symbol("lambda"), [Symbol("e"), Symbol("p"), Symbol("it")], Symbol("e")]],
+        [Symbol("controller"), [Symbol("lambda"), [Symbol("f"), Symbol("p"), Symbol("e"), Symbol("it")], 
+                                [Symbol("list"), [Symbol("quote"), Symbol("stop")], Symbol("e")]]]
+    ]
+    with pytest.raises(SexpEvaluationError, match="'max-iterations' must evaluate to a non-negative integer"):
+        evaluator.evaluate_string(sexp_string)
+
+def test_director_loop_phase_fn_not_callable(evaluator, mock_parser):
+    sexp_string = """
+    (director-evaluator-loop 
+      (max-iterations 1) 
+      (initial-director-input (quote "start"))
+      (director 123) 
+      (executor (lambda (p it) p)) 
+      (evaluator (lambda (e p it) e)) 
+      (controller (lambda (f p e it) (list 'stop e))))
+    """
+    mock_parser.parse_string.return_value = [
+        Symbol("director-evaluator-loop"),
+        [Symbol("max-iterations"), 1],
+        [Symbol("initial-director-input"), [Symbol("quote"), "start"]],
+        [Symbol("director"), 123], # director expression evaluates to 123 (a number)
+        [Symbol("executor"), [Symbol("lambda"), [Symbol("p"), Symbol("it")], Symbol("p")]],
+        [Symbol("evaluator"), [Symbol("lambda"), [Symbol("e"), Symbol("p"), Symbol("it")], Symbol("e")]],
+        [Symbol("controller"), [Symbol("lambda"), [Symbol("f"), Symbol("p"), Symbol("e"), Symbol("it")], 
+                                [Symbol("list"), [Symbol("quote"), Symbol("stop")], Symbol("e")]]]
+    ]
+    with pytest.raises(SexpEvaluationError, match="'director' expression must evaluate to a callable S-expression function, got <class 'int'>"):
+        evaluator.evaluate_string(sexp_string)
+
+def test_director_loop_single_iteration_stop(evaluator, mock_parser):
+    sexp_string = """
+    (director-evaluator-loop
+      (max-iterations 5)
+      (initial-director-input (quote "start_val"))
+      (director   (lambda (current-input iter) (list 'plan-for current-input iter)))
+      (executor   (lambda (plan iter) (list 'exec-of plan iter)))
+      (evaluator  (lambda (exec-result plan iter) (list 'eval-of exec-result iter)))
+      (controller (lambda (eval-feedback plan exec-result iter) (list 'stop (list 'final eval-feedback iter))))
+    )
+    """
+    # Use the evaluator's own parser for this complex S-expression
+    mock_parser.parse_string.side_effect = evaluator.parser.parse_string
+    
+    result = evaluator.evaluate_string(sexp_string)
+    
+    expected_final_val_structure = [
+        Symbol('final'), 
+        [Symbol('eval-of'), 
+         [Symbol('exec-of'), 
+          [Symbol('plan-for'), 'start_val', 1], 
+          1], 
+         1], 
+        1
+    ]
+    assert result == expected_final_val_structure
+
+def test_director_loop_max_iterations_termination(evaluator, mock_parser):
+    sexp_string_corrected_controller = """
+    (director-evaluator-loop
+      (max-iterations 2)
+      (initial-director-input "initial")
+      (director   (lambda (current-input iter) (list 'd current-input iter)))
+      (executor   (lambda (plan iter) (list 'e plan iter)))
+      (evaluator  (lambda (exec-result plan iter) (list 'v exec-result iter)))
+      (controller (lambda (eval-feedback plan exec-result iter) 
+                    (list 'continue (list 'next_input_for iter))))
+    )
+    """
+    mock_parser.parse_string.side_effect = evaluator.parser.parse_string
+
+    result = evaluator.evaluate_string(sexp_string_corrected_controller)
+    expected_result = [
+        Symbol('e'), 
+        [Symbol('d'), [Symbol('next_input_for'), 1], 2], 
+        2
+    ]
+    assert result == expected_result
+
+def test_director_loop_max_iterations_zero(evaluator, mock_parser):
+    sexp_string = """
+    (director-evaluator-loop
+      (max-iterations 0)
+      (initial-director-input "initial")
+      (director   (lambda (ci iter) (log-message "director should not run")))
+      (executor   (lambda (p iter)  (log-message "executor should not run")))
+      (evaluator  (lambda (er p iter) (log-message "evaluator should not run")))
+      (controller (lambda (ef p er iter) (log-message "controller should not run")))
+    )
+    """
+    mock_parser.parse_string.side_effect = evaluator.parser.parse_string
+    result = evaluator.evaluate_string(sexp_string)
+    assert result == [] 
+
+def test_director_loop_controller_malformed_decision_not_list(evaluator, mock_parser):
+    sexp_string = """
+    (director-evaluator-loop
+      (max-iterations 1) (initial-director-input "start")
+      (director (lambda (i it) i)) (executor (lambda (p it) p)) (evaluator (lambda (e p it) e))
+      (controller (lambda (f p e it) "stop")) 
+    )
+    """
+    mock_parser.parse_string.side_effect = evaluator.parser.parse_string
+    with pytest.raises(SexpEvaluationError, match="Controller must return a list of \\(action_symbol value\\)"):
+        evaluator.evaluate_string(sexp_string)
+
+def test_director_loop_error_in_phase_function_propagates(evaluator, mock_parser):
+    sexp_string = """
+    (director-evaluator-loop
+      (max-iterations 1) (initial-director-input "start")
+      (director (lambda (i it) (undefined-function i))) 
+      (executor (lambda (p it) p)) (evaluator (lambda (e p it) e)) (controller (lambda (f p e it) (list 'stop e)))
+    )
+    """
+    mock_parser.parse_string.side_effect = evaluator.parser.parse_string
+    with pytest.raises(SexpEvaluationError, match="Error in 'director' phase.*Unbound symbol or unrecognized operator: undefined-function"):
+        evaluator.evaluate_string(sexp_string)
+        
+def test_director_loop_integration_with_get_field_and_eq(evaluator, mock_parser):
+    sexp_string = """
+    (director-evaluator-loop
+      (max-iterations 3)
+      (initial-director-input (list (list 'status "initial") (list 'data 0)))
+      (director (lambda (current-input iter) 
+                  (log-message "Director: current_input=" current-input "iter=" iter)
+                  current-input)) 
+      (executor (lambda (plan iter) 
+                  (log-message "Executor: plan=" plan "iter=" iter)
+                  (if (< (get-field plan "data") 2)
+                      (list (list 'status "pending") (list 'data (+ (get-field plan "data") 1)))
+                      (list (list 'status "done") (list 'data (get-field plan "data"))))))
+      (evaluator (lambda (exec-result plan iter) 
+                   (log-message "Evaluator: exec_result=" exec-result "iter=" iter)
+                   exec-result)) 
+      (controller (lambda (eval-feedback plan exec-result iter)
+                    (log-message "Controller: eval_feedback=" eval-feedback "iter=" iter)
+                    (if (string=? (get-field eval-feedback "status") "done")
+                        (list 'stop exec-result) 
+                        (list 'continue eval-feedback)))) 
+    )
+    """
+    mock_parser.parse_string.side_effect = evaluator.parser.parse_string 
+
+    result = evaluator.evaluate_string(sexp_string)
+    
+    expected_result = [
+        [Symbol('status'), "done"],
+        [Symbol('data'), 2]
+    ]
+    assert result == expected_result
