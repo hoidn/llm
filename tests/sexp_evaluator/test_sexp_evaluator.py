@@ -1108,25 +1108,31 @@ class TestSexpEvaluatorInternals:
         env = SexpEnvironment()
         expr_list = [Symbol("if"), Symbol("true"), 1, 0] # AST for (if true 1 0)
         original_expr_str_expected = str(expr_list) 
-        
-        # These are the arguments as they would be passed to the special form handler
         arg_exprs_for_handler = expr_list[1:] # [Symbol("true"), 1, 0]
 
-        # Patch the 'handle_if_form' method on the 'special_form_processor' instance
-        mock_if_handler_on_processor = mocker.patch.object(
-            evaluator.special_form_processor, 
-            'handle_if_form',          
-            return_value="if_result"
-        )
+        # Create a new mock for the handler function itself
+        mock_if_handler_function = mocker.MagicMock(return_value="if_result")
         
-        # Call _eval_list_form directly for this internal test
-        result = evaluator._eval_list_form(expr_list, env) 
-    
-        assert result == "if_result"
-        # Assert that the mock on the processor was called
-        mock_if_handler_on_processor.assert_called_once_with(
-            arg_exprs_for_handler, env, original_expr_str_expected
-        )
+        # Temporarily replace the entry in the evaluator's dispatch table
+        original_handler = evaluator.SPECIAL_FORM_HANDLERS.get('if')
+        evaluator.SPECIAL_FORM_HANDLERS['if'] = mock_if_handler_function
+        
+        try:
+            # Call _eval_list_form directly for this internal test
+            result = evaluator._eval_list_form(expr_list, env) 
+        
+            assert result == "if_result"
+            # Assert that the new mock function (placed in the dispatch table) was called
+            mock_if_handler_function.assert_called_once_with(
+                arg_exprs_for_handler, env, original_expr_str_expected
+            )
+        finally:
+            # Restore original handler if it existed, otherwise remove the mock
+            if original_handler:
+                evaluator.SPECIAL_FORM_HANDLERS['if'] = original_handler
+            elif 'if' in evaluator.SPECIAL_FORM_HANDLERS: # Check if key exists before del
+                del evaluator.SPECIAL_FORM_HANDLERS['if']
+
 
     def test_eval_list_form_evaluates_operator_and_applies(self, evaluator, mocker):
         """Test _eval_list_form evaluates operator then calls _apply_operator for non-special forms."""
@@ -1166,22 +1172,24 @@ class TestSexpEvaluatorInternals:
         original_call_expr_str = "(list 1 2)"
         arg_expr_nodes = [1, 2] # Unevaluated argument expressions for the primitive
 
-        # Mock the primitive applier method on the primitive_processor instance
-        mock_list_applier_on_processor = mocker.patch.object(
-            evaluator.primitive_processor, 
-            'apply_list_primitive', 
-            return_value="list_applied"
-        )
+        # Create a new mock for the applier function
+        mock_list_applier_function = mocker.MagicMock(return_value="list_applied")
         
-        # Ensure the main dispatcher in SexpEvaluator uses this mocked applier
-        # This is implicitly handled if PRIMITIVE_APPLIERS points to instance methods
-        # of primitive_processor, which it does.
+        # Temporarily replace the entry in the evaluator's dispatch table
+        original_applier = evaluator.PRIMITIVE_APPLIERS.get('list')
+        evaluator.PRIMITIVE_APPLIERS['list'] = mock_list_applier_function
+        
+        try:
+            result = evaluator._apply_operator("list", arg_expr_nodes, env, original_call_expr_str)
+            assert result == "list_applied"
+            # Primitive applier receives unevaluated arg expressions, current env, and original call string
+            mock_list_applier_function.assert_called_once_with(arg_expr_nodes, env, original_call_expr_str)
+        finally:
+            if original_applier:
+                evaluator.PRIMITIVE_APPLIERS['list'] = original_applier
+            elif 'list' in evaluator.PRIMITIVE_APPLIERS: # Check if key exists
+                del evaluator.PRIMITIVE_APPLIERS['list']
 
-        result = evaluator._apply_operator("list", arg_expr_nodes, env, original_call_expr_str)
-        
-        assert result == "list_applied"
-        # Primitive applier receives unevaluated arg expressions, current env, and original call string
-        mock_list_applier_on_processor.assert_called_once_with(arg_expr_nodes, env, original_call_expr_str)
 
     def test_apply_operator_dispatches_task(self, evaluator, mock_task_system, mocker):
         env = SexpEnvironment()
@@ -1286,9 +1294,9 @@ class TestSexpEvaluatorInternals:
         system_underlying_mock = getattr(evaluator, underlying_system_mock_name)
 
         if helper_method_name == "_invoke_task_system":
-            mock_system_call = mocker.patch.object(system_underlying_mock, 'execute_atomic_template', return_value=TaskResult(status="COMPLETE"))
+            mock_system_call = mocker.patch.object(system_underlying_mock, 'execute_atomic_template', return_value=TaskResult(status="COMPLETE", content="mock content"))
         else: # _invoke_handler_tool
-            mock_system_call = mocker.patch.object(system_underlying_mock, '_execute_tool', return_value=TaskResult(status="COMPLETE"))
+            mock_system_call = mocker.patch.object(system_underlying_mock, '_execute_tool', return_value=TaskResult(status="COMPLETE", content="mock content"))
             if target_name not in evaluator.handler.tool_executors: # Ensure tool exists for handler
                  evaluator.handler.tool_executors[target_name] = MagicMock()
 
@@ -1331,9 +1339,9 @@ class TestSexpEvaluatorInternals:
         
         system_underlying_mock = getattr(evaluator, underlying_system_mock_name)
         if helper_method_name == "_invoke_task_system":
-            mock_system_call = mocker.patch.object(system_underlying_mock, 'execute_atomic_template', return_value=TaskResult(status="COMPLETE"))
+            mock_system_call = mocker.patch.object(system_underlying_mock, 'execute_atomic_template', return_value=TaskResult(status="COMPLETE", content="mock content"))
         else:
-            mock_system_call = mocker.patch.object(system_underlying_mock, '_execute_tool', return_value=TaskResult(status="COMPLETE"))
+            mock_system_call = mocker.patch.object(system_underlying_mock, '_execute_tool', return_value=TaskResult(status="COMPLETE", content="mock content"))
             if target_name not in evaluator.handler.tool_executors:
                  evaluator.handler.tool_executors[target_name] = MagicMock()
 
@@ -1370,7 +1378,10 @@ class TestSexpEvaluatorInternals:
         
         helper_method_to_call = getattr(evaluator, helper_method_name)
         
-        expected_error_match = r"'files' argument .* must evaluate to a list of strings"
+        expected_error_match_key = "files"
+        expected_error_match_target = target_name
+        expected_error_match = rf"'{expected_error_match_key}' argument for (task|tool) '{expected_error_match_target}' must evaluate to a list of strings"
+
         with pytest.raises(SexpEvaluationError, match=expected_error_match):
             if helper_method_name == "_invoke_task_system":
                 helper_method_to_call(target_name, template_def_if_task, unevaluated_arg_exprs_for_helper, env, original_expr_str)
@@ -1393,7 +1404,10 @@ class TestSexpEvaluatorInternals:
         
         helper_method_to_call = getattr(evaluator, helper_method_name)
         
-        expected_error_match = r"'context' argument .* must evaluate to a dictionary or a list of pairs"
+        expected_error_match_key = "context"
+        expected_error_match_target = target_name
+        expected_error_match = rf"'{expected_error_match_key}' argument for (task|tool) '{expected_error_match_target}' must evaluate to a dictionary or a list of pairs"
+
         with pytest.raises(SexpEvaluationError, match=expected_error_match):
             if helper_method_name == "_invoke_task_system":
                 helper_method_to_call(target_name, template_def_if_task, unevaluated_arg_exprs_for_helper, env, original_expr_str)

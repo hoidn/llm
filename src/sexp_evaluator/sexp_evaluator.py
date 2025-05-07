@@ -502,6 +502,23 @@ class SexpEvaluator:
                 logging.exception(f"  _invoke_handler_tool: Unexpected error evaluating value for key '{key_str}' ('{value_expr_node}'): {e_val_eval}")
                 raise SexpEvaluationError(f"Unexpected error evaluating value for '{key_str}' in tool '{tool_name}': {value_expr_node}", original_expr_str, error_details=str(e_val_eval)) from e_val_eval
             
+            if key_str == "files":
+                if not (isinstance(evaluated_value, list) and all(isinstance(item, str) for item in evaluated_value)):
+                    raise SexpEvaluationError(f"'files' argument for tool '{tool_name}' must evaluate to a list of strings, got {type(evaluated_value)}: {evaluated_value!r}", original_expr_str)
+                # For tools, 'files' is just another named parameter.
+            elif key_str == "context":
+                context_dict_for_tool: Optional[Dict[str, Any]] = None
+                if isinstance(evaluated_value, list) and all(isinstance(p, list) and len(p)==2 for p in evaluated_value):
+                    try:
+                        context_dict_for_tool = { (pair[0].value() if isinstance(pair[0], Symbol) else str(pair[0])): pair[1] for pair in evaluated_value }
+                    except Exception as e_conv:
+                         raise SexpEvaluationError(f"Failed converting 'context' list {evaluated_value!r} to dict for tool '{tool_name}': {e_conv}", original_expr_str) from e_conv
+                elif isinstance(evaluated_value, dict):
+                    context_dict_for_tool = evaluated_value
+                else:
+                    raise SexpEvaluationError(f"'context' argument for tool '{tool_name}' must evaluate to a dictionary or a list of pairs, got {type(evaluated_value)}: {evaluated_value!r}", original_expr_str)
+                evaluated_value = context_dict_for_tool # Store the processed dictionary
+
             named_params[key_str] = evaluated_value
         
         logging.debug(f"  Invoking direct tool '{tool_name}' with named_params: {named_params}")
