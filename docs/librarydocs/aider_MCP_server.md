@@ -4,6 +4,12 @@
 
 Aider MCP Server is an experimental project that enables Claude Code to offload AI coding tasks to Aider, an open-source AI coding assistant. This integration allows Claude Code to delegate coding tasks through a Model Context Protocol (MCP) server, resulting in reduced costs, more control over the coding model used, and enabling Claude Code to work in an orchestrative way to review and revise code.
 
+## Prerequisites and Operational Requirements
+
+- **Git Repository Requirement**: The Aider MCP Server process **MUST** be launched with its current working directory set to the root of a valid Git repository. Failure to do so will result in a startup error.
+- **API Keys**: Valid API keys for the AI models you intend to use must be configured (via environment variables or .env file)
+- **Python Environment**: Python 3.10+ with required dependencies installed
+
 ## Project Structure
 
 ```
