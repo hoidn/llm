@@ -262,6 +262,10 @@ class SexpEvaluator:
                 logger.exception(f"  _eval_list_form: Error evaluating complex operator expression '{op_expr_node}': {e_op_eval}")
                 if isinstance(e_op_eval, SexpEvaluationError): raise 
                 raise SexpEvaluationError(f"Error evaluating operator expression: {op_expr_node}", original_expr_str, error_details=str(e_op_eval)) from e_op_eval
+        elif isinstance(op_expr_node, self.Closure) or callable(op_expr_node):
+            # If op_expr_node is already a Closure or another Python callable (e.g., passed via environment)
+            logger.debug(f"  _eval_list_form: Operator is already a resolved callable (type: {type(op_expr_node)}).")
+            resolved_operator = op_expr_node
         else: 
             raise SexpEvaluationError(f"Operator in list form must be a symbol or another list, got {type(op_expr_node)}: {op_expr_node}", original_expr_str)
 
