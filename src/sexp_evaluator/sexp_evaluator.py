@@ -332,9 +332,25 @@ class SexpEvaluator:
             logger.debug(f"  _apply_operator: Operator is a name string: '{op_name_str}'")
 
             if op_name_str in self.PRIMITIVE_APPLIERS:
-                logger.debug(f"  _apply_operator: Dispatching to Primitive Applier: {op_name_str}")
+                logger.info(f"  _apply_operator: Dispatching to Primitive Applier: {op_name_str}")
                 applier_method = self.PRIMITIVE_APPLIERS[op_name_str]
-                return applier_method(arg_expr_nodes, calling_env, original_call_expr_str)
+                
+                # Add specific try-except and logging for primitive calls
+                try:
+                    result = applier_method(arg_expr_nodes, calling_env, original_call_expr_str)
+                    logger.info(f"  _apply_operator: Primitive '{op_name_str}' applier returned: {result!r} (Type: {type(result).__name__})")
+                    return result
+                except SexpEvaluationError as e_prim:
+                    logger.warning(f"  _apply_operator: Primitive '{op_name_str}' applier RAISED SexpEvaluationError: {e_prim}")
+                    raise  # Re-raise SexpEvaluationError directly
+                except Exception as e_prim_unknown:
+                    logger.exception(f"  _apply_operator: Primitive '{op_name_str}' applier RAISED UNEXPECTED Exception: {e_prim_unknown}")
+                    # Wrap unexpected exceptions in SexpEvaluationError
+                    raise SexpEvaluationError(
+                        f"Unexpected error in primitive '{op_name_str}': {e_prim_unknown}",
+                        original_call_expr_str,
+                        error_details=str(e_prim_unknown)
+                    ) from e_prim_unknown
 
             template_def = self.task_system.find_template(op_name_str)
             if template_def and template_def.get("type") == "atomic":
