@@ -457,20 +457,25 @@ class SpecialFormProcessor:
             def invoke_phase(phase_name_str: str, func_to_call: Any, args_list: List[Any]) -> Any:
                 logger.debug(f"    Invoking {phase_name_str} with args: {args_list}")
                 try:
-                    def to_sexp_literal(val: Any) -> Any:
-                        if isinstance(val, (list, dict, Symbol)): 
-                            return [Symbol("quote"), val]
-                        return val
-
-                    # Construct call expression: (closure_obj_or_callable_name (quote arg1_val) (quote arg2_val) ...)
-                    # The func_to_call is already resolved (it's a Closure or Python callable).
-                    # The arguments in args_list are already Python values.
-                    # We need to pass them as literals to the S-expression call.
-                    call_expr_args = [to_sexp_literal(arg) for arg in args_list]
-                    call_expr = [func_to_call] + call_expr_args
+                    # Create "dummy" arg_expr_nodes that, when evaluated, yield our args_list.
+                    # The simplest way is to quote them if they are lists/symbols, or use them directly.
+                    # This ensures that when _apply_operator calls _eval on these "dummy" nodes,
+                    # it gets back our pre-evaluated Python values from args_list.
                     
-                    logger.debug(f"      Constructed call_expr for {phase_name_str}: {str(call_expr)[:200]}...")
-                    return self.evaluator._eval(call_expr, env)
+                    dummy_arg_expr_nodes = []
+                    for arg_val in args_list:
+                        if isinstance(arg_val, Symbol) or isinstance(arg_val, list) or isinstance(arg_val, dict):
+                            dummy_arg_expr_nodes.append([Symbol("quote"), arg_val])
+                        else:
+                            # For simple Python literals (int, str, bool, None),
+                            # _eval will return them directly.
+                            dummy_arg_expr_nodes.append(arg_val)
+                    
+                    # The original_call_expr_str for this internal call is conceptual.
+                    # It's for error reporting if something goes wrong inside the phase function's body.
+                    conceptual_call_str = f"({phase_name_str} {' '.join(map(str, args_list))})"
+                    
+                    return self.evaluator._apply_operator(func_to_call, dummy_arg_expr_nodes, env, conceptual_call_str)
 
                 except SexpEvaluationError as e_phase:
                     raise SexpEvaluationError(f"Error in '{phase_name_str}' phase (iteration {current_iteration}): {e_phase.args[0] if e_phase.args else str(e_phase)}", original_expr_str, error_details=e_phase.error_details if hasattr(e_phase, 'error_details') else str(e_phase)) from e_phase

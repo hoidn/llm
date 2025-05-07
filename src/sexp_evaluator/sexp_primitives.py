@@ -325,3 +325,21 @@ class PrimitiveProcessor:
             result = int(val1) - int(val2)
         logger.debug(f"  '-' (binary): {val1} - {val2} -> {result}")
         return result
+        
+    def apply_less_than_primitive(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> bool:
+        logger.debug(f"PrimitiveProcessor.apply_less_than_primitive: {original_expr_str}")
+        if len(arg_exprs) != 2:
+            raise SexpEvaluationError("'<' requires exactly two numeric arguments.", original_expr_str)
+
+        try:
+            val1 = self.evaluator._eval(arg_exprs[0], env)
+            val2 = self.evaluator._eval(arg_exprs[1], env)
+        except Exception as e_eval:
+            raise SexpEvaluationError(f"Error evaluating arguments for '<': {e_eval}", original_expr_str, error_details=str(e_eval)) from e_eval
+
+        if not (isinstance(val1, (int, float)) and isinstance(val2, (int, float))):
+            raise SexpEvaluationError(f"'<' arguments must be numbers. Got: {type(val1)}, {type(val2)}", original_expr_str)
+        
+        result = (val1 < val2)
+        logger.debug(f"  '<': {val1} < {val2} -> {result}")
+        return result

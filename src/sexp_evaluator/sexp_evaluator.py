@@ -96,6 +96,7 @@ class SexpEvaluator:
             "set!": self.primitive_processor.apply_set_bang_primitive,
             "+": self.primitive_processor.apply_add_primitive,
             "-": self.primitive_processor.apply_subtract_primitive,
+            "<": self.primitive_processor.apply_less_than_primitive,
         }
         logging.critical(f"SexpEvaluator INITIALIZED. PRIMITIVE_APPLIERS keys: {list(self.PRIMITIVE_APPLIERS.keys())}")
         logging.info("SexpEvaluator initialized with helper processors.")
