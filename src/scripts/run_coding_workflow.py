@@ -59,9 +59,9 @@ logger = logging.getLogger("CodingWorkflowScript")
 # S-expression to define the planning task (outputs instructions/files ONLY)
 DEFATOM_GENERATE_PLAN_S_EXPRESSION = """
 (defatom user:generate-plan-from-goal
-  (params (goal string) (context string))
+  (params (goal string) (context_string string)) ;; <<< RENAMED HERE
   (instructions
-    "Analyze the user's goal: '{{goal}}' with the provided context: '{{context}}'.
+    "Analyze the user's goal: '{{goal}}' with the provided context: '{{context_string}}'. ;; <<< RENAMED HERE
     Generate a development plan including ONLY:
     1. 'instructions': Detailed steps for an AI coder (Aider).
     2. 'files': List of relative file paths to create/modify.
@@ -108,7 +108,7 @@ MAIN_WORKFLOW_S_EXPRESSION = """
   ;; 1. Generate the Plan (Instructions/Files only)
   (let ((plan-task-result (user:generate-plan-from-goal
                             (goal initial-user-goal)
-                            (context initial-context-data))))
+                            (context_string initial-context-data)))) ;; <<< RENAMED HERE
 
     (log-message "Plan generation task. Status:" (get-field plan-task-result "status"))
     (if (string=? (get-field plan-task-result "status") "COMPLETE")
