@@ -15,20 +15,21 @@ logger = logging.getLogger(__name__)
 # --- Attempt Top-Level Import for Agent ONLY ---
 try:
     # Try importing only Agent from the top level
-    from pydantic_ai import Agent
+    from pydantic_ai import Agent, Tool as PydanticTool # Import Tool as PydanticTool
 
     _PydanticAI_Import_Success = True
     logging.debug(
-        "LLMInteractionManager: Top-level pydantic-ai import successful (Agent)."
+        "LLMInteractionManager: Top-level pydantic-ai import successful (Agent, Tool)."
     )
 except ImportError as e:
     # Log the specific import error details
     logging.error(
-        f"LLMInteractionManager: Top-level import of pydantic-ai Agent failed: {e}",
+        f"LLMInteractionManager: Top-level import of pydantic-ai Agent or Tool failed: {e}",
         exc_info=True,
     )
     # Set Agent to None if import fails
-    Agent = None  # type: ignore
+    Agent = None  
+    PydanticTool = None # type: ignore
     _PydanticAI_Import_Success = False
 # Define AIResponse as Any since we can't import it reliably
 AIResponse = Any  # type: ignore
@@ -155,7 +156,7 @@ class LLMInteractionManager:
             )
             return None
 
-    def initialize_agent(self, tools: List[Callable]) -> None:
+    def initialize_agent(self, tools: List[PydanticTool]) -> None: # Changed type hint
         """
         Initializes the pydantic-ai Agent instance with the provided tools.
         """
@@ -166,20 +167,24 @@ class LLMInteractionManager:
             raise RuntimeError(
                 "Cannot initialize agent: No model identifier configured."
             )
-        if not Agent:
+        if not Agent: # Check module-level Agent
             raise RuntimeError(
                 "Cannot initialize agent: pydantic-ai Agent class unavailable."
             )
+        if not PydanticTool and tools: # Check module-level PydanticTool if tools are provided
+            raise RuntimeError(
+                 "Cannot initialize agent with tools: pydantic_ai.Tool class unavailable."
+            )
         try:
-            # CONFIRMED (2024-07-29): pydantic-ai v0.1.18 accepts tools as list[Callable]
-            # and automatically generates schemas from type hints/docstrings.
+            # Agent constructor takes Sequence[Tool | Callable].
+            # We are now passing List[PydanticTool] which is compatible.
             self.agent = Agent(
                 model=self._model_id,
                 system_prompt=self._base_prompt,
                 tools=tools,
                 **self._agent_config,
             )
-            logging.info(f"pydantic-ai Agent initialized for model: {self._model_id}")
+            logging.info(f"pydantic-ai Agent initialized for model: {self._model_id} with {len(tools)} tools.")
         except Exception as e:
             logging.exception(f"Failed to initialize agent: {e}")
             self.agent = None
@@ -199,23 +204,13 @@ class LLMInteractionManager:
         #     self.agent.instrument(enabled=enabled) # Hypothetical instrumentation call
 
     def get_provider_identifier(self) -> Optional[str]:
-        """
-        Returns the identifier of the current LLM provider.
-
-        Returns:
-            Optional string identifying the provider (e.g., "openai:gpt-4o") or None if not available.
-        """
-        # First check if we have a valid agent
-        if not self.agent:
-            logging.debug("Agent not initialized in get_provider_identifier. Falling back to default_model_identifier.")
-            # Return the default model identifier if agent isn't ready yet
-            return self.default_model_identifier
-
-        # Return the model identifier since that contains provider information
-        # Accessing agent.model might be more direct if available and reliable
-        if hasattr(self.agent, 'model') and isinstance(self.agent.model, str):
-             return self.agent.model
-        # Fallback to the initially configured identifier
+        if self.agent and hasattr(self.agent, 'model') and isinstance(self.agent.model, str):
+            if self.agent.model:
+                return self.agent.model
+            else:
+                logging.warning("LLMInteractionManager: Agent's model attribute is an empty string. Falling back to default.")
+        if not self.default_model_identifier:
+            logging.warning("LLMInteractionManager: No default_model_identifier configured.")
         return self.default_model_identifier
 
 
