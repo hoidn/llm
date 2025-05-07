@@ -116,7 +116,6 @@ MAIN_LOOP_S_EXPRESSION = """
                             (let ((feedback-message (get-field eval-feedback "message")))
                               (list 'continue (string-append original-instructions " -- Previous attempt (iteration " iter-num ") failed or tests did not pass. Feedback: " feedback-message ". Please review and try again."))))
                           (list 'stop eval-feedback))))))) ;; Max retries reached, stop with current feedback
-)
 """
 
 def run_demo(app: Application):
