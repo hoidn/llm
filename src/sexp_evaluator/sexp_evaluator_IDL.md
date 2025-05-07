@@ -169,12 +169,14 @@ module src.sexp_evaluator.sexp_evaluator {
         //   - **Action:** Adds numbers. N-ary.
         //   - **Argument Processing:** Evaluates all `<num-expr>` arguments.
         //   - **Behavior:** Sums the evaluated numbers. If no arguments, returns 0. Promotes to float if any argument is float.
+        //     Note on Boolean Arguments: Due to the S-expression parser's behavior of converting S-expression `true` and `false` symbols to Python `True` and `False` booleans, and Python's `bool` type being a subclass of `int` (`True` is 1, `False` is 0), this primitive will treat Python boolean arguments as their integer equivalents (1 or 0) in arithmetic operations. If stricter type checking disallowing booleans is required, it must be explicitly handled within the primitive's logic beyond standard numeric type checks.
         //   - **Returns:** The sum (integer or float).
         //   - **Raises:** `SexpEvaluationError` if any argument is not a number or for evaluation errors.
         // - `(- <num-expr1> <optional-num-expr2>)`: **Primitive.**
         //   - **Action:** Subtracts numbers or negates a single number.
         //   - **Argument Processing:** Evaluates argument(s).
         //   - **Behavior:** If one argument, returns its negation. If two arguments, returns `num1 - num2`. Promotes to float.
+        //     Note on Boolean Arguments: Due to the S-expression parser's behavior of converting S-expression `true` and `false` symbols to Python `True` and `False` booleans, and Python's `bool` type being a subclass of `int` (`True` is 1, `False` is 0), this primitive will treat Python boolean arguments as their integer equivalents (1 or 0) in arithmetic operations. If stricter type checking disallowing booleans is required, it must be explicitly handled within the primitive's logic beyond standard numeric type checks.
         //   - **Returns:** The result (integer or float).
         //   - **Raises:** `SexpEvaluationError` for arity issues, if arguments are not numbers, or for evaluation errors.
         //
