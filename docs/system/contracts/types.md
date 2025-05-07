@@ -301,6 +301,12 @@ interface SubtaskRequest {
      * Takes precedence over context management fetching for these specific files.
      */
     file_paths?: string[];
+    
+    /**
+     * Optional settings to control conversational history usage for this subtask invocation.
+     * Overrides any settings from the task template.
+     */
+    history_config?: HistoryConfigSettings; // Use the newly defined type
 }
 
 /**

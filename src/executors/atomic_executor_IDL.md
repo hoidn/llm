@@ -23,6 +23,7 @@ module src.executors.atomic_executor {
         //   to their evaluated values (from SubtaskRequest). Values can be simple types or complex objects/dictionaries
         //   (e.g., ContextGenerationInput dict, file content dict/string).
         // - handler is a valid BaseHandler instance to use for LLM execution.
+        // - history_config is an optional HistoryConfigSettings object to control conversational history usage.
         // Postconditions:
         // - Returns a TaskResult dictionary representing the outcome of the atomic task execution (typically from the Handler call).
         // Behavior:
@@ -30,6 +31,7 @@ module src.executors.atomic_executor {
         // - **Substitution Mechanism:** Uses a simple regular expression (`\{\{([\w.]+)\}\}`) to find placeholders. It converts the resolved parameter value to a string using `str()` before insertion. **Crucially, this mechanism does NOT support template engine features like filters (e.g., `{{ my_var | filter }}`) or complex logic within placeholders.** Placeholders must strictly match the `{{word.characters.or.dots}}` pattern.
         // - Substitution ONLY uses the key-value pairs provided in the `params` dictionary. Access to the caller's wider environment or any variables not explicitly passed in `params` is forbidden.
         // - Constructs the final HandlerPayload (prompts, model info from def, tools if applicable).
+        // - It receives HistoryConfigSettings via the history_config parameter. These settings are passed through to the handler._execute_llm_call method to control conversational history usage for the LLM interaction.
         // - Invokes the appropriate method on the provided `handler` instance (e.g., `handler._execute_llm_call`).
         // - May perform output parsing/validation based on `atomic_task_def.output_format`.
         // - Returns the TaskResult from the handler, potentially adding output parsing info to notes.
@@ -37,7 +39,12 @@ module src.executors.atomic_executor {
         // @raises_error(condition="TASK_FAILURE", description="Propagated from the handler call if LLM execution fails.")
         // Expected JSON format for params: { "param_name": "value", ... }
         // Expected JSON format for return value: TaskResult structure { "status": "string", "content": "Any", "notes": { ... } }
-        dict<string, Any> execute_body(object atomic_task_def, dict<string, Any> params, object handler); // Args represent ParsedAtomicTask, ParamsDict, BaseHandler
+        dict<string, Any> execute_body(
+            object atomic_task_def, 
+            dict<string, Any> params, 
+            object handler,
+            optional object history_config // Arg represents HistoryConfigSettings
+        ); // Args represent ParsedAtomicTask, ParamsDict, BaseHandler, HistoryConfigSettings
     };
 };
 // == !! END IDL TEMPLATE !! ===

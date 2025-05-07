@@ -997,6 +997,7 @@ class SexpEvaluator:
         named_params: Dict[str, Any] = {}
         file_paths: Optional[List[str]] = None
         context_settings_dict: Optional[Dict[str, Any]] = None # Store as dict first
+        history_config_dict: Optional[Dict[str, Any]] = None # Store history config as dict first
 
         for i, arg_expr_pair in enumerate(arg_exprs): # Iterate over the unevaluated arg expressions
             if not (isinstance(arg_expr_pair, list) and len(arg_expr_pair) == 2 and isinstance(arg_expr_pair[0], Symbol)):
@@ -1039,6 +1040,18 @@ class SexpEvaluator:
                     context_settings_dict = evaluated_value
                 else:
                     raise SexpEvaluationError(f"'context' argument for task '{task_name}' must evaluate to a dictionary or a list of pairs, got {type(evaluated_value)}: {evaluated_value!r}", original_expr_str)
+            elif key_str == "history_config":
+                # Value for 'history_config' should be a list of pairs (from quote) or a dict (from var)
+                if isinstance(evaluated_value, list) and all(isinstance(p, list) and len(p)==2 for p in evaluated_value):
+                    try:
+                        # Convert list of pairs (key_node, value_already_eval_from_quote) to dict
+                        history_config_dict = { (pair[0].value() if isinstance(pair[0], Symbol) else str(pair[0])): pair[1] for pair in evaluated_value }
+                    except Exception as e_conv:
+                         raise SexpEvaluationError(f"Failed converting 'history_config' list {evaluated_value!r} to dict for task '{task_name}': {e_conv}", original_expr_str) from e_conv
+                elif isinstance(evaluated_value, dict):
+                    history_config_dict = evaluated_value
+                else:
+                    raise SexpEvaluationError(f"'history_config' argument for task '{task_name}' must evaluate to a dictionary or a list of pairs, got {type(evaluated_value)}: {evaluated_value!r}", original_expr_str)
             else: # Regular named parameter
                 named_params[key_str] = evaluated_value
         
@@ -1055,7 +1068,8 @@ class SexpEvaluator:
             name=task_name,
             inputs=named_params,
             file_paths=file_paths,
-            context_management=context_mgmt_obj
+            context_management=context_mgmt_obj,
+            history_config=history_config_dict  # Add history_config to the request
         )
         logging.debug(f"  Constructed SubtaskRequest for '{task_name}': {request.model_dump_json(indent=2)}")
 
