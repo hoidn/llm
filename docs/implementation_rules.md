@@ -282,6 +282,25 @@ This document outlines the standard conventions, patterns, and rules for impleme
     *   **[NEW] Testing Serialized/Dumped Structures:** When asserting the structure of complex return values, especially dictionaries derived from Pydantic models (like `TaskResult` containing nested error objects), be mindful of how serialization (`.model_dump(exclude_none=True)`, `json.dumps()`) affects the output. **Assert against the actual structure and keys present in the *returned dictionary*, not just the conceptual object structure.** Nested models might result in nested dictionaries. If assertions fail unexpectedly on structure, use debugging (`print()`, `breakpoint()`) to inspect the actual dictionary returned by the code under test before the assertion.
 *   **Unit Test Complex Logic:** While integration tests are prioritized, complex internal algorithms or utility functions (e.g., parameter substitution, complex parsing, intricate validation logic) should have dedicated unit tests with broad coverage of inputs and edge cases.
 
+**7.Y Testing Layered Systems (e.g., Parsers, Interpreters, Compilers)**
+
+When testing systems composed of distinct processing layers (e.g., Lexer -> Parser -> AST -> Evaluator/Interpreter), adopt the following practices to improve test reliability and fault isolation:
+
+*   **7.Y.1. Test Layers Independently:**
+    *   Strive to unit test each layer in isolation. For example, test your Parser thoroughly to ensure it correctly transforms input strings into the specified AST structure, independently of how the Evaluator might later process that AST.
+
+*   **7.Y.2. Verify and Document Parser/Transformer Output:**
+    *   For components like parsers or data transformers, explicitly document the expected output structure (e.g., the AST format, specific type conversions) for various inputs.
+    *   Write dedicated tests to verify that the parser/transformer produces these exact structures and performs documented conversions (e.g., S-expression `true` symbol to Python `True` boolean).
+
+*   **7.Y.3. Use Verified Outputs for Downstream Layer Tests:**
+    *   When testing a downstream layer (e.g., an AST Evaluator), its unit tests should ideally consume inputs that match the *verified output format* of the preceding layer (e.g., the Parser).
+    *   **Preferred:** If feasible, use the actual (mocked if necessary for speed) preceding layer component to generate inputs for the layer under test.
+    *   **Alternative:** If manually constructing inputs (like ASTs for an evaluator test), ensure these manually created structures precisely match what the real preceding layer would produce for the conceptual input they represent. Discrepancies here can lead to tests passing with unrealistic inputs or failing due to subtle differences.
+
+*   **7.Y.4. Understand Data Transformations Between Layers:**
+    *   Be explicit about any data transformations or type conversions that occur at the boundary of each layer. For instance, if a parser converts the S-expression symbol `true` to a Python boolean `True`, ensure downstream layers (like S-expression primitives) and their tests correctly anticipate receiving a Python `True` object, not a symbol.
+
 **[NEW] Debugging Mock Failures**
 
 *   **`AttributeError: Mock object has no attribute 'x'`**: The code under test tried to access attribute `x` on a mock instance. Ensure your test fixture or setup configures the mock instance with `mock_instance.x = ...` *before* the code under test runs. Use `spec=OriginalClass` when creating mocks (`MagicMock(spec=...)`) to help catch attribute typos.
