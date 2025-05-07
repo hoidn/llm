@@ -12,16 +12,13 @@ This script orchestrates a simplified coding task:
 
 Usage:
     python src/scripts/director_loop_coding_demo.py
-    python src/scripts/director_loop_coding_demo.py --keep-workspace
 """
 import argparse
 import json
 import logging
 import os
 import pathlib
-import shutil
 import sys
-import tempfile
 
 # Add the project root to the Python path
 PROJECT_ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
@@ -55,9 +52,9 @@ DEFATOM_GENERATE_PLAN_S_EXPRESSION = """
   (instructions 
     "You are a helpful AI assistant. Your task is to generate a development plan based on the user's request.
     The plan should include:
-    1. 'instructions': Detailed, step-by-step instructions for a junior developer (or an AI coding assistant like Aider) to implement the request. These instructions should be clear and actionable.
-    2. 'files': A list of ALL file paths that need to be created or modified to implement the plan. These paths should be relative to the root of a temporary workspace (e.g., 'math_util.py', 'test_math_util.py').
-    3. 'test_command': A single shell command string that can be executed from the root of the temporary workspace to run all tests and verify the implementation. This command should exit with 0 on success and non-zero on failure.
+    1. 'instructions': Detailed, step-by-step instructions for an AI coding assistant like Aider to implement the request. These instructions should be clear and actionable.
+    2. 'files': A list of ALL file paths that need to be created or modified to implement the plan. These paths should be relative to the root of the current project workspace (e.g., 'src/new_module/file.py', 'tests/new_module/test_file.py').
+    3. 'test_command': A single shell command string that can be executed from the root of the current project workspace to run all tests and verify the implementation. This command should exit with 0 on success and non-zero on failure.
 
     IMPORTANT: You MUST output ONLY a single JSON string that strictly conforms to the following Pydantic model schema:
     {
@@ -122,29 +119,17 @@ MAIN_LOOP_S_EXPRESSION = """
 )
 """
 
-def setup_workspace() -> str:
-    """Creates a temporary directory for file operations."""
-    workspace_dir = tempfile.mkdtemp(prefix="director_loop_demo_")
-    logger.info(f"Created temporary workspace: {workspace_dir}")
-    return workspace_dir
-
-def cleanup_workspace(workspace_dir: str, keep_ws: bool):
-    """Removes the temporary workspace directory if keep_ws is False."""
-    if keep_ws:
-        logger.info(f"Keeping workspace: {workspace_dir}")
-    else:
-        try:
-            shutil.rmtree(workspace_dir)
-            logger.info(f"Removed temporary workspace: {workspace_dir}")
-        except OSError as e:
-            logger.error(f"Error removing workspace {workspace_dir}: {e}")
-
-def run_demo(app: Application, workspace_dir: str):
+def run_demo(app: Application):
     """Runs the director-evaluator-loop coding demo."""
     original_cwd = os.getcwd()
     try:
-        os.chdir(workspace_dir)
-        logger.info(f"Changed current working directory to: {workspace_dir}")
+        # Ensure we are in the project root for Aider operations
+        # and for relative paths in the plan to make sense.
+        if str(PROJECT_ROOT) != original_cwd:
+            os.chdir(PROJECT_ROOT)
+            logger.info(f"Changed current working directory to project root: {PROJECT_ROOT}")
+        else:
+            logger.info(f"Already in project root: {PROJECT_ROOT}")
 
         # 1. Define the user:generate-plan task
         logger.info("Defining 'user:generate-plan' S-expression task...")
@@ -177,14 +162,7 @@ def run_demo(app: Application, workspace_dir: str):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Run the director-evaluator-loop coding demo.")
-    parser.add_argument(
-        "--keep-workspace",
-        action="store_true",
-        help="If set, the temporary workspace directory will not be deleted after the script runs."
-    )
-    args = parser.parse_args()
-
+    # No longer need command line arguments as we're not using a temp workspace
     logger.info("Initializing Application for director_loop_coding_demo...")
     
     # Explicitly enable Aider via config for this demo
@@ -203,10 +181,5 @@ if __name__ == "__main__":
 
     app = Application(config=app_config_for_demo) # Pass the config
 
-    workspace_dir = setup_workspace()
-    try:
-        run_demo(app, workspace_dir)
-    finally:
-        cleanup_workspace(workspace_dir, args.keep_workspace)
-
+    run_demo(app)
     logger.info("Director loop coding demo finished.")
