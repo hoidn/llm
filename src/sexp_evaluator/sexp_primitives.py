@@ -149,14 +149,25 @@ class PrimitiveProcessor:
             else:
                 raise SexpEvaluationError(f"'get-field' field name must be a string or symbol, got {type(field_name_val)}: {field_name_val!r}", original_expr_str)
         
-        logger.debug(f"  'get-field': target_obj type={type(target_obj)}, field_name_val='{field_name_val}'")
+        # More detailed logging for target_obj
+        logger.debug(f"  'get-field': target_obj type={type(target_obj)}, value (first 200 chars if str): {str(target_obj)[:200] if isinstance(target_obj, str) else repr(target_obj)}")
+        logger.debug(f"  'get-field': field_name_val='{field_name_val}'")
+        if isinstance(target_obj, dict):
+            logger.debug(f"  'get-field': target_obj is dict. Keys: {list(target_obj.keys())}")
+        elif hasattr(target_obj, '__dict__'):
+             logger.debug(f"  'get-field': target_obj has __dict__. Attributes: {list(target_obj.__dict__.keys())}")
+        elif hasattr(target_obj, 'model_fields'): # Pydantic model
+             logger.debug(f"  'get-field': target_obj is Pydantic model. Fields: {list(target_obj.model_fields.keys())}")
+
 
         try:
             if isinstance(target_obj, dict):
                 if field_name_val not in target_obj:
-                    logger.warning(f"  'get-field': Key '{field_name_val}' not found in dict {list(target_obj.keys())}. Returning None.")
+                    logger.warning(f"  'get-field': Key '{field_name_val}' not found in dict. Returning None.")
                     return None 
-                return target_obj.get(field_name_val)
+                val = target_obj.get(field_name_val)
+                logger.debug(f"  'get-field': Dict lookup for '{field_name_val}' -> {val!r} (Type: {type(val)})")
+                return val
             # Handle association lists (lists of [key, value] pairs)
             elif isinstance(target_obj, list):
                 logger.debug(f"  'get-field': Target is a list. Attempting assoc-list lookup for key '{field_name_val}'. List: {target_obj!r}")
@@ -174,16 +185,20 @@ class PrimitiveProcessor:
                             current_key_str = key_candidate_node
                         
                         if current_key_str == field_name_val:
-                            logger.debug(f"    Found key '{field_name_val}' in assoc-list item: {item!r}")
-                            return item[1] # Return the value part
-                logger.warning(f"  'get-field': Key '{field_name_val}' not found in assoc-list: {target_obj!r}. Returning None.")
+                            val = item[1]
+                            logger.debug(f"    Found key '{field_name_val}' in assoc-list item: {item!r} -> {val!r} (Type: {type(val)})")
+                            return val
+                logger.warning(f"  'get-field': Key '{field_name_val}' not found in assoc-list. Returning None.")
                 return None
-            elif hasattr(target_obj, '__class__') and hasattr(target_obj.__class__, 'model_fields') and hasattr(target_obj, field_name_val):
-                logger.debug(f"  'get-field': Accessing attribute '{field_name_val}' from Pydantic-like object.")
-                return getattr(target_obj, field_name_val)
-            elif hasattr(target_obj, field_name_val):
-                logger.debug(f"  'get-field': Accessing attribute '{field_name_val}' from object.")
-                return getattr(target_obj, field_name_val)
+            # Check for Pydantic model fields explicitly
+            elif hasattr(target_obj, '__class__') and hasattr(target_obj.__class__, 'model_fields') and field_name_val in target_obj.model_fields:
+                val = getattr(target_obj, field_name_val)
+                logger.debug(f"  'get-field': Accessing Pydantic attribute '{field_name_val}' -> {val!r} (Type: {type(val)})")
+                return val
+            elif hasattr(target_obj, field_name_val): # General attribute access
+                val = getattr(target_obj, field_name_val)
+                logger.debug(f"  'get-field': Accessing general attribute '{field_name_val}' -> {val!r} (Type: {type(val)})")
+                return val
             else:
                 logger.warning(f"  'get-field': Field or attribute '{field_name_val}' not found in object of type {type(target_obj)}. Returning None.")
                 return None
@@ -369,24 +384,37 @@ class PrimitiveProcessor:
         """
         Applies the 'string-append' primitive: (string-append str1 str2 ...)
         Concatenates multiple string arguments into a single string.
+        Converts None arguments to empty strings.
         """
         logger.debug(f"PrimitiveProcessor.apply_string_append_primitive: {original_expr_str}")
         
-        evaluated_strings = []
+        evaluated_parts = []
         for i, arg_expr in enumerate(arg_exprs):
             try:
                 evaluated_value = self.evaluator._eval(arg_expr, env)
-                logging.debug(f"  apply_string_append_primitive: Evaluated arg {i+1} ('{arg_expr}') to: {evaluated_value}")
+                logger.debug(f"  apply_string_append_primitive: Evaluated arg {i+1} ('{arg_expr}') to: {evaluated_value!r} (Type: {type(evaluated_value)})")
             except Exception as e_eval:
                 logging.exception(f"  apply_string_append_primitive: Error evaluating argument {i+1} ('{arg_expr}'): {e_eval}")
                 if isinstance(e_eval, SexpEvaluationError): raise
                 raise SexpEvaluationError(f"Error evaluating argument {i+1} for 'string-append': {arg_expr}", original_expr_str, error_details=str(e_eval)) from e_eval
             
-            if not isinstance(evaluated_value, str):
-                raise SexpEvaluationError(f"'string-append' argument {i+1} must be a string, got {type(evaluated_value)}.", original_expr_str)
+            # Convert None to empty string before type check
+            if evaluated_value is None:
+                logger.debug(f"  apply_string_append_primitive: Arg {i+1} was None, converting to empty string.")
+                evaluated_value = ""
             
-            evaluated_strings.append(evaluated_value)
+            if not isinstance(evaluated_value, str):
+                # If it's a Symbol, try to get its value as a string
+                if isinstance(evaluated_value, Symbol):
+                    evaluated_value = evaluated_value.value()
+                # If it's an int or float, convert to string
+                elif isinstance(evaluated_value, (int, float)):
+                    evaluated_value = str(evaluated_value)
+                else:
+                    raise SexpEvaluationError(f"'string-append' argument {i+1} must be a string or convertible to string (e.g. Symbol, number), got {type(evaluated_value)}: {evaluated_value!r}.", original_expr_str)
+            
+            evaluated_parts.append(evaluated_value)
         
-        result = ''.join(evaluated_strings)
+        result = ''.join(evaluated_parts)
         logger.debug(f"  'string-append': Result -> '{result}'")
         return result
