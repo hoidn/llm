@@ -102,6 +102,9 @@ class SexpEvaluator:
             "-": self.primitive_processor.apply_subtract_primitive,
             "<": self.primitive_processor.apply_less_than_primitive,
             "string-append": self.primitive_processor.apply_string_append_primitive,
+            # --- ADD THIS LINE ---
+            "not": self.primitive_processor.apply_not_primitive,
+            # --- END ADD ---
         }
         logging.critical(f"SexpEvaluator INITIALIZED. PRIMITIVE_APPLIERS keys: {list(self.PRIMITIVE_APPLIERS.keys())}")
         logging.info("SexpEvaluator initialized with helper processors.")

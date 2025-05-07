@@ -420,3 +420,21 @@ class PrimitiveProcessor:
         result = ''.join(evaluated_parts)
         logger.debug(f"  'string-append': Result -> '{result}'")
         return result
+
+    def apply_not_primitive(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> bool:
+        """Applies the 'not' primitive: (not expr)"""
+        logger.debug(f"PrimitiveProcessor.apply_not_primitive: {original_expr_str}")
+        if len(arg_exprs) != 1:
+            raise SexpEvaluationError("'not' requires exactly one argument.", original_expr_str)
+
+        try:
+            value = self.evaluator._eval(arg_exprs[0], env)
+        except Exception as e_eval:
+            raise SexpEvaluationError(f"Error evaluating argument for 'not': {e_eval}", original_expr_str, error_details=str(e_eval)) from e_eval
+
+        # Lisp/Scheme convention: False and empty list are falsey, everything else is truthy.
+        # Python's bool() handles most cases similarly (0, "", [], {}, None are False).
+        # We can directly use Python's `not` on the evaluated result.
+        result = not bool(value) # Apply Python's boolean negation
+        logger.debug(f"  'not': Input value {value!r} resulted in {result}")
+        return result

@@ -180,6 +180,12 @@ module src.sexp_evaluator.sexp_evaluator {
         //     Note on Boolean Arguments: Due to the S-expression parser's behavior of converting S-expression `true` and `false` symbols to Python `True` and `False` booleans, and Python's `bool` type being a subclass of `int` (`True` is 1, `False` is 0), this primitive will treat Python boolean arguments as their integer equivalents (1 or 0) in arithmetic operations. If stricter type checking disallowing booleans is required, it must be explicitly handled within the primitive's logic beyond standard numeric type checks.
         //   - **Returns:** The result (integer or float).
         //   - **Raises:** `SexpEvaluationError` for arity issues, if arguments are not numbers, or for evaluation errors.
+        // - `(not <expr>)`: **Primitive.**
+        //   - **Action:** Performs logical negation.
+        //   - **Argument Processing:** Evaluates `<expr>`.
+        //   - **Behavior:** Returns `true` if `<expr>` evaluates to a falsey value (Python `False`, `None`, `0`, empty string/list/dict), and `false` otherwise.
+        //   - **Returns:** `true` or `false`.
+        //   - **Raises:** `SexpEvaluationError` for arity issues or errors during argument evaluation.
         //
         // - Parses the `args` list, expecting `(key_symbol value_expression)` pairs. **Note: `args` contains *unevaluated* argument expressions.**
         // - **Crucially, evaluates each `value_expression` using `_eval` within this handler** to get the actual argument values.
