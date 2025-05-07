@@ -189,11 +189,11 @@ class SpecialFormProcessor:
                 original_expr_str
             )
         
-        param_name_strings_for_template = [] 
+        param_name_strings_for_template = []
         for param_def_item in params_node[1:]:
-            if isinstance(param_def_item, Symbol): 
+            if isinstance(param_def_item, Symbol):
                 param_name_strings_for_template.append(param_def_item.value())
-            elif isinstance(param_def_item, list) and len(param_def_item) >= 1 and isinstance(param_def_item[0], Symbol): 
+            elif isinstance(param_def_item, list) and len(param_def_item) >= 1 and isinstance(param_def_item[0], Symbol): # Support (param_name type?)
                 param_name_strings_for_template.append(param_def_item[0].value())
             else:
                  raise SexpEvaluationError(
@@ -211,58 +211,92 @@ class SpecialFormProcessor:
             )
         instructions_str = instructions_node[1]
 
-        optional_args_map = {}
-        allowed_optionals = {"subtype", "description", "model"} 
-        for opt_node in arg_exprs[3:]: 
-            if not (isinstance(opt_node, list) and len(opt_node) == 2 and isinstance(opt_node[0], Symbol)):
+        optional_args_map: Dict[str, Any] = {} # Allow Any for structured values
+        # Keys that expect a simple string value
+        simple_string_optionals = {"subtype", "description", "model"}
+        # Keys that expect a structured value (list of lists/pairs)
+        structured_optionals = {"output_format", "history_config"}
+
+        for opt_node in arg_exprs[3:]:
+            if not (isinstance(opt_node, list) and len(opt_node) >= 2 and isinstance(opt_node[0], Symbol)): # value can be complex
                 raise SexpEvaluationError(
-                    f"Invalid optional argument format for 'defatom'. Expected (key value_string), got: {opt_node}",
+                    f"Invalid optional argument format for 'defatom'. Expected (key value_expression), got: {opt_node}",
                     original_expr_str
                 )
-            key_node, value_node = opt_node
+            key_node: Symbol = opt_node[0]
+            value_node: Any = opt_node[1] # The value part can be a string or a list for structured options
             key_str = key_node.value()
 
-            if key_str not in allowed_optionals:
-                raise SexpEvaluationError(f"Unknown optional argument '{key_str}' for 'defatom'. Allowed: {allowed_optionals}", original_expr_str)
-            
-            if not isinstance(value_node, str):
-                 raise SexpEvaluationError(f"Value for optional argument '{key_str}' must be a string, got {type(value_node)}: {value_node}", original_expr_str)
-            optional_args_map[key_str] = value_node
+            if key_str in simple_string_optionals:
+                if not isinstance(value_node, str):
+                    raise SexpEvaluationError(f"Value for optional argument '{key_str}' must be a string, got {type(value_node)}: {value_node}", original_expr_str)
+                optional_args_map[key_str] = value_node
+            elif key_str in structured_optionals:
+                # For output_format or history_config, the value_node is the list of pairs itself, e.g., ((type "json") (schema "..."))
+                # We need to convert this list of pairs into a dictionary.
+                # The value_node itself (opt_node[1]) is the list of (key value) pairs.
+                if not isinstance(value_node, list):
+                    raise SexpEvaluationError(
+                        f"Value for structured optional argument '{key_str}' must be a list of pairs, got {type(value_node)}: {value_node}",
+                        original_expr_str
+                    )
+                
+                structured_dict: Dict[str, Any] = {}
+                for pair in value_node:
+                    if not (isinstance(pair, list) and len(pair) == 2 and isinstance(pair[0], Symbol)):
+                        raise SexpEvaluationError(
+                            f"Invalid pair format in '{key_str}'. Expected (key_symbol value), got: {pair}",
+                            original_expr_str
+                        )
+                    inner_key_symbol: Symbol = pair[0]
+                    inner_value: Any = pair[1] # Value can be string or another nested structure
+                    structured_dict[inner_key_symbol.value()] = inner_value
+                optional_args_map[key_str] = structured_dict
+                logger.debug(f"Parsed structured optional arg '{key_str}': {structured_dict}")
+            else:
+                raise SexpEvaluationError(f"Unknown optional argument '{key_str}' for 'defatom'. Allowed: {list(simple_string_optionals | structured_optionals)}", original_expr_str)
         
         template_dict: Dict[str, Any] = {
             "name": task_name_str,
-            "type": "atomic", 
+            "type": "atomic",
             "subtype": optional_args_map.get("subtype", "standard"),
             "description": optional_args_map.get("description", f"Dynamically defined task: {task_name_str}"),
             "params": template_params,
             "instructions": instructions_str,
         }
-        if "model" in optional_args_map: 
+        if "model" in optional_args_map:
             template_dict["model"] = optional_args_map["model"]
+        if "output_format" in optional_args_map:
+            template_dict["output_format"] = optional_args_map["output_format"]
+        if "history_config" in optional_args_map:
+            template_dict["history_config"] = optional_args_map["history_config"]
+
 
         logging.debug(f"Constructed template dictionary for '{task_name_str}': {template_dict}")
 
         try:
             logging.info(f"Registering dynamic atomic task template: '{task_name_str}'")
-            registration_success = self.evaluator.task_system.register_template(template_dict)
-            if registration_success is False: 
-                logging.error(f"TaskSystem.register_template for '{task_name_str}' returned False.")
-                raise SexpEvaluationError(f"TaskSystem failed to register template '{task_name_str}' (returned False).", original_expr_str)
-        except SexpEvaluationError: 
+            # TaskSystem.register_template now returns bool
+            success = self.evaluator.task_system.register_template(template_dict)
+            if not success:
+                logging.error(f"TaskSystem.register_template for '{task_name_str}' returned False (registration failed).")
+                raise SexpEvaluationError(f"TaskSystem failed to register template '{task_name_str}'.", original_expr_str)
+        except SexpEvaluationError:
             raise
-        except Exception as e: 
+        except Exception as e:
             logging.exception(f"Error registering template '{task_name_str}' with TaskSystem: {e}")
             raise SexpEvaluationError(f"Failed to register template '{task_name_str}' with TaskSystem: {e}", original_expr_str, error_details=str(e)) from e
 
-        # Accessing self.evaluator for task_system
-        evaluator_ref = self.evaluator 
+        # Lexical binding of the task name to a callable wrapper
+        evaluator_ref = self.evaluator # Capture self.evaluator for the closure
+        
         def defatom_task_wrapper(*args):
             logger.debug(f"defatom_task_wrapper for '{task_name_str}' called with {len(args)} args: {args}")
             
             if len(args) != len(param_name_strings_for_template):
                 raise SexpEvaluationError(
                     f"Task '{task_name_str}' (defined by defatom) expects {len(param_name_strings_for_template)} arguments, got {len(args)}.",
-                    expression=f"call to {task_name_str}" 
+                    expression=f"call to {task_name_str}"
                 )
             
             inputs_dict = {name: val for name, val in zip(param_name_strings_for_template, args)}
@@ -272,19 +306,24 @@ class SpecialFormProcessor:
                 type="atomic",
                 name=task_name_str,
                 inputs=inputs_dict
+                # history_config can be added here if defatom supports it and it's passed
             )
             logging.debug(f"  defatom_task_wrapper: Invoking TaskSystem for '{task_name_str}' with request: {request.model_dump_json(indent=2)}")
             
             try:
+                # Ensure task_system is accessed via evaluator_ref
                 task_result: TaskResult = evaluator_ref.task_system.execute_atomic_template(request)
+                # The result from execute_atomic_template should already be a TaskResult Pydantic model instance.
+                # If it needs to be returned as a dictionary for S-expression processing, model_dump() it.
+                # For now, let's assume the S-expression layer can handle TaskResult objects or they are converted later.
                 return task_result 
             except Exception as e_exec:
                 logging.exception(f"  Error executing defatom task '{task_name_str}' via wrapper: {e_exec}")
                 raise SexpEvaluationError(f"Error executing defatom task '{task_name_str}': {e_exec}", expression=f"call to {task_name_str}", error_details=str(e_exec)) from e_exec
 
-        env.define(task_name_str, defatom_task_wrapper)
+        env.define(task_name_str, defatom_task_wrapper) # Bind the wrapper
         logging.info(f"Successfully registered and lexically bound dynamic task '{task_name_str}'.")
-        return task_name_node 
+        return task_name_node
 
     def handle_loop_form(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> Any:
         """Handles the 'loop' special form: (loop count_expr body_expr)"""
