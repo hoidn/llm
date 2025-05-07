@@ -637,16 +637,45 @@ Select the best matching paths *from the provided metadata* and output the JSON.
     def initialize_aider(self) -> None:
         """
         Initializes the AiderBridge and registers Aider tools if available and enabled.
+        Prioritizes config flag, then environment variable for enablement.
         """
-        # --- START FIX: Check environment variable inside the method ---
-        aider_enabled_env = os.environ.get('AIDER_ENABLED', 'false').lower() == 'true'
-        logger.debug(f"Inside initialize_aider. Checked AIDER_ENABLED env var: {os.environ.get('AIDER_ENABLED')}, Evaluated to enabled: {aider_enabled_env}")
+        aider_enabled = False
+        config_aider_settings = self.config.get("aider", {})
+        
+        if isinstance(config_aider_settings, dict):
+            aider_enabled_config_value = config_aider_settings.get("enabled")
+            if isinstance(aider_enabled_config_value, bool):
+                aider_enabled = aider_enabled_config_value
+                if aider_enabled:
+                    logger.info("Aider integration ENABLED via Application config ('aider.enabled': true).")
+                else:
+                    logger.info("Aider integration DISABLED via Application config ('aider.enabled': false).")
+            else: # Not specified in config, check environment
+                aider_enabled_env_val = os.environ.get('AIDER_ENABLED')
+                aider_enabled = aider_enabled_env_val is not None and aider_enabled_env_val.lower() == 'true'
+                if aider_enabled:
+                    logger.info(f"Aider integration ENABLED via environment variable (AIDER_ENABLED='{aider_enabled_env_val}').")
+                else:
+                    logger.info(f"Aider integration DISABLED (AIDER_ENABLED env var is '{aider_enabled_env_val}', not 'true', and not set in app config).")
+        elif isinstance(config_aider_settings, bool): # Handle if self.config['aider'] is just a boolean
+            aider_enabled = config_aider_settings
+            if aider_enabled:
+                logger.info("Aider integration ENABLED via Application config ('aider': true).")
+            else:
+                logger.info("Aider integration DISABLED via Application config ('aider': false).")
+        else: # Fallback to environment if 'aider' key is not a dict or bool
+            aider_enabled_env_val = os.environ.get('AIDER_ENABLED')
+            aider_enabled = aider_enabled_env_val is not None and aider_enabled_env_val.lower() == 'true'
+            if aider_enabled:
+                logger.info(f"Aider integration ENABLED via environment variable (AIDER_ENABLED='{aider_enabled_env_val}'). Config 'aider' key missing or invalid type.")
+            else:
+                logger.info(f"Aider integration DISABLED (AIDER_ENABLED env var is '{aider_enabled_env_val}', not 'true', and config 'aider' key missing or invalid).")
 
-        if not aider_enabled_env:
-            logger.info("Aider integration is disabled via environment variable (AIDER_ENABLED not 'true' or not set). Skipping Aider initialization.")
-            self.aider_bridge = None # Ensure it's None
+
+        if not aider_enabled:
+            self.aider_bridge = None 
+            logger.info("Skipping Aider initialization as it's disabled.")
             return
-        # --- END FIX ---
 
         # Check if Aider dependencies were imported successfully (still necessary)
         aider_imported_successfully = AiderBridge is not None and AiderExecutors is not None
@@ -697,47 +726,33 @@ Select the best matching paths *from the provided metadata* and output the JSON.
             )
             logger.info("AiderBridge (MCP Client) instantiated using specific JSON config.")
 
-            # --- START Aider Wrapper Refactor ---
-            # --- Wrapper for Aider automatic ---
-            def _aider_auto_wrapper(params: Dict[str, Any], bridge=self.aider_bridge) -> Dict[str, Any]:
-                 """Wrapper for AiderExecutors.execute_aider_automatic."""
-                 # Use asyncio.run() if the executor is async and called from sync context
-                 # If initialize_aider is async, just await it. Assuming sync for now.
-                 # Check if bridge is valid before calling
-                 if not bridge: return _create_failed_result_dict("dependency_error", "Aider bridge not available.")
-                 try:
-                     # Assuming execute_aider_automatic is async
-                     # Check if an event loop is already running
-                     try:
-                         loop = asyncio.get_running_loop()
-                         # If a loop is running, schedule the coroutine and wait for it
-                         # This is a simplified approach; complex scenarios might need better handling
-                         logger.warning("Running async Aider tool from existing event loop. Consider refactoring caller to be async.")
-                         future = asyncio.run_coroutine_threadsafe(AiderExecutors.execute_aider_automatic(params, bridge), loop)
-                         return future.result() # Blocking wait
-                     except RuntimeError: # No running event loop
-                         return asyncio.run(AiderExecutors.execute_aider_automatic(params, bridge))
-                 except Exception as e:
-                      logger.exception(f"Error running aider automatic wrapper: {e}")
-                      return _create_failed_result_dict("unexpected_error", f"Error running Aider tool: {e}")
-
-            # --- Wrapper for Aider interactive ---
-            def _aider_inter_wrapper(params: Dict[str, Any], bridge=self.aider_bridge) -> Dict[str, Any]:
-                 """Wrapper for AiderExecutors.execute_aider_interactive."""
-                 if not bridge: return _create_failed_result_dict("dependency_error", "Aider bridge not available.")
-                 try:
-                     # Assuming execute_aider_interactive is async
-                     try:
-                         loop = asyncio.get_running_loop()
-                         logger.warning("Running async Aider tool from existing event loop. Consider refactoring caller to be async.")
-                         future = asyncio.run_coroutine_threadsafe(AiderExecutors.execute_aider_interactive(params, bridge), loop)
-                         return future.result()
-                     except RuntimeError: # No running event loop
-                         return asyncio.run(AiderExecutors.execute_aider_interactive(params, bridge))
-                 except Exception as e:
-                      logger.exception(f"Error running aider interactive wrapper: {e}")
-                      return _create_failed_result_dict("unexpected_error", f"Error running Aider tool: {e}")
-            # --- END Aider Wrapper Refactor ---
+            def create_aider_wrapper(tool_executor_method):
+                # This wrapper is needed because the AiderExecutor methods are async
+                # and the tool registration expects sync callables.
+                # It uses asyncio.run to bridge the gap.
+                # This is a simplification; a more robust solution might involve
+                # an async-aware tool execution mechanism or making the SexpEvaluator async.
+                @functools.wraps(tool_executor_method)
+                def sync_wrapper(params: Dict[str, Any], bridge=self.aider_bridge) -> Dict[str, Any]:
+                    if not bridge:
+                        return _create_failed_result_dict("dependency_error", "Aider bridge not available for tool execution.")
+                    try:
+                        # Check if an event loop is already running
+                        try:
+                            loop = asyncio.get_running_loop()
+                            # If a loop is running, schedule the coroutine and wait for it
+                            logger.warning("Running async Aider tool from existing event loop. Consider refactoring caller to be async.")
+                            future = asyncio.run_coroutine_threadsafe(tool_executor_method(params, bridge), loop)
+                            return future.result(timeout=120) # Add a timeout
+                        except RuntimeError: # No running event loop
+                            return asyncio.run(tool_executor_method(params, bridge))
+                    except asyncio.TimeoutError:
+                        logger.error(f"Aider tool execution timed out: {tool_executor_method.__name__}")
+                        return _create_failed_result_dict("execution_timeout", "Aider tool execution timed out.")
+                    except Exception as e:
+                        logger.exception(f"Error running Aider tool '{tool_executor_method.__name__}' via wrapper: {e}")
+                        return _create_failed_result_dict("unexpected_error", f"Error running Aider tool '{tool_executor_method.__name__}': {e}")
+                return sync_wrapper
 
             aider_tools_to_register = [
                 {
@@ -754,9 +769,7 @@ Select the best matching paths *from the provided metadata* and output the JSON.
                             "required": ["prompt"]
                         }
                     },
-                    # --- START Aider Wrapper Refactor ---
-                    "executor": _aider_auto_wrapper # Pass defined function
-                    # --- END Aider Wrapper Refactor ---
+                    "executor_method_name": "execute_aider_automatic"
                 },
                 {
                     "spec": {
@@ -770,33 +783,31 @@ Select the best matching paths *from the provided metadata* and output the JSON.
                                 "file_context": {"type": "string", "description": "Optional JSON string array of explicit file paths."},
                                 "model": {"type": "string", "description": "Optional specific model override for Aider."}
                             },
-                            # Require at least one of query or prompt
                         }
                     },
-                     # --- START Aider Wrapper Refactor ---
-                    "executor": _aider_inter_wrapper # Pass defined function
-                     # --- END Aider Wrapper Refactor ---
+                    "executor_method_name": "execute_aider_interactive"
                 }
             ]
 
-            # Register Aider tools with the handler
             registered_count = 0
-            # Ensure AiderExecutors was imported successfully before using its methods
             if AiderExecutors:
-                # --- START: Add Logging ---
                 logger.info(f"Attempting to register {len(aider_tools_to_register)} Aider tools...")
-                # --- END: Add Logging ---
-                for tool in aider_tools_to_register:
-                    # --- START Aider Wrapper Refactor ---
-                    # Register the explicit wrapper directly
-                    executor_wrapper = tool["executor"] # Get the wrapper function
-                    # --- END Aider Wrapper Refactor ---
-
-                    # --- START: Add Logging ---
-                    logger.debug(f"Registering tool: {tool['spec']['name']} with executor: {executor_wrapper}")
-                    success = self.passthrough_handler.register_tool(tool["spec"], executor_wrapper)
-                    logger.debug(f"Registration result for {tool['spec']['name']}: {success}")
-                    # --- END: Add Logging ---
+                for tool_info in aider_tools_to_register:
+                    tool_spec = tool_info["spec"]
+                    method_name = tool_info["executor_method_name"]
+                    
+                    # Get the async method from AiderExecutors class
+                    async_executor_method = getattr(AiderExecutors, method_name, None)
+                    if not async_executor_method or not asyncio.iscoroutinefunction(async_executor_method):
+                        logger.error(f"Could not find async executor method '{method_name}' in AiderExecutors.")
+                        continue
+                        
+                    # Create the synchronous wrapper
+                    sync_executor_wrapper = create_aider_wrapper(async_executor_method)
+                    
+                    logger.debug(f"Registering tool: {tool_spec['name']} with executor wrapper for {method_name}")
+                    success = self.passthrough_handler.register_tool(tool_spec, sync_executor_wrapper)
+                    logger.debug(f"Registration result for {tool_spec['name']}: {success}")
 
                     if success:
                         registered_count += 1

@@ -185,13 +185,23 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    logger.info("Initializing Application...")
-    # Ensure Application is initialized correctly, potentially with mock handlers if real LLM/Aider calls are costly/unavailable
-    # For a real demo, ensure API keys are set for LLM providers and Aider is configured.
-    app = Application()
-    # You might need to register tools if not done by default in Application.__init__
-    # app.register_tool(...) for aider:automatic and system:execute_shell_command if not auto-registered.
-    # This demo assumes they are available.
+    logger.info("Initializing Application for director_loop_coding_demo...")
+    
+    # Explicitly enable Aider via config for this demo
+    app_config_for_demo = {
+        "aider": {
+            "enabled": True
+        },
+        # Optional: Set a default model if your demo tasks rely on a specific one
+        # and you don't want to rely on PassthroughHandler's default.
+        # "handler_config": {
+        #     "default_model_identifier": "anthropic:claude-3-5-sonnet-latest" 
+        # }
+    }
+    # The os.environ['AIDER_ENABLED'] = 'true' line earlier in the script is now a fallback
+    # if the config method isn't implemented or the 'aider' key is missing from app_config_for_demo.
+
+    app = Application(config=app_config_for_demo) # Pass the config
 
     workspace_dir = setup_workspace()
     try:
