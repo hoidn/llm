@@ -72,7 +72,7 @@ DEFATOM_GENERATE_PLAN_S_EXPRESSION = """
     "
   )
   (model "gpt-4-turbo") ;; Or your preferred model for plan generation
-  (output_format (type "json") (schema "src.system.models.DevelopmentPlan"))
+  (output_format ((type "json") (schema "src.system.models.DevelopmentPlan")))
   (description "Generates a development plan (instructions, files, test_command) based on user prompts.")
 )
 """
