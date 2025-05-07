@@ -176,8 +176,8 @@ class SexpEvaluator:
         if isinstance(node, Quoted):
             # If _eval encounters a Quoted object directly, it means the parser
             # created it from a shorthand like 'datum. The value of 'datum is datum itself.
-            logging.debug(f"Eval Quoted node: {node}, returning its value: {node.value()}")
-            return node.value()
+            logging.debug(f"Eval Quoted node: {node}, returning its value: {node.val}")
+            return node.val
 
         if not isinstance(node, list):
             # This branch now handles non-Symbol, non-Quoted, non-list atoms (numbers, strings, bools, None)
