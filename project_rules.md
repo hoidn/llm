@@ -46,10 +46,13 @@ project_root/
 │   │   ├── lambda_llm_code_processing_demo.py # Demo for lambda with LLM orchestration
 │   │   └── ...
 │   │
-│   ├── sexp_evaluator/      # S-expression evaluator components (Duplicate? Consolidate with evaluator/)
+│   ├── sexp_evaluator/      # S-expression evaluator components
 │   │   ├── __init__.py
+│   │   ├── sexp_closure.py
 │   │   ├── sexp_environment.py
-│   │   └── sexp_evaluator.py
+│   │   ├── sexp_evaluator.py
+│   │   ├── sexp_primitives.py
+│   │   └── sexp_special_forms.py
 │   │
 │   ├── sexp_parser/         # S-expression parser components
 │   │   ├── __init__.py
