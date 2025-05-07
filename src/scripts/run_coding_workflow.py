@@ -199,7 +199,6 @@ MAIN_WORKFLOW_S_EXPRESSION = """
           plan-task-result ;; Return the failed plan result
         ) ;; End of ELSE branch
     ) ;; This closes the IF statement.
-) ;; End outer let (plan-task-result)
 ) ;; End progn
 """
 
