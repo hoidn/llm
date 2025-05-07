@@ -71,6 +71,27 @@ class SexpParser:
                 # Raise SexpSyntaxError directly for clarity and consistency
                 raise SexpSyntaxError("Unexpected content after the main expression.", sexp_string, error_details=f"Trailing content: '{remainder}'")
 
+            logging.debug(f"Raw parsed expression from sexpdata.load: {parsed_expression!r}")
+
+            # --- START PARSER DEBUGGING ---
+            # Recursively inspect if parsed_expression contains Quoted objects
+            def inspect_parsed_node(p_node, depth=0):
+                from sexpdata import Quoted as ParserQuoted # Import locally for this inspection
+                if isinstance(p_node, ParserQuoted):
+                    logging.debug(f"{'  '*depth}SexpParser: Found Quoted node: {p_node!r}")
+                    logging.debug(f"{'  '*depth}SexpParser:   Type: {type(p_node)}, Class: {p_node.__class__}, Module: {getattr(p_node, '__module__', 'N/A')}")
+                    logging.debug(f"{'  '*depth}SexpParser:   dir(node): {dir(p_node)}")
+                    logging.debug(f"{'  '*depth}SexpParser:   hasattr(node, 'val'): {hasattr(p_node, 'val')}")
+                    if hasattr(p_node, 'val'):
+                        logging.debug(f"{'  '*depth}SexpParser:   node.val: {p_node.val!r}")
+                elif isinstance(p_node, list):
+                    for item in p_node:
+                        inspect_parsed_node(item, depth + 1)
+            
+            if parsed_expression: # Ensure not None or empty before inspecting
+                inspect_parsed_node(parsed_expression)
+            # --- END PARSER DEBUGGING ---
+
             logging.debug(f"Successfully parsed AST: {parsed_expression}")
             return parsed_expression
 

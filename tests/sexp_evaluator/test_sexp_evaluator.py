@@ -4,6 +4,7 @@ Unit tests for the SexpEvaluator.
 
 import pytest
 import re # Import re for regular expression matching in error messages
+import logging
 from unittest.mock import MagicMock, call, ANY, patch
 from src.sexp_evaluator.sexp_evaluator import SexpEvaluator
 from src.sexp_evaluator.sexp_environment import SexpEnvironment
@@ -13,6 +14,11 @@ from src.system.models import (
     MatchTuple, TaskFailureError, ContextManagement, TaskError # Import TaskError model here
 )
 from src.sexp_parser.sexp_parser import SexpParser
+
+# Import Quoted for debugging
+from sexpdata import Quoted as TestQuotedFromSexpdata, Symbol as TestFileSymbol
+# Use print for tests if logging isn't captured early enough
+print(f"CRITICAL TestSexpEvaluator: Imported Quoted type: {type(TestQuotedFromSexpdata)}, id: {id(TestQuotedFromSexpdata)}, module: {getattr(TestQuotedFromSexpdata, '__module__', 'N/A')}")
 
 # Import Symbol if parser uses it, otherwise use str
 try:
@@ -2162,6 +2168,29 @@ def test_primitive_subtract_error_non_numeric(evaluator, mock_parser):
     assert evaluator.evaluate_string(sexp_str3) == 10
 
 # --- Tests for director-evaluator-loop ---
+
+def test_minimal_quoted_eval(evaluator, mock_parser):
+    """Test direct evaluation of a Quoted object to diagnose AttributeError."""
+    logging.critical(f"Minimal Test: Quoted type in test: {type(TestQuotedFromSexpdata)}, id: {id(TestQuotedFromSexpdata)}, module: {getattr(TestQuotedFromSexpdata, '__module__', 'N/A')}")
+    
+    # Create a Quoted object exactly as sexpdata.load would for "'foo"
+    quoted_node = TestQuotedFromSexpdata(TestFileSymbol('test_sym'))
+    
+    logging.debug(f"Minimal Test: Created quoted_node: {quoted_node!r}, type: {type(quoted_node)}")
+    logging.debug(f"Minimal Test: dir(quoted_node): {dir(quoted_node)}")
+    logging.debug(f"Minimal Test: hasattr(quoted_node, 'val'): {hasattr(quoted_node, 'val')}")
+
+    # Directly call _eval on the evaluator instance from the fixture
+    try:
+        result = evaluator._eval(quoted_node, SexpEnvironment())
+        assert result == TestFileSymbol('test_sym') # Expect the inner symbol
+        logging.info("Minimal Test: Successfully evaluated direct Quoted node.")
+    except AttributeError as e:
+        logging.exception("Minimal Test: AttributeError during direct _eval of Quoted node.")
+        pytest.fail(f"Minimal test failed with AttributeError: {e}")
+    except Exception as e:
+        logging.exception(f"Minimal Test: Unexpected error during direct _eval: {e}")
+        pytest.fail(f"Minimal test failed with unexpected error: {e}")
 
 def test_director_loop_syntax_missing_clauses(evaluator, mock_parser):
     sexp_string = "(director-evaluator-loop (max-iterations 1))"
