@@ -2106,11 +2106,12 @@ def test_primitive_add_error_non_numeric(evaluator, mock_parser):
     with pytest.raises(SexpEvaluationError, match="must be a number"):
         evaluator.evaluate_string(sexp_str1)
     
+    # Boolean values are valid for arithmetic in Python (True is 1, False is 0)
     sexp_str2 = "(+ true 1)"
-    ast2 = [Symbol('+'), True, 1] # Assuming SexpParser converts 'true' to Python True
+    ast2 = [Symbol('+'), True, 1] # SexpParser converts 'true' to Python True
     mock_parser.parse_string.return_value = ast2 # Set mock for the second call
-    with pytest.raises(SexpEvaluationError, match="must be a number"):
-        evaluator.evaluate_string(sexp_str2)
+    # True (1) + 1 = 2
+    assert evaluator.evaluate_string(sexp_str2) == 2
 
 # --- Tests for - ---
 def test_primitive_subtract_various_cases(evaluator, mock_parser):
@@ -2146,14 +2147,15 @@ def test_primitive_subtract_error_non_numeric(evaluator, mock_parser):
     with pytest.raises(SexpEvaluationError, match="must be a number"):
         evaluator.evaluate_string(sexp_str1)
     
+    # Boolean values are valid for arithmetic in Python (True is 1, False is 0)
     sexp_str2 = "(- true)"
-    ast2 = [Symbol('-'), True] # Assuming SexpParser converts 'true' to Python True
+    ast2 = [Symbol('-'), True] # SexpParser converts 'true' to Python True
     mock_parser.parse_string.return_value = ast2 # Set mock for the second call
-    with pytest.raises(SexpEvaluationError, match="must be a number"):
-        evaluator.evaluate_string(sexp_str2)
+    # - True (-1)
+    assert evaluator.evaluate_string(sexp_str2) == -1
     
     sexp_str3 = "(- 10 false)" 
-    ast3 = [Symbol('-'), 10, False] # Assuming SexpParser converts 'false' to Python False
+    ast3 = [Symbol('-'), 10, False] # SexpParser converts 'false' to Python False
     mock_parser.parse_string.return_value = ast3 # Set mock for the third call
-    with pytest.raises(SexpEvaluationError, match="must be a number"):
-        evaluator.evaluate_string(sexp_str3)
+    # 10 - False (0) = 10
+    assert evaluator.evaluate_string(sexp_str3) == 10
