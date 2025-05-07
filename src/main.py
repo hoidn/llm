@@ -496,7 +496,7 @@ Select the best matching paths *from the provided metadata* and output the JSON.
             logger.debug("Including Aider tool specs (dependencies present).")
             if self.passthrough_handler and hasattr(self.passthrough_handler, 'registered_tools'):
                  for tool_name, tool_data in self.passthrough_handler.registered_tools.items():
-                     if tool_name.startswith('aider_'):
+                     if tool_name.startswith('aider:'):
                          # --- START FIX: Append tool_data directly ---
                          active_tool_specs.append(tool_data) # Append the spec dict itself
                          # --- END FIX ---
@@ -768,7 +768,7 @@ Select the best matching paths *from the provided metadata* and output the JSON.
             aider_tools_to_register = [
                 {
                     "spec": {
-                        "name": "aider_automatic",
+                        "name": "aider:automatic",
                         "description": "Executes an Aider coding task automatically based on a prompt and optional file context.",
                         "input_schema": {
                             "type": "object",
@@ -784,7 +784,7 @@ Select the best matching paths *from the provided metadata* and output the JSON.
                 },
                 {
                     "spec": {
-                        "name": "aider_interactive",
+                        "name": "aider:interactive",
                         "description": "Starts or continues an interactive Aider coding session.",
                         "input_schema": {
                             "type": "object",
