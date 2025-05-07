@@ -447,15 +447,23 @@ class SpecialFormProcessor:
         current_iteration = 1
         loop_result: Any = []  # S-expression 'nil'
 
-        logger.debug(f"  Loop Init: max_iter_val={max_iter_val}, initial_director_input_val={current_director_input_val!r}")
+        # Create the *loop-config* data structure (association list)
+        loop_config_data = [
+            [Symbol("max-iterations"), max_iter_val],
+            [Symbol("initial-director-input"), current_director_input_val] # Use the already evaluated initial input
+        ]
+        logger.debug(f"  Loop Init: max_iter_val={max_iter_val}, initial_director_input_val={current_director_input_val!r}, loop_config_data={loop_config_data!r}")
 
         # 5. Main Loop
         while current_iteration <= max_iter_val:
             logger.debug(f"  Loop Iteration {current_iteration}/{max_iter_val}")
+
+            # Create the phase-specific environment with *loop-config*
+            phase_execution_env = env.extend({"*loop-config*": loop_config_data})
             
             # Helper for invoking phase functions
-            def invoke_phase(phase_name_str: str, func_to_call: Any, args_list: List[Any]) -> Any:
-                logger.debug(f"    Invoking {phase_name_str} with args: {args_list}")
+            def invoke_phase(phase_name_str: str, func_to_call: Any, args_list: List[Any], execution_env_for_phase: SexpEnvironment) -> Any:
+                logger.debug(f"    Invoking {phase_name_str} with args: {args_list} in env_id={id(execution_env_for_phase)}")
                 try:
                     # Create "dummy" arg_expr_nodes that, when evaluated, yield our args_list.
                     # The simplest way is to quote them if they are lists/symbols, or use them directly.
@@ -465,17 +473,18 @@ class SpecialFormProcessor:
                     dummy_arg_expr_nodes = []
                     for arg_val in args_list:
                         if isinstance(arg_val, Symbol) or isinstance(arg_val, list) or isinstance(arg_val, dict):
+                            # Quote complex structures to pass them as literal data to the lambda
                             dummy_arg_expr_nodes.append([Symbol("quote"), arg_val])
                         else:
                             # For simple Python literals (int, str, bool, None),
-                            # _eval will return them directly.
+                            # _eval will return them directly. So they become literal args.
                             dummy_arg_expr_nodes.append(arg_val)
                     
                     # The original_call_expr_str for this internal call is conceptual.
                     # It's for error reporting if something goes wrong inside the phase function's body.
-                    conceptual_call_str = f"({phase_name_str} {' '.join(map(str, args_list))})"
+                    conceptual_call_str = f"({phase_name_str} {' '.join(map(str, args_list))})" # Simplified for logging
                     
-                    return self.evaluator._apply_operator(func_to_call, dummy_arg_expr_nodes, env, conceptual_call_str)
+                    return self.evaluator._apply_operator(func_to_call, dummy_arg_expr_nodes, execution_env_for_phase, conceptual_call_str)
 
                 except SexpEvaluationError as e_phase:
                     raise SexpEvaluationError(f"Error in '{phase_name_str}' phase (iteration {current_iteration}): {e_phase.args[0] if e_phase.args else str(e_phase)}", original_expr_str, error_details=e_phase.error_details if hasattr(e_phase, 'error_details') else str(e_phase)) from e_phase
@@ -483,19 +492,19 @@ class SpecialFormProcessor:
                     raise SexpEvaluationError(f"Unexpected error in '{phase_name_str}' phase (iteration {current_iteration}): {e_phase_unknown}", original_expr_str, error_details=str(e_phase_unknown)) from e_phase_unknown
 
             # b. Director Phase
-            plan_val = invoke_phase("director", director_fn, [current_director_input_val, current_iteration])
+            plan_val = invoke_phase("director", director_fn, [current_director_input_val, current_iteration], phase_execution_env)
             logger.debug(f"    Director result: {str(plan_val)[:200]}...")
 
             # c. Executor Phase
-            exec_result_val = invoke_phase("executor", executor_fn, [plan_val, current_iteration])
+            exec_result_val = invoke_phase("executor", executor_fn, [plan_val, current_iteration], phase_execution_env)
             logger.debug(f"    Executor result: {str(exec_result_val)[:200]}...")
 
             # d. Evaluator Phase
-            eval_feedback_val = invoke_phase("evaluator", evaluator_fn, [exec_result_val, plan_val, current_iteration])
+            eval_feedback_val = invoke_phase("evaluator", evaluator_fn, [exec_result_val, plan_val, current_iteration], phase_execution_env)
             logger.debug(f"    Evaluator result: {str(eval_feedback_val)[:200]}...")
 
             # e. Controller Phase
-            decision_val = invoke_phase("controller", controller_fn, [eval_feedback_val, plan_val, exec_result_val, current_iteration])
+            decision_val = invoke_phase("controller", controller_fn, [eval_feedback_val, plan_val, exec_result_val, current_iteration], phase_execution_env)
             logger.debug(f"    Controller result: {str(decision_val)[:200]}...")
 
             # f. Validate decision_val

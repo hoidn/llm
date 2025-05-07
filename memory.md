@@ -65,12 +65,12 @@
 - **Refactor SexpEvaluator (Step 1):** Moved `Closure` class to `src/sexp_evaluator/sexp_closure.py`. Updated imports. Commit `f558171`.
 - **Refactor SexpEvaluator (Step 2):** Introduced `SpecialFormProcessor` and `PrimitiveProcessor` classes with stub methods. Updated `SexpEvaluator` dispatch tables. Commit `21c10a1`.
 - **Phase 10b: Implement Core S-expression Primitives:** Implemented `eq?`, `null?`, `set!`, `+`, `-` in `PrimitiveProcessor`. Added `set_value_in_scope` to `SexpEnvironment`. Updated `SexpEvaluator` dispatch. Added comprehensive tests. Updated IDLs.
+- **Phase 10d (director-evaluator-loop Enhancement):** Modified `director-evaluator-loop` to expose its configuration (max-iterations, initial-director-input) to phase functions via a `*loop-config*` special variable. Updated `SpecialFormProcessor`, tests, and IDL.
 
 ## Next Steps
 
-1.  **Refactor SexpEvaluator (Step 3 - Current):** Implement new features (Phase 10d `director-evaluator-loop`) directly in the new helper processor classes. The `director-evaluator-loop` is the main new feature to implement in `SpecialFormProcessor`.
-2.  **Phase 9.3 Testing:** Implement unit tests for `LLMInteractionManager` and `BaseHandler` to verify the `model_override` logic.
-3.  **Full Phase 10b Implementation (Remaining):** Consider if other basic arithmetic/logic primitives are immediately needed (e.g., `*`, `/`, `and`, `or`, `not`). (Note: `get-field`, `string=?`, `log-message`, `eq?`, `null?`, `set!`, `+`, `-` are now implemented. Others are pending).
+1.  **Phase 9.3 Testing:** Implement unit tests for `LLMInteractionManager` and `BaseHandler` to verify the `model_override` logic.
+2.  **Full Phase 10b Implementation (Remaining):** Consider if other basic arithmetic/logic primitives are immediately needed (e.g., `*`, `/`, `and`, `or`, `not`). (Note: `get-field`, `string=?`, `log-message`, `eq?`, `null?`, `set!`, `+`, `-`, `string-append`, `<` are now implemented. Others are pending).
 4.  **Phase 8: Aider Integration:** Implement `AiderBridge`, Aider tool specs, Aider executors, and related `Application` logic. Add integration tests.
 5.  **Merge Streams & Finalize Deferred Methods:** Integrate all changes and complete any remaining deferred method implementations and their tests.
 6.  **Integration Testing & Documentation:** Enhance overall integration tests and update all documentation to reflect the final state.
