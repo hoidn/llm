@@ -84,7 +84,8 @@ class SexpEvaluator:
             "quote": self.special_form_processor.handle_quote_form,
             "defatom": self.special_form_processor.handle_defatom_form,
             "loop": self.special_form_processor.handle_loop_form,
-            "director-evaluator-loop": self.special_form_processor.handle_director_evaluator_loop, 
+            "director-evaluator-loop": self.special_form_processor.handle_director_evaluator_loop,
+            "and": self.special_form_processor.handle_and_form, # <<< ADD THIS LINE
         }
         self.PRIMITIVE_APPLIERS: Dict[str, Callable] = {
             "list": self.primitive_processor.apply_list_primitive,

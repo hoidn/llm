@@ -590,3 +590,28 @@ class SpecialFormProcessor:
 
         logger.debug(f"SpecialFormProcessor.handle_director_evaluator_loop END -> {str(loop_result)[:200]}...")
         return loop_result
+
+    def handle_and_form(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> bool:
+        """Handles the 'and' special form: (and expr...)"""
+        logger.debug(f"SpecialFormProcessor.handle_and_form START: original_expr_str='{original_expr_str}'")
+        if not arg_exprs:
+            logger.debug("  'and' with no arguments returns True.")
+            return True # According to Scheme R5RS, (and) => #t
+
+        for i, expr in enumerate(arg_exprs):
+            try:
+                result = self.evaluator._eval(expr, env)
+                logger.debug(f"  'and' evaluated argument {i+1} ('{expr}') to: {result}")
+                # Use Python's boolean interpretation for short-circuiting
+                # (False, None, 0, empty sequences/mappings are False)
+                if not result:
+                    logger.debug(f"  'and' encountered falsey value {result!r}, short-circuiting to False.")
+                    return False # Short-circuit on first falsey value
+            except Exception as e:
+                logging.exception(f"  Error evaluating 'and' argument {i+1} '{expr}': {e}")
+                if isinstance(e, SexpEvaluationError): raise
+                raise SexpEvaluationError(f"Error evaluating 'and' argument {i+1}: {expr}", original_expr_str, error_details=str(e)) from e
+
+        # If the loop completes, all arguments were truthy
+        logger.debug("  'and' all arguments evaluated to truthy, returning True.")
+        return True # All arguments were truthy
