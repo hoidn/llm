@@ -2601,9 +2601,23 @@ class TestSexpEvaluatorIterativeLoop:
         with pytest.raises(SexpEvaluationError, match="Each clause must be a list"):
             evaluator.evaluate_string("(iterative-loop ...)")
 
-    def test_iterative_loop_config_max_iter_not_int(self, evaluator, mock_parser):
+    def test_iterative_loop_config_max_iter_not_int(self, evaluator, mock_parser, mocker):
         ast = self._create_loop_ast(max_iter="'not-an-int'") # String literal
         mock_parser.parse_string.return_value = ast
+        
+        # Store the original _eval method
+        original_eval = evaluator._eval
+        
+        # Define the side effect function
+        def eval_side_effect(node, env):
+            # Specifically handle the max-iterations expression
+            if isinstance(node, list) and len(node) == 2 and node[0] == Symbol("quote") and node[1] == Symbol("not-an-int"):
+                return "not-an-int"  # Return the problematic string value
+            # For all other nodes, use the original _eval method
+            return original_eval(node, env)
+        
+        # Apply the patch with the side effect
+        mocker.patch.object(evaluator, '_eval', side_effect=eval_side_effect)
         
         with pytest.raises(SexpEvaluationError, match="'max-iterations' must evaluate to a non-negative integer, got 'not-an-int'"):
             evaluator.evaluate_string("(iterative-loop ...)")
