@@ -125,7 +125,7 @@ DEFATOM_COMBINED_ANALYSIS_S_EXPRESSION = """
   )
   (output_format ((type "json") (schema "src.system.models.CombinedAnalysisResult")))
   (description "Analyzes Aider and test results, determines success/failure/retry, and provides the next prompt if needed.")
-  (model "google:gemini-2.5-pro-exp-03-25") ;; Explicitly set the model to use
+  (model "google-gla:gemini-2.5-pro-exp-03-25") ;; Explicitly set the model to use
 )
 """
 
@@ -303,7 +303,7 @@ def main():
         app_config = {
             "aider": {"enabled": True},
             "handler_config": {
-                "default_model_identifier": "google:gemini-2.5-pro-exp-03-25"
+                "default_model_identifier": "google-gla:gemini-2.5-pro-exp-03-25"
                 #"default_model_identifier": "google-gla:gemini-2.0-flash"
             }
         }
