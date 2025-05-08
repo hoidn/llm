@@ -466,16 +466,16 @@ class SexpEvaluator:
 
     def _call_phase_function(self, phase_name: str, func_to_call: Any, args_list: List[Any], env_for_eval: SexpEnvironment, original_loop_expr: str, iteration: int) -> Any:
         """Helper to invoke a phase function (lambda/Closure) with error handling."""
-        logger.debug(f"    Invoking {phase_name} (Iter {iteration}) with {len(args_list)} args in env_id={id(env_for_eval)}")
+        logger.debug(f"    Invoking {phase_name} (Iter {iteration}) with {len(args_list)} args in env_for_call={id(env_for_eval)}")
         try:
             # Re-quote evaluated arguments to pass them as if they were AST nodes
             # This allows _apply_operator to handle them correctly, especially for closures.
-            dummy_arg_nodes = [[Symbol("quote"), arg] for arg in args_list]
+            dummy_quoted_arg_nodes = [[Symbol("quote"), arg] for arg in args_list]
             conceptual_call_str = f"({phase_name} iter={iteration})" # For potential error messages
 
             # Use _apply_operator to handle calling the resolved function (Closure or other callable)
-            # _apply_operator will evaluate the quoted dummy nodes, effectively passing our args_list
-            result = self._apply_operator(func_to_call, dummy_arg_nodes, env_for_eval, conceptual_call_str)
+            # Pass the environment where the call occurs ('env_for_eval')
+            result = self._apply_operator(func_to_call, dummy_quoted_arg_nodes, env_for_eval, conceptual_call_str)
             logger.debug(f"    {phase_name} (Iter {iteration}) returned: {str(result)[:200]}{'...' if len(str(result)) > 200 else ''}")
             return result
 
