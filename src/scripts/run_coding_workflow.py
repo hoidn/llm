@@ -190,15 +190,19 @@ MAIN_WORKFLOW_S_EXPRESSION = """
                   ;; Call the analysis/revision LLM task
                   (let ((analysis_task_result
                          (user:evaluate-and-retry-analysis ;; Corrected task name
-                           (original_goal      initial-user-goal)
-                           (aider_instructions (get-field current-plan "instructions"))
-                           (aider_status       (get-field aider_result "status"))
-                           (aider_diff         (get-field aider_result "content"))
-                           (test_command       fixed-test-command)
-                           (test_stdout        (get-field validation_result "stdout"))
-                           (test_stderr        (get-field validation_result "stderr"))
-                           (iteration          iter_num)
-                           (max_retries        max-iterations-config)
+                           ;; *** START FIX: Corrected Parameter Names ***
+                           (original_goal initial-user-goal) 
+                           (aider_instructions (get-field current-plan "instructions")) ;; Use expected name
+                           ;; (previous_files ...) ;; Removed - not expected by template
+                           (aider_status (get-field aider_result "status"))
+                           (aider_diff (get-field aider_result "content")) ;; Use expected name (passing content as diff)
+                           (test_command fixed-test-command) ;; ADDED missing required parameter
+                           (test_stdout (get-field validation_result "stdout"))
+                           (test_stderr (get-field validation_result "stderr"))
+                           (test_exit_code (get-field validation_result "exit_code")) ;; Ensure this is passed if expected by defatom
+                           (iteration iter_num)
+                           (max_retries max-iterations-config) ;; Use expected name
+                           ;; *** END FIX ***
                           )))
                     (log-message "Controller: Analysis TaskResult:" analysis_task_result)
 
