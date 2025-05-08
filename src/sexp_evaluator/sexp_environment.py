@@ -55,12 +55,13 @@ class SexpEnvironment:
                        of its ancestor environments. This signals an unbound symbol error
                        during S-expression evaluation.
         """
+        # Added logging to track entry and environment details
         logger.debug(f"Lookup START: name='{name}' (type: {type(name)}) in env id={id(self)}")
-        # Use .keys() for a snapshot in case dict changes during logging, though unlikely here
-        local_keys = list(self._bindings.keys())
-        logger.debug(f"  Local bindings keys: {local_keys} (Types: {[type(k) for k in local_keys]})")
+        local_keys = list(self._bindings.keys()) # Get keys for logging
+        logger.debug(f"  Local bindings keys in env id={id(self)}: {local_keys}")
 
         # --- CORRECTED LOGIC ---
+        # Check local bindings FIRST
         if name in self._bindings:
             logger.debug(f"  >>> FOUND '{name}' LOCALLY in env id={id(self)} <<<") # Confirm entry
             value = self._bindings[name]
@@ -68,14 +69,15 @@ class SexpEnvironment:
             return value
         # --- END CORRECTED LOGIC ---
 
-        # Only check parent if NOT found locally
+        # If not found locally, THEN check parent
         elif self._parent is not None:
             parent_id = id(self._parent)
-            logger.debug(f"  '{name}' NOT found locally, checking parent env id={parent_id}")
+            logger.debug(f"  '{name}' NOT found locally in env id={id(self)}, checking parent env id={parent_id}")
             try:
                 # Recursively lookup in parent
                 return self._parent.lookup(name) # Let parent raise NameError if not found
             except NameError:
+                # If parent lookup also fails, log and re-raise the original NameError
                 logger.debug(f"  '{name}' not found in parent chain starting from env id={parent_id}.")
                 raise # Re-raise the NameError from the parent lookup
         else:
