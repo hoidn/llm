@@ -2619,7 +2619,12 @@ class TestSexpEvaluatorIterativeLoop:
         # Apply the patch with the side effect
         mocker.patch.object(evaluator, '_eval', side_effect=eval_side_effect)
         
-        with pytest.raises(SexpEvaluationError, match="'max-iterations' must evaluate to a non-negative integer, got 'not-an-int'"):
+        # Use a more robust regex match that handles Symbol representation
+        expected_pattern = re.compile(
+            r"'max-iterations' must evaluate to a non-negative integer, got .*Symbol\('not-an-int'\).*", 
+            re.DOTALL
+        )
+        with pytest.raises(SexpEvaluationError, match=expected_pattern):
             evaluator.evaluate_string("(iterative-loop ...)")
 
 
@@ -2727,9 +2732,11 @@ class TestSexpEvaluatorIterativeLoop:
 
         # Verify the arguments passed TO _call_phase_function
         # Check that the correct mock lambda function was passed as func_to_call
-        mock_call_phase.assert_any_call("executor", mock_executor_lambda_func, ["start", 1], mocker.ANY, mocker.ANY, 1)
+        # Executor receives Symbol('start') as current_structured_input for iter 1
+        mock_call_phase.assert_any_call("executor", mock_executor_lambda_func, [Symbol("start"), 1], mocker.ANY, mocker.ANY, 1)
         mock_call_phase.assert_any_call("validator", mock_validator_lambda_func, ["echo test", 1], mocker.ANY, mocker.ANY, 1)
-        mock_call_phase.assert_any_call("controller", mock_controller_lambda_func, [mock_executor_result, mock_validator_result, "start", 1], mocker.ANY, mocker.ANY, 1)
+        # Controller also receives Symbol('start') as current_structured_input for iter 1
+        mock_call_phase.assert_any_call("controller", mock_controller_lambda_func, [mock_executor_result, mock_validator_result, Symbol("start"), 1], mocker.ANY, mocker.ANY, 1)
 
 
     def test_iterative_loop_continues_once_then_stops(self, evaluator, mock_parser, mocker):

@@ -794,24 +794,47 @@ class SpecialFormProcessor:
 
             except Exception as phase_error:
                 logger.exception(f"  Error during iterative-loop iteration {current_iteration}: {phase_error}")
-                # Wrap unexpected errors or re-raise SexpEvaluationError with context
+                
+                # Prepare details dictionary robustly
+                final_details = {"iteration": current_iteration} # Always include iteration
+                original_error_details = None
+                original_error_message = str(phase_error)
+                phase_name = "unknown" # Placeholder if we can't determine the exact phase easily
+
+                # Attempt to determine which phase failed (requires separate try/except blocks ideally)
+                # For now, we'll use a generic message but ensure details are structured.
+
                 if isinstance(phase_error, SexpEvaluationError):
-                    details = phase_error.error_details if hasattr(phase_error, 'error_details') else {}
-                    if isinstance(details, dict) and "iteration" not in details:
-                        details["iteration"] = current_iteration
-                    raise SexpEvaluationError(
-                        f"Error in {phase_error.args[0] if phase_error.args else str(phase_error)}",
-                        original_expr_str, 
-                        error_details=details
-                    ) from phase_error
+                    original_error_message = phase_error.args[0] if phase_error.args else str(phase_error)
+                    # Attempt to get existing details, checking it's a dict
+                    if hasattr(phase_error, 'error_details') and isinstance(phase_error.error_details, dict):
+                        original_error_details = phase_error.error_details
+                        # Merge original details, giving precedence to the new 'iteration'
+                        final_details = {**original_error_details, **final_details}
+                    elif hasattr(phase_error, 'error_details') and phase_error.error_details is not None:
+                         # Keep original details if not a dict, but log a warning maybe
+                         final_details["original_error_details"] = str(phase_error.error_details)
+                         logger.warning(f"Original error_details was not a dict: {phase_error.error_details}")
+                    # Try to extract phase name if it's in the original message (simple heuristic)
+                    if "Error in 'executor'" in original_error_message: phase_name = "executor"
+                    elif "Error in 'validator'" in original_error_message: phase_name = "validator"
+                    elif "Error in 'controller'" in original_error_message: phase_name = "controller"
+
                 else: # Wrap unexpected errors
-                    new_error = SexpEvaluationError(
-                        f"Unexpected error during iterative-loop iteration {current_iteration}: {phase_error}",
-                        original_expr_str,
-                        error_details={"iteration": current_iteration, "original_error": str(phase_error)}
-                    )
-                    logger.error(f"About to re-raise wrapped SexpEvaluationError from iterative-loop: {new_error}")
-                    raise new_error from phase_error
+                     final_details["original_error"] = str(phase_error)
+
+                # Construct the final error message including the original message
+                # Use a generic prefix for now, as determining the exact phase is complex without refactoring
+                error_msg = f"Error during iterative-loop iteration {current_iteration}: {original_error_message}"
+
+                new_error = SexpEvaluationError(
+                    error_msg,
+                    original_expr_str,
+                    error_details=final_details # Pass the combined dictionary
+                )
+                logger.error(f"About to re-raise wrapped/updated SexpEvaluationError from iterative-loop: {new_error} with details {final_details}")
+                raise new_error from phase_error
+
 
             # --- Process Decision (with validation) ---
             if not (isinstance(decision_val, list) and len(decision_val) == 2 and isinstance(decision_val[0], Symbol)):
