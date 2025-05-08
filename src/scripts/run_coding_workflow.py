@@ -185,8 +185,8 @@ MAIN_WORKFLOW_S_EXPRESSION = """
                   (let ((analysis_task_result
                          (user:evaluate-and-retry-analysis ;; Corrected task name
                            (original_goal initial-user-goal) ;; Use hyphenated symbol
-                           (previous_instructions (get-field current_plan "instructions"))
-                           (previous_files (get-field current_plan "files"))
+                           (previous_instructions (get-field current-plan "instructions"))
+                           (previous_files (get-field current-plan "files"))
                            (aider_status (get-field aider_result "status"))
                            (aider_output (get-field aider_result "content")) ;; Pass Aider's content/diff/error
                            (test_stdout (get-field validation_result "stdout"))
