@@ -88,6 +88,18 @@ def execute_programmatic_task(
                 # If flags contain a dictionary for initial_env, use it for bindings
                 env_to_pass = SexpEnvironment(bindings=initial_bindings_from_flags)
                 logger.debug(f"Created initial SexpEnvironment from flags['initial_env'] bindings: {list(initial_bindings_from_flags.keys())}")
+                # --- START DEBUG LOGGING ---
+                logger.debug(f"*** Dispatcher: Created initial SexpEnvironment object ID: {id(env_to_pass)}")
+                if hasattr(env_to_pass, 'get_local_bindings'):
+                     bindings_dict = env_to_pass.get_local_bindings()
+                     logger.debug(f"*** Dispatcher: Initial env local bindings: {list(bindings_dict.keys())}")
+                     if "max-iterations-config" in bindings_dict:
+                         logger.debug(f"*** Dispatcher: 'max-iterations-config' FOUND in initial bindings. Value: {bindings_dict['max-iterations-config']}")
+                     else:
+                         logger.error("*** Dispatcher: 'max-iterations-config' NOT FOUND in initial bindings!")
+                else:
+                     logger.error("*** Dispatcher: Cannot call get_local_bindings on env_to_pass!")
+                # --- END DEBUG LOGGING ---
             elif isinstance(initial_bindings_from_flags, SexpEnvironment):
                  # If flags somehow contain an actual SexpEnvironment object (less likely from script)
                  env_to_pass = initial_bindings_from_flags

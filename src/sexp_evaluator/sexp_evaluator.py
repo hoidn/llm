@@ -129,6 +129,21 @@ class SexpEvaluator:
 
             env = initial_env if initial_env is not None else SexpEnvironment()
             logging.debug(f"Using environment: {env}")
+            # --- START DEBUG LOGGING ---
+            logger.debug(f"*** evaluate_string: Using environment object ID: {id(env)}")
+            if initial_env is not None:
+                logger.debug(f"*** evaluate_string: Received initial_env object ID: {id(initial_env)}")
+                # Also check bindings here
+                if hasattr(env, 'get_local_bindings'):
+                     bindings_dict = env.get_local_bindings()
+                     logger.debug(f"*** evaluate_string: Initial env local bindings received: {list(bindings_dict.keys())}")
+                     if "max-iterations-config" not in bindings_dict:
+                          logger.error("*** evaluate_string: 'max-iterations-config' MISSING upon entry!")
+                else:
+                     logger.error("*** evaluate_string: Cannot call get_local_bindings on received env!")
+            else:
+                logger.debug("*** evaluate_string: No initial_env received, created new empty env.")
+            # --- END DEBUG LOGGING ---
 
             result = self._eval(parsed_node, env)
             logging.info(f"Finished evaluating S-expression. Result type: {type(result)}")
@@ -171,10 +186,30 @@ class SexpEvaluator:
         Internal recursive evaluation method for S-expression AST nodes.
         Handles base cases and dispatches list evaluation.
         """
-        logging.debug(f"Eval START: Node={node} (Type={type(node)}) EnvID={id(env)}")
+        # Existing log:
+        logger.debug(f"*** _eval START: Node={node!r} (Type={type(node).__name__}) EnvID={id(env)}")
+        # Add binding check:
+        if hasattr(env, 'get_local_bindings'):
+             bindings_keys = list(env.get_local_bindings().keys())
+             logger.debug(f"*** _eval EnvID={id(env)} Local Bindings: {bindings_keys}")
+             # Specifically check for the key when evaluating the symbol that fails
+             if isinstance(node, Symbol) and node.value() == "max-iterations-config":
+                 if "max-iterations-config" in env.get_local_bindings():
+                     logger.debug(f"*** _eval: 'max-iterations-config' IS in local bindings for EnvID={id(env)} just before lookup.")
+                 else:
+                     logger.error(f"*** _eval: 'max-iterations-config' IS NOT in local bindings for EnvID={id(env)} just before lookup!")
+        else:
+             logger.error(f"*** _eval: Cannot call get_local_bindings on env (ID={id(env)})!")
+
 
         if isinstance(node, Symbol):
             symbol_name = node.value()
+            # Add logging right before the env.lookup call for symbols
+            try:
+                logger.debug(f"*** _eval: Attempting lookup for '{symbol_name}' in EnvID={id(env)}")
+                # The actual lookup call follows...
+            except Exception as log_e: # Catch potential errors during logging itself
+                 print(f"Error during pre-lookup logging: {log_e}") # Use print as logger might fail
             try:
                 value = env.lookup(symbol_name) 
                 logger.debug(f"Eval Symbol END: '{symbol_name}' -> {value} (Type={type(value)})")
