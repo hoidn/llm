@@ -733,7 +733,8 @@ class SpecialFormProcessor:
         for phase_name in ["executor", "validator", "controller"]:
             try:
                 resolved_fn = self.evaluator._eval(clauses[phase_name], env)
-                if not isinstance(resolved_fn, Closure) and not callable(resolved_fn): # Check for Closure or general callable
+                # Using self.evaluator.Closure to access Closure type from SexpEvaluator instance
+                if not isinstance(resolved_fn, self.evaluator.Closure) and not callable(resolved_fn):
                     raise SexpEvaluationError(
                         f"iterative-loop: '{phase_name}' expression must evaluate to a callable S-expression function or Python callable, got {type(resolved_fn)}: {resolved_fn!r}",
                         original_expr_str
@@ -753,15 +754,14 @@ class SpecialFormProcessor:
 
         if max_iter_val == 0:
             logger.info("iterative-loop: max-iterations is 0, returning [].")
-            return []
+            return [] # Return S-expression nil
 
         # 5. Main Loop
         while current_iteration <= max_iter_val:
-            logger.info(f"--- Iterative Loop (via SpecialFormProcessor): Iteration {current_iteration}/{max_iter_val} ---")
+            logger.info(f"--- Iterative Loop: Iteration {current_iteration}/{max_iter_val} ---")
 
             try:
                 # --- Executor Phase ---
-                # Args: (current_structured_input: Dict|AssocList, iteration_number: int)
                 executor_result = self.evaluator._call_phase_function(
                     "executor", executor_fn, [current_loop_input, current_iteration],
                     env, original_expr_str, current_iteration
@@ -769,31 +769,30 @@ class SpecialFormProcessor:
                 last_exec_result_val = executor_result # Store potentially final result
 
                 # --- Validator Phase ---
-                # Args: (test_command_string: string, iteration_number: int)
                 validation_result = self.evaluator._call_phase_function(
                     "validator", validator_fn, [test_cmd_string, current_iteration],
                     env, original_expr_str, current_iteration
                 )
 
                 # --- Controller Phase ---
-                # Args: (executor_result: TaskResult, validation_result: ValidationResult, current_structured_input: Dict|AssocList, iteration_number: int)
                 decision_val = self.evaluator._call_phase_function(
                     "controller", controller_fn, [executor_result, validation_result, current_loop_input, current_iteration],
                     env, original_expr_str, current_iteration
                 )
 
             except Exception as phase_error:
-                logging.exception(f"  Error during iterative-loop iteration {current_iteration}: {phase_error}")
+                logger.exception(f"  Error during iterative-loop iteration {current_iteration}: {phase_error}")
+                # Wrap unexpected errors or re-raise SexpEvaluationError with context
                 if isinstance(phase_error, SexpEvaluationError):
                     details = phase_error.error_details or {}
                     if "iteration" not in details: # type: ignore
                         details["iteration"] = current_iteration # type: ignore
                     raise SexpEvaluationError(
                         phase_error.args[0] if phase_error.args else str(phase_error),
-                        original_expr_str,
+                        original_expr_str, 
                         error_details=details # type: ignore
                     ) from phase_error
-                else:
+                else: # Wrap unexpected errors
                     raise SexpEvaluationError(
                         f"Unexpected error during iterative-loop iteration {current_iteration}: {phase_error}",
                         original_expr_str,
@@ -828,7 +827,7 @@ class SpecialFormProcessor:
             logger.info(f"iterative-loop: Finished after reaching max_iterations ({max_iter_val}). Returning last executor result.")
             loop_result = last_exec_result_val
 
-        logger.info(f"SpecialFormProcessor.handle_iterative_loop END. Iterations: {current_iteration-1 if current_iteration > 0 else 0}. Final loop_result type: {type(loop_result)}")
+        logger.info(f"SpecialFormProcessor.handle_iterative_loop END. Iterations run: {current_iteration-1 if max_iter_val > 0 else 0}. Final loop_result type: {type(loop_result)}")
         logger.debug(f"SpecialFormProcessor.handle_iterative_loop END -> {str(loop_result)[:200]}...")
         return loop_result
 
