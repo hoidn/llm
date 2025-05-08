@@ -531,8 +531,15 @@ class SexpEvaluator:
             key_str = key_symbol.value()
 
             try:
+                # <<< ADD LOGGING >>>
+                logger.debug(f"  _invoke_task_system: Evaluating value for key '{key_str}' in EnvID={id(calling_env)}")
+                if hasattr(calling_env, 'get_local_bindings'):
+                     logger.debug(f"  _invoke_task_system: EnvID={id(calling_env)} Local Bindings: {list(calling_env.get_local_bindings().keys())}")
+                if calling_env._parent: # Check parent as well
+                     logger.debug(f"  _invoke_task_system: Parent EnvID={id(calling_env._parent)} Local Bindings: {list(calling_env._parent.get_local_bindings().keys())}")
+                # <<< END LOGGING >>>
                 evaluated_value = self._eval(value_expr_node, calling_env) 
-                logging.debug(f"  _invoke_task_system: Evaluated value for key '{key_str}' ('{value_expr_node}'): {evaluated_value}")
+                logging.debug(f"  _invoke_task_system: Successfully evaluated value for key '{key_str}' to type: {type(evaluated_value)}")
             except SexpEvaluationError as e_val_eval:
                 raise SexpEvaluationError(
                     f"Error evaluating value for '{key_str}' in task '{task_name}': {e_val_eval.args[0] if e_val_eval.args else str(e_val_eval)}",
@@ -634,8 +641,15 @@ class SexpEvaluator:
             key_str = key_symbol.value()
 
             try:
+                # <<< ADD LOGGING >>>
+                logger.debug(f"  _invoke_handler_tool: Evaluating value for key '{key_str}' in EnvID={id(calling_env)}")
+                if hasattr(calling_env, 'get_local_bindings'):
+                     logger.debug(f"  _invoke_handler_tool: EnvID={id(calling_env)} Local Bindings: {list(calling_env.get_local_bindings().keys())}")
+                if calling_env._parent: # Check parent as well
+                     logger.debug(f"  _invoke_handler_tool: Parent EnvID={id(calling_env._parent)} Local Bindings: {list(calling_env._parent.get_local_bindings().keys())}")
+                # <<< END LOGGING >>>
                 evaluated_value = self._eval(value_expr_node, calling_env) 
-                logging.debug(f"  _invoke_handler_tool: Evaluated value for key '{key_str}' ('{value_expr_node}'): {evaluated_value}")
+                logging.debug(f"  _invoke_handler_tool: Successfully evaluated value for key '{key_str}' to type: {type(evaluated_value)}")
             except SexpEvaluationError as e_val_eval:
                 raise SexpEvaluationError(
                     f"Error evaluating value for '{key_str}' in tool '{tool_name}': {e_val_eval.args[0] if e_val_eval.args else str(e_val_eval)}",
