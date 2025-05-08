@@ -179,7 +179,7 @@ MAIN_WORKFLOW_S_EXPRESSION = """
                       )))))
 
     ;; --- Controller Phase ---
-    (controller (lambda (aider_result validation_result current_plan iter_num)
+    (controller (lambda (aider_result validation_result current-plan iter_num)
                   (log-message "Controller (Iter " iter-num "): Analyzing Aider result status:" (get-field aider_result "status") " and Validation result exit_code:" (get-field validation_result "exit_code"))
                   ;; Call the analysis/revision LLM task
                   (let ((analysis_task_result
