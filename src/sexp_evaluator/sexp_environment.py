@@ -50,18 +50,27 @@ class SexpEnvironment:
                        of its ancestor environments. This signals an unbound symbol error
                        during S-expression evaluation.
         """
-        logging.debug(f"Looking up '{name}' in env {id(self)}")
+        logger.debug(f"Lookup: Searching for '{name}' in env id={id(self)}") # Log entry
+        logger.debug(f"  Local bindings in env id={id(self)}: {list(self._bindings.keys())}") # Log local keys
+
         if name in self._bindings:
-            logging.debug(f"Found '{name}' in local bindings.")
-            return self._bindings[name]
+            value = self._bindings[name]
+            logger.debug(f"  Found '{name}' in local bindings of env id={id(self)}. Value type: {type(value)}")
+            return value
         elif self._parent is not None:
-            logging.debug(f"'{name}' not found locally, checking parent env {id(self._parent)}")
-            # Recursively lookup in parent
-            return self._parent.lookup(name) # Let parent raise NameError if not found
+            parent_id = id(self._parent)
+            logger.debug(f"  '{name}' not found locally, checking parent env id={parent_id}")
+            try:
+                # Recursively lookup in parent
+                return self._parent.lookup(name) # Let parent raise NameError if not found
+            except NameError:
+                 # Log that the parent lookup failed before raising
+                logger.debug(f"  '{name}' not found in parent chain starting from env id={parent_id}.")
+                raise # Re-raise the NameError from the parent lookup
         else:
-            logging.debug(f"'{name}' not found locally and no parent.")
+            logger.debug(f"  '{name}' not found locally and no parent for env id={id(self)}.")
             # Reached top-level scope without finding the name
-            raise NameError(f"Unbound symbol: Name '{name}' is not defined.")
+            raise NameError(f"Unbound symbol: Name '{name}' is not defined.") # Use NameError as before
 
     def define(self, name: str, value: Any) -> None:
         """

@@ -441,12 +441,13 @@ class SpecialFormProcessor:
                 original_expr_str
             )
 
-        # 2. Evaluate Configuration Expressions
+        # 2. Evaluate Configuration Expressions (with validation)
         try:
             max_iter_val = self.evaluator._eval(clauses["max-iterations"], env)
+            # --- ADDED VALIDATION ---
             if not isinstance(max_iter_val, int) or max_iter_val < 0:
                 raise SexpEvaluationError(
-                    f"director-evaluator-loop: 'max-iterations' must evaluate to a non-negative integer, got {max_iter_val!r} (type: {type(max_iter_val)}).",
+                    f"'max-iterations' must evaluate to a non-negative integer, got {max_iter_val!r} (type: {type(max_iter_val)}).",
                     original_expr_str
                 )
         except SexpEvaluationError as e:
@@ -461,11 +462,12 @@ class SpecialFormProcessor:
         except Exception as e:
             raise SexpEvaluationError(f"director-evaluator-loop: Error evaluating 'initial-director-input': {e}", original_expr_str, error_details=str(e)) from e
 
-        # 3. Evaluate and Validate Phase Function Expressions
+        # 3. Evaluate and Validate Phase Function Expressions (with validation)
         phase_functions: Dict[str, Any] = {}
         for phase_name in ["director", "executor", "evaluator", "controller"]:
             try:
                 resolved_fn = self.evaluator._eval(clauses[phase_name], env)
+                # --- ADDED VALIDATION ---
                 if not isinstance(resolved_fn, Closure) and not callable(resolved_fn):
                     raise SexpEvaluationError(
                         f"director-evaluator-loop: '{phase_name}' expression must evaluate to a callable S-expression function, got {type(resolved_fn)}: {resolved_fn!r}",
@@ -484,7 +486,10 @@ class SpecialFormProcessor:
 
         # 4. Initialize Loop State
         current_iteration = 1
-        loop_result: Any = []  # S-expression 'nil'
+        # --- CORRECTED INITIALIZATION ---
+        # Default result if loop doesn't run (max_iter=0) or finishes without 'stop'
+        loop_result: Any = [] # S-expression 'nil'
+        last_exec_result_val: Any = loop_result # Store last successful exec result
 
         # Create the *loop-config* data structure (association list)
         loop_config_data = [
@@ -517,6 +522,7 @@ class SpecialFormProcessor:
                     phase_execution_env, original_expr_str, current_iteration
                 )
                 logger.debug(f"    Executor result: {str(exec_result_val)[:200]}...")
+                last_exec_result_val = exec_result_val # Store last successful exec result
 
                 # d. Evaluator Phase
                 eval_feedback_val = self.evaluator._call_phase_function(
@@ -551,29 +557,32 @@ class SpecialFormProcessor:
             
             action_symbol: Symbol = decision_val[0]
             action_value: Any = decision_val[1]
+            action_str = action_symbol.value()
 
             # g. If 'stop'
-            if action_symbol.value() == "stop":
+            if action_str == "stop":
                 logger.info(f"  Loop stopping at iteration {current_iteration} due to controller 'stop'.")
-                loop_result = action_value
-                break 
+                loop_result = action_value # --- CORRECTED ASSIGNMENT ---
+                break # Exit the while loop
             # h. If 'continue'
-            elif action_symbol.value() == "continue":
+            elif action_str == "continue":
                 logger.debug(f"  Loop continuing. Next director input: {str(action_value)[:100]}...")
                 current_director_input_val = action_value
-                loop_result = exec_result_val # As per ADR 7.h.ii
+                # loop_result = exec_result_val # Removed - loop_result only set on stop or end
                 current_iteration += 1
-            else:
+            else: # --- ADDED VALIDATION ---
                 raise SexpEvaluationError(
-                    f"director-evaluator-loop: Controller decision action must be 'continue' or 'stop' symbol, got: '{action_symbol.value()}'",
+                    f"director-evaluator-loop: Controller decision action must be 'continue' or 'stop' symbol, got: '{action_str}'",
                     original_expr_str
                 )
         else: # Loop finished due to max_iterations
             logger.info(f"  Loop finished after reaching max_iterations ({max_iter_val}).")
-            # loop_result already holds the last exec_result_val or initial 'nil' if max_iter_val was 0 (or if loop didn't run)
+            # --- CORRECTED ASSIGNMENT ---
+            # Return the result of the last EXECUTOR phase if max iterations hit
+            loop_result = last_exec_result_val
 
         logger.debug(f"SpecialFormProcessor.handle_director_evaluator_loop END -> {str(loop_result)[:200]}...")
-        return loop_result
+        return loop_result # Return the final determined result
 
     def handle_and_form(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> Any:
         """
