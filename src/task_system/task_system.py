@@ -24,6 +24,8 @@ from difflib import SequenceMatcher
 # Constants for find_matching_tasks
 MATCH_THRESHOLD = 0.6 # Increased threshold to fix tests
 
+logger = logging.getLogger(__name__)
+
 class TaskSystem:
     """
     Manages and executes task templates.
