@@ -357,12 +357,14 @@ def main():
         # Use the main workflow string defined earlier
         flags = {
             "is_sexp_string": True,
-            "trace_sexp": args.trace_sexp  # Add tracing flag if requested
+            "trace_sexp": args.trace_sexp
+            # REMOVE "initial_env": initial_params from here
         }
-            
+        logger.debug(f"*** Flags being passed to handle_task_command: {flags}") # Confirm removal
+
         final_result = app.handle_task_command(
             identifier=MAIN_WORKFLOW_S_EXPRESSION,
-            params=initial_params, # Pass the dictionary here
+            params=initial_params, # <<< PASS BINDINGS DICTIONARY HERE
             flags=flags
         )
         logger.info("Main workflow execution finished.")

@@ -78,36 +78,24 @@ def execute_programmatic_task(
         try:
             # Ensure SexpEvaluator gets all its dependencies
             sexp_evaluator = SexpEvaluator(task_system_instance, handler_instance, memory_system)
-            
-            # Prepare initial environment if params are meant to be bound
-            # --- START MODIFICATION: Instantiate Environment Correctly ---
-            initial_bindings_from_flags = flags.get("initial_env") if flags else None
-            env_to_pass: Optional[SexpEnvironment] = None # Initialize as None
 
-            if isinstance(initial_bindings_from_flags, dict):
-                # If flags contain a dictionary for initial_env, use it for bindings
-                env_to_pass = SexpEnvironment(bindings=initial_bindings_from_flags)
-                logger.debug(f"Created initial SexpEnvironment from flags['initial_env'] bindings: {list(initial_bindings_from_flags.keys())}")
-                # --- START DEBUG LOGGING ---
-                logger.debug(f"*** Dispatcher: Created initial SexpEnvironment object ID: {id(env_to_pass)}")
-                if hasattr(env_to_pass, 'get_local_bindings'):
-                     bindings_dict = env_to_pass.get_local_bindings()
-                     logger.debug(f"*** Dispatcher: Initial env local bindings: {list(bindings_dict.keys())}")
-                     if "max-iterations-config" in bindings_dict:
-                         logger.debug(f"*** Dispatcher: 'max-iterations-config' FOUND in initial bindings. Value: {bindings_dict['max-iterations-config']}")
-                     else:
-                         logger.error("*** Dispatcher: 'max-iterations-config' NOT FOUND in initial bindings!")
-                else:
-                     logger.error("*** Dispatcher: Cannot call get_local_bindings on env_to_pass!")
-                # --- END DEBUG LOGGING ---
-            elif isinstance(initial_bindings_from_flags, SexpEnvironment):
-                 # If flags somehow contain an actual SexpEnvironment object (less likely from script)
-                 env_to_pass = initial_bindings_from_flags
-                 logger.debug(f"Using provided initial SexpEnvironment object from flags['initial_env']")
+            # --- START MODIFICATION ---
+            # Use the 'params' argument directly as the initial bindings dictionary
+            initial_bindings_from_params = params if isinstance(params, dict) else {}
+            env_to_pass: Optional[SexpEnvironment] = None
+
+            if initial_bindings_from_params:
+                logger.debug(f"*** Dispatcher (S-exp path): Using received 'params' dict for initial bindings: {list(initial_bindings_from_params.keys())}")
+                env_to_pass = SexpEnvironment(bindings=initial_bindings_from_params)
+                logger.debug(f"*** Dispatcher (S-exp path): Created initial SexpEnvironment object ID: {id(env_to_pass)}")
             else:
-                # If no valid initial_env in flags, the evaluator will create a default empty one
-                 logger.debug("No valid initial environment bindings found in flags. SexpEvaluator will create a new empty environment.")
+                 # Handle case where params might be None or empty if called differently
+                 logger.debug("*** Dispatcher (S-exp path): Received empty or no 'params'. SexpEvaluator will create a new empty environment.")
                  # env_to_pass remains None
+
+            # REMOVE or COMMENT OUT the previous logic checking flags['initial_env'] here:
+            # initial_bindings_from_flags = flags.get("initial_env") if flags else None
+            # ... (logic using initial_bindings_from_flags) ...
 
             # Pass the potentially created SexpEnvironment object (or None) to evaluate_string
             raw_result = sexp_evaluator.evaluate_string(identifier, initial_env=env_to_pass)

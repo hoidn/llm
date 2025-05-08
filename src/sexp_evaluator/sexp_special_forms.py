@@ -682,18 +682,7 @@ class SpecialFormProcessor:
         )
         """
         logger.debug(f"SpecialFormProcessor.handle_iterative_loop START: {original_expr_str}")
-        # --- START DEBUG LOGGING ---
-        logger.debug(f"*** handle_iterative_loop START: EnvID={id(env)}")
-        if hasattr(env, 'get_local_bindings'):
-             bindings_dict = env.get_local_bindings()
-             logger.debug(f"*** handle_iterative_loop: Env local bindings upon entry: {list(bindings_dict.keys())}")
-             if "max-iterations-config" in bindings_dict:
-                 logger.debug(f"*** handle_iterative_loop: 'max-iterations-config' FOUND in env. Value: {bindings_dict['max-iterations-config']}")
-             else:
-                 logger.error("*** handle_iterative_loop: 'max-iterations-config' NOT FOUND in env upon entry!")
-        else:
-             logger.error("*** handle_iterative_loop: Cannot call get_local_bindings on env!")
-        # --- END DEBUG LOGGING ---
+        # --- REMOVED DEBUG LOGGING ---
 
         # 1. Parse and Validate Loop Structure
         clauses: Dict[str, SexpNode] = {}
