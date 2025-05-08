@@ -119,7 +119,7 @@ DEFATOM_COMBINED_ANALYSIS_S_EXPRESSION = """
   )
   (output_format ((type "json") (schema "src.system.models.CombinedAnalysisResult")))
   (description "Analyzes Aider and test results, determines success/failure/retry, and provides the next prompt if needed.")
-  (model "google-gla:gemini-2.0-flash") ;; Explicitly set the model to use
+  (model "anthropic:claude-3-5-sonnet-latest") ;; Explicitly set the model to use
 )
 """
 
@@ -287,7 +287,8 @@ def main():
         app_config = {
             "aider": {"enabled": True},
             "handler_config": {
-                "default_model_identifier": "google-gla:gemini-2.0-flash"
+                "default_model_identifier": "anthropic:claude-3-5-sonnet-latest"
+                #"default_model_identifier": "google-gla:gemini-2.0-flash"
             }
         }
         
