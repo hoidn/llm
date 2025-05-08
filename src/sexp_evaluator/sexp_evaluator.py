@@ -531,15 +531,31 @@ class SexpEvaluator:
             key_str = key_symbol.value()
 
             try:
-                # <<< ADD LOGGING >>>
-                logger.debug(f"  _invoke_task_system: Evaluating value for key '{key_str}' in EnvID={id(calling_env)}")
+                # <<< ADD/MODIFY LOGGING >>>
+                logger.debug(f"  _invoke_task_system: Evaluating value for key '{key_str}' using EnvID={id(calling_env)}")
+                bindings_info = "Unavailable"
+                parent_bindings_info = "No Parent"
                 if hasattr(calling_env, 'get_local_bindings'):
-                     logger.debug(f"  _invoke_task_system: EnvID={id(calling_env)} Local Bindings: {list(calling_env.get_local_bindings().keys())}")
-                if calling_env._parent: # Check parent as well
-                     logger.debug(f"  _invoke_task_system: Parent EnvID={id(calling_env._parent)} Local Bindings: {list(calling_env._parent.get_local_bindings().keys())}")
+                     local_bindings = calling_env.get_local_bindings()
+                     bindings_info = f"Local Bindings: {list(local_bindings.keys())}"
+                     # Check for specific expected lambda params if inside controller context
+                     if task_name == 'user:evaluate-and-retry-analysis':
+                         expected_lambda_params = ['aider_result', 'validation_result', 'current_plan', 'iter_num']
+                         missing_params = [p for p in expected_lambda_params if p not in local_bindings]
+                         if missing_params:
+                             logger.warning(f"    !!! EnvID={id(calling_env)} MISSING expected lambda params: {missing_params} !!!")
+                         else:
+                             logger.debug(f"    EnvID={id(calling_env)} contains expected lambda params.")
+
+                if hasattr(calling_env, '_parent') and calling_env._parent:
+                     parent_env = calling_env._parent
+                     parent_bindings_info = f"Parent EnvID={id(parent_env)} Bindings: {list(parent_env.get_local_bindings().keys())}"
+
+                logger.debug(f"  _invoke_task_system: Env Details: {bindings_info} | {parent_bindings_info}")
                 # <<< END LOGGING >>>
-                evaluated_value = self._eval(value_expr_node, calling_env) 
-                logging.debug(f"  _invoke_task_system: Successfully evaluated value for key '{key_str}' to type: {type(evaluated_value)}")
+
+                evaluated_value = self._eval(value_expr_node, calling_env) # Ensure calling_env is used
+                logger.debug(f"  _invoke_task_system: Successfully evaluated value for key '{key_str}' to type: {type(evaluated_value)}")
             except SexpEvaluationError as e_val_eval:
                 raise SexpEvaluationError(
                     f"Error evaluating value for '{key_str}' in task '{task_name}': {e_val_eval.args[0] if e_val_eval.args else str(e_val_eval)}",
@@ -641,15 +657,25 @@ class SexpEvaluator:
             key_str = key_symbol.value()
 
             try:
-                # <<< ADD LOGGING >>>
-                logger.debug(f"  _invoke_handler_tool: Evaluating value for key '{key_str}' in EnvID={id(calling_env)}")
+                # <<< ADD/MODIFY LOGGING >>>
+                logger.debug(f"  _invoke_handler_tool: Evaluating value for key '{key_str}' using EnvID={id(calling_env)}")
+                bindings_info = "Unavailable"
+                parent_bindings_info = "No Parent"
                 if hasattr(calling_env, 'get_local_bindings'):
-                     logger.debug(f"  _invoke_handler_tool: EnvID={id(calling_env)} Local Bindings: {list(calling_env.get_local_bindings().keys())}")
-                if calling_env._parent: # Check parent as well
-                     logger.debug(f"  _invoke_handler_tool: Parent EnvID={id(calling_env._parent)} Local Bindings: {list(calling_env._parent.get_local_bindings().keys())}")
+                     local_bindings = calling_env.get_local_bindings()
+                     bindings_info = f"Local Bindings: {list(local_bindings.keys())}"
+                     # Note: The task_name specific check from _invoke_task_system is omitted here
+                     # as it's not directly applicable to a generic handler tool invocation.
+
+                if hasattr(calling_env, '_parent') and calling_env._parent:
+                     parent_env = calling_env._parent
+                     parent_bindings_info = f"Parent EnvID={id(parent_env)} Bindings: {list(parent_env.get_local_bindings().keys())}"
+
+                logger.debug(f"  _invoke_handler_tool: Env Details: {bindings_info} | {parent_bindings_info}")
                 # <<< END LOGGING >>>
-                evaluated_value = self._eval(value_expr_node, calling_env) 
-                logging.debug(f"  _invoke_handler_tool: Successfully evaluated value for key '{key_str}' to type: {type(evaluated_value)}")
+
+                evaluated_value = self._eval(value_expr_node, calling_env) # Ensure calling_env is used
+                logger.debug(f"  _invoke_handler_tool: Successfully evaluated value for key '{key_str}' to type: {type(evaluated_value)}")
             except SexpEvaluationError as e_val_eval:
                 raise SexpEvaluationError(
                     f"Error evaluating value for '{key_str}' in tool '{tool_name}': {e_val_eval.args[0] if e_val_eval.args else str(e_val_eval)}",
