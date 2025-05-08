@@ -119,7 +119,7 @@ DEFATOM_COMBINED_ANALYSIS_S_EXPRESSION = """
     Provide a concise explanation in 'message'.
     Output ONLY JSON conforming to the CombinedAnalysisResult schema.
     Ensure 'next_prompt' is provided *only* if verdict is 'RETRY'.
-    If you output "verdict":"RETRY" you must echo a non-empty "files" array; otherwise the controller will reuse the prior list.
+    If you output \"verdict\":\"RETRY\" you must echo a non-empty \"files\" array; otherwise the controller will reuse the prior list.
     **IMPORTANT:** Your entire response MUST be the JSON object itself, starting with `{` and ending with `}`."
   )
   (output_format ((type "json") (schema "src.system.models.CombinedAnalysisResult")))
