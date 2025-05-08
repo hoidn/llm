@@ -199,16 +199,37 @@ class SexpEvaluator:
             try:
                 # The 'sexpdata.Quoted' object is a namedtuple with a single field 'x'.
                 # This 'x' field holds the actual quoted data.
-                actual_val = node.x
-                logging.debug(f"Eval Quoted: Extracted value from node.x: {actual_val!r}")
-                return actual_val
-            except AttributeError:
+                # Use getattr to be more robust against different implementations
+                actual_val = getattr(node, 'x', None)
+                if actual_val is None:
+                    # Try alternative attribute names that might be used in different versions
+                    for attr in ['val', 'value', '_value']:
+                        if hasattr(node, attr):
+                            actual_val = getattr(node, attr)
+                            logging.debug(f"Eval Quoted: Found alternative attribute '{attr}': {actual_val!r}")
+                            break
+                
+                if actual_val is None:
+                    # If we still don't have a value, try to get the first item if it's a sequence
+                    if hasattr(node, '__getitem__'):
+                        try:
+                            actual_val = node[0]
+                            logging.debug(f"Eval Quoted: Extracted first item: {actual_val!r}")
+                        except (IndexError, TypeError):
+                            pass
+                
+                if actual_val is not None:
+                    logging.debug(f"Eval Quoted: Extracted value: {actual_val!r}")
+                    return actual_val
+                
+                # If we get here, we couldn't extract a value
+                logging.error(f"Eval Quoted: Could not extract value from {node!r}")
+                raise SexpEvaluationError(f"Could not extract value from Quoted object: {node!r}", expression=str(node))
+            except Exception as e:
                 # This might happen if our understanding of sexpdata.Quoted is off
                 # or if a different type of Quoted object is encountered.
-                # Let's log and re-raise for now, as the direct attribute access
-                # is the documented way for sexpdata.Quoted.
-                logging.exception(f"Eval Quoted: AttributeError accessing node.x for {node!r}. This is unexpected for sexpdata.Quoted.")
-                raise SexpEvaluationError(f"Invalid Quoted object structure: {node!r} does not have .x", expression=str(node))
+                logging.exception(f"Eval Quoted: Error accessing quoted value for {node!r}: {e}")
+                raise SexpEvaluationError(f"Error accessing quoted value: {node!r} - {str(e)}", expression=str(node))
 
         if not isinstance(node, list):
             # This branch now handles non-Symbol, non-Quoted, non-list atoms (numbers, strings, bools, None)
@@ -384,7 +405,18 @@ class SexpEvaluator:
             except NameError:
                 # *loop-config* was not in the calling environment, that's fine.
                 logger.debug("    '*loop-config*' not found in calling_env, not injecting.")
-                pass
+                # Try to look for it in parent environments
+                parent_env = calling_env
+                while hasattr(parent_env, '_parent') and parent_env._parent is not None:
+                    parent_env = parent_env._parent
+                    try:
+                        loop_config_val = parent_env.lookup('*loop-config*')
+                        if loop_config_val is not None:
+                            logger.debug(f"    Found '*loop-config*' in parent environment id={id(parent_env)}, injecting into call_frame_env")
+                            call_frame_env.define('*loop-config*', loop_config_val)
+                            break
+                    except NameError:
+                        continue
             # --- END FIX for *loop-config* ---
 
             # Remove the old loop that defined bindings directly in call_frame_env
@@ -473,15 +505,45 @@ class SexpEvaluator:
     def _call_phase_function(self, phase_name: str, func_to_call: Any, args_list: List[Any], env_for_eval: SexpEnvironment, original_loop_expr: str, iteration: int) -> Any:
         """Helper to invoke a phase function (lambda/Closure) with error handling."""
         logger.debug(f"    Invoking {phase_name} (Iter {iteration}) with {len(args_list)} args in env_for_call={id(env_for_eval)}")
+        logger.debug(f"    Args types: {[type(arg) for arg in args_list]}")
+        logger.debug(f"    Args values: {[str(arg)[:100] + '...' if len(str(arg)) > 100 else str(arg) for arg in args_list]}")
         try:
-            # Re-quote evaluated arguments to pass them as if they were AST nodes
-            # This allows _apply_operator to handle them correctly, especially for closures.
-            dummy_quoted_arg_nodes = [[Symbol("quote"), arg] for arg in args_list]
+            # Pass arguments directly without quoting - phase functions expect evaluated values
             conceptual_call_str = f"({phase_name} iter={iteration})" # For potential error messages
-
-            # Use _apply_operator to handle calling the resolved function (Closure or other callable)
-            # Pass the environment where the call occurs ('env_for_eval')
-            result = self._apply_operator(func_to_call, dummy_quoted_arg_nodes, env_for_eval, conceptual_call_str)
+            
+            if isinstance(func_to_call, Closure):
+                # For Closures, we need to create a call frame and evaluate the body
+                # This is similar to what _apply_operator does for Closures
+                if len(func_to_call.params_ast) != len(args_list):
+                    raise SexpEvaluationError(
+                        f"Arity mismatch: {phase_name} function expects {len(func_to_call.params_ast)} arguments, got {len(args_list)}",
+                        original_loop_expr
+                    )
+                
+                # Create call frame extending the closure's definition environment
+                call_frame_bindings = {}
+                for param_symbol, arg_value in zip(func_to_call.params_ast, args_list):
+                    param_name = param_symbol.value()
+                    call_frame_bindings[param_name] = arg_value
+                
+                call_frame_env = func_to_call.definition_env.extend(call_frame_bindings)
+                
+                # Inject *loop-config* if available in the calling environment
+                try:
+                    loop_config_val = env_for_eval.lookup('*loop-config*')
+                    if loop_config_val is not None:
+                        call_frame_env.define('*loop-config*', loop_config_val)
+                except NameError:
+                    pass
+                
+                # Evaluate the body expressions in the call frame
+                result = None
+                for body_expr in func_to_call.body_ast:
+                    result = self._eval(body_expr, call_frame_env)
+                return result
+            else:
+                # For regular callables (Python functions), call directly
+                result = func_to_call(*args_list)
             logger.debug(f"    {phase_name} (Iter {iteration}) returned: {str(result)[:200]}{'...' if len(str(result)) > 200 else ''}")
             return result
 

@@ -161,8 +161,8 @@ class PrimitiveProcessor:
         elif hasattr(target_obj, 'model_fields'): # Pydantic model
              logger.debug(f"  'get-field': target_obj is Pydantic model. Fields: {list(target_obj.model_fields.keys())}")
 
-
         try:
+            # Dictionary access
             if isinstance(target_obj, dict):
                 if field_name_val not in target_obj:
                     logger.warning(f"  'get-field': Key '{field_name_val}' not found in dict. Returning None.")
@@ -170,7 +170,8 @@ class PrimitiveProcessor:
                 val = target_obj.get(field_name_val)
                 logger.debug(f"  'get-field': Dict lookup for '{field_name_val}' -> {val!r} (Type: {type(val)})")
                 return val.value() if isinstance(val, Symbol) else val
-            # Handle association lists (lists of [key, value] pairs)
+                
+            # Association list access (lists of [key, value] pairs)
             elif isinstance(target_obj, list):
                 logger.debug(f"  'get-field': Target is a list. Attempting assoc-list lookup for key '{field_name_val}'. List: {target_obj!r}")
                 for item in target_obj:
@@ -192,35 +193,69 @@ class PrimitiveProcessor:
                             return val.value() if isinstance(val, Symbol) else val
                 logger.warning(f"  'get-field': Key '{field_name_val}' not found in assoc-list. Returning None.")
                 return None
-            # Check for Pydantic model fields
+                
+            # Pydantic model access - simplify to primarily use direct attribute access
             elif isinstance(target_obj, BaseModel):
-                # v2: .model_fields  |  v1: .__fields__
-                field_dict = getattr(target_obj, "model_fields", None) or getattr(target_obj, "__fields__", {})
-                if field_name_val in field_dict:
-                    val = getattr(target_obj, field_name_val, None)
-                    logger.debug(f"  'get-field': Accessing Pydantic attribute '{field_name_val}' -> {val!r} (Type: {type(val)})")
+                logger.debug(f"  'get-field': Target is a Pydantic model: {type(target_obj).__name__}")
+                logger.debug(f"  'get-field': About to access field '{field_name_val}' via getattr on object type {type(target_obj)}")
+                
+                # Try direct attribute access (most reliable)
+                try:
+                    val = getattr(target_obj, field_name_val)
+                    logger.debug(f"  'get-field': Direct getattr for '{field_name_val}' succeeded -> {val!r} (Type: {type(val)})")
                     return val.value() if isinstance(val, Symbol) else val
-                logger.warning(f"get-field: {field_name_val} not in {type(target_obj)}")
+                except AttributeError:
+                    logger.debug(f"  'get-field': Direct getattr for '{field_name_val}' failed with AttributeError")
+                    # Fall back to model_dump only if getattr fails
+                    try:
+                        # Try model_dump (Pydantic v2)
+                        if hasattr(target_obj, "model_dump") and callable(getattr(target_obj, "model_dump")):
+                            model_dict = target_obj.model_dump()
+                            if field_name_val in model_dict:
+                                val = model_dict[field_name_val]
+                                logger.debug(f"  'get-field': Found in model_dump(): {val!r}")
+                                return val
+                        # Try dict() method (Pydantic v1)
+                        elif hasattr(target_obj, "dict") and callable(getattr(target_obj, "dict")):
+                            model_dict = target_obj.dict()
+                            if field_name_val in model_dict:
+                                val = model_dict[field_name_val]
+                                logger.debug(f"  'get-field': Found in dict(): {val!r}")
+                                return val
+                    except Exception as e:
+                        logger.debug(f"  'get-field': Error in model_dump/dict() fallback: {e}")
+                
+                logger.warning(f"get-field: '{field_name_val}' not found in Pydantic model {type(target_obj).__name__}")
                 return None
-            # ---- NEW: Special-case TaskResult ----
+                
+            # Special-case TaskResult
             elif isinstance(target_obj, TaskResult):
-                # Direct attribute lookup first
-                if field_name_val in target_obj.model_fields:
-                    return getattr(target_obj, field_name_val, None)
-                # Fallback: treat parsedContent like a dict for common plan keys
-                if target_obj.parsedContent and isinstance(target_obj.parsedContent, dict):
-                    return target_obj.parsedContent.get(field_name_val)
-                logger.warning(f"get-field: '{field_name_val}' missing in TaskResult and its parsedContent")
-                return None
-            # ---------------------------------------
-            # Fallback to general attribute access
-            elif hasattr(target_obj, field_name_val):
+                # Direct attribute access first
+                try:
+                    val = getattr(target_obj, field_name_val)
+                    logger.debug(f"  'get-field': Direct access to TaskResult.{field_name_val} -> {val!r}")
+                    return val
+                except AttributeError:
+                    # Fallback: try parsedContent
+                    if hasattr(target_obj, 'parsedContent') and target_obj.parsedContent and isinstance(target_obj.parsedContent, dict):
+                        if field_name_val in target_obj.parsedContent:
+                            val = target_obj.parsedContent.get(field_name_val)
+                            logger.debug(f"  'get-field': Found in TaskResult.parsedContent: {val!r}")
+                            return val
+                    logger.warning(f"get-field: '{field_name_val}' missing in TaskResult and its parsedContent")
+                    return None
+                
+            # General object attribute access
+            # Try direct attribute access with explicit logging and error handling
+            logger.debug(f"  'get-field': Attempting to access attribute '{field_name_val}' on object of type {type(target_obj)}")
+            try:
                 val = getattr(target_obj, field_name_val)
-                logger.debug(f"  'get-field': Accessing general attribute '{field_name_val}' -> {val!r} (Type: {type(val)})")
+                logger.debug(f"  'get-field': Successfully accessed attribute '{field_name_val}' -> {val!r} (Type: {type(val)})")
                 return val.value() if isinstance(val, Symbol) else val
-            else:
+            except AttributeError:
                 logger.warning(f"  'get-field': Field or attribute '{field_name_val}' not found in object of type {type(target_obj)}. Returning None.")
                 return None
+                
         except Exception as e_access:
             logger.exception(f"  Error accessing field '{field_name_val}' in 'get-field': {e_access}")
             raise SexpEvaluationError(f"Error accessing field '{field_name_val}': {e_access}", original_expr_str, error_details=str(e_access)) from e_access

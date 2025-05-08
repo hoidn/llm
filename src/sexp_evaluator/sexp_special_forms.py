@@ -6,7 +6,7 @@ the handling logic for all special forms in the S-expression language.
 import logging
 from typing import Any, List, TYPE_CHECKING, Dict
 
-from sexpdata import Symbol
+from sexpdata import Symbol, Quoted as sexpdata_Quoted
 
 from src.sexp_evaluator.sexp_environment import SexpEnvironment
 from src.sexp_evaluator.sexp_closure import Closure # Added import
@@ -552,6 +552,11 @@ class SpecialFormProcessor:
             # Create the environment with *loop-config* binding for this iteration
             phase_call_env = env.extend({'*loop-config*': loop_config_data})
             logger.debug(f"  Loop Iteration {current_iteration}: Created phase_call_env id={id(phase_call_env)} extending env id={id(env)} with *loop-config*")
+            
+            # Ensure *loop-config* is properly defined in the environment
+            if '*loop-config*' not in phase_call_env.get_local_bindings():
+                logger.warning(f"  *loop-config* not found in local bindings after extend, explicitly defining it")
+                phase_call_env.define('*loop-config*', loop_config_data)
 
             try:
                 # b. Director Phase - Pass ONLY required args per ADR
@@ -771,6 +776,51 @@ class SpecialFormProcessor:
 
         try:
             current_loop_input = self.evaluator._eval(clauses["initial-input"], env)
+            logger.debug(f"iterative-loop: Evaluated 'initial-input' to: {current_loop_input!r} (Type: {type(current_loop_input)})")
+            
+            # Log the type and value BEFORE any potential conversion
+            logger.info(f"iterative-loop: BEFORE conversion - current_loop_input type: {type(current_loop_input)}, value: {current_loop_input!r}")
+            
+            # Handle Quoted objects by extracting their inner value
+            if isinstance(current_loop_input, sexpdata_Quoted):
+                try:
+                    # Log detailed information about the Quoted object
+                    logger.debug(f"iterative-loop: Found Quoted object: {repr(current_loop_input)}")
+                    logger.debug(f"iterative-loop: Quoted object dir(): {dir(current_loop_input)}")
+                    
+                    # Try multiple attribute names that might contain the inner value
+                    inner_val = None
+                    for attr_name in ['x', 'val', 'value', '_value']:
+                        if hasattr(current_loop_input, attr_name):
+                            inner_val = getattr(current_loop_input, attr_name)
+                            logger.debug(f"iterative-loop: Extracted value from Quoted 'initial-input' using '{attr_name}': {inner_val!r}")
+                            break
+                    
+                    # If we still don't have a value, try indexing if possible
+                    if inner_val is None and hasattr(current_loop_input, '__getitem__'):
+                        try:
+                            inner_val = current_loop_input[0]
+                            logger.debug(f"iterative-loop: Extracted value from Quoted 'initial-input' using indexing: {inner_val!r}")
+                        except (IndexError, TypeError):
+                            pass
+                    
+                    if inner_val is not None:
+                        current_loop_input = inner_val
+                        logger.debug(f"iterative-loop: Updated current_loop_input with extracted value: {current_loop_input!r}")
+                    else:
+                        logger.warning(f"iterative-loop: Could not extract inner value from Quoted object: {current_loop_input!r}")
+                except Exception as e_quoted:
+                    logger.exception(f"iterative-loop: Error extracting value from Quoted object: {e_quoted}")
+            
+            # Handle Symbol objects by converting to their string value
+            # Do this AFTER handling Quoted objects to also convert any Symbol extracted from a Quoted object
+            if isinstance(current_loop_input, Symbol):
+                logger.debug(f"iterative-loop: Converting Symbol to string: {current_loop_input!r}")
+                current_loop_input = current_loop_input.value()
+                logger.debug(f"iterative-loop: Converted Symbol 'initial-input' to string: {current_loop_input}")
+            
+            # Log the type and value AFTER any potential conversion
+            logger.info(f"iterative-loop: AFTER conversion - current_loop_input type: {type(current_loop_input)}, value: {current_loop_input!r}")
         except Exception as e:
             raise SexpEvaluationError(f"iterative-loop: Error evaluating 'initial-input': {e}", original_expr_str, error_details=str(e)) from e
 
@@ -818,10 +868,20 @@ class SpecialFormProcessor:
 
             try:
                 # --- Executor Phase ---
+                logger.info(f"--- Iterative Loop: Before executor call in iteration {current_iteration}/{max_iter_val} ---")
+                logger.info(f"  current_loop_input type: {type(current_loop_input)}")
+                logger.info(f"  current_loop_input value: {current_loop_input!r}")
+                logger.info(f"  executor_fn type: {type(executor_fn)}")
+                if hasattr(executor_fn, 'params_ast'):
+                    logger.info(f"  executor_fn params: {executor_fn.params_ast}")
+            
                 executor_result = self.evaluator._call_phase_function(
                     "executor", executor_fn, [current_loop_input, current_iteration],
                     env, original_expr_str, current_iteration
                 )
+                logger.info(f"  executor_result type: {type(executor_result)}")
+                logger.info(f"  executor_result value: {executor_result!r}")
+            
                 last_exec_result_val = executor_result # Store potentially final result
 
                 # --- Validator Phase ---

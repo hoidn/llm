@@ -256,7 +256,7 @@ def main():
     parser.add_argument(
         "--max-retries",
         type=int,
-        default=3, # Default to 3 retries
+        default=8, # Default to 3 retries
         help="Maximum number of retry iterations for the coding loop."
     )
     args = parser.parse_args()

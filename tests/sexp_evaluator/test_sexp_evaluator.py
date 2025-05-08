@@ -2783,11 +2783,11 @@ class TestSexpEvaluatorIterativeLoop:
 
         # Verify the arguments passed TO _call_phase_function
         # Check that the correct mock lambda function was passed as func_to_call
-        # Executor receives Symbol("start'") as current_structured_input for iter 1 based on log
-        mock_call_phase.assert_any_call("executor", mock_executor_lambda_func, [Symbol("start'"), 1], mocker.ANY, mocker.ANY, 1)
+        # Executor receives "start" as current_structured_input for iter 1 (the evaluated value)
+        mock_call_phase.assert_any_call("executor", mock_executor_lambda_func, ["start", 1], mocker.ANY, mocker.ANY, 1)
         mock_call_phase.assert_any_call("validator", mock_validator_lambda_func, ["echo test", 1], mocker.ANY, mocker.ANY, 1)
-        # Controller also receives Symbol("start'") as current_structured_input for iter 1
-        mock_call_phase.assert_any_call("controller", mock_controller_lambda_func, [mock_executor_result, mock_validator_result, Symbol("start'"), 1], mocker.ANY, mocker.ANY, 1)
+        # Controller also receives "start" as current_structured_input for iter 1
+        mock_call_phase.assert_any_call("controller", mock_controller_lambda_func, [mock_executor_result, mock_validator_result, "start", 1], mocker.ANY, mocker.ANY, 1)
 
 
     def test_iterative_loop_continues_once_then_stops(self, evaluator, mock_parser, mocker):
