@@ -237,7 +237,7 @@ MAIN_WORKFLOW_S_EXPRESSION = """
                                                         (list 'instructions next-instructions)
                                                         (list 'files next-files))))
                                     (if (string=? verdict "SUCCESS")
-                                        (list 'stop aider_result) ;; Stop with the successful Aider result
+                                        (list 'stop analysis_task_result) ;; Stop with the SUCCESS analysis result
                                         ;; verdict == "FAILURE" (or anything unexpected)
                                         (list 'stop analysis_task_result) ;; Stop with the analysis result explaining why
                                     ))))))))))
