@@ -350,16 +350,17 @@ class SexpEvaluator:
                     if isinstance(e_arg_eval, SexpEvaluationError): raise
                     raise SexpEvaluationError(f"Error evaluating argument {i+1} for closure: {arg_node}", original_call_expr_str, error_details=str(e_arg_eval)) from e_arg_eval
             
-            logger.debug(f"    Creating new call frame. Parent (definition_env from closure) ID: {id(closure_to_apply.definition_env)}")
-            call_frame_env = closure_to_apply.definition_env.extend({}) 
+            # Create new call frame: Its parent is the calling_env, enabling dynamic-like scoping for special variables.
+            logger.debug(f"    Creating new call frame. Parent (calling_env) ID: {id(calling_env)}")
+            call_frame_env = calling_env.extend({})
 
             for param_symbol, arg_value in zip(closure_to_apply.params_ast, evaluated_args):
-                param_name = param_symbol.value() 
-                call_frame_env.define(param_name, arg_value)
+                param_name = param_symbol.value()
+                call_frame_env.define(param_name, arg_value) # Define params in the new call_frame_env
                 logger.debug(f"      Bound '{param_name}' = {arg_value} in call frame (id={id(call_frame_env)})")
             
-            final_body_result: Any = [] 
-            logger.debug(f"    Evaluating closure body with {len(closure_to_apply.body_ast)} expressions in call frame (id={id(call_frame_env)})")
+            final_body_result: Any = []
+            logger.debug(f"    Evaluating closure body with {len(closure_to_apply.body_ast)} expressions in call frame (id={id(call_frame_env)}) which has parent (calling_env) id={id(calling_env)}")
             for i, body_node in enumerate(closure_to_apply.body_ast):
                 try:
                     final_body_result = self._eval(body_node, call_frame_env)
@@ -588,17 +589,15 @@ class SexpEvaluator:
             # --- Controller Phase ---
             decision_val = self._call_phase_function(
                 "controller", controller_fn, [executor_result, validation_result, current_loop_input, current_iteration],
-                env, original_expr_str, current_iteration
+                env, original_expr_str, current_iteration # Pass the main 'env' for phase function execution context
             )
 
             # --- Process Decision ---
-            # --- ADD VALIDATION ---
             if not (isinstance(decision_val, list) and len(decision_val) == 2 and isinstance(decision_val[0], Symbol)):
                 raise SexpEvaluationError(
                     f"iterative-loop: Controller must return a list of (action_symbol value), got: {decision_val!r}",
                     original_expr_str
                 )
-            # --- END VALIDATION ---
 
             action_symbol: Symbol = decision_val[0]
             action_value: Any = decision_val[1]
@@ -622,10 +621,13 @@ class SexpEvaluator:
         # --- End While Loop ---
         else: # Loop finished because current_iteration > max_iter_val
             logger.info(f"Loop finished after reaching max_iterations ({max_iter_val}). Returning last executor result.")
-            # loop_result already holds the result from the last successful executor call
+            # loop_result already holds the result from the last successful executor call if loop finished by max_iterations
+            # If loop was exited by 'stop', loop_result was set to action_value.
+            # If max_iter_val was 0, loop_result remains its initial value ([]).
 
+        logger.info(f"SexpEvaluator._eval_iterative_loop END. Iterations: {current_iteration-1 if current_iteration > 0 else 0}. Final loop_result type: {type(loop_result)}")
         logger.debug(f"SexpEvaluator._eval_iterative_loop END -> {str(loop_result)[:200]}...")
-        return loop_result # CORRECT RETURN
+        return loop_result
 
     # --- Invocation Helpers (Remain in SexpEvaluator) ---
 
