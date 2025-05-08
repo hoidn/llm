@@ -2685,8 +2685,17 @@ class TestSexpEvaluatorIterativeLoop:
             # Simulate the EVALUATION of the configuration clauses
             # (quote start) evaluates to Symbol('start') - BUT the loop logic expects the *value*
             # The SPECIAL FORM evaluator should handle evaluating these *before* the loop starts
-            if node == [Symbol("quote"), Symbol("start")]: return "start" # Return the intended string value
-            if node == [Symbol("quote"), Symbol("echo test")]: return "echo test" # Return the intended string value
+            # More robust check for (quote start)
+            if isinstance(node, list) and len(node) == 2 and \
+               isinstance(node[0], Symbol) and node[0].value() == "quote" and \
+               isinstance(node[1], Symbol) and node[1].value() == "start":
+                return "start" # Return the string value
+                
+            # More robust check for (quote echo test)
+            if isinstance(node, list) and len(node) == 2 and \
+               isinstance(node[0], Symbol) and node[0].value() == "quote" and \
+               isinstance(node[1], Symbol) and node[1].value() == "echo test":
+                return "echo test" # Return the string value
 
             # Return the stored mock functions for the lambda expressions
             if isinstance(node, list) and len(node) > 0 and node[0] == Symbol("lambda"):
