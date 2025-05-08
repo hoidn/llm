@@ -222,11 +222,11 @@ class AiderBridge:
 
                     # If all checks pass, proceed with parsing TextContent
                     response_text = first_element.text # Get text from the first element
-                    logger.debug(f"Raw MCP response text from TextContent: {response_text!r}")
+                    logger.debug(f"Raw MCP response text from TextContent: {response_text!r}") # Add this
 
                     try:
                         server_payload = json.loads(response_text)
-                        logger.debug(f"Parsed MCP server payload: {server_payload}")
+                        logger.debug(f"Parsed MCP server payload: {server_payload}") # Add this
                     except json.JSONDecodeError as json_err:
                         logger.error(f"Failed to parse JSON response from MCP server: {json_err}")
                         logger.error(f"Invalid JSON string received: {response_text!r}") # Log problematic text
@@ -245,10 +245,17 @@ class AiderBridge:
                     # Handle specific tool formats based on aider_MCP_server.md
                     if tool_name == "aider_ai_code":
                         success = server_payload.get("success", False)
-                        diff_content = server_payload.get("diff", "")
+                        # --- Add logging here ---
+                        diff_content = server_payload.get("diff", "") # Get the diff
+                        logger.debug(f"Extracted 'diff' from payload: '{diff_content[:100]}...' (Type: {type(diff_content)})")
+                        # --- End logging ---
                         if success:
                             logger.info(f"Aider MCP tool '{tool_name}' completed successfully.")
-                            return TaskResult(status="COMPLETE", content=diff_content, notes={"success": True, "diff": diff_content}).model_dump(exclude_none=True)
+                            # --- Add logging for constructed result ---
+                            notes_to_return = {"success": True, "diff": diff_content} # Construct notes
+                            logger.debug(f"Constructing SUCCESS TaskResult with content='{diff_content[:100]}...' and notes={notes_to_return}")
+                            # --- End logging ---
+                            return TaskResult(status="COMPLETE", content=diff_content, notes=notes_to_return).model_dump(exclude_none=True)
                         else:
                             # If success is false but no explicit 'error' key, use diff as error message
                             error_msg = diff_content or f"Aider tool '{tool_name}' failed without specific error message."
