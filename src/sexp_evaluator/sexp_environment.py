@@ -3,8 +3,10 @@ Implementation of the SexpEnvironment based on the IDL specification.
 Provides a lexical scoping environment for S-expression evaluation.
 """
 
-import logging
+import logging # Ensure imported
 from typing import Any, Dict, Optional
+
+logger = logging.getLogger(__name__) # Add logger
 
 class SexpEnvironment:
     """

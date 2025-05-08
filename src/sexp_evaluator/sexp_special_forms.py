@@ -499,8 +499,9 @@ class SpecialFormProcessor:
 
             # Create the phase-specific environment with *loop-config*
             phase_execution_env = env.extend({"*loop-config*": loop_config_data})
-            
-            # --- START: Wrap phase calls in try/except ---
+            logger.debug(f"    Created phase_execution_env id={id(phase_execution_env)} with parent id={id(env)} and bindings: {phase_execution_env.get_local_bindings()}")
+
+            try:
             try:
                 # b. Director Phase
                 # Use the evaluator's helper which handles quoting and error wrapping
@@ -539,9 +540,7 @@ class SpecialFormProcessor:
                     # For now, just re-raise to avoid losing original details.
                     raise phase_error
                 else:
-                    # Wrap unexpected Python errors
                     raise SexpEvaluationError(f"Unexpected error during loop iteration {current_iteration}: {phase_error}", original_expr_str, error_details=str(phase_error)) from phase_error
-            # --- END: Wrap phase calls in try/except ---
 
             # f. Validate decision_val (VALIDATION ADDED)
             if not (isinstance(decision_val, list) and len(decision_val) == 2 and isinstance(decision_val[0], Symbol)):
