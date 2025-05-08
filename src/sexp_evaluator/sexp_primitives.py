@@ -6,6 +6,7 @@ the application logic for all built-in primitives in the S-expression language.
 import logging
 from typing import Any, List, TYPE_CHECKING, Dict
 from pydantic import BaseModel # add once
+from src.system.models import TaskResult   # NEW – needed for isinstance check
 
 from sexpdata import Symbol
 
@@ -201,6 +202,17 @@ class PrimitiveProcessor:
                     return val.value() if isinstance(val, Symbol) else val
                 logger.warning(f"get-field: {field_name_val} not in {type(target_obj)}")
                 return None
+            # ---- NEW: Special-case TaskResult ----
+            elif isinstance(target_obj, TaskResult):
+                # Direct attribute lookup first
+                if field_name_val in target_obj.model_fields:
+                    return getattr(target_obj, field_name_val, None)
+                # Fallback: treat parsedContent like a dict for common plan keys
+                if target_obj.parsedContent and isinstance(target_obj.parsedContent, dict):
+                    return target_obj.parsedContent.get(field_name_val)
+                logger.warning(f"get-field: '{field_name_val}' missing in TaskResult and its parsedContent")
+                return None
+            # ---------------------------------------
             # Fallback to general attribute access
             elif hasattr(target_obj, field_name_val):
                 val = getattr(target_obj, field_name_val)

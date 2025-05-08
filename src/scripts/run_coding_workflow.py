@@ -87,6 +87,8 @@ DEFATOM_COMBINED_ANALYSIS_S_EXPRESSION = """
     (test_command string)
     (test_stdout string)
     (test_stderr string)
+    (test_exit_code int)
+    (previous_files list)      ;; NEW – gives the LLM full context
     (iteration integer)
     (max_retries integer)
   )
@@ -103,6 +105,8 @@ DEFATOM_COMBINED_ANALYSIS_S_EXPRESSION = """
     {{test_stdout}}
     Test Stderr:
     {{test_stderr}}
+    Test Exit Code: {{test_exit_code}}
+    Files In Play: {{previous_files}}
 
     Analyze the test output (stdout/stderr) to determine if tests passed.
     - If tests passed (e.g., pytest shows PASSED, no errors in stderr), verdict is 'SUCCESS'.
