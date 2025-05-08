@@ -65,7 +65,7 @@ DEFATOM_GENERATE_PLAN_S_EXPRESSION = """
     Your *only* task is to generate a development plan. Do *not* attempt to execute any tools or commands yourself.
     The plan must include ONLY:
     1. 'instructions': Detailed steps for an AI coder (Aider).
-    2. 'files': List of relative file paths to create/modify.
+    2. 'files': List of relative file paths to create / modify or use as context (including both souce modules and their associated test files)
     Do NOT generate a 'test_command'.
     Output ONLY a single JSON object conforming to the DevelopmentPlan schema (ignore the test_command field). No other text."
   )
@@ -107,6 +107,7 @@ DEFATOM_COMBINED_ANALYSIS_S_EXPRESSION = """
     Output ONLY JSON conforming to the CombinedAnalysisResult schema.
     Ensure 'next_prompt' is provided *only* if verdict is 'RETRY'.
     If you output verdict:RETRY you must echo a non-empty files array; otherwise the controller will reuse the prior list.
+    Ensure you include ALL the relevant filenames from previous_files that will be needed, in addition to any new additions not part of previous_files
     **IMPORTANT:** Your entire response MUST be the JSON object itself, starting with `{` and ending with `}`."
   )
   (params
@@ -124,7 +125,7 @@ DEFATOM_COMBINED_ANALYSIS_S_EXPRESSION = """
   )
   (output_format ((type "json") (schema "src.system.models.CombinedAnalysisResult")))
   (description "Analyzes Aider and test results, determines success/failure/retry, and provides the next prompt if needed.")
-  (model "anthropic:claude-3-5-sonnet-latest") ;; Explicitly set the model to use
+  (model "google:gemini-2.5-pro-exp-03-25") ;; Explicitly set the model to use
 )
 """
 
@@ -302,7 +303,7 @@ def main():
         app_config = {
             "aider": {"enabled": True},
             "handler_config": {
-                "default_model_identifier": "anthropic:claude-3-5-sonnet-latest"
+                "default_model_identifier": "google:gemini-2.5-pro-exp-03-25"
                 #"default_model_identifier": "google-gla:gemini-2.0-flash"
             }
         }

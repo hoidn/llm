@@ -191,30 +191,55 @@ class SpecialFormProcessor:
             )
         task_name_str = task_name_node.value()
 
-        instructions_node = arg_exprs[1]
+        instructions_node: Any = None
+        params_node: Any = None
+        optional_arg_nodes: List[SexpNode] = []
+
+        # Scan for instructions, params, and collect other optional arguments
+        for arg_item_expr in arg_exprs[1:]:
+            if isinstance(arg_item_expr, list) and len(arg_item_expr) > 0 and isinstance(arg_item_expr[0], Symbol):
+                clause_type_symbol = arg_item_expr[0].value()
+                if clause_type_symbol == "instructions":
+                    if instructions_node is not None:
+                        raise SexpEvaluationError(f"Duplicate (instructions ...) clause found for 'defatom' task '{task_name_str}'", original_expr_str)
+                    instructions_node = arg_item_expr
+                elif clause_type_symbol == "params":
+                    if params_node is not None:
+                        raise SexpEvaluationError(f"Duplicate (params ...) clause found for 'defatom' task '{task_name_str}'", original_expr_str)
+                    params_node = arg_item_expr
+                else:
+                    # Assume it's an optional argument like (subtype ...), (description ...), (model ...), (output_format ...), (history_config ...)
+                    optional_arg_nodes.append(arg_item_expr)
+            else:
+                # This argument is not a list starting with a symbol, so it cannot be instructions, params, or a standard optional argument.
+                # This could be an error, or a different kind of optional argument not yet defined.
+                # For now, we'll treat it as an unexpected/invalid argument structure outside of name, instructions, params.
+                raise SexpEvaluationError(
+                    f"Unexpected argument structure in 'defatom' for task '{task_name_str}': {arg_item_expr}. Expected (key ...).",
+                    original_expr_str
+                )
+
+        # Validate that 'instructions' and 'params' clauses were found and are correctly structured
+        if instructions_node is None:
+            raise SexpEvaluationError(f"'defatom' for task '{task_name_str}' is missing the (instructions \"string\") definition.", original_expr_str)
         if not (isinstance(instructions_node, list) and len(instructions_node) == 2 and isinstance(instructions_node[0], Symbol) and instructions_node[0].value() == "instructions" and isinstance(instructions_node[1], str)):
-            raise SexpEvaluationError(
-                f"'defatom' requires an (instructions \"string\") definition as the second argument, got: {instructions_node}",
-                original_expr_str
-            )
+            raise SexpEvaluationError(f"'defatom' requires an (instructions \"string\") definition, got: {instructions_node} for task '{task_name_str}'", original_expr_str)
         instructions_str = instructions_node[1]
 
-        params_node = arg_exprs[2]
+        if params_node is None:
+            raise SexpEvaluationError(f"'defatom' for task '{task_name_str}' is missing the (params ...) definition.", original_expr_str)
         if not (isinstance(params_node, list) and len(params_node) > 0 and isinstance(params_node[0], Symbol) and params_node[0].value() == "params"):
-            raise SexpEvaluationError(
-                f"'defatom' requires a (params ...) definition as the third argument, got: {params_node}",
-                original_expr_str
-            )
+            raise SexpEvaluationError(f"'defatom' requires a (params ...) definition, got: {params_node} for task '{task_name_str}'", original_expr_str)
         
         param_name_strings_for_template = []
-        for param_def_item in params_node[1:]:
+        for param_def_item in params_node[1:]: # Iterate over items within (params item1 item2 ...)
             if isinstance(param_def_item, Symbol):
                 param_name_strings_for_template.append(param_def_item.value())
             elif isinstance(param_def_item, list) and len(param_def_item) >= 1 and isinstance(param_def_item[0], Symbol): # Support (param_name type?)
                 param_name_strings_for_template.append(param_def_item[0].value())
             else:
                  raise SexpEvaluationError(
-                    f"Invalid parameter definition format in (params ...). Expected symbol or (symbol type?), got: {param_def_item}",
+                    f"Invalid parameter definition format in (params ...) for task '{task_name_str}'. Expected symbol or (symbol type?), got: {param_def_item}",
                     original_expr_str
                 )
 
@@ -226,10 +251,19 @@ class SpecialFormProcessor:
         # Keys that expect a structured value (list of lists/pairs)
         structured_optionals = {"output_format", "history_config"}
 
-        for opt_node in arg_exprs[3:]:
-            if not (isinstance(opt_node, list) and len(opt_node) >= 2 and isinstance(opt_node[0], Symbol)): # value can be complex
-                raise SexpEvaluationError(
-                    f"Invalid optional argument format for 'defatom'. Expected (key value_expression), got: {opt_node}",
+        # Process collected optional arguments
+        for opt_node in optional_arg_nodes:
+            # Validation for opt_node structure (already implicitly checked by the collection loop, but good for clarity)
+            # if not (isinstance(opt_node, list) and len(opt_node) >= 2 and isinstance(opt_node[0], Symbol)): # This check is effectively done above
+            #     raise SexpEvaluationError( # This specific error path should ideally not be hit if collection logic is correct
+            #         f"Invalid optional argument format for 'defatom' task '{task_name_str}'. Expected (key value_expression), got: {opt_node}",
+            #         original_expr_str
+            #     )
+            # The collection loop ensures opt_node is a list and opt_node[0] is a Symbol.
+            # We still need to check len(opt_node) >= 2 for (key value) structure.
+            if not (len(opt_node) >= 2): # Ensure there's at least a key and a value part
+                 raise SexpEvaluationError(
+                    f"Invalid optional argument format for 'defatom' task '{task_name_str}'. Expected (key value_expression) with at least two elements, got: {opt_node}",
                     original_expr_str
                 )
             key_node: Symbol = opt_node[0]
