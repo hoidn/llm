@@ -70,6 +70,7 @@
 - **Implement `iterative_loop_coding_demo.py` Script:** Created a new demo script (`src/scripts/iterative_loop_coding_demo.py`) to showcase the `iterative-loop` special form, refactoring the director-evaluator-loop demo to use the new pattern. Added a `ControllerAnalysisResult` Pydantic model to `src/system/models.py` to support structured decision-making in the controller phase.
 - **Fix Shell Command Failure Reporting:** Updated `src/executors/system_executors.py` to correctly report `stdout`, `stderr`, `exit_code`, and a summary message in `TaskResult` for failed shell commands. Added a new unit test to `tests/executors/test_system_executors.py` to verify this. Commits `4ef1157`, `1a0ffd9`, `08c9341`.
 - **Fix Command Execution Test Failures:** Updated tests in `test_command_executor.py`, `test_system_executors.py`, `test_base_handler.py`, `test_passthrough_handler.py` to align with the new `stdout`/`stderr`/`error_message` keys returned by `command_executor.execute_command_safely`. Corrected key usage in `BaseHandler` and `PassthroughHandler`.
+- **Fix `run_coding_workflow.py` S-expression:** Replaced `director-evaluator-loop` with `iterative-loop` and corrected an `if` statement's missing `else` branch within the validator lambda.
 
 ## Next Steps
 
