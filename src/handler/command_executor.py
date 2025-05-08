@@ -46,15 +46,18 @@ def execute_command_safely(
 
     result = {
         "success": False,
-        "output": "",
-        "error": "",
+        "stdout": "", # <<< CHANGE KEY
+        "stderr": "", # <<< CHANGE KEY
         "exit_code": None,
+        # Add an 'error_message' key specifically for execution-level errors (timeout, unsafe, etc.)
+        # to distinguish from captured stderr.
+        "error_message": None
     }
 
     # Basic safety check
     for pattern in UNSAFE_COMMAND_PATTERNS:
         if pattern in command:
-            result["error"] = f"UnsafeCommandDetected: Command contains potentially unsafe pattern '{pattern}'."
+            result["error_message"] = f"UnsafeCommandDetected: Command contains potentially unsafe pattern '{pattern}'." # <<< CHANGE KEY
             return result
 
     try:
@@ -73,21 +76,22 @@ def execute_command_safely(
             errors='replace'
         )
 
-        result["output"] = process.stdout[:MAX_OUTPUT_SIZE]
-        result["error"] = process.stderr[:MAX_OUTPUT_SIZE]
+        # Assign captured streams to the correct keys
+        result["stdout"] = process.stdout[:MAX_OUTPUT_SIZE] # <<< CHANGE KEY
+        result["stderr"] = process.stderr[:MAX_OUTPUT_SIZE] # <<< CHANGE KEY
         result["exit_code"] = process.returncode
         result["success"] = (process.returncode == 0)
 
     except subprocess.TimeoutExpired:
-        result["error"] = f"TimeoutExpired: Command exceeded {timeout} seconds limit."
+        result["error_message"] = f"TimeoutExpired: Command exceeded {timeout} seconds limit." # <<< CHANGE KEY
         # exit_code remains None
     except FileNotFoundError:
         # Often means the command itself wasn't found in PATH
-        result["error"] = f"ExecutionException: Command not found: '{cmd_parts[0]}'."
+        result["error_message"] = f"ExecutionException: Command not found: '{cmd_parts[0]}'." # <<< CHANGE KEY
         # exit_code remains None
     except Exception as e:
         # Catch other potential exceptions during execution
-        result["error"] = f"ExecutionException: An unexpected error occurred: {e}"
+        result["error_message"] = f"ExecutionException: An unexpected error occurred: {e}" # <<< CHANGE KEY
         # exit_code remains None
 
     return result
