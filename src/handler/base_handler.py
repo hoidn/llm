@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import shlex
 import warnings # Ensure imported
 from typing import Any, Callable, Dict, List, Optional, Type, Union
 
@@ -162,12 +163,14 @@ class BaseHandler:
 
         return True
 
-    def execute_file_path_command(self, command: str) -> List[str]:
+    def execute_file_path_command(self, command: str, cwd: Optional[str] = None, timeout: Optional[int] = None) -> List[str]:
         """
         Executes a shell command expected to output file paths and parses the result.
 
         Args:
             command: The shell command to execute.
+            cwd: Optional working directory for command execution.
+            timeout: Optional timeout in seconds for command execution.
 
         Returns:
             A list of absolute file paths extracted from the command's output.
@@ -175,12 +178,20 @@ class BaseHandler:
         if self.debug_mode:
             self.log_debug(f"Executing file path command: {command}")
 
-        # Use default timeout from command_executor unless overridden in config
-        timeout = self.config.get(
-            "command_executor_timeout", command_executor.DEFAULT_TIMEOUT
-        )
-        # Use base_path from file_manager as cwd unless overridden in config
-        cwd = self.config.get("command_executor_cwd", self.file_manager.base_path)
+        # Use default timeout from command_executor unless overridden in config or parameter
+        if timeout is None:
+            timeout = self.config.get(
+                "command_executor_timeout", command_executor.DEFAULT_TIMEOUT
+            )
+        # Use base_path from file_manager as cwd unless overridden in config or parameter
+        if cwd is None:
+            cwd = self.config.get("command_executor_cwd", self.file_manager.base_path)
+
+        # Check if this is a safe list command
+        is_list_command = command_executor.is_safe_list_command(command)
+        if not is_list_command:
+            self.log_debug(f"Command is not a safe list command: {command}")
+            # We'll still execute it, but with extra caution
 
         result = command_executor.execute_command_safely(
             command, cwd=cwd, timeout=timeout
@@ -192,13 +203,20 @@ class BaseHandler:
             )
 
         if result["success"]:
-            file_paths = command_executor.parse_file_paths_from_output(result["output"])
+            # Use the enhanced parse_file_paths_from_output with base_dir
+            file_paths = command_executor.parse_file_paths_from_output(result["output"], base_dir=cwd)
             if self.debug_mode:
                 self.log_debug(f"Parsed file paths: {file_paths}")
-            # Ensure paths are absolute relative to the execution CWD
-            abs_paths = [
-                os.path.abspath(os.path.join(cwd or os.getcwd(), p)) for p in file_paths
-            ]
+                
+            # For list commands, the paths should already be properly resolved by parse_file_paths_from_output
+            # For other commands, ensure paths are absolute relative to the execution CWD
+            if not is_list_command:
+                abs_paths = [
+                    os.path.abspath(os.path.join(cwd or os.getcwd(), p)) for p in file_paths
+                ]
+            else:
+                abs_paths = file_paths  # Already resolved in parse_file_paths_from_output
+                
             # Filter for existence using FileAccessManager's resolved path logic
             existing_paths = []
             for p in abs_paths:
@@ -231,6 +249,53 @@ class BaseHandler:
                 f"Command execution failed (Exit Code: {result['exit_code']}): {command}. Error: {result['error']}"
             )
             return []
+            
+    def list_files(self, directory: str = ".", pattern: str = "", recursive: bool = False) -> List[str]:
+        """
+        Securely lists files in a directory using safe commands.
+        
+        Args:
+            directory: The directory to list files from. Defaults to current directory.
+            pattern: Optional pattern to filter files (e.g., '*.py' for Python files).
+            recursive: Whether to list files recursively. Defaults to false.
+            
+        Returns:
+            A list of absolute file paths to existing files.
+        """
+        self.log_debug(f"Listing files in directory: {directory}, pattern: {pattern}, recursive: {recursive}")
+        
+        # Validate and resolve the directory path
+        try:
+            resolved_dir = self.file_manager._resolve_path(directory)
+            if not os.path.isdir(resolved_dir):
+                logging.error(f"Not a valid directory: {directory}")
+                return []
+        except ValueError as e:
+            logging.error(f"Invalid directory path: {e}")
+            return []
+        except Exception as e:
+            logging.error(f"Error resolving directory path: {e}")
+            return []
+            
+        # Construct a safe list command based on inputs
+        command = ""
+        if recursive:
+            if pattern:
+                # Use find with pattern
+                command = f"find {shlex.quote(resolved_dir)} -type f -name {shlex.quote(pattern)}"
+            else:
+                # Use find without pattern
+                command = f"find {shlex.quote(resolved_dir)} -type f"
+        else:
+            if pattern:
+                # Use ls with pattern
+                command = f"ls -1 {shlex.quote(resolved_dir)}/{shlex.quote(pattern)}"
+            else:
+                # Simple ls
+                command = f"ls -1 {shlex.quote(resolved_dir)}"
+                
+        # Execute the command and get the file paths
+        return self.execute_file_path_command(command, cwd=resolved_dir)
 
     def set_active_tool_definitions(self, tool_definitions: List[Dict[str, Any]]) -> bool:
         """
