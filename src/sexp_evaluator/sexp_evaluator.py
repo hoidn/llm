@@ -108,6 +108,7 @@ class SexpEvaluator:
             "not": self.primitive_processor.apply_not_primitive,
             # --- END ADD ---
         }
+        logging.debug(f"SexpEvaluator INITIALIZED. SPECIAL_FORM_HANDLERS keys: {list(self.SPECIAL_FORM_HANDLERS.keys())}")
         logging.debug(f"SexpEvaluator INITIALIZED. PRIMITIVE_APPLIERS keys: {list(self.PRIMITIVE_APPLIERS.keys())}")
         logging.info("SexpEvaluator initialized with helper processors.")
 

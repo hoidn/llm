@@ -160,6 +160,18 @@ module src.sexp_evaluator.sexp_evaluator {
         //   - **Behavior:** Considers Python `None` or an empty list `[]` as null.
         //   - **Returns:** `true` if the value is null, `false` otherwise.
         //   - **Raises:** `SexpEvaluationError` for arity issues or errors during argument evaluation.
+        // - `(and expr1 expr2 ...)`: **Special Form.** Evaluates expressions sequentially from left to right.
+        //   - **Behavior:** If any expression evaluates to a falsey value (Python `False`, `None`, `0`, empty sequence/mapping, etc.),
+        //     evaluation stops immediately, and that falsey value is returned. If all expressions evaluate to truthy values,
+        //     the value of the *last* expression is returned. If no expressions are provided (`(and)`), it returns `true`.
+        //   - **Returns:** The determined value (could be any type, or `true`).
+        //   - **Raises:** `SexpEvaluationError` if any argument evaluation fails before a short-circuit condition is met.
+        // - `(or expr1 expr2 ...)`: **Special Form.** Evaluates expressions sequentially from left to right.
+        //   - **Behavior:** If any expression evaluates to a truthy value, evaluation stops immediately, and that truthy value is returned.
+        //     If all expressions evaluate to falsey values, the value of the *last* expression is returned.
+        //     If no expressions are provided (`(or)`), it returns `false`.
+        //   - **Returns:** The determined value (could be any type, or `false`).
+        //   - **Raises:** `SexpEvaluationError` if any argument evaluation fails before a short-circuit condition is met.
         // - `(set! <symbol> <new-value-expr>)`: **Primitive.**
         //   - **Action:** Updates the value of an *existing* variable in the current or an ancestor scope.
         //   - **Argument Processing:** `<symbol>` must be a literal symbol. Evaluates `<new-value-expr>`.
