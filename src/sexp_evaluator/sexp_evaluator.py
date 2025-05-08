@@ -498,8 +498,9 @@ class SexpEvaluator:
         Handles the 'iterative-loop' special form.
         (Corrected implementation with validation and return logic).
         """
-        logger.debug(f"SexpEvaluator._eval_iterative_loop END -> {str(loop_result)[:200]}...")
-        return loop_result # Return the final determined result
+        # This method is a stub - the actual implementation is in SpecialFormProcessor.handle_iterative_loop
+        # Delegate to the special form processor
+        return self.special_form_processor.handle_iterative_loop(arg_exprs, env, original_expr_str)
 
     # --- Invocation Helpers (Remain in SexpEvaluator) ---
 
