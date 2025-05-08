@@ -96,6 +96,9 @@ class SexpEnvironment:
                 logger.debug(f"  '{name}' not found in parent chain starting from env id={parent_id}.")
                 raise # Re-raise the NameError from the parent lookup
         else:
+            # <<< ADD LOGGING HERE >>>
+            logger.debug(f"*** lookup: 'if name in self._bindings' FAILED for name='{repr(name)}' in EnvID={id(self)}. No parent exists.")
+            # <<< END LOGGING >>>
             logger.debug(f"  '{name}' not found locally and no parent for env id={id(self)}.")
             # Reached top-level scope without finding the name
             raise NameError(f"Unbound symbol: Name '{name}' is not defined.") # Use NameError as before
