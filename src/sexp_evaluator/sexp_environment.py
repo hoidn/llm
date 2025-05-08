@@ -57,11 +57,17 @@ class SexpEnvironment:
         """
         logger.debug(f"Lookup: Searching for '{name}' in env id={id(self)}") # Log entry
         logger.debug(f"  Local bindings in env id={id(self)}: {list(self._bindings.keys())}") # Log local keys
+        logger.debug(f"*** lookup ENTER: name='{name}' ... in EnvID={id(self)}") # Example log
 
+        # --- START FIX ---
         if name in self._bindings:
+            # If found locally, get the value and return immediately.
             value = self._bindings[name]
-            logger.debug(f"  Found '{name}' in local bindings of env id={id(self)}. Value type: {type(value)}")
+            logger.debug(f"  Found '{name}' in local bindings of env id={id(self)}. Returning value.")
             return value
+        # --- END FIX ---
+
+        # Only check parent if NOT found locally
         elif self._parent is not None:
             parent_id = id(self._parent)
             logger.debug(f"  '{name}' not found locally, checking parent env id={parent_id}")
@@ -69,13 +75,12 @@ class SexpEnvironment:
                 # Recursively lookup in parent
                 return self._parent.lookup(name) # Let parent raise NameError if not found
             except NameError:
-                 # Log that the parent lookup failed before raising
                 logger.debug(f"  '{name}' not found in parent chain starting from env id={parent_id}.")
                 raise # Re-raise the NameError from the parent lookup
         else:
-            logger.debug(f"  '{name}' not found locally and no parent for env id={id(self)}.")
             # Reached top-level scope without finding the name
-            raise NameError(f"Unbound symbol: Name '{name}' is not defined.") # Use NameError as before
+            logger.debug(f"  '{name}' not found locally and no parent for env id={id(self)}.")
+            raise NameError(f"Unbound symbol: Name '{name}' is not defined.")
 
     def define(self, name: str, value: Any) -> None:
         """
