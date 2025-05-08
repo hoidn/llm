@@ -77,13 +77,27 @@ def execute_programmatic_task(
             sexp_evaluator = SexpEvaluator(task_system_instance, handler_instance, memory_system)
             
             # Prepare initial environment if params are meant to be bound
-            initial_bindings = params.copy() # Or a more specific way to select bindings
-            # Example: Add history if SexpEvaluator is designed to use it
-            # if optional_history_str: initial_bindings["_history_"] = optional_history_str
-            
-            initial_env = SexpEnvironment(bindings=initial_bindings) # Pass params as initial bindings
-            
-            raw_result = sexp_evaluator.evaluate_string(identifier, initial_env=initial_env)
+            # --- START MODIFICATION ---
+            # Extract initial_env from flags if provided
+            env_to_use = flags.get("initial_env") if flags else None
+            if env_to_use and not isinstance(env_to_use, SexpEnvironment):
+                logging.warning(f"Invalid type provided for 'initial_env' in flags: {type(env_to_use)}. Ignoring.")
+                env_to_use = None # Fallback to default empty env
+
+            if env_to_use:
+                logging.debug(f"Using provided initial environment: {env_to_use}")
+            else:
+                logging.debug("No valid initial environment provided, SexpEvaluator will create a new one.")
+                # If no env provided, and if params were intended for a default env, this is where they'd be bound.
+                # However, the calling script (run_coding_workflow.py) explicitly creates and passes the env,
+                # and sends empty params to handle_task_command for S-expressions.
+                # So, if env_to_use is None here, it means the caller didn't intend to provide one via flags.
+                # initial_bindings = params.copy() # This would be used if params were the source for a default env.
+                # env_to_use = SexpEnvironment(bindings=initial_bindings)
+
+            # Pass the extracted (or None) environment to evaluate_string
+            raw_result = sexp_evaluator.evaluate_string(identifier, initial_env=env_to_use)
+            # --- END MODIFICATION ---
 
             # Convert raw result to TaskResult object/dict
             if isinstance(raw_result, TaskResult):

@@ -71,6 +71,7 @@
 - **Fix Shell Command Failure Reporting:** Updated `src/executors/system_executors.py` to correctly report `stdout`, `stderr`, `exit_code`, and a summary message in `TaskResult` for failed shell commands. Added a new unit test to `tests/executors/test_system_executors.py` to verify this. Commits `4ef1157`, `1a0ffd9`, `08c9341`.
 - **Fix Command Execution Test Failures:** Updated tests in `test_command_executor.py`, `test_system_executors.py`, `test_base_handler.py`, `test_passthrough_handler.py` to align with the new `stdout`/`stderr`/`error_message` keys returned by `command_executor.execute_command_safely`. Corrected key usage in `BaseHandler` and `PassthroughHandler`.
 - **Fix `run_coding_workflow.py` S-expression:** Replaced `director-evaluator-loop` with `iterative-loop` and corrected an `if` statement's missing `else` branch within the validator lambda.
+- **Fix Dispatcher Initial Environment Handling:** Modified `dispatcher.execute_programmatic_task` to correctly extract `SexpEnvironment` from `flags['initial_env']` and pass it to `SexpEvaluator`.
 
 ## Next Steps
 
