@@ -15,7 +15,7 @@ from src.system.models import (
     MatchTuple, TaskFailureError, ContextManagement, TaskError
 )
 # SexpParser import removed as it's not used by the updated _create_loop_ast at the top level
-# from src.sexp_parser.sexp_parser import SexpParser 
+from src.sexp_parser.sexp_parser import SexpParser # Re-add SexpParser import
 from src.sexp_evaluator.sexp_closure import Closure # Assuming Closure is importable
 from sexpdata import Symbol # Ensure Symbol is imported
 
@@ -2246,7 +2246,7 @@ def test_minimal_quoted_eval(evaluator, mock_parser):
     logging.critical(f"Minimal Test: Quoted type in test: {type(TestQuotedFromSexpdata)}, id: {id(TestQuotedFromSexpdata)}, module: {getattr(TestQuotedFromSexpdata, '__module__', 'N/A')}")
     
     # Create a Quoted object exactly as sexpdata.load would for "'foo"
-    quoted_node = TestQuotedFromSexpdata(TestFileSymbol('test_sym'))
+    quoted_node = TestQuotedFromSexpdata(Symbol('test_sym'))
     
     logging.debug(f"Minimal Test: Created quoted_node: {quoted_node!r}, type: {type(quoted_node)}")
     logging.debug(f"Minimal Test: dir(quoted_node): {dir(quoted_node)}")
@@ -2255,7 +2255,7 @@ def test_minimal_quoted_eval(evaluator, mock_parser):
     # Directly call _eval on the evaluator instance from the fixture
     try:
         result = evaluator._eval(quoted_node, SexpEnvironment())
-        assert result == TestFileSymbol('test_sym') # Expect the inner symbol
+        assert result == Symbol('test_sym') # Expect the inner symbol
         logging.info("Minimal Test: Successfully evaluated direct Quoted node.")
     except AttributeError as e:
         logging.exception("Minimal Test: AttributeError during direct _eval of Quoted node.")
