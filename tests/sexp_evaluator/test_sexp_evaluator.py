@@ -2919,12 +2919,30 @@ class TestSexpEvaluatorIterativeLoop:
         ast = self._create_loop_ast()
         mock_parser.parse_string.return_value = ast
 
+        # Store the original _eval method
+        original_eval = evaluator._eval
+        
+        # Create mock functions for each phase
+        mock_executor_lambda_func = MagicMock(spec=Callable, name="mock_executor_lambda")
+        mock_validator_lambda_func = MagicMock(spec=Callable, name="mock_validator_lambda")
+        mock_controller_lambda_func = MagicMock(spec=Callable, name="mock_controller_lambda")
+
         def config_eval_side_effect(node, env):
+            # Check for specific config expressions
             if node == 1: return 1
             if node == [Symbol("quote"), Symbol("start")]: return "start"
             if node == [Symbol("quote"), Symbol("echo test")]: return "echo test"
-            if isinstance(node, list) and node[0] == Symbol("lambda"): return MagicMock(spec=Callable)
-            return MagicMock()
+
+            # Return the stored mock functions for the lambda expressions
+            if isinstance(node, list) and len(node) > 0 and node[0] == Symbol("lambda"):
+                params = node[1]
+                if params == [Symbol("ci"), Symbol("it")]: return mock_executor_lambda_func
+                if params == [Symbol("tc"), Symbol("it")]: return mock_validator_lambda_func
+                if params == [Symbol("er"), Symbol("vr"), Symbol("ci"), Symbol("it")]: return mock_controller_lambda_func
+
+            # Fallback to original _eval for everything else
+            return original_eval(node, env)
+            
         mocker.patch.object(evaluator, '_eval', side_effect=config_eval_side_effect)
 
         mock_call_phase = mocker.patch.object(evaluator, '_call_phase_function')
