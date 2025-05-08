@@ -5,6 +5,7 @@ the application logic for all built-in primitives in the S-expression language.
 """
 import logging
 from typing import Any, List, TYPE_CHECKING, Dict
+from pydantic import BaseModel # add once
 
 from sexpdata import Symbol
 
@@ -167,7 +168,7 @@ class PrimitiveProcessor:
                     return None 
                 val = target_obj.get(field_name_val)
                 logger.debug(f"  'get-field': Dict lookup for '{field_name_val}' -> {val!r} (Type: {type(val)})")
-                return val
+                return val.value() if isinstance(val, Symbol) else val
             # Handle association lists (lists of [key, value] pairs)
             elif isinstance(target_obj, list):
                 logger.debug(f"  'get-field': Target is a list. Attempting assoc-list lookup for key '{field_name_val}'. List: {target_obj!r}")
@@ -187,24 +188,24 @@ class PrimitiveProcessor:
                         if current_key_str == field_name_val:
                             val = item[1]
                             logger.debug(f"    Found key '{field_name_val}' in assoc-list item: {item!r} -> {val!r} (Type: {type(val)})")
-                            return val
+                            return val.value() if isinstance(val, Symbol) else val
                 logger.warning(f"  'get-field': Key '{field_name_val}' not found in assoc-list. Returning None.")
                 return None
-            # Check for Pydantic model fields explicitly BEFORE general hasattr
-            elif hasattr(target_obj, '__class__') and hasattr(target_obj.__class__, 'model_fields'):
-                if field_name_val in target_obj.model_fields:
-                    val = getattr(target_obj, field_name_val)
+            # Check for Pydantic model fields
+            elif isinstance(target_obj, BaseModel):
+                # v2: .model_fields  |  v1: .__fields__
+                field_dict = getattr(target_obj, "model_fields", None) or getattr(target_obj, "__fields__", {})
+                if field_name_val in field_dict:
+                    val = getattr(target_obj, field_name_val, None)
                     logger.debug(f"  'get-field': Accessing Pydantic attribute '{field_name_val}' -> {val!r} (Type: {type(val)})")
-                    return val
-                else:
-                    # Field not defined on the Pydantic model
-                    logger.warning(f"  'get-field': Field '{field_name_val}' not found in Pydantic model fields for type {type(target_obj)}. Returning None.")
-                    return None
+                    return val.value() if isinstance(val, Symbol) else val
+                logger.warning(f"get-field: {field_name_val} not in {type(target_obj)}")
+                return None
             # Fallback to general attribute access
             elif hasattr(target_obj, field_name_val):
                 val = getattr(target_obj, field_name_val)
                 logger.debug(f"  'get-field': Accessing general attribute '{field_name_val}' -> {val!r} (Type: {type(val)})")
-                return val
+                return val.value() if isinstance(val, Symbol) else val
             else:
                 logger.warning(f"  'get-field': Field or attribute '{field_name_val}' not found in object of type {type(target_obj)}. Returning None.")
                 return None
