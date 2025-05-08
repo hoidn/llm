@@ -122,6 +122,16 @@ class TaskSystem:
 
 
     def execute_atomic_template(self, request: SubtaskRequest) -> TaskResult:
+        logging.info(f"Executing atomic template request: {request.name} (Task ID: {request.task_id})")
+
+        # <<< ADD LOGGING >>>
+        registry_keys = list(self._registry.templates.keys())
+        logger.debug(f"*** TaskSystem.execute_atomic_template: Registry keys before find_template: {registry_keys}")
+        if request.name not in registry_keys:
+            logger.error(f"*** TaskSystem.execute_atomic_template: Target template '{request.name}' NOT FOUND in current registry keys!")
+        # <<< END LOGGING >>>
+
+        # 1. Find Template
         """
         Executes a single *atomic* Task System template workflow directly from a SubtaskRequest.
 

@@ -55,6 +55,9 @@ class SexpEvaluator:
         handler: BaseHandler,
         memory_system: MemorySystem
     ):
+        # <<< ADD LOGGING >>>
+        logger.debug(f"*** SexpEvaluator.__init__: Received TaskSystem instance ID = {id(task_system)}")
+        # <<< END LOGGING >>>
         """
         Initializes the S-expression evaluator with dependencies.
 
@@ -613,6 +616,9 @@ class SexpEvaluator:
         logging.debug(f"  Constructed SubtaskRequest for '{task_name}': {request.model_dump_json(indent=2)}")
 
         try:
+            # <<< ADD LOGGING >>>
+            logger.debug(f"*** _invoke_task_system: Using TaskSystem instance ID = {id(self.task_system)}")
+            # <<< END LOGGING >>>
             task_result_obj = self.task_system.execute_atomic_template(request)
             if not isinstance(task_result_obj, TaskResult):
                  logging.error(f"  Task executor for '{task_name}' did not return a TaskResult object (got {type(task_result_obj)}).")

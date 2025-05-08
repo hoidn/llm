@@ -76,6 +76,9 @@ def execute_programmatic_task(
         notes['execution_path'] = "s_expression"
         logging.info("Identifier detected as S-expression. Executing via SexpEvaluator.")
         try:
+            # <<< ADD LOGGING >>>
+            logger.debug(f"*** Dispatcher (S-exp path): TaskSystem instance ID = {id(task_system_instance)}")
+            # <<< END LOGGING >>>
             # Ensure SexpEvaluator gets all its dependencies
             sexp_evaluator = SexpEvaluator(task_system_instance, handler_instance, memory_system)
 
