@@ -796,13 +796,13 @@ class SpecialFormProcessor:
                 logger.exception(f"  Error during iterative-loop iteration {current_iteration}: {phase_error}")
                 # Wrap unexpected errors or re-raise SexpEvaluationError with context
                 if isinstance(phase_error, SexpEvaluationError):
-                    details = phase_error.error_details or {}
-                    if "iteration" not in details: # type: ignore
-                        details["iteration"] = current_iteration # type: ignore
+                    details = phase_error.error_details if hasattr(phase_error, 'error_details') else {}
+                    if isinstance(details, dict) and "iteration" not in details:
+                        details["iteration"] = current_iteration
                     raise SexpEvaluationError(
-                        phase_error.args[0] if phase_error.args else str(phase_error),
+                        f"Error in {phase_error.args[0] if phase_error.args else str(phase_error)}",
                         original_expr_str, 
-                        error_details=details # type: ignore
+                        error_details=details
                     ) from phase_error
                 else: # Wrap unexpected errors
                     new_error = SexpEvaluationError(
