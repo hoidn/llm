@@ -56,27 +56,29 @@ class AiderExecutorFunctions:
         if not prompt:
             return _create_failed_result_dict("input_validation_failure", "Missing required parameter: 'prompt'")
 
-        file_context_param = params.get("file_context")
+        # --- FIX: Use the correct parameter key ---
+        editable_files_param = params.get("relative_editable_files")
         relative_files: List[str] = []
-        if file_context_param:
-            if isinstance(file_context_param, list) and all(isinstance(f, str) for f in file_context_param):
+        if editable_files_param:
+            if isinstance(editable_files_param, list) and all(isinstance(f, str) for f in editable_files_param):
                 # If it's already a list of strings, use it directly
-                relative_files = file_context_param
-                logger.debug(f"Using provided list for file_context: {relative_files}")
-            elif isinstance(file_context_param, str):
-                # If it's a string, try to parse it as JSON
+                relative_files = editable_files_param
+                logger.debug(f"Using provided list for relative_editable_files: {relative_files}")
+            elif isinstance(editable_files_param, str):
+                # If it's a string, try to parse it as JSON (less likely for Sexp calls, but keep for robustness)
                 try:
-                    parsed_files = json.loads(file_context_param)
+                    parsed_files = json.loads(editable_files_param)
                     if not isinstance(parsed_files, list) or not all(isinstance(f, str) for f in parsed_files):
-                        raise ValueError("file_context JSON string must decode to a list of strings.")
+                        raise ValueError("relative_editable_files JSON string must decode to a list of strings.")
                     relative_files = parsed_files
-                    logger.debug(f"Parsed file_context from JSON string: {relative_files}")
+                    logger.debug(f"Parsed relative_editable_files from JSON string: {relative_files}")
                 except (json.JSONDecodeError, ValueError) as e:
-                    logger.error(f"Failed to parse 'file_context' string: {e}. Input: '{file_context_param}'")
-                    return _create_failed_result_dict("input_validation_failure", f"Failed to parse 'file_context' string: {e}")
+                    logger.error(f"Failed to parse 'relative_editable_files' string: {e}. Input: '{editable_files_param}'")
+                    return _create_failed_result_dict("input_validation_failure", f"Failed to parse 'relative_editable_files' string: {e}")
             else:
-                logger.error(f"Invalid type for 'file_context': {type(file_context_param)}. Expected list or JSON string.")
-                return _create_failed_result_dict("input_validation_failure", f"Invalid type for 'file_context': {type(file_context_param)}. Expected list or JSON string.")
+                logger.error(f"Invalid type for 'relative_editable_files': {type(editable_files_param)}. Expected list or JSON string.")
+                return _create_failed_result_dict("input_validation_failure", f"Invalid type for 'relative_editable_files': {type(editable_files_param)}. Expected list or JSON string.")
+        # --- END FIX ---
 
         model_override = params.get("model")
 
