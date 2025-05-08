@@ -346,8 +346,8 @@ def main():
         "initial-user-goal": initial_user_goal, # Use hyphenated key
         "initial-context-data": initial_context_data, # Keep hyphenated key
         "fixed-test-command": user_test_command, # Use hyphenated key to match Sexp
-        "max-iterations-config": args.max_retries # Use hyphenated key
-        # Note: 'initial-plan-data' is used in Sexp but not bound here yet.
+        "max-iterations-config": args.max_retries, # Use hyphenated key
+        "initial-plan-data": {} # Add empty dict as placeholder for initial plan data
     }
     logger.debug(f"Initial parameters for workflow execution: {initial_params}")
 
