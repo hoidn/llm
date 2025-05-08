@@ -24,6 +24,7 @@
     - **Addition:** Creating new components/methods/tests.
     - **Modification:** Changing existing implementation/logic/tests based on IDL updates or refactoring goals.
     - **Deletion:** Removing obsolete components/methods/tests referenced by a changed or removed IDL section.
+- **Assess potential implementation/testing complexity based on IDL (e.g., recursive behavior like `_eval`, complex state management like loops, numerous internal interactions/delegations). **Flag components needing special testing attention.**
 </step-actions>
 </process-step>
 
@@ -47,6 +48,11 @@
 <step-title>Outline Testing Strategy & Adjust Tests</step-title>
 <step-actions>
 - **Define Test Strategy:** (Same as original, but consider impact on existing tests) Based on IDL dependencies and project guidelines (`implementation_rules.md#testing-conventions`), decide the primary testing approach.
+- **For components flagged as complex in Step 1:**
+    - Explicitly consider the trade-offs between **integration testing** (testing the component's public interface with minimal internal mocks) and **unit testing** internal methods (like `handle_iterative_loop`).
+    - If unit testing internal methods is chosen, **justify why** (e.g., isolating specific complex logic not easily reachable via the public interface).
+    - Outline the **specific internal methods** that will need mocking (e.g., `_eval`, `_call_phase_function`).
+    - Acknowledge the **increased risk of brittle tests** when mocking internal implementation details.
 - **Identify/Plan Fixtures:** Determine required `pytest` fixtures. Identify existing fixtures that might need modification or new fixtures required for changed/new functionality. Plan fixture scope.
 - **Map Tests to Target IDL:**
     - **Review Existing Tests:** Examine tests related to the affected code. Identify which are still valid, which need modification, and which are now obsolete (target for deletion).
@@ -67,7 +73,11 @@
 - **Plan Error Handling:** Detail how specified `@raises_error` conditions (from the *target* IDL) will be detected/handled. Detail *changes* to existing error handling or removal of obsolete handling.
 - **Plan Dependency Integration:** Document how the component will interact with its dependencies based on the *target* IDL or refactoring plan. Note any *changes* in dependency usage.
 - **Refine Test Assertions:** Specify the *exact* assertions needed for each new or modified test stubbed in Step 3. Ensure assertions align with the *target* IDL.
-- **Detail Fixture Behavior:** Specify the required return values or side effects for new or modified mock dependencies within test fixtures.
+- **Detail Fixture Behavior & Internal Mocking Strategy:**
+    - Specify required `pytest` fixtures.
+    - **If internal mocking is planned (from Step 3):** Detail the *exact* internal methods to mock, the *scope* of the mock (e.g., using `with patch.object(...)` within the test), and the precise `return_value` or `side_effect` needed for *each specific test case*. Pay close attention to mocking methods that return other callables (like lambdas/Closures).
+    - Plan for verifying mock interactions (e.g., `assert_called_once_with`).
+    - **Anticipate Mock Interactions:** Consider how mocks for different internal methods might interact (e.g., does the mock for `_eval` affect what `_call_phase_function` receives?).
 - **Identify Edge Cases:** Explicitly list edge cases relevant to the *changes* or *new* functionality and ensure tests cover them. Consider if existing edge case tests need updates.
 - **Plan Deletions:** Clearly mark code sections, functions, classes, files, and tests slated for removal. Double-check they are genuinely obsolete according to the target IDL or refactoring scope.
 </step-actions>
@@ -88,6 +98,7 @@
     - Modify existing tests to match changed behavior or assertions.
     - **Delete obsolete tests.**
     - Verify success paths, error handling, and edge cases against the *target* IDL contract.
+    - **Debugging Internal Mocks:** When implementing tests involving complex internal mocking, run tests frequently. If assertions fail unexpectedly (e.g., wrong return type/value, exception not raised), **use logging or debugging within the *production code method being tested*** (e.g., `handle_iterative_loop`) to trace the flow, inspect the actual values returned by mocks, and verify state transitions. Do not rely solely on inspecting the test code.
     - Provide the fully implemented/modified tests (or instructions for deletion) as part of the developer instructions.
 </step-actions>
 </process-step>
