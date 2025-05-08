@@ -410,3 +410,31 @@ class StructuredAnalysisResult(BaseModel):
             raise ValueError("'next_input' is required when success is False")
         # It's okay for next_input to be None if success is True
         return self
+
+class ControllerAnalysisResult(BaseModel):
+    """
+    Structured output from the LLM analysis task called within the
+    iterative-loop's controller phase. Provides feedback on iteration success
+    and guidance for the next step.
+    [Type: Loop:ControllerAnalysisResult:1.0]
+    """
+    decision: Literal["CONTINUE", "STOP_SUCCESS", "STOP_FAILURE"] = Field(description="Decision for the loop control flow.")
+    next_plan: Optional[Dict[str, Any]] = Field(None, description="Required if decision is CONTINUE. Contains {'instructions': str, 'files': List[str]} for the next Aider execution.")
+    analysis: str = Field(description="Explanation of the decision based on Aider and test results.")
+
+    @model_validator(mode='after')
+    def check_next_plan_on_continue(self) -> 'ControllerAnalysisResult':
+        """Validate that next_plan is provided and structured correctly if decision is CONTINUE."""
+        if self.decision == 'CONTINUE':
+            if self.next_plan is None:
+                raise ValueError("'next_plan' dictionary is required when decision is 'CONTINUE'")
+            if not isinstance(self.next_plan, dict):
+                raise ValueError("'next_plan' must be a dictionary when decision is 'CONTINUE'")
+            if "instructions" not in self.next_plan or not isinstance(self.next_plan["instructions"], str):
+                raise ValueError("'next_plan' must contain 'instructions' (string) when decision is 'CONTINUE'")
+            if "files" not in self.next_plan or not isinstance(self.next_plan["files"], list):
+                raise ValueError("'next_plan' must contain 'files' (list) when decision is 'CONTINUE'")
+            # Check for list elements being strings
+            if not all(isinstance(f, str) for f in self.next_plan["files"]):
+                raise ValueError("'next_plan.files' must be a list of strings")
+        return self

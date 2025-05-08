@@ -67,6 +67,7 @@
 - **Phase 10b: Implement Core S-expression Primitives:** Implemented `eq?`, `null?`, `set!`, `+`, `-` in `PrimitiveProcessor`. Added `set_value_in_scope` to `SexpEnvironment`. Updated `SexpEvaluator` dispatch. Added comprehensive tests. Updated IDLs.
 - **Phase 10d (director-evaluator-loop Enhancement):** Modified `director-evaluator-loop` to expose its configuration (max-iterations, initial-director-input) to phase functions via a `*loop-config*` special variable. Updated `SpecialFormProcessor`, tests, and IDL. Commit `80b7da1`, `99095b7`, `06ae4e6`.
 - **Implement `director_loop_coding_demo.py` Script:** Created a demo script (`src/scripts/director_loop_coding_demo.py`) to showcase the `director-evaluator-loop` special form, orchestrating a mock coding task involving plan generation (LLM), code implementation (Aider), and test execution (shell command). The script includes workspace management and S-expression task definition.
+- **Implement `iterative_loop_coding_demo.py` Script:** Created a new demo script (`src/scripts/iterative_loop_coding_demo.py`) to showcase the `iterative-loop` special form, refactoring the director-evaluator-loop demo to use the new pattern. Added a `ControllerAnalysisResult` Pydantic model to `src/system/models.py` to support structured decision-making in the controller phase.
 
 ## Next Steps
 
