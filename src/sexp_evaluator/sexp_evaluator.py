@@ -452,9 +452,11 @@ class SexpEvaluator:
         except SexpEvaluationError as e_phase:
             # Add context and re-raise
             error_msg = f"Error in '{phase_name}' phase (iteration {iteration}): {e_phase.args[0] if e_phase.args else str(e_phase)}"
+            # Make sure error_details are preserved if they exist
             error_details = e_phase.error_details if hasattr(e_phase, 'error_details') else str(e_phase)
             logger.error(f"{error_msg} - Details: {error_details}")
-            raise SexpEvaluationError(error_msg, original_loop_expr, error_details=error_details) from e_phase
+            # Raise a NEW error instance with the combined info
+            raise SexpEvaluationError(error_msg, original_loop_expr, error_details=error_details) from e_phase # Chain the exception
         except Exception as e_phase_unknown:
             # Wrap unexpected errors
             error_msg = f"Unexpected error in '{phase_name}' phase (iteration {iteration}): {e_phase_unknown}"
@@ -499,13 +501,17 @@ class SexpEvaluator:
         # 2. Evaluate Configuration Expressions
         try:
             max_iter_val = self._eval(clauses["max-iterations"], env)
+            # --- ADD VALIDATION ---
             if not isinstance(max_iter_val, int) or max_iter_val < 0:
                 raise SexpEvaluationError(
-                    f"'max-iterations' must evaluate to a non-negative integer, got {max_iter_val!r} (type: {type(max_iter_val)}).", "" # No specific expression here
+                    f"iterative-loop: 'max-iterations' must evaluate to a non-negative integer, got {max_iter_val!r} (type: {type(max_iter_val)}).",
+                    original_expr_str # Pass original expression string for context
                 )
+            # --- END VALIDATION ---
         except SexpEvaluationError as e:
+            # Ensure the original expression string is included in the re-raised error
             raise SexpEvaluationError(f"iterative-loop: Error evaluating 'max-iterations': {e.args[0] if e.args else str(e)}", original_expr_str, error_details=e.error_details if hasattr(e, 'error_details') else str(e)) from e
-        except Exception as e:
+        except Exception as e: # Catch unexpected errors during eval
             raise SexpEvaluationError(f"iterative-loop: Error evaluating 'max-iterations': {e}", original_expr_str, error_details=str(e)) from e
 
         try:
@@ -517,13 +523,16 @@ class SexpEvaluator:
 
         try:
             test_cmd_string = self._eval(clauses["test-command"], env)
+            # --- ADD VALIDATION ---
             if not isinstance(test_cmd_string, str):
                 raise SexpEvaluationError(
-                    f"'test-command' must evaluate to a string, got {test_cmd_string!r} (type: {type(test_cmd_string)}).", "" # No specific expression here
+                    f"iterative-loop: 'test-command' must evaluate to a string, got {test_cmd_string!r} (type: {type(test_cmd_string)}).",
+                    original_expr_str
                 )
+            # --- END VALIDATION ---
         except SexpEvaluationError as e:
             raise SexpEvaluationError(f"iterative-loop: Error evaluating 'test-command': {e.args[0] if e.args else str(e)}", original_expr_str, error_details=e.error_details if hasattr(e, 'error_details') else str(e)) from e
-        except Exception as e:
+        except Exception as e: # Catch unexpected errors during eval
             raise SexpEvaluationError(f"iterative-loop: Error evaluating 'test-command': {e}", original_expr_str, error_details=str(e)) from e
 
         # 3. Evaluate and Validate Phase Function Expressions
@@ -531,15 +540,17 @@ class SexpEvaluator:
         for phase_name in ["executor", "validator", "controller"]:
             try:
                 resolved_fn = self._eval(clauses[phase_name], env)
-                # Check if it's a Closure object OR any other Python callable
+                # --- ADD VALIDATION ---
                 if not isinstance(resolved_fn, Closure) and not callable(resolved_fn):
                     raise SexpEvaluationError(
-                        f"'{phase_name}' expression must evaluate to a callable S-expression function (e.g., lambda), got {type(resolved_fn)}: {resolved_fn!r}", "" # No specific expression here
+                        f"iterative-loop: '{phase_name}' expression must evaluate to a callable S-expression function, got {type(resolved_fn)}: {resolved_fn!r}",
+                        original_expr_str
                     )
+                # --- END VALIDATION ---
                 phase_functions[phase_name] = resolved_fn
             except SexpEvaluationError as e:
                  raise SexpEvaluationError(f"iterative-loop: Error evaluating '{phase_name}' function expression: {e.args[0] if e.args else str(e)}", original_expr_str, error_details=e.error_details if hasattr(e, 'error_details') else str(e)) from e
-            except Exception as e:
+            except Exception as e: # Catch unexpected errors during eval
                 raise SexpEvaluationError(f"iterative-loop: Error evaluating '{phase_name}' function expression: {e}", original_expr_str, error_details=str(e)) from e
 
         executor_fn   = phase_functions["executor"]
@@ -548,7 +559,7 @@ class SexpEvaluator:
 
         # 4. Initialize Loop State
         current_iteration = 1
-        loop_result: Any = []  # S-expression 'nil'
+        loop_result: Any = []  # S-expression 'nil' # CORRECT INITIALIZATION
 
         # 5. Main Loop
         while current_iteration <= max_iter_val:
@@ -581,11 +592,13 @@ class SexpEvaluator:
             )
 
             # --- Process Decision ---
+            # --- ADD VALIDATION ---
             if not (isinstance(decision_val, list) and len(decision_val) == 2 and isinstance(decision_val[0], Symbol)):
                 raise SexpEvaluationError(
                     f"iterative-loop: Controller must return a list of (action_symbol value), got: {decision_val!r}",
                     original_expr_str
                 )
+            # --- END VALIDATION ---
 
             action_symbol: Symbol = decision_val[0]
             action_value: Any = decision_val[1]
@@ -593,15 +606,16 @@ class SexpEvaluator:
 
             if action_str == "stop":
                 logger.info(f"Loop stopping at iteration {current_iteration} due to controller 'stop'. Final result: {str(action_value)[:100]}...")
-                loop_result = action_value
+                loop_result = action_value # CORRECT ASSIGNMENT
                 break # Exit the while loop
             elif action_str == "continue":
                 logger.info(f"Loop continuing to next iteration. Next input: {str(action_value)[:100]}...")
                 current_loop_input = action_value
                 # Store last executor result as potential fallback result if max_iterations is hit next
-                loop_result = executor_result
+                loop_result = executor_result # CORRECT ASSIGNMENT
                 current_iteration += 1
             else:
+                # This 'else' block will be added by Fix C below
                 raise SexpEvaluationError(
                     f"iterative-loop: Controller decision action must be 'continue' or 'stop' symbol, got: '{action_str}'",
                     original_expr_str
@@ -612,7 +626,7 @@ class SexpEvaluator:
             # loop_result already holds the result from the last successful executor call
 
         logger.debug(f"SexpEvaluator._eval_iterative_loop END -> {str(loop_result)[:200]}...")
-        return loop_result
+        return loop_result # CORRECT RETURN
 
     # --- Invocation Helpers (Remain in SexpEvaluator) ---
 

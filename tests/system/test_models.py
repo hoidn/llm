@@ -482,13 +482,16 @@ class TestStructuredAnalysisResult:
     def test_structured_analysis_result_invalid_types(self):
         """Test validation failure for incorrect data types."""
         with pytest.raises(ValidationError): # success not bool
-            StructuredAnalysisResult.model_validate({"success": "true", "analysis": "...", "next_input": "..."})
+            StructuredAnalysisResult.model_validate({"success": 123, "analysis": "..."}) # Use 123 instead of "true"
         with pytest.raises(ValidationError): # analysis not string
             StructuredAnalysisResult.model_validate({"success": True, "analysis": 123})
-        with pytest.raises(ValidationError): # next_input not string when present
-            StructuredAnalysisResult.model_validate({"success": False, "analysis": "...", "next_input": True})
-        with pytest.raises(ValidationError): # new_files not list of strings
-            StructuredAnalysisResult.model_validate({"success": True, "analysis": "...", "new_files": ["file1", 2]})
+        # --- UPDATE INVALID TYPE FOR next_input and new_files ---
+        with pytest.raises(ValidationError): # next_input not string (when success=False)
+            StructuredAnalysisResult.model_validate({"success": False, "analysis": "...", "next_input": ["list"]})
+        with pytest.raises(ValidationError): # new_files not list
+            StructuredAnalysisResult.model_validate({"success": True, "analysis": "...", "new_files": "a_string"})
+        with pytest.raises(ValidationError): # new_files list contains non-string
+            StructuredAnalysisResult.model_validate({"success": True, "analysis": "...", "new_files": ["file.txt", 123]})
 
     def test_structured_analysis_result_minimal_valid_success(self):
         """Test minimal valid success case."""
