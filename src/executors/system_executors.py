@@ -388,40 +388,40 @@ class SystemExecutorFunctions:
                 exit_code = result_dict.get('exit_code')
                 stdout_capture = result_dict.get('stdout', '')
                 stderr_capture = result_dict.get('stderr', '')
-                # Determine primary error message for TaskFailureError.message
-                # Prioritize stderr if present, else use 'error' field from command_executor, or a default.
-                error_content_for_task_failure_message = stderr_capture or result_dict.get('error', 'Command execution failed without specific error message.')
+                # Determine primary error message (prioritize stderr if present, else use 'error' key or default)
+                # THIS is what the tests expect in 'content'
+                specific_error_message = stderr_capture or result_dict.get('error', 'Unknown command execution error')
 
-                logger.warning(f"Shell command failed: '{command}'. Exit Code: {exit_code}. Stderr (snippet): {stderr_capture[:200]}...")
+                logger.warning(f"Shell command failed: '{command}'. Exit Code: {exit_code}. Error: {specific_error_message}")
 
-                # Determine failure reason based on the primary error content
+                # Determine failure reason (keep this logic)
                 reason: TaskFailureReason = "tool_execution_error"
-                if "Unsafe command" in error_content_for_task_failure_message:
+                if "Unsafe command" in specific_error_message:
                     reason = "input_validation_failure"
-                elif "Timeout" in error_content_for_task_failure_message or \
-                     "timed out" in error_content_for_task_failure_message.lower() or \
-                     "TimeoutExpired" in error_content_for_task_failure_message:
+                elif "Timeout" in specific_error_message or "timed out" in specific_error_message.lower() or "TimeoutExpired" in specific_error_message:
                     reason = "execution_timeout"
-                
-                # Construct TaskResult.content summary
-                content_summary = f"Command '{command}' failed with exit code {exit_code}."
 
-                # Construct TaskResult.notes
+                # Construct notes including the generic summary and detailed outputs
                 notes_dict = {
                     'success': False,
                     'exit_code': exit_code,
                     'stdout': stdout_capture,
                     'stderr': stderr_capture,
+                    # Add the generic summary here
+                    'execution_summary': f"Command '{command}' failed with exit code {exit_code}.",
                     'error': TaskFailureError(
                         type="TASK_FAILURE",
                         reason=reason,
-                        message=error_content_for_task_failure_message
+                        # Use the specific error message for the structured error object as well
+                        message=specific_error_message
+                        # Optionally add details: 'details': {'stdout_snippet': stdout_capture[:100], 'stderr_snippet': stderr_capture[:100]}
                     ).model_dump(exclude_none=True)
                 }
-                
+
+                # Return TaskResult with the SPECIFIC error message in content
                 return TaskResult(
                     status="FAILED",
-                    content=content_summary,
+                    content=specific_error_message, # <<< CHANGE: Use specific error here
                     notes=notes_dict
                 ).model_dump(exclude_none=True)
                 
