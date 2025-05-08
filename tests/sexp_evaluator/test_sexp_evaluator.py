@@ -2662,50 +2662,74 @@ class TestSexpEvaluatorIterativeLoop:
     def test_iterative_loop_stops_immediately(self, evaluator, mock_parser, mocker):
         """Test stops on first controller 'stop'."""
         final_val = {"result": "stopped early"}
+        # Construct the AST for the controller body explicitly
+        controller_body_ast = [
+            Symbol("list"),
+            [Symbol("quote"), Symbol("stop")],
+            # Quote the dictionary itself to pass it as literal data
+            [Symbol("quote"), final_val]
+        ]
         ast = self._create_loop_ast(
             max_iter=5,
-            # Controller body needs to be a list for (list 'stop 'final_val)
-            controller_body=[Symbol("list"), [Symbol("quote"), Symbol("stop")], [Symbol("quote"), final_val]]
+            controller_body=controller_body_ast # Pass the constructed AST
         )
         mock_parser.parse_string.return_value = ast
 
-        # Mock _eval for config expressions
+        # Mock _eval more carefully: only intercept specific expressions
+        original_eval = evaluator._eval
+
+        # Store the mock functions that _eval should return for the lambdas
+        mock_executor_lambda_func = MagicMock(spec=Callable, name="mock_executor_lambda")
+        mock_validator_lambda_func = MagicMock(spec=Callable, name="mock_validator_lambda")
+        mock_controller_lambda_func = MagicMock(spec=Callable, name="mock_controller_lambda")
+
         def config_eval_side_effect(node, env):
+            # Check for specific config expressions
             if node == 5: return 5
             if node == [Symbol("quote"), Symbol("start")]: return "start"
             if node == [Symbol("quote"), Symbol("echo test")]: return "echo test"
-            # For lambda expressions, return a mock callable (Closure or Python function)
-            if isinstance(node, list) and node[0] == Symbol("lambda"):
-                # This mock will be the 'func_to_call' in _call_phase_function
-                return MagicMock(spec=Callable, name=f"lambda_{node[1][0].value() if len(node) > 1 and len(node[1]) > 0 else 'anon'}")
-            return MagicMock() # Default for other unexpected _eval calls
-        mocker.patch.object(evaluator, '_eval', side_effect=config_eval_side_effect)
 
+            # Return the stored mock functions for the lambda expressions
+            if isinstance(node, list) and len(node) > 0 and node[0] == Symbol("lambda"):
+                # Identify lambda by parameter list
+                params = node[1]
+                if params == [Symbol("ci"), Symbol("it")]: # Executor lambda
+                    return mock_executor_lambda_func
+                if params == [Symbol("tc"), Symbol("it")]: # Validator lambda
+                    return mock_validator_lambda_func
+                if params == [Symbol("er"), Symbol("vr"), Symbol("ci"), Symbol("it")]: # Controller lambda
+                    return mock_controller_lambda_func
+
+            # Fallback to original _eval for everything else
+            # This includes the top-level (iterative-loop ...) call itself
+            return original_eval(node, env)
+
+        mocker.patch.object(evaluator, '_eval', side_effect=config_eval_side_effect)
 
         # Mock the _call_phase_function helper
         mock_executor_result = TaskResult(status="COMPLETE", content="Exec Iter 1")
         mock_validator_result = {"stdout": "Test OK", "stderr": "", "exit_code": 0}
-        # The controller's lambda will be called by _call_phase_function.
-        # The lambda itself, when called, should return [Symbol("stop"), final_val]
-        # So, _call_phase_function for controller should return this.
         mock_controller_decision = [Symbol("stop"), final_val]
-
 
         mock_call_phase = mocker.patch.object(evaluator, '_call_phase_function')
         mock_call_phase.side_effect = [
-            mock_executor_result,    # Executor result iter 1
-            mock_validator_result,   # Validator result iter 1
-            mock_controller_decision # Controller result iter 1
+            mock_executor_result,    # Return value for _call_phase_function(executor, ...)
+            mock_validator_result,   # Return value for _call_phase_function(validator, ...)
+            mock_controller_decision # Return value for _call_phase_function(controller, ...)
         ]
 
+        # ACT: Call the evaluator
         result = evaluator.evaluate_string("(iterative-loop ...)")
 
+        # ASSERT: The final result should be the value associated with 'stop'
         assert result == final_val
-        assert mock_call_phase.call_count == 3 # Called once for each phase
-        # Arguments to _call_phase_function: phase_name, func_to_call, args_list, env, original_loop_expr, iteration
-        mock_call_phase.assert_any_call("executor", mocker.ANY, ["start", 1], mocker.ANY, mocker.ANY, 1)
-        mock_call_phase.assert_any_call("validator", mocker.ANY, ["echo test", 1], mocker.ANY, mocker.ANY, 1)
-        mock_call_phase.assert_any_call("controller", mocker.ANY, [mock_executor_result, mock_validator_result, "start", 1], mocker.ANY, mocker.ANY, 1)
+        assert mock_call_phase.call_count == 3 # Called once for each phase in the first iteration
+
+        # Verify the arguments passed TO _call_phase_function
+        # Check that the correct mock lambda function was passed as func_to_call
+        mock_call_phase.assert_any_call("executor", mock_executor_lambda_func, ["start", 1], mocker.ANY, mocker.ANY, 1)
+        mock_call_phase.assert_any_call("validator", mock_validator_lambda_func, ["echo test", 1], mocker.ANY, mocker.ANY, 1)
+        mock_call_phase.assert_any_call("controller", mock_controller_lambda_func, [mock_executor_result, mock_validator_result, "start", 1], mocker.ANY, mocker.ANY, 1)
 
 
     def test_iterative_loop_continues_once_then_stops(self, evaluator, mock_parser, mocker):
