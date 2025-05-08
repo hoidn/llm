@@ -644,23 +644,28 @@ def test_execute_shell_command_failure_reporting(system_executor_instance):
     assert isinstance(result, dict)
     assert result["status"] == "FAILED"
     
-    expected_content_summary = f"Command '{command_to_test}' failed with exit code 1."
-    assert result["content"] == expected_content_summary
-    
+    # Assert that 'content' contains the specific error (stderr in this mock)
+    expected_specific_error = mock_command_output['stderr']
+    assert result["content"] == expected_specific_error
+
+    # Assert that 'notes' contains the generic summary and other details
     assert "notes" in result
     notes = result["notes"]
-    assert notes["success"] is False
-    assert notes["exit_code"] == 1
-    assert notes["stdout"] == mock_command_output['stdout']
-    assert notes["stderr"] == mock_command_output['stderr']
-    
+    assert notes.get("success") is False
+    assert notes.get("exit_code") == 1
+    assert notes.get("stdout") == mock_command_output['stdout']
+    assert notes.get("stderr") == mock_command_output['stderr']
+
+    # Assert the generic summary is now in notes
+    expected_content_summary = f"Command '{command_to_test}' failed with exit code 1."
+    assert notes.get("execution_summary") == expected_content_summary
+
+    # Assert the structured error details
     assert "error" in notes
-    error_details = notes["error"]
-    assert isinstance(error_details, dict)
-    assert error_details["type"] == "TASK_FAILURE"
-    assert error_details["reason"] == "tool_execution_error" # Default for non-zero exit unless specific pattern matches
-    # The message in TaskFailureError should prioritize stderr if available
-    assert error_details["message"] == mock_command_output['stderr']
+    error_note = notes["error"]
+    assert error_note.get("type") == "TASK_FAILURE"
+    assert error_note.get("reason") == "tool_execution_error"
+    assert error_note.get("message") == expected_specific_error # Structured error message should also be specific
 
     # Verify command_executor was called
     system_executor_instance.command_executor.execute_command_safely.assert_called_once_with(
