@@ -387,138 +387,138 @@ class LLMInteractionManager:
                     else self.base_system_prompt
                 )
 
-            # Prepare keyword arguments separately
-            run_kwargs = {
-                "message_history": conversation_history,  # Pass history here
-                "system_prompt": current_system_prompt,
-            }
-
-            # Log the full prompt and context to a file for debugging
-            try:
-                log_data = {
+                # Prepare keyword arguments separately
+                run_kwargs = {
+                    "message_history": conversation_history,  # Pass history here
                     "system_prompt": current_system_prompt,
-                    "conversation_history": [msg.model_dump(exclude_none=True, round_trip=True) if hasattr(msg, 'model_dump') else str(msg) for msg in conversation_history],
-                    "prompt": prompt,
-                    "model_used": target_model_id_for_log, # Log which model was used
                 }
-                with open("llm_full_prompt.log", "w") as _f:
-                    _f.write(json.dumps(log_data, indent=2))
-                logger.info("LLM full prompt written to llm_full_prompt.log")
-            except Exception as _e:
-                logger.error(f"Failed to write full LLM prompt to file: {_e}")
 
-            # Handle tools_override and active_tools
-            # --- START FIX for tools precedence ---
-            if tools_override:
-                run_kwargs["tools"] = tools_override # Prioritize tools_override
-                logging.debug(f"Using tools_override ({len(tools_override)}) for agent.run_sync")
-            elif active_tools:
-                run_kwargs["tools"] = active_tools # Fallback to active_tools (definitions)
-                logging.debug(f"Using active_tools ({len(active_tools)}) for agent.run_sync")
-            # --- END FIX for tools precedence ---
+                # Log the full prompt and context to a file for debugging
+                try:
+                    log_data = {
+                        "system_prompt": current_system_prompt,
+                        "conversation_history": [msg.model_dump(exclude_none=True, round_trip=True) if hasattr(msg, 'model_dump') else str(msg) for msg in conversation_history],
+                        "prompt": prompt,
+                        "model_used": target_model_id_for_log, # Log which model was used
+                    }
+                    with open("llm_full_prompt.log", "w") as _f:
+                        _f.write(json.dumps(log_data, indent=2))
+                    logger.info("LLM full prompt written to llm_full_prompt.log")
+                except Exception as _e:
+                    logger.error(f"Failed to write full LLM prompt to file: {_e}")
 
-            if output_type_override:
-                run_kwargs["output_type"] = output_type_override
-                logging.debug(
-                    f"Executing agent call with output_type: {output_type_override.__name__}"
-                )
+                # Handle tools_override and active_tools
+                # --- START FIX for tools precedence ---
+                if tools_override:
+                    run_kwargs["tools"] = tools_override # Prioritize tools_override
+                    logging.debug(f"Using tools_override ({len(tools_override)}) for agent.run_sync")
+                elif active_tools:
+                    run_kwargs["tools"] = active_tools # Fallback to active_tools (definitions)
+                    logging.debug(f"Using active_tools ({len(active_tools)}) for agent.run_sync")
+                # --- END FIX for tools precedence ---
 
-            # Log the arguments being passed
-            logger.debug(
-                f"LLMInteractionManager: Calling agent.run_sync (Model: '{target_model_id_for_log}') with prompt='{prompt[:100]}...' and kwargs={run_kwargs}"
-            )
+                if output_type_override:
+                    run_kwargs["output_type"] = output_type_override
+                    logging.debug(
+                        f"Executing agent call with output_type: {output_type_override.__name__}"
+                    )
 
-            # Add concise logging for key parameters
-            logger.debug(f"Calling run_sync for model: {target_model_id_for_log}")
-            logger.debug(f"Prompt type: {type(prompt)}, length: {len(prompt)}")
-            logger.debug(f"System prompt: {run_kwargs.get('system_prompt')[:100]}...")
-            
-            # Log tool and output type information without full dumps
-            if 'tools' in run_kwargs:
-                tool_info = run_kwargs.get('tools')
-                if isinstance(tool_info, list):
-                    tool_count = len(tool_info)
-                    tool_names = [getattr(t, '__name__', str(t)) for t in tool_info[:5]] if callable(tool_info[0]) else [t.get('name', 'unnamed') for t in tool_info[:5]]
-                    logger.debug(f"Using {tool_count} tools: {', '.join(tool_names)}{' and more...' if tool_count > 5 else ''}")
-            
-            if 'output_type' in run_kwargs:
-                output_type = run_kwargs.get('output_type')
-                logger.debug(f"Output type: {getattr(output_type, '__name__', str(output_type))}")
-
-            if self.debug_mode:
-                # Redundant logging now, keep or remove
+                # Log the arguments being passed
                 logger.debug(
-                    f"Calling agent.run_sync with prompt='{prompt[:100]}...' and kwargs={run_kwargs}"
+                    f"LLMInteractionManager: Calling agent.run_sync (Model: '{target_model_id_for_log}') with prompt='{prompt[:100]}...' and kwargs={run_kwargs}"
                 )
 
-            # Call the agent with prompt as positional arg, others as kwargs
-            # Use the determined target_agent
-            response: Optional[Any] = target_agent.run_sync(prompt, **run_kwargs)
+                # Add concise logging for key parameters
+                logger.debug(f"Calling run_sync for model: {target_model_id_for_log}")
+                logger.debug(f"Prompt type: {type(prompt)}, length: {len(prompt)}")
+                logger.debug(f"System prompt: {run_kwargs.get('system_prompt')[:100]}...")
+                
+                # Log tool and output type information without full dumps
+                if 'tools' in run_kwargs:
+                    tool_info = run_kwargs.get('tools')
+                    if isinstance(tool_info, list):
+                        tool_count = len(tool_info)
+                        tool_names = [getattr(t, '__name__', str(t)) for t in tool_info[:5]] if callable(tool_info[0]) else [t.get('name', 'unnamed') for t in tool_info[:5]]
+                        logger.debug(f"Using {tool_count} tools: {', '.join(tool_names)}{' and more...' if tool_count > 5 else ''}")
+                
+                if 'output_type' in run_kwargs:
+                    output_type = run_kwargs.get('output_type')
+                    logger.debug(f"Output type: {getattr(output_type, '__name__', str(output_type))}")
 
-            if self.debug_mode:
-                logging.debug(f"Agent response received: {response}")
+                if self.debug_mode:
+                    # Redundant logging now, keep or remove
+                    logger.debug(
+                        f"Calling agent.run_sync with prompt='{prompt[:100]}...' and kwargs={run_kwargs}"
+                    )
 
-            # Process the response
-            # The exact structure of 'response' depends on pydantic-ai version and call type
-            # Adapt the extraction logic based on the actual AIResponse object structure
-            content = getattr(
-                response, "output", None
-            )  # Common attribute for text output
-            tool_calls = getattr(response, "tool_calls", [])  # Check for tool calls
-            
-            # --- START: Process usage data ---
-            raw_usage = getattr(response, "usage", None)
-            actual_usage_data: Optional[Dict[str, Any]] = None
+                # Call the agent with prompt as positional arg, others as kwargs
+                # Use the determined target_agent
+                response: Optional[Any] = target_agent.run_sync(prompt, **run_kwargs)
 
-            if raw_usage is not None:
-                if callable(raw_usage):
-                    try:
-                        actual_usage_data = raw_usage() 
-                        logger.debug(f"Called response.usage() method, got: {actual_usage_data}")
-                    except Exception as e_usage_call:
-                        logger.warning(f"Could not call response.usage() method: {e_usage_call}. Storing as string.")
+                if self.debug_mode:
+                    logging.debug(f"Agent response received: {response}")
+
+                # Process the response
+                # The exact structure of 'response' depends on pydantic-ai version and call type
+                # Adapt the extraction logic based on the actual AIResponse object structure
+                content = getattr(
+                    response, "output", None
+                )  # Common attribute for text output
+                tool_calls = getattr(response, "tool_calls", [])  # Check for tool calls
+                
+                # --- START: Process usage data ---
+                raw_usage = getattr(response, "usage", None)
+                actual_usage_data: Optional[Dict[str, Any]] = None
+
+                if raw_usage is not None:
+                    if callable(raw_usage):
+                        try:
+                            actual_usage_data = raw_usage() 
+                            logger.debug(f"Called response.usage() method, got: {actual_usage_data}")
+                        except Exception as e_usage_call:
+                            logger.warning(f"Could not call response.usage() method: {e_usage_call}. Storing as string.")
+                            actual_usage_data = {"raw_usage_representation": str(raw_usage)}
+                    elif isinstance(raw_usage, dict):
+                        actual_usage_data = raw_usage
+                        logger.debug(f"response.usage was a dict: {actual_usage_data}")
+                    else:
+                        logger.warning(f"response.usage is of unexpected type: {type(raw_usage)}. Storing as string.")
                         actual_usage_data = {"raw_usage_representation": str(raw_usage)}
-                elif isinstance(raw_usage, dict):
-                    actual_usage_data = raw_usage
-                    logger.debug(f"response.usage was a dict: {actual_usage_data}")
                 else:
-                    logger.warning(f"response.usage is of unexpected type: {type(raw_usage)}. Storing as string.")
-                    actual_usage_data = {"raw_usage_representation": str(raw_usage)}
-            else:
-                logger.debug("No 'usage' attribute found in pydantic-ai response.")
-            # --- END: Process usage data ---
-            
-            usage = actual_usage_data # Use the processed data
+                    logger.debug("No 'usage' attribute found in pydantic-ai response.")
+                # --- END: Process usage data ---
+                
+                usage = actual_usage_data # Use the processed data
 
-            # Initialize parsed_content to None
-            parsed_content = None
+                # Initialize parsed_content to None
+                parsed_content = None
 
-            # If we have a pydantic model output, use it directly as parsed_content
-            if content is not None and hasattr(content, "model_dump"):
-                parsed_content = (
-                    content  # Store the full Pydantic model for structured output
-                )
+                # If we have a pydantic model output, use it directly as parsed_content
+                if content is not None and hasattr(content, "model_dump"):
+                    parsed_content = (
+                        content  # Store the full Pydantic model for structured output
+                    )
 
-            # Ensure content is stringified if it's a structured output model
-            if content is not None and not isinstance(content, str):
-                # Attempt to convert Pydantic models or other objects to string/dict
-                if hasattr(content, "model_dump_json"):
-                    content_str = content.model_dump_json()
-                elif hasattr(content, "model_dump"):
-                    content_str = str(content.model_dump())  # Or format as needed
+                # Ensure content is stringified if it's a structured output model
+                if content is not None and not isinstance(content, str):
+                    # Attempt to convert Pydantic models or other objects to string/dict
+                    if hasattr(content, "model_dump_json"):
+                        content_str = content.model_dump_json()
+                    elif hasattr(content, "model_dump"):
+                        content_str = str(content.model_dump())  # Or format as needed
+                    else:
+                        content_str = str(content)
                 else:
-                    content_str = str(content)
-            else:
-                content_str = content
+                    content_str = content
 
-            return {
-                "success": True,
-                "content": content_str,
-                "parsed_content": parsed_content,  # Include the parsed Pydantic model if available
-                "tool_calls": tool_calls,
-                "usage": usage,
-                "error": None,
-            }
+                return {
+                    "success": True,
+                    "content": content_str,
+                    "parsed_content": parsed_content,  # Include the parsed Pydantic model if available
+                    "tool_calls": tool_calls,
+                    "usage": usage,
+                    "error": None,
+                }
             except Exception as e:
                 logging.error(
                     f"Error during pydantic-ai agent execution: {e}", exc_info=True
