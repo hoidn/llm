@@ -134,7 +134,7 @@ MAIN_WORKFLOW_S_EXPRESSION = """
 
   (iterative-loop
     (max-iterations max-iterations-config) ;; Use hyphenated symbol
-    (initial-input initial_plan_data) ;; Pass the initial plan dict/assoc-list (Keep underscore for now per user diff)
+    (initial-input initial-plan-data) ;; Pass the initial plan dict/assoc-list
     (test-command fixed-test-command) ;; Use hyphenated symbol
 
     ;; --- Executor Phase ---
