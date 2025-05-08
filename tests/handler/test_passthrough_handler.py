@@ -87,16 +87,29 @@ def passthrough_handler(mock_task_system, mock_memory_system, mocker):
 
 def test_init_registers_command_tool(passthrough_handler):
     """Verify __init__ calls register_tool for the command executor."""
-    # The registration happens during fixture setup now
-    passthrough_handler.register_tool.assert_called()
-    # Check the arguments of the call made by register_command_execution_tool
-    args, kwargs = passthrough_handler.register_tool.call_args
-    tool_spec = args[0]
-    executor_func = args[1]
-    assert tool_spec['name'] == 'executeFilePathCommand'
-    assert 'Executes a shell command' in tool_spec['description']
-    assert 'command' in tool_spec['input_schema']['required']
-    assert callable(executor_func)
+    import collections.abc # Add this import at the top of the file
+
+    # Inside test_init_registers_command_tool
+    # Instead of assert_called(), check call_args_list or use assert_any_call
+    found_cmd_tool = False
+    found_list_tool = False
+    expected_cmd_tool_name = 'executeFilePathCommand'
+    expected_list_tool_name = 'listFiles'
+
+    for actual_call in passthrough_handler.register_tool.call_args_list:
+        args, kwargs = actual_call
+        if args and isinstance(args[0], dict):
+            tool_name = args[0].get('name')
+            if tool_name == expected_cmd_tool_name:
+                found_cmd_tool = True
+                # Optionally, assert the structure of args[0] (tool_spec) and type of args[1] (executor)
+                assert isinstance(args[1], collections.abc.Callable) # Check if executor is callable
+            elif tool_name == expected_list_tool_name:
+                found_list_tool = True
+                assert isinstance(args[1], collections.abc.Callable) # Check if executor is callable
+
+    assert found_cmd_tool, f"Expected tool '{expected_cmd_tool_name}' was not registered."
+    assert found_list_tool, f"Expected tool '{expected_list_tool_name}' was not registered."
 
 def test_handle_query_success(passthrough_handler):
     """Test successful query handling, checking delegation and history."""
@@ -201,10 +214,16 @@ def test_command_execution_tool_wrapper_success(passthrough_handler, mocker):
     """Test the internal wrapper for the command execution tool (success case)."""
     # Find the registered wrapper function
     reg_call = passthrough_handler.register_tool.call_args
-    wrapper_func = reg_call[0][1] # Second argument of the call
+    # Find the correct wrapper function from the call list
+    wrapper_func = None
+    for call_args in passthrough_handler.register_tool.call_args_list:
+        if call_args[0][0].get('name') == 'executeFilePathCommand':
+            wrapper_func = call_args[0][1]
+            break
+    assert wrapper_func is not None, "executeFilePathCommand wrapper not found in registration calls."
 
     # Mock the underlying command_executor functions
-    mock_safe_exec = mocker.patch('src.handler.command_executor.execute_command_safely', return_value={'success': True, 'output': '/path/one\n/path/two', 'error': '', 'exit_code': 0})
+    mock_safe_exec = mocker.patch('src.handler.command_executor.execute_command_safely', return_value={'success': True, 'stdout': '/path/one\n/path/two', 'stderr': '', 'exit_code': 0, 'error_message': None}) # Use new keys
     mock_parse_paths = mocker.patch('src.handler.command_executor.parse_file_paths_from_output', return_value=['/path/one', '/path/two'])
 
     tool_input = {"command": "ls *.py"}
@@ -213,17 +232,25 @@ def test_command_execution_tool_wrapper_success(passthrough_handler, mocker):
 
     assert result.status == "COMPLETE"
     assert result.notes.get("file_paths") == ['/path/one', '/path/two']
-    # Content might be the string representation of the list
-    assert "['/path/one', '/path/two']" in result.content
-    mock_safe_exec.assert_called_once_with("ls *.py")
-    mock_parse_paths.assert_called_once_with('/path/one\n/path/two')
+    # Content should be the string representation of the list
+    assert result.content == "['/path/one', '/path/two']" # Check exact content
+    # Check call to execute_command_safely (cwd might be handler's base path)
+    mock_safe_exec.assert_called_once_with("ls *.py", cwd=passthrough_handler.file_manager.base_path, timeout=None)
+    # Check call to parse_file_paths_from_output
+    mock_parse_paths.assert_called_once_with('/path/one\n/path/two', base_dir=passthrough_handler.file_manager.base_path)
 
 def test_command_execution_tool_wrapper_failure(passthrough_handler, mocker):
     """Test the internal wrapper for the command execution tool (failure case)."""
-    reg_call = passthrough_handler.register_tool.call_args
-    wrapper_func = reg_call[0][1]
+    # Find the correct wrapper function from the call list
+    wrapper_func = None
+    for call_args in passthrough_handler.register_tool.call_args_list:
+        if call_args[0][0].get('name') == 'executeFilePathCommand':
+            wrapper_func = call_args[0][1]
+            break
+    assert wrapper_func is not None, "executeFilePathCommand wrapper not found in registration calls."
 
-    mock_safe_exec = mocker.patch('src.handler.command_executor.execute_command_safely', return_value={'success': False, 'output': '', 'error': 'Command not found', 'exit_code': 127})
+    # Mock the underlying command_executor functions - use new keys
+    mock_safe_exec = mocker.patch('src.handler.command_executor.execute_command_safely', return_value={'success': False, 'stdout': '', 'stderr': 'Command failed', 'exit_code': 127, 'error_message': None})
     mock_parse_paths = mocker.patch('src.handler.command_executor.parse_file_paths_from_output') # Should not be called
 
     tool_input = {"command": "invalid-cmd"}
@@ -231,7 +258,10 @@ def test_command_execution_tool_wrapper_failure(passthrough_handler, mocker):
     result = TaskResult.model_validate(result_dict)
 
     assert result.status == "FAILED"
-    assert "Command not found" in result.content
+    assert result.content == "Command failed" # Content should be stderr or error_message
+    assert "error" in result.notes
     assert result.notes["error"]["reason"] == "tool_execution_error"
-    mock_safe_exec.assert_called_once_with("invalid-cmd")
+    assert result.notes["error"]["message"] == "Command failed"
+    # Check call to execute_command_safely (cwd might be handler's base path)
+    mock_safe_exec.assert_called_once_with("invalid-cmd", cwd=passthrough_handler.file_manager.base_path, timeout=None)
     mock_parse_paths.assert_not_called()

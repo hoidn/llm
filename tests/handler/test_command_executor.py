@@ -35,9 +35,10 @@ def test_execute_command_safely_success(mock_run):
     call_args = mock_run.call_args[0][0]
     assert call_args == ['echo', 'hello'] # Check shlex splitting
     assert result["success"] is True
-    assert result["output"] == "Success output"
-    assert result["error"] == ""
+    assert result["stdout"] == "Success output" # Use stdout
+    assert result["stderr"] == "" # Use stderr
     assert result["exit_code"] == 0
+    assert result.get("error_message") is None # Check error_message is None on success
 
 @patch('subprocess.run')
 def test_execute_command_safely_failure_exit_code(mock_run):
@@ -52,9 +53,10 @@ def test_execute_command_safely_failure_exit_code(mock_run):
 
     mock_run.assert_called_once()
     assert result["success"] is False
-    assert result["output"] == ""
-    assert result["error"] == "Error message"
+    assert result["stdout"] == "" # Use stdout
+    assert result["stderr"] == "Error message" # Use stderr
     assert result["exit_code"] == 1
+    assert result.get("error_message") is None # No execution-level error message
 
 @patch('subprocess.run')
 def test_execute_command_safely_timeout(mock_run):
@@ -65,9 +67,10 @@ def test_execute_command_safely_timeout(mock_run):
 
     mock_run.assert_called_once()
     assert result["success"] is False
-    assert result["output"] == ""
-    assert "TimeoutExpired" in result["error"]
-    assert f"exceeded {DEFAULT_TIMEOUT} seconds limit" in result["error"]
+    assert result["stdout"] == "" # Use stdout
+    assert result["stderr"] == "" # Use stderr
+    assert "TimeoutExpired" in result["error_message"] # Use error_message
+    assert f"exceeded {DEFAULT_TIMEOUT} seconds limit" in result["error_message"] # Use error_message
     assert result["exit_code"] is None
 
 @patch('subprocess.run')
@@ -79,9 +82,10 @@ def test_execute_command_safely_command_not_found(mock_run):
 
     mock_run.assert_called_once()
     assert result["success"] is False
-    assert result["output"] == ""
-    assert "ExecutionException: Command not found" in result["error"]
-    assert "'nonexistentcmd'" in result["error"]
+    assert result["stdout"] == "" # Use stdout
+    assert result["stderr"] == "" # Use stderr
+    assert "ExecutionException: Command not found" in result["error_message"] # Use error_message
+    assert "'nonexistentcmd'" in result["error_message"] # Use error_message
     assert result["exit_code"] is None
 
 def test_execute_command_safely_unsafe_command():
@@ -98,8 +102,10 @@ def test_execute_command_safely_unsafe_command():
     for cmd in unsafe_commands:
         result = execute_command_safely(cmd)
         assert result["success"] is False
-        assert "UnsafeCommandDetected" in result["error"]
+        assert "UnsafeCommandDetected" in result["error_message"] # Use error_message
         assert result["exit_code"] is None
+        assert result["stdout"] == "" # Check other fields too
+        assert result["stderr"] == "" # Check other fields too
 
 @patch('subprocess.run')
 def test_execute_command_safely_output_truncation(mock_run):
@@ -114,11 +120,12 @@ def test_execute_command_safely_output_truncation(mock_run):
     result = execute_command_safely("echo 'long output'")
 
     assert result["success"] is True
-    assert len(result["output"]) == MAX_OUTPUT_SIZE
-    assert result["output"] == "A" * MAX_OUTPUT_SIZE
-    assert len(result["error"]) == MAX_OUTPUT_SIZE
-    assert result["error"] == "A" * MAX_OUTPUT_SIZE
+    assert len(result["stdout"]) == MAX_OUTPUT_SIZE # Use stdout
+    assert result["stdout"] == "A" * MAX_OUTPUT_SIZE # Use stdout
+    assert len(result["stderr"]) == MAX_OUTPUT_SIZE # Use stderr
+    assert result["stderr"] == "A" * MAX_OUTPUT_SIZE # Use stderr
     assert result["exit_code"] == 0
+    assert result.get("error_message") is None # Check error_message
 
 @patch('subprocess.run')
 def test_execute_command_safely_custom_cwd(mock_run):

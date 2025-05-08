@@ -492,7 +492,7 @@ def test_execute_shell_command_timeout(system_executor_instance):
         'exit_code': None, # Typically None on timeout
         'stdout': 'Partial output...',
         'stderr': '',
-        'error': 'Command timed out after 5 seconds'
+        'error_message': 'Command timed out after 5 seconds' # <<< Use this key
     }
     params = {"command": "sleep 10", "timeout": 5}
 

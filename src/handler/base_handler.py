@@ -199,12 +199,13 @@ class BaseHandler:
 
         if self.debug_mode:
             self.log_debug(
-                f"Command result: Success={result['success']}, ExitCode={result['exit_code']}, Output='{result['output'][:100]}...', Error='{result['error'][:100]}...'"
+                f"Command result: Success={result.get('success')}, ExitCode={result.get('exit_code')}, Stdout='{result.get('stdout', '')[:100]}...', Stderr='{result.get('stderr', '')[:100]}...', ErrorMsg='{result.get('error_message', '')[:100]}...'" # Log all keys
             )
 
-        if result["success"]:
+        if result.get("success"): # Use .get() for safety
             # Use the enhanced parse_file_paths_from_output with base_dir
-            file_paths = command_executor.parse_file_paths_from_output(result["output"], base_dir=cwd)
+            stdout_content = result.get("stdout", "") # Use correct key "stdout"
+            file_paths = command_executor.parse_file_paths_from_output(stdout_content, base_dir=cwd)
             if self.debug_mode:
                 self.log_debug(f"Parsed file paths: {file_paths}")
                 
@@ -246,7 +247,9 @@ class BaseHandler:
             return existing_paths
         else:
             logging.error(
-                f"Command execution failed (Exit Code: {result['exit_code']}): {command}. Error: {result['error']}"
+                # Use the most relevant error message
+                error_msg = result.get('error_message') or result.get('stderr', 'Unknown error')
+                f"Command execution failed (Exit Code: {result.get('exit_code')}): {command}. Error: {error_msg}"
             )
             return []
             

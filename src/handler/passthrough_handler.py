@@ -125,17 +125,29 @@ class PassthroughHandler(BaseHandler):
 
                 if exec_result.get("success"):
                     # Parse file paths if command succeeded
-                    output = exec_result.get("output", "")
-                    file_paths = command_executor.parse_file_paths_from_output(output, base_dir=cwd)
+                    stdout_content = exec_result.get("stdout", "") # Use stdout
+                    file_paths = command_executor.parse_file_paths_from_output(stdout_content, base_dir=cwd)
                     logging.info(f"Command succeeded. Parsed paths: {file_paths}")
                     # Return successful TaskResult with the list of paths as content
-                    return TaskResult(status="COMPLETE", content=str(file_paths), notes={"file_paths": file_paths}).model_dump(exclude_none=True) # Content could be JSON list?
+                    return TaskResult(status="COMPLETE", content=str(file_paths), notes={"file_paths": file_paths}).model_dump(exclude_none=True)
                 else:
                     # Command failed or was unsafe
-                    error_msg = exec_result.get("error", "Command execution failed.")
+                    # Prioritize error_message, then stderr, then default
+                    error_msg = exec_result.get("error_message") or exec_result.get("stderr") or "Command execution failed."
                     logging.warning(f"Command execution failed or unsafe: {error_msg}")
-                    error_details = TaskFailureError(type="TASK_FAILURE", reason="tool_execution_error", message=f"Command execution failed: {error_msg}")
-                    return TaskResult(status="FAILED", content=error_msg, notes={"error": error_details.model_dump(exclude_none=True)}).model_dump(exclude_none=True)
+                    # Determine reason based on error message content
+                    reason: TaskFailureReason = "tool_execution_error"
+                    if "UnsafeCommandDetected" in error_msg:
+                        reason = "input_validation_failure"
+                    elif "TimeoutExpired" in error_msg:
+                        reason = "execution_timeout"
+                    elif "Command not found" in error_msg:
+                        reason = "tool_execution_error" # Or a more specific one if desired
+
+                    error_details = TaskFailureError(type="TASK_FAILURE", reason=reason, message=error_msg)
+                    # Include full exec_result in notes for debugging
+                    notes = {"error": error_details.model_dump(exclude_none=True), "command_result": exec_result}
+                    return TaskResult(status="FAILED", content=error_msg, notes=notes).model_dump(exclude_none=True)
 
             except Exception as e:
                 logging.exception(f"Unexpected error in command execution wrapper: {e}")
