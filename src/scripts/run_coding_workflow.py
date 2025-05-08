@@ -334,7 +334,27 @@ def main():
     try:
         # Ensure Aider is enabled if needed by the workflow
         os.environ['AIDER_ENABLED'] = 'true'
-        app = Application()
+        
+        logger.info("Initializing Application for coding workflow...")
+        
+        # Explicitly enable Aider via config and set model
+        app_config = {
+            "aider": {"enabled": True},
+            "handler_config": {
+                "default_model_identifier": "google:gemini-1.5-pro-latest"
+            }
+        }
+        
+        logger.debug(f"Application config: {json.dumps(app_config, indent=2)}")
+        
+        # Initialize the application with our config
+        app = Application(config=app_config)
+        
+        # Verify the model configuration was applied
+        if hasattr(app, 'passthrough_handler') and app.passthrough_handler:
+            model_id = app.passthrough_handler.get_provider_identifier()
+            logger.info(f"Using LLM provider: {model_id}")
+            
         if args.debug:
              if hasattr(app, 'passthrough_handler') and app.passthrough_handler:
                  app.passthrough_handler.set_debug_mode(True)
