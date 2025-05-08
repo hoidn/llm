@@ -381,11 +381,11 @@ class LLMInteractionManager:
 
             try:
                 # Determine the system prompt to use for the call
-            current_system_prompt = (
-                system_prompt_override
-                if system_prompt_override is not None
-                else self.base_system_prompt
-            )
+                current_system_prompt = (
+                    system_prompt_override
+                    if system_prompt_override is not None
+                    else self.base_system_prompt
+                )
 
             # Prepare keyword arguments separately
             run_kwargs = {
