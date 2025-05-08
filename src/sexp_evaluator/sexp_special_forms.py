@@ -510,35 +510,31 @@ class SpecialFormProcessor:
             phase_call_env = env
 
             try:
-                # b. Director Phase
-                # Pass loop_config_data as the last argument
+                # b. Director Phase - Pass ONLY required args per ADR
                 plan_val = self.evaluator._call_phase_function(
-                    "director", director_fn, [current_director_input_val, current_iteration, loop_config_data],
+                    "director", director_fn, [current_director_input_val, current_iteration],
                     phase_call_env, original_expr_str, current_iteration
                 )
                 logger.debug(f"    Director result: {str(plan_val)[:200]}...")
 
-                # c. Executor Phase
-                # Pass loop_config_data as the last argument
+                # c. Executor Phase - Pass ONLY required args per ADR
                 exec_result_val = self.evaluator._call_phase_function(
-                    "executor", executor_fn, [plan_val, current_iteration, loop_config_data],
+                    "executor", executor_fn, [plan_val, current_iteration],
                     phase_call_env, original_expr_str, current_iteration
                 )
                 logger.debug(f"    Executor result: {str(exec_result_val)[:200]}...")
                 last_exec_result_val = exec_result_val
 
-                # d. Evaluator Phase
-                # Pass loop_config_data as the last argument
+                # d. Evaluator Phase - Pass ONLY required args per ADR
                 eval_feedback_val = self.evaluator._call_phase_function(
-                    "evaluator", evaluator_fn, [exec_result_val, plan_val, current_iteration, loop_config_data],
+                    "evaluator", evaluator_fn, [exec_result_val, plan_val, current_iteration],
                     phase_call_env, original_expr_str, current_iteration
                 )
                 logger.debug(f"    Evaluator result: {str(eval_feedback_val)[:200]}...")
 
-                # e. Controller Phase
-                # Pass loop_config_data as the last argument
+                # e. Controller Phase - Pass ONLY required args per ADR
                 decision_val = self.evaluator._call_phase_function(
-                    "controller", controller_fn, [eval_feedback_val, plan_val, exec_result_val, current_iteration, loop_config_data],
+                    "controller", controller_fn, [eval_feedback_val, plan_val, exec_result_val, current_iteration],
                     phase_call_env, original_expr_str, current_iteration
                 )
                 logger.debug(f"    Controller result: {str(decision_val)[:200]}...")
