@@ -132,6 +132,12 @@ MAIN_WORKFLOW_S_EXPRESSION = """
   ;; Variables initial_plan_data, fixed_test_command, initial_user_goal, max_iterations_config
   ;; are expected to be bound in the initial environment passed from Python (using hyphens).
 
+  ;; Generate first plan so current-plan is not empty
+  (bind initial-plan-data
+        (user:generate-plan-from-goal
+          (goal           initial-user-goal)
+          (context_string initial-context-data)))
+
   (iterative-loop
     (max-iterations max-iterations-config) ;; Use hyphenated symbol
     (initial-input initial-plan-data) ;; Pass the initial plan dict/assoc-list
@@ -180,20 +186,19 @@ MAIN_WORKFLOW_S_EXPRESSION = """
 
     ;; --- Controller Phase ---
     (controller (lambda (aider_result validation_result current-plan iter_num)
-                  (log-message "Controller (Iter " iter-num "): Analyzing Aider result status:" (get-field aider_result "status") " and Validation result exit_code:" (get-field validation_result "exit_code"))
+                  (log-message "Controller (Iter " iter_num "): Analyzing Aider result status:" (get-field aider_result "status") " and Validation result exit_code:" (get-field validation_result "exit_code"))
                   ;; Call the analysis/revision LLM task
                   (let ((analysis_task_result
                          (user:evaluate-and-retry-analysis ;; Corrected task name
-                           (original_goal initial-user-goal) ;; Use hyphenated symbol
-                           (previous_instructions (get-field current-plan "instructions"))
-                           (previous_files (get-field current-plan "files"))
-                           (aider_status (get-field aider_result "status"))
-                           (aider_output (get-field aider_result "content")) ;; Pass Aider's content/diff/error
-                           (test_stdout (get-field validation_result "stdout"))
-                           (test_stderr (get-field validation_result "stderr"))
-                           (test_exit_code (get-field validation_result "exit_code"))
-                           (iteration iter_num)
-                           (max_iterations max-iterations-config) ;; Use hyphenated symbol
+                           (original_goal      initial-user-goal)
+                           (aider_instructions (get-field current-plan "instructions"))
+                           (aider_status       (get-field aider_result "status"))
+                           (aider_diff         (get-field aider_result "content"))
+                           (test_command       fixed-test-command)
+                           (test_stdout        (get-field validation_result "stdout"))
+                           (test_stderr        (get-field validation_result "stderr"))
+                           (iteration          iter_num)
+                           (max_retries        max-iterations-config)
                           )))
                     (log-message "Controller: Analysis TaskResult:" analysis_task_result)
 
