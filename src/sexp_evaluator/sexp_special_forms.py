@@ -191,10 +191,18 @@ class SpecialFormProcessor:
             )
         task_name_str = task_name_node.value()
 
-        params_node = arg_exprs[1]
+        instructions_node = arg_exprs[1]
+        if not (isinstance(instructions_node, list) and len(instructions_node) == 2 and isinstance(instructions_node[0], Symbol) and instructions_node[0].value() == "instructions" and isinstance(instructions_node[1], str)):
+            raise SexpEvaluationError(
+                f"'defatom' requires an (instructions \"string\") definition as the second argument, got: {instructions_node}",
+                original_expr_str
+            )
+        instructions_str = instructions_node[1]
+
+        params_node = arg_exprs[2]
         if not (isinstance(params_node, list) and len(params_node) > 0 and isinstance(params_node[0], Symbol) and params_node[0].value() == "params"):
             raise SexpEvaluationError(
-                f"'defatom' requires a (params ...) definition as the second argument, got: {params_node}",
+                f"'defatom' requires a (params ...) definition as the third argument, got: {params_node}",
                 original_expr_str
             )
         
@@ -211,14 +219,6 @@ class SpecialFormProcessor:
                 )
 
         template_params = {name: {"description": f"Parameter {name}"} for name in param_name_strings_for_template}
-
-        instructions_node = arg_exprs[2]
-        if not (isinstance(instructions_node, list) and len(instructions_node) == 2 and isinstance(instructions_node[0], Symbol) and instructions_node[0].value() == "instructions" and isinstance(instructions_node[1], str)):
-            raise SexpEvaluationError(
-                f"'defatom' requires an (instructions \"string\") definition as the third argument, got: {instructions_node}",
-                original_expr_str
-            )
-        instructions_str = instructions_node[1]
 
         optional_args_map: Dict[str, Any] = {} # Allow Any for structured values
         # Keys that expect a simple string value
