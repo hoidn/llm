@@ -614,8 +614,7 @@ class SexpEvaluator:
                 # Store last executor result as potential fallback result if max_iterations is hit next
                 loop_result = executor_result # CORRECT ASSIGNMENT
                 current_iteration += 1
-            else:
-                # This 'else' block will be added by Fix C below
+            else: # Handle invalid action symbols
                 raise SexpEvaluationError(
                     f"iterative-loop: Controller decision action must be 'continue' or 'stop' symbol, got: '{action_str}'",
                     original_expr_str
