@@ -14,6 +14,7 @@ from src.system.models import (
     TaskResult, SubtaskRequest, ContextGenerationInput, AssociativeMatchResult, # Ensure TaskResult is imported
     MatchTuple, TaskFailureError, ContextManagement, TaskError
 )
+from pydantic import BaseModel # Add BaseModel import for new test
 # SexpParser import removed as it's not used by the updated _create_loop_ast at the top level
 from src.sexp_parser.sexp_parser import SexpParser # Re-add SexpParser import
 from src.sexp_evaluator.sexp_closure import Closure # Assuming Closure is importable
@@ -2029,6 +2030,53 @@ def test_primitive_null_with_get_field_missing(evaluator, mock_parser):
     mock_parser.parse_string.return_value = ast
     assert evaluator.evaluate_string(sexp_str) is True
 
+def test_primitive_get_field_pydantic_model(evaluator, mock_parser):
+    """Test get-field with a Pydantic model instance."""
+    class SimpleModel(BaseModel):
+        field_a: str
+        field_b: int
+        optional_field: Optional[str] = None
+
+    model_instance = SimpleModel(field_a="value_a", field_b=123)
+    env = SexpEnvironment(bindings={"my_model": model_instance})
+
+    # Test existing field
+    sexp_str_a = "(get-field my_model 'field_a)"
+    ast_a = [S('get-field'), S('my_model'), [S('quote'), S('field_a')]]
+    mock_parser.parse_string.return_value = ast_a
+    assert evaluator.evaluate_string(sexp_str_a, env) == "value_a"
+    # mock_parser.parse_string.assert_called_with(sexp_str_a) # Avoid this if mock_parser is shared and reset elsewhere or if calls accumulate
+
+    # Test another existing field
+    sexp_str_b = "(get-field my_model 'field_b)"
+    ast_b = [S('get-field'), S('my_model'), [S('quote'), S('field_b')]]
+    mock_parser.parse_string.return_value = ast_b
+    assert evaluator.evaluate_string(sexp_str_b, env) == 123
+    # mock_parser.parse_string.assert_called_with(sexp_str_b)
+
+    # Test non-existent field
+    sexp_str_c = "(get-field my_model 'non_existent_field)"
+    ast_c = [S('get-field'), S('my_model'), [S('quote'), S('non_existent_field')]]
+    mock_parser.parse_string.return_value = ast_c
+    assert evaluator.evaluate_string(sexp_str_c, env) is None
+    # mock_parser.parse_string.assert_called_with(sexp_str_c)
+
+    # Test optional field that is None
+    sexp_str_d = "(get-field my_model 'optional_field)"
+    ast_d = [S('get-field'), S('my_model'), [S('quote'), S('optional_field')]]
+    mock_parser.parse_string.return_value = ast_d
+    assert evaluator.evaluate_string(sexp_str_d, env) is None
+    # mock_parser.parse_string.assert_called_with(sexp_str_d)
+
+    # Test optional field that has a value
+    model_instance_with_opt = SimpleModel(field_a="value_a", field_b=123, optional_field="opt_val")
+    env_with_opt = SexpEnvironment(bindings={"my_model_opt": model_instance_with_opt})
+    sexp_str_e = "(get-field my_model_opt 'optional_field)"
+    ast_e = [S('get-field'), S('my_model_opt'), [S('quote'), S('optional_field')]]
+    mock_parser.parse_string.return_value = ast_e
+    assert evaluator.evaluate_string(sexp_str_e, env_with_opt) == "opt_val"
+    # mock_parser.parse_string.assert_called_with(sexp_str_e)
+
 # --- Tests for set! ---
 def test_primitive_set_bang_updates_local_var(evaluator, mock_parser):
     env = SexpEnvironment(bindings={'x': 10})
@@ -2735,11 +2783,11 @@ class TestSexpEvaluatorIterativeLoop:
 
         # Verify the arguments passed TO _call_phase_function
         # Check that the correct mock lambda function was passed as func_to_call
-        # Executor receives "start" (string) as current_structured_input for iter 1
-        mock_call_phase.assert_any_call("executor", mock_executor_lambda_func, ["start", 1], mocker.ANY, mocker.ANY, 1)
+        # Executor receives Symbol("start") as current_structured_input for iter 1
+        mock_call_phase.assert_any_call("executor", mock_executor_lambda_func, [Symbol("start"), 1], mocker.ANY, mocker.ANY, 1)
         mock_call_phase.assert_any_call("validator", mock_validator_lambda_func, ["echo test", 1], mocker.ANY, mocker.ANY, 1)
-        # Controller also receives "start" (string) as current_structured_input for iter 1
-        mock_call_phase.assert_any_call("controller", mock_controller_lambda_func, [mock_executor_result, mock_validator_result, "start", 1], mocker.ANY, mocker.ANY, 1)
+        # Controller also receives Symbol("start") as current_structured_input for iter 1
+        mock_call_phase.assert_any_call("controller", mock_controller_lambda_func, [mock_executor_result, mock_validator_result, Symbol("start"), 1], mocker.ANY, mocker.ANY, 1)
 
 
     def test_iterative_loop_continues_once_then_stops(self, evaluator, mock_parser, mocker):

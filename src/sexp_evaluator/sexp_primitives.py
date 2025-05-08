@@ -190,12 +190,18 @@ class PrimitiveProcessor:
                             return val
                 logger.warning(f"  'get-field': Key '{field_name_val}' not found in assoc-list. Returning None.")
                 return None
-            # Check for Pydantic model fields explicitly
-            elif hasattr(target_obj, '__class__') and hasattr(target_obj.__class__, 'model_fields') and field_name_val in target_obj.model_fields:
-                val = getattr(target_obj, field_name_val)
-                logger.debug(f"  'get-field': Accessing Pydantic attribute '{field_name_val}' -> {val!r} (Type: {type(val)})")
-                return val
-            elif hasattr(target_obj, field_name_val): # General attribute access
+            # Check for Pydantic model fields explicitly BEFORE general hasattr
+            elif hasattr(target_obj, '__class__') and hasattr(target_obj.__class__, 'model_fields'):
+                if field_name_val in target_obj.model_fields:
+                    val = getattr(target_obj, field_name_val)
+                    logger.debug(f"  'get-field': Accessing Pydantic attribute '{field_name_val}' -> {val!r} (Type: {type(val)})")
+                    return val
+                else:
+                    # Field not defined on the Pydantic model
+                    logger.warning(f"  'get-field': Field '{field_name_val}' not found in Pydantic model fields for type {type(target_obj)}. Returning None.")
+                    return None
+            # Fallback to general attribute access
+            elif hasattr(target_obj, field_name_val):
                 val = getattr(target_obj, field_name_val)
                 logger.debug(f"  'get-field': Accessing general attribute '{field_name_val}' -> {val!r} (Type: {type(val)})")
                 return val
