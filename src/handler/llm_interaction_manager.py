@@ -451,9 +451,16 @@ class LLMInteractionManager:
                         f"Calling agent.run_sync with prompt='{prompt[:100]}...' and kwargs={run_kwargs}"
                     )
 
-                # Call the agent with prompt as positional arg, others as kwargs
-                # Use the determined target_agent
-                response: Optional[Any] = target_agent.run_sync(prompt, **run_kwargs)
+                try:
+                    # Normal path – we are NOT inside a loop
+                    response = target_agent.run_sync(prompt, **run_kwargs)
+                except RuntimeError as exc:
+                    if "event loop is already running" not in str(exc):
+                        raise
+                    # We *are* inside a loop → schedule coroutine on that loop
+                    loop = asyncio.get_running_loop()
+                    coro = target_agent.run(prompt, **run_kwargs)
+                    response = loop.run_until_complete(asyncio.ensure_future(coro))
 
                 if self.debug_mode:
                     logging.debug(f"Agent response received: {response}")

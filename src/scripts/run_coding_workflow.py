@@ -119,6 +119,7 @@ DEFATOM_COMBINED_ANALYSIS_S_EXPRESSION = """
     Provide a concise explanation in 'message'.
     Output ONLY JSON conforming to the CombinedAnalysisResult schema.
     Ensure 'next_prompt' is provided *only* if verdict is 'RETRY'.
+    If you output "verdict":"RETRY" you must echo a non-empty "files" array; otherwise the controller will reuse the prior list.
     **IMPORTANT:** Your entire response MUST be the JSON object itself, starting with `{` and ending with `}`."
   )
   (output_format ((type "json") (schema "src.system.models.CombinedAnalysisResult")))
@@ -152,7 +153,11 @@ MAIN_WORKFLOW_S_EXPRESSION = """
                 (log-message "Executor (Iter " iter-num "): Executing plan with instructions: " (get-field current-plan "instructions"))
                 (aider_automatic
                   (prompt (get-field current-plan "instructions"))
-                  (file_context (get-field current-plan "files")))))
+                  ;; If the plan’s list is empty use NIL so MCP will allow new files
+                  (relative_editable_files
+                       (if (null? (get-field current-plan "files"))
+                           nil
+                           (get-field current-plan "files"))))))
 
     ;; --- Validator Phase ---
     (validator (lambda (test-cmd iter-num)
