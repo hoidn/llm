@@ -44,6 +44,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 # --- Application Imports ---
 from src.main import Application
 from src.sexp_evaluator.sexp_environment import SexpEnvironment
+import json
 
 # --- Logging Setup ---
 LOG_LEVEL = logging.INFO # Or DEBUG
@@ -118,7 +119,7 @@ DEFATOM_COMBINED_ANALYSIS_S_EXPRESSION = """
   )
   (output_format ((type "json") (schema "src.system.models.CombinedAnalysisResult")))
   (description "Analyzes Aider and test results, determines success/failure/retry, and provides the next prompt if needed.")
-  ;; (model "gpt-4-turbo") ; Choose a capable model like gpt-4-turbo or claude-3-opus
+  (model "google:gemini-1.5-pro-latest") ;; Explicitly set the model to use
 )
 """
 
@@ -201,17 +202,32 @@ MAIN_WORKFLOW_S_EXPRESSION = """
                                      ;; Test command executed, call combined LLM analysis task
                                      (progn
                                        (log-message "Evaluator: Calling combined analysis task 'user:evaluate-and-retry-analysis'")
-                                       (user:evaluate-and-retry-analysis
-                                         (original_goal initial-user-goal)
-                                         (aider_instructions director-prompt)
-                                         (aider_status (get-field aider-task-result "status"))
-                                         (aider_diff (get-field aider-task-result "content")) ;; Pass Aider's content/diff/error
-                                         (test_command user-test-command)
-                                         (test_stdout (get-field (get-field test-run-result "notes") "stdout"))
-                                         (test_stderr (get-field (get-field test-run-result "notes") "stderr"))
-                                         (iteration iter-num)
-                                         (max_retries (get-field *loop-config* "max-iterations")) ;; Pass max retries
-                                        )
+                                       ;; Extract test stdout/stderr/exit_code safely with defaults
+                                       (let ((test-notes (get-field test-run-result "notes"))
+                                             (test-stdout "")
+                                             (test-stderr "")
+                                             (test-exit-code -1))
+                                         
+                                         ;; Safely extract values if notes exists and has the fields
+                                         (if (not (null? test-notes))
+                                             (progn
+                                               (set! test-stdout (if (null? (get-field test-notes "stdout")) "" (get-field test-notes "stdout")))
+                                               (set! test-stderr (if (null? (get-field test-notes "stderr")) "" (get-field test-notes "stderr")))
+                                               (set! test-exit-code (if (null? (get-field test-notes "exit_code")) -1 (get-field test-notes "exit_code")))
+                                             ))
+                                         
+                                         ;; Call the analysis task with properly extracted values
+                                         (user:evaluate-and-retry-analysis
+                                           (original_goal initial-user-goal)
+                                           (aider_instructions director-prompt)
+                                           (aider_status (get-field aider-task-result "status"))
+                                           (aider_diff (get-field aider-task-result "content")) ;; Pass Aider's content/diff/error
+                                           (test_command user-test-command)
+                                           (test_stdout test-stdout)
+                                           (test_stderr test-stderr)
+                                           (iteration iter-num)
+                                           (max_retries (get-field *loop-config* "max-iterations")) ;; Pass max retries
+                                          ))
                                       )
                                   ) ;; End inner if (test command status check)
                                 ) ;; End let test-run-result
@@ -231,7 +247,9 @@ MAIN_WORKFLOW_S_EXPRESSION = """
 
                                     ;; Combined analysis task succeeded, parse its structured output
                                     (let ((analysis-data (get-field eval-feedback "parsedContent")))
-
+                                      (log-message "Controller: Analysis task result status:" (get-field eval-feedback "status"))
+                                      (log-message "Controller: Analysis task raw content:" (get-field eval-feedback "content"))
+                                      
                                       (if (null? analysis-data)
                                           (progn
                                             (log-message "Controller: Failed to parse combined analysis JSON!")
@@ -240,6 +258,7 @@ MAIN_WORKFLOW_S_EXPRESSION = """
                                           ;; Successfully parsed analysis data (CombinedAnalysisResult)
                                           (let ((verdict (get-field analysis-data "verdict")))
                                             (log-message "Controller: Parsed Verdict:" verdict)
+                                            (log-message "Controller: Analysis message:" (get-field analysis-data "message"))
 
                                             (if (string=? verdict "SUCCESS")
                                                 (list 'stop aider-task-result) ;; Stop successfully with Aider's result
@@ -278,6 +297,7 @@ def main():
     parser.add_argument("--context-file", help="Optional path to a file containing initial context.")
     parser.add_argument("--test-command", default="pytest tests/", help="The shell command to run for verification.")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging.")
+    parser.add_argument("--trace-sexp", action="store_true", help="Enable detailed S-expression evaluation tracing.")
     args = parser.parse_args()
 
     if args.debug:
@@ -286,6 +306,9 @@ def main():
         for handler in logging.getLogger().handlers:
             handler.setLevel(logging.DEBUG)
         logger.info("Debug logging enabled.")
+        
+        # Set environment variable for additional debug info
+        os.environ['DEBUG_LLM_FLOW'] = 'true'
 
     initial_user_goal = args.goal
     initial_context_data = ""
@@ -376,10 +399,15 @@ def main():
     logger.info("Executing main workflow S-expression...")
     try:
         # Use the main workflow string defined earlier
+        flags = {
+            "is_sexp_string": True,
+            "trace_sexp": args.trace_sexp  # Add tracing flag if requested
+        }
+            
         final_result = app.handle_task_command(
             identifier=MAIN_WORKFLOW_S_EXPRESSION,
             params=initial_params, # Pass the dictionary here
-            flags={"is_sexp_string": True} # Ensure this flag is handled
+            flags=flags
         )
         logger.info("Main workflow execution finished.")
     except Exception as e:
