@@ -576,27 +576,28 @@ class SexpEvaluator:
                 executor_result = self._call_phase_function(
                     "executor", executor_fn, [current_loop_input, current_iteration],
                 env, original_expr_str, current_iteration
-            )
-            # Basic validation of executor result (optional but recommended)
-            if not isinstance(executor_result, (dict, TaskResult)): # Allow TaskResult object too
-                logger.warning(f"Executor phase returned non-dict/TaskResult type: {type(executor_result)}")
-                # Decide how to handle - maybe wrap it or raise error? For now, log and continue.
+                )
+                # Basic validation of executor result (optional but recommended)
+                if not isinstance(executor_result, (dict, TaskResult)): # Allow TaskResult object too
+                    logger.warning(f"Executor phase returned non-dict/TaskResult type: {type(executor_result)}")
+                    # Decide how to handle - maybe wrap it or raise error? For now, log and continue.
+                last_exec_result_val = executor_result # Store last exec result
 
-            # --- Validator Phase ---
-            validation_result = self._call_phase_function(
-                "validator", validator_fn, [test_cmd_string, current_iteration],
-                env, original_expr_str, current_iteration
-            )
-            # Basic validation of validator result (optional)
-            if not isinstance(validation_result, dict) or not all(k in validation_result for k in ['stdout', 'stderr', 'exit_code']):
-                 logger.warning(f"Validator phase returned unexpected structure: {validation_result!r}")
-                 # Continue, controller might handle it or fail
+                # --- Validator Phase ---
+                validation_result = self._call_phase_function(
+                    "validator", validator_fn, [test_cmd_string, current_iteration],
+                    env, original_expr_str, current_iteration
+                )
+                # Basic validation of validator result (optional)
+                if not isinstance(validation_result, dict) or not all(k in validation_result for k in ['stdout', 'stderr', 'exit_code']):
+                     logger.warning(f"Validator phase returned unexpected structure: {validation_result!r}")
+                     # Continue, controller might handle it or fail
 
-            # --- Controller Phase ---
-            decision_val = self._call_phase_function(
-                "controller", controller_fn, [executor_result, validation_result, current_loop_input, current_iteration],
-                env, original_expr_str, current_iteration
-            )
+                # --- Controller Phase ---
+                decision_val = self._call_phase_function(
+                    "controller", controller_fn, [executor_result, validation_result, current_loop_input, current_iteration],
+                    env, original_expr_str, current_iteration
+                )
             # --- FIXED Error Handling ---
             except Exception as phase_error:
                 # Catch errors from _call_phase_function (which already wraps SexpEvaluationError)
