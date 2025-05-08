@@ -253,6 +253,20 @@ This document outlines the standard conventions, patterns, and rules for impleme
 
     *   **[NEW] Guideline 6: Verify Mock Calls Correctly:** When asserting mock calls (`assert_called_once_with`, `assert_called`), ensure you are checking the correct mock object. If you used `with patch.object(...)` or `@patch.object(...)`, assert against the mock object created by the patcher (often passed into the test function or available as the `as` target in the `with` statement). If you passed a mock instance during DI (Guideline 1), assert against that original mock instance variable.
 
+*   **Guideline 7.X: Testing Internally Complex Components (Evaluators, State Machines, etc.)**
+    *   **Challenge:** Unit testing components with significant internal logic, recursion (like `SexpEvaluator._eval`), or complex state management (like loop handlers) can be challenging and lead to brittle tests if relying heavily on mocking internal methods.
+    *   **Prioritize Integration:** Whenever feasible, prioritize integration tests that exercise the component's public interface (e.g., `SexpEvaluator.evaluate_string`) with real or minimally mocked *external* dependencies (TaskSystem, Handler, MemorySystem). This verifies the overall contract more robustly.
+    *   **Internal Mocking (Use Sparingly):** Mocking internal methods (methods within the class under test or its private helpers) should be reserved for cases where:
+        *   Specific internal logic paths are too complex or difficult to trigger via the public interface alone.
+        *   You need to isolate a sub-component's logic completely.
+        *   **Justification:** If choosing this path, briefly justify the need for internal mocking in test comments or related documentation.
+    *   **If Mocking Internals:**
+        *   **Targeted Patching:** Strongly prefer `with patch.object(instance_or_class, 'method_name', ...)` scoped tightly within the specific test function/block needing it. Avoid global patching (`@patch` at class/module level, `autouse=True`) for internal methods.
+        *   **Mock the Interface/Result:** Configure mocks to return the *expected result* of the internal call, not necessarily to simulate its internal steps. Ensure the mock return *type* matches the real method's return type, especially if the code under test uses `isinstance()`.
+        *   **Verify Mock Calls:** Use `assert_called_with`, `call_count`, etc., on the *correct mock object* (the one created by `patch` or injected). Refer back to Guideline 6 for verifying calls on the correct mock.
+        *   **Brittleness Warning:** Be aware that tests mocking internal details are highly sensitive to refactoring of the component's internal structure and may break even if the external behavior is unchanged. Factor in the maintenance cost.
+        *   **Debugging Aid:** When debugging failing tests involving internal mocks, add temporary logging (`logging.debug(...)` or `print(...)`) inside the *production method* being tested to observe the actual arguments passed to, and values returned by, the mocked internal methods at runtime. This helps diagnose discrepancies between expected and actual mock behavior.
+
 *   **Test Doubles:** Use `pytest` fixtures, `unittest.mock`, or simple stub classes. Choose the right type (Stub, Mock, Fake) for the job.
 *   **Arrange-Act-Assert:** Structure tests clearly.
 *   **Fixtures:** Use `pytest` fixtures extensively for setting up test environments, component instances (often with injected mocks as per Guideline 1), and test data. Define shared fixtures in `conftest.py`.
