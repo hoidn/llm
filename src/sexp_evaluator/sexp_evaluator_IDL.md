@@ -113,6 +113,28 @@ module src.sexp_evaluator.sexp_evaluator {
         //   - **Returns:** The result of the *last* evaluation of `<body-expr>`. If `n` is 0, returns `nil` (represented as `[]` in Python).
         //   - **Errors:** Raises `SexpEvaluationError` if argument count is not exactly 2. Propagates `SexpEvaluationError` from evaluation of `<count-expr>` or `<body-expr>`. Raises `SexpEvaluationError` if count is invalid.
         //
+        // - `(iterative-loop (clause1 expr1) (clause2 expr2) ...)`: **Special Form.** Implements a flexible iterative loop with distinct phases (Executor, Validator, Controller).
+        //   - **Syntax:** Requires clauses for `max-iterations`, `initial-input`, `test-command`, `executor`, `validator`, and `controller`. Each clause is a list `(ClauseName Expression)`.
+        //     - `max-iterations`: Expression evaluating to a non-negative integer.
+        //     - `initial-input`: Expression evaluating to the input for the first executor iteration.
+        //     - `test-command`: Expression evaluating to a string command (often used by the validator).
+        //     - `executor`: Expression evaluating to a callable (lambda/Closure) taking `(current-input iteration-number)`. Returns the execution result for the iteration.
+        //     - `validator`: Expression evaluating to a callable (lambda/Closure) taking `(test-command iteration-number)`. Returns validation results (e.g., test output dict).
+        //     - `controller`: Expression evaluating to a callable (lambda/Closure) taking `(executor-result validator-result current-input iteration-number)`. Must return `(list 'stop final-value)` or `(list 'continue next-input)`.
+        //       - **Note:** The controller often invokes an LLM task (like `user:analyze-iteration-structured`) which might return a `StructuredAnalysisResult` (defined in `docs/system/contracts/types.md`), but the special form itself only requires the `(list 'action value)` structure.
+        //   - **Behavior:**
+        //     1. Evaluates configuration expressions (`max-iterations`, `initial-input`, `test-command`).
+        //     2. Evaluates phase function expressions (`executor`, `validator`, `controller`) to get callable functions/closures.
+        //     3. Enters a loop, running up to `max-iterations` times:
+        //        a. Calls the `executor` function with the current input and iteration number.
+        //        b. Calls the `validator` function with the test command and iteration number.
+        //        c. Calls the `controller` function with results from executor/validator, the input used for this iteration, and the iteration number.
+        //        d. Processes the controller's decision:
+        //           - If `(list 'stop final-value)`, the loop terminates, and `final-value` is returned.
+        //           - If `(list 'continue next-input)`, the loop proceeds to the next iteration using `next-input`. The `executor-result` from the *current* iteration is stored as the potential return value if max iterations is reached.
+        //   - **Returns:** The `final-value` from a `stop` decision, or the `executor-result` from the *last* completed iteration if `max-iterations` is reached. Returns `nil` (`[]`) if `max-iterations` is 0.
+        //   - **Errors:** Raises `SexpEvaluationError` for missing/duplicate clauses, invalid configuration values (e.g., non-integer max-iterations), non-callable phase functions, invalid controller return format/action, or errors propagated from phase function execution.
+        //
         // - `(director-evaluator-loop ...)`: **Special Form.** Implements the Director-Executor-Evaluator-Controller pattern for iterative workflows.
         //   - **Syntax:** See ADR_director_evaluator_loop.md for full syntax details.
         //   - **Argument Processing:** Evaluates configuration expressions and function expressions as specified in the ADR.
