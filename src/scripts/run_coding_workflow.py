@@ -184,19 +184,20 @@ MAIN_WORKFLOW_S_EXPRESSION = """
 
                                  ;; Check if test command itself failed
                                  (if (not (string=? (get-field test-run-result "status") "COMPLETE"))
-                                     ;; Test command execution failed, create a FAILED CombinedAnalysisResult structure manually
-                                     (progn
-                                        (log-message "Evaluator: Shell command for tests failed to execute.")
-                                        ;; We need to return something shaped like the CombinedAnalysisResult task *would* have returned
-                                        ;; Create a FAILED TaskResult that the Controller can parse
-                                        (list (quote status) "COMPLETE") ;; The *evaluator* completed, but contains failure info
-                                              (list (quote content) "") ;; No LLM content
-                                              (list (quote parsedContent) ;; Mock the parsed content structure
-                                                    (list (list (quote verdict) "FAILURE")
-                                                          (list (quote next_prompt) nil)
-                                                          (list (quote message) (string-append "Test command execution failed: " (get-field test-run-result "content")))))
-                                              (list (quote notes) (get-field test-run-result "notes")) ;; Include shell notes if useful
-                                      )
+                                     ;; Test command execution failed, return the manually constructed TaskResult-like structure
+                                     (progn ;; Keep progn for the log message
+                                       (log-message "Evaluator: Shell command for tests failed to execute.")
+                                       ;; Construct the full list and return it explicitly
+                                       (list
+                                         (list (quote status) "COMPLETE") ;; The *evaluator* completed
+                                         (list (quote content) "") ;; No LLM content
+                                         (list (quote parsedContent) ;; Mock the parsed content structure
+                                               (list (list (quote verdict) "FAILURE")
+                                                     (list (quote next_prompt) nil)
+                                                     (list (quote message) (string-append "Test command execution failed: " (get-field test-run-result "content")))))
+                                         (list (quote notes) (get-field test-run-result "notes")) ;; Include shell notes
+                                        ) ;; End of the list to return
+                                      ) ;; End progn
                                      ;; Test command executed, call combined LLM analysis task
                                      (progn
                                        (log-message "Evaluator: Calling combined analysis task 'user:evaluate-and-retry-analysis'")
