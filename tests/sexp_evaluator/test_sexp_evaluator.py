@@ -2739,14 +2739,29 @@ class TestSexpEvaluatorIterativeLoop:
         ast = self._create_loop_ast(max_iter=5) 
         mock_parser.parse_string.return_value = ast
 
-        # Mock _eval for config expressions
-        def config_eval_side_effect(node, env):
+        # Mock _eval less strictly, but log calls
+        eval_call_log = []
+        original_eval = evaluator._eval
+        def logging_eval_side_effect(node, env):
+            # Log the call before processing
+            call_info = f"Mock _eval called with: Node={node!r} (Type={type(node)}), EnvID={id(env)}"
+            eval_call_log.append(call_info)
+            # logging.debug(call_info) # Optional: uncomment for very verbose logs
+
+            # Handle specific config nodes we know are needed
             if node == 5: return 5
             if node == [Symbol("quote"), Symbol("start")]: return "start"
             if node == [Symbol("quote"), Symbol("echo test")]: return "echo test"
-            if isinstance(node, list) and node[0] == Symbol("lambda"): return MagicMock(spec=Callable)
-            return MagicMock()
-        mocker.patch.object(evaluator, '_eval', side_effect=config_eval_side_effect)
+            # Let original eval handle lambda and other things
+            # This ensures lambda returns a Closure, not a mock
+            try:
+                return original_eval(node, env)
+            except Exception as e:
+                 # Log errors happening within the original eval call triggered by the mock
+                 logging.error(f"Error during original_eval call from mock for node {node!r}: {e}")
+                 raise # Re-raise the original error
+
+        mocker.patch.object(evaluator, '_eval', side_effect=logging_eval_side_effect)
 
         mock_exec_res_1 = TaskResult(status="COMPLETE", content="Exec Iter 1")
         mock_val_res_1 = {"stdout": "Test Failed", "stderr": "AssertionError", "exit_code": 1}
@@ -2763,9 +2778,19 @@ class TestSexpEvaluatorIterativeLoop:
             mock_exec_res_2, mock_val_res_2, mock_ctrl_dec_2  # Iter 2
         ]
 
-        result = evaluator.evaluate_string("(iterative-loop ...)")
+        # --- Execution and Logging ---
+        logging.debug("Calling evaluator.evaluate_string for iterative-loop test...")
+        result = None
+        try:
+            result = evaluator.evaluate_string("(iterative-loop ...)")
+        finally:
+            # Log the calls made to the mock _eval regardless of success/failure
+            logging.debug(f"Calls made to logging_eval_side_effect:\n{chr(10).join(eval_call_log)}")
+            # Log the final result obtained
+            logging.debug(f"Result received from evaluator.evaluate_string: {result!r} (Type: {type(result)})")
+            logging.debug(f"Expected final_val: {final_val!r} (Type: {type(final_val)})")
 
-        assert result == final_val
+        assert result == final_val, f"Expected {final_val!r} but got {result!r}"
         assert mock_call_phase.call_count == 6 
         mock_call_phase.assert_any_call("executor", mocker.ANY, [next_input_iter_1, 2], mocker.ANY, mocker.ANY, 2)
 
@@ -2927,7 +2952,13 @@ class TestSexpEvaluatorIterativeLoop:
         mock_validator_lambda_func = MagicMock(spec=Callable, name="mock_validator_lambda")
         mock_controller_lambda_func = MagicMock(spec=Callable, name="mock_controller_lambda")
 
+        # Add logging to track _eval calls
+        eval_call_log = []
         def config_eval_side_effect(node, env):
+            # Log the call before processing
+            call_info = f"Mock _eval called with: Node={node!r} (Type={type(node)}), EnvID={id(env)}"
+            eval_call_log.append(call_info)
+            
             # Check for specific config expressions
             if node == 1: return 1
             if node == [Symbol("quote"), Symbol("start")]: return "start"
@@ -2941,7 +2972,12 @@ class TestSexpEvaluatorIterativeLoop:
                 if params == [Symbol("er"), Symbol("vr"), Symbol("ci"), Symbol("it")]: return mock_controller_lambda_func
 
             # Fallback to original _eval for everything else
-            return original_eval(node, env)
+            try:
+                return original_eval(node, env)
+            except Exception as e:
+                # Log errors happening within the original eval call triggered by the mock
+                logging.error(f"Error during original_eval call from mock for node {node!r}: {e}")
+                raise  # Re-raise the original error
             
         mocker.patch.object(evaluator, '_eval', side_effect=config_eval_side_effect)
 
@@ -2952,8 +2988,14 @@ class TestSexpEvaluatorIterativeLoop:
             SexpEvaluationError("Controller failed!") 
         ]
 
-        with pytest.raises(SexpEvaluationError, match="Error in 'controller' phase.*Controller failed!"):
-            evaluator.evaluate_string("(iterative-loop ...)")
+        logging.debug("Calling evaluator.evaluate_string for iterative-loop controller error test...")
+        try:
+            with pytest.raises(SexpEvaluationError, match="Error in 'controller' phase.*Controller failed!") as excinfo:
+                evaluator.evaluate_string("(iterative-loop ...)")
+            logging.debug(f"Caught expected exception: {excinfo.value}")
+        finally:
+            # Log the calls made to the mock _eval regardless of success/failure
+            logging.debug(f"Calls made to config_eval_side_effect:\n{chr(10).join(eval_call_log)}")
 
     def test_iterative_loop_integration_simple_counter(self, evaluator, mock_parser):
         """Test a simple counter loop using actual lambdas and primitives."""

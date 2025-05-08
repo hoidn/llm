@@ -826,7 +826,9 @@ class SpecialFormProcessor:
 
             if action_str == "stop":
                 logger.info(f"iterative-loop: Stopping at iteration {current_iteration} due to controller 'stop'. Final result: {str(action_value)[:100]}...")
+                logger.debug(f"DEBUG: action_value type={type(action_value)}, value={action_value!r}")
                 loop_result = action_value
+                logger.debug(f"DEBUG: loop_result after assignment: type={type(loop_result)}, value={loop_result!r}")
                 break 
             elif action_str == "continue":
                 logger.info(f"iterative-loop: Continuing to next iteration. Next input: {str(action_value)[:100]}...")
@@ -843,6 +845,7 @@ class SpecialFormProcessor:
 
         logger.info(f"SpecialFormProcessor.handle_iterative_loop END. Iterations run: {current_iteration-1 if max_iter_val > 0 else 0}. Final loop_result type: {type(loop_result)}")
         logger.debug(f"SpecialFormProcessor.handle_iterative_loop END -> {str(loop_result)[:200]}...")
+        logger.debug(f"DEBUG: Final return value from handle_iterative_loop: type={type(loop_result)}, value={loop_result!r}")
         return loop_result
 
     def handle_and_form(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> Any:
