@@ -366,6 +366,20 @@ class SexpEvaluator:
             call_frame_env = definition_env_for_closure.extend(call_frame_bindings)
             logger.debug(f"    Created call_frame_env id={id(call_frame_env)} extending definition_env id={id(definition_env_for_closure)} with bindings: {list(call_frame_bindings.keys())}")
             # --- END FIX for Lexical Scope (Attempt 2) ---
+            
+            # --- START FIX for *loop-config* ---
+            # Check if the *calling* environment (passed into _apply_operator) has *loop-config*
+            # If so, define it in the newly created call frame so the body can see it.
+            try:
+                loop_config_val = calling_env.lookup('*loop-config*')
+                if loop_config_val is not None: # Be explicit, maybe lookup returns None legitimately
+                    logger.debug(f"    Injecting '*loop-config*' from calling_env into call_frame_env id={id(call_frame_env)}")
+                    call_frame_env.define('*loop-config*', loop_config_val)
+            except NameError:
+                # *loop-config* was not in the calling environment, that's fine.
+                logger.debug("    '*loop-config*' not found in calling_env, not injecting.")
+                pass
+            # --- END FIX for *loop-config* ---
 
             # Remove the old loop that defined bindings directly in call_frame_env
             # for param_symbol, arg_value in zip(closure_to_apply.params_ast, evaluated_args):

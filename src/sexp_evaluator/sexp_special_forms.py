@@ -506,8 +506,9 @@ class SpecialFormProcessor:
         while current_iteration <= max_iter_val:
             logger.debug(f"  Loop Iteration {current_iteration}/{max_iter_val}")
 
-            # Use the original outer 'env' for phase calls, as dynamic binding is removed.
-            phase_call_env = env
+            # Create the environment with *loop-config* binding for this iteration
+            phase_call_env = env.extend({'*loop-config*': loop_config_data})
+            logger.debug(f"  Loop Iteration {current_iteration}: Created phase_call_env id={id(phase_call_env)} extending env id={id(env)} with *loop-config*")
 
             try:
                 # b. Director Phase - Pass ONLY required args per ADR
@@ -543,13 +544,23 @@ class SpecialFormProcessor:
             except Exception as phase_error:
                  logging.exception(f"  Error during loop iteration {current_iteration}: {phase_error}")
                  if isinstance(phase_error, SexpEvaluationError):
-                     details = phase_error.error_details or {}
-                     if "iteration" not in details:
-                         details["iteration"] = current_iteration
+                     # --- START FIX for TypeError ---
+                     # Check if details is already a dict, if not, create one
+                     current_details = phase_error.error_details
+                     if isinstance(current_details, dict):
+                         details = current_details.copy() # Avoid modifying original
+                         if "iteration" not in details:
+                              details["iteration"] = current_iteration
+                     else: # Handle case where details might be a string or None
+                         details = {
+                             "iteration": current_iteration,
+                             "original_error_details": str(current_details) if current_details else "N/A"
+                         }
+                     # --- END FIX for TypeError ---
                      raise SexpEvaluationError(
                          phase_error.args[0] if phase_error.args else str(phase_error),
                          original_expr_str,
-                         error_details=details
+                         error_details=details # Pass the potentially modified dict
                      ) from phase_error
                  else:
                      raise SexpEvaluationError(
