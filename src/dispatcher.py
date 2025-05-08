@@ -6,6 +6,9 @@ import json # For parsing file_context
 import logging
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
+# Configure logging for this module
+logger = logging.getLogger(__name__)
+
 # Import necessary models and error types
 from src.system.models import (
     SubtaskRequest, TaskResult, TaskError, TaskFailureError, TaskFailureReason,
