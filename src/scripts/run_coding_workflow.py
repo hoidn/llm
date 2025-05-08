@@ -214,13 +214,16 @@ MAIN_WORKFLOW_S_EXPRESSION = """
                               (progn
                                 (log-message "Controller: Failed to parse analysis task result!")
                                 (list 'stop analysis_task_result)) ;; Stop if parsing failed
-                              (let ((decision (get-field analysis_data "decision")))
-                                (log-message "Controller: Analysis Decision:" decision)
-                                (if (string=? decision "CONTINUE")
-                                    (list 'continue (get-field analysis_data "next_plan"))
-                                    (if (string=? decision "STOP_SUCCESS")
+                              (let ((verdict (get-field analysis_data "verdict")))
+                                (log-message "Controller: Analysis Verdict:" verdict)
+                                (if (string=? verdict "RETRY")
+                                    (list 'continue (list
+                                                      (list 'instructions (get-field analysis_data "next_prompt"))
+                                                      (list 'files        (list))            ;; keep existing files
+                                                     ))
+                                    (if (string=? verdict "SUCCESS")
                                         (list 'stop aider_result) ;; Stop successfully with Aider's result
-                                        ;; Decision is STOP_FAILURE or unexpected
+                                        ;; verdict == "FAILURE" (or anything unexpected)
                                         (list 'stop analysis_task_result) ;; Stop with the analysis result explaining why
                                     ))))))))))
 ) ;; End progn
