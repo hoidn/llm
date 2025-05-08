@@ -138,11 +138,13 @@ MAIN_WORKFLOW_S_EXPRESSION = """
   ;; are expected to be bound in the initial environment passed from Python (using hyphens).
 
   ;; Generate first plan so current-plan is not empty
-  (bind initial-plan-data
+  (bind initial-plan-task-result ;; Store the full task result
         (user:generate-plan-from-goal
           (goal           initial-user-goal)
           (context_string initial-context-data)))
-
+  (bind initial-plan-data ;; Extract parsedContent for the loop
+        (get-field initial-plan-task-result "parsedContent"))
+    
   (iterative-loop
     (max-iterations max-iterations-config) ;; Use hyphenated symbol
     (initial-input initial-plan-data) ;; Pass the initial plan dict/assoc-list
@@ -226,12 +228,16 @@ MAIN_WORKFLOW_S_EXPRESSION = """
                               (let ((verdict (get-field analysis_data "verdict")))
                                 (log-message "Controller: Analysis Verdict:" verdict)
                                 (if (string=? verdict "RETRY")
-                                    (list 'continue (list
-                                                      (list 'instructions (get-field analysis_data "next_prompt"))
-                                                      (list 'files        (list))            ;; keep existing files
-                                                     ))
+                                    (let ((next-instructions (get-field analysis_data "next_prompt"))
+                                          (next-files (get-field analysis_data "files")))
+                                      (if (null? next-files) ;; If LLM omits files on RETRY or files field is null
+                                          (set! next-files (get-field current-plan "files")) ;; Fallback to current plan's files
+                                          nil)
+                                      (list 'continue (list
+                                                        (list 'instructions next-instructions)
+                                                        (list 'files next-files))))
                                     (if (string=? verdict "SUCCESS")
-                                        (list 'stop analysis_task_result)   ;; <-- use the SUCCESS TaskResult
+                                        (list 'stop aider_result) ;; Stop with the successful Aider result
                                         ;; verdict == "FAILURE" (or anything unexpected)
                                         (list 'stop analysis_task_result) ;; Stop with the analysis result explaining why
                                     ))))))))))
