@@ -226,7 +226,7 @@ MAIN_WORKFLOW_S_EXPRESSION = """
                                                       (list 'files        (list))            ;; keep existing files
                                                      ))
                                     (if (string=? verdict "SUCCESS")
-                                        (list 'stop aider_result) ;; Stop successfully with Aider's result
+                                        (list 'stop analysis_task_result)   ;; <-- use the SUCCESS TaskResult
                                         ;; verdict == "FAILURE" (or anything unexpected)
                                         (list 'stop analysis_task_result) ;; Stop with the analysis result explaining why
                                     ))))))))))
