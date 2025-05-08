@@ -500,65 +500,50 @@ class SpecialFormProcessor:
             # Create the phase-specific environment with *loop-config*
             phase_execution_env = env.extend({"*loop-config*": loop_config_data})
             
-            # Helper for invoking phase functions
-            def invoke_phase(phase_name_str: str, func_to_call: Any, args_list: List[Any], execution_env_for_phase: SexpEnvironment) -> Any:
-                logger.debug(f"    Invoking {phase_name_str} with args: {args_list} in env_id={id(execution_env_for_phase)}")
-                try:
-                    # Create "dummy" arg_expr_nodes that, when evaluated, yield our args_list.
-                    # The simplest way is to quote them if they are lists/symbols, or use them directly.
-                    # This ensures that when _apply_operator calls _eval on these "dummy" nodes,
-                    # it gets back our pre-evaluated Python values from args_list.
-                    
-                    dummy_arg_expr_nodes = []
-                    for arg_val in args_list:
-                        if isinstance(arg_val, Symbol) or isinstance(arg_val, list) or isinstance(arg_val, dict):
-                            # Quote complex structures to pass them as literal data to the lambda
-                            dummy_arg_expr_nodes.append([Symbol("quote"), arg_val])
-                        else:
-                            # For simple Python literals (int, str, bool, None),
-                            # _eval will return them directly. So they become literal args.
-                            dummy_arg_expr_nodes.append(arg_val)
-                    
-                    # The original_call_expr_str for this internal call is conceptual.
-                    # It's for error reporting if something goes wrong inside the phase function's body.
-                    conceptual_call_str = f"({phase_name_str} {' '.join(map(str, args_list))})" # Simplified for logging
+            # --- START: Wrap phase calls in try/except ---
+            try:
+                # b. Director Phase
+                # Use the evaluator's helper which handles quoting and error wrapping
+                plan_val = self.evaluator._call_phase_function( 
+                    "director", director_fn, [current_director_input_val, current_iteration], 
+                    phase_execution_env, original_expr_str, current_iteration
+                )
+                logger.debug(f"    Director result: {str(plan_val)[:200]}...")
 
-                    effective_func_to_call = func_to_call
-                    if isinstance(func_to_call, Closure):
-                        # Re-wrap the closure with the execution_env_for_phase as its definition_env.
-                        # This makes *loop-config* (and other bindings in execution_env_for_phase)
-                        # lexically available to the body of the phase function for this specific call.
-                        logger.debug(f"    Re-wrapping closure for phase {phase_name_str} with execution_env_for_phase (id={id(execution_env_for_phase)}) as new definition_env.")
-                        effective_func_to_call = Closure(
-                            params_ast=func_to_call.params_ast,
-                            body_ast=func_to_call.body_ast,
-                            definition_env=execution_env_for_phase # This is phase_execution_env
-                        )
-                    
-                    return self.evaluator._apply_operator(effective_func_to_call, dummy_arg_expr_nodes, execution_env_for_phase, conceptual_call_str)
+                # c. Executor Phase
+                exec_result_val = self.evaluator._call_phase_function(
+                    "executor", executor_fn, [plan_val, current_iteration], 
+                    phase_execution_env, original_expr_str, current_iteration
+                )
+                logger.debug(f"    Executor result: {str(exec_result_val)[:200]}...")
 
-                except SexpEvaluationError as e_phase:
-                    raise SexpEvaluationError(f"Error in '{phase_name_str}' phase (iteration {current_iteration}): {e_phase.args[0] if e_phase.args else str(e_phase)}", original_expr_str, error_details=e_phase.error_details if hasattr(e_phase, 'error_details') else str(e_phase)) from e_phase
-                except Exception as e_phase_unknown:
-                    raise SexpEvaluationError(f"Unexpected error in '{phase_name_str}' phase (iteration {current_iteration}): {e_phase_unknown}", original_expr_str, error_details=str(e_phase_unknown)) from e_phase_unknown
+                # d. Evaluator Phase
+                eval_feedback_val = self.evaluator._call_phase_function(
+                    "evaluator", evaluator_fn, [exec_result_val, plan_val, current_iteration], 
+                    phase_execution_env, original_expr_str, current_iteration
+                )
+                logger.debug(f"    Evaluator result: {str(eval_feedback_val)[:200]}...")
 
-            # b. Director Phase
-            plan_val = invoke_phase("director", director_fn, [current_director_input_val, current_iteration], phase_execution_env)
-            logger.debug(f"    Director result: {str(plan_val)[:200]}...")
+                # e. Controller Phase
+                decision_val = self.evaluator._call_phase_function(
+                    "controller", controller_fn, [eval_feedback_val, plan_val, exec_result_val, current_iteration], 
+                    phase_execution_env, original_expr_str, current_iteration
+                )
+                logger.debug(f"    Controller result: {str(decision_val)[:200]}...")
+            except Exception as phase_error:
+                # Catch errors from _call_phase_function (which already wraps SexpEvaluationError)
+                logging.exception(f"  Error during loop iteration {current_iteration}: {phase_error}")
+                # Re-raise, ensuring it's SexpEvaluationError with loop context
+                if isinstance(phase_error, SexpEvaluationError):
+                    # If it already has context, maybe just re-raise? Or add more?
+                    # For now, just re-raise to avoid losing original details.
+                    raise phase_error
+                else:
+                    # Wrap unexpected Python errors
+                    raise SexpEvaluationError(f"Unexpected error during loop iteration {current_iteration}: {phase_error}", original_expr_str, error_details=str(phase_error)) from phase_error
+            # --- END: Wrap phase calls in try/except ---
 
-            # c. Executor Phase
-            exec_result_val = invoke_phase("executor", executor_fn, [plan_val, current_iteration], phase_execution_env)
-            logger.debug(f"    Executor result: {str(exec_result_val)[:200]}...")
-
-            # d. Evaluator Phase
-            eval_feedback_val = invoke_phase("evaluator", evaluator_fn, [exec_result_val, plan_val, current_iteration], phase_execution_env)
-            logger.debug(f"    Evaluator result: {str(eval_feedback_val)[:200]}...")
-
-            # e. Controller Phase
-            decision_val = invoke_phase("controller", controller_fn, [eval_feedback_val, plan_val, exec_result_val, current_iteration], phase_execution_env)
-            logger.debug(f"    Controller result: {str(decision_val)[:200]}...")
-
-            # f. Validate decision_val
+            # f. Validate decision_val (VALIDATION ADDED)
             if not (isinstance(decision_val, list) and len(decision_val) == 2 and isinstance(decision_val[0], Symbol)):
                 raise SexpEvaluationError(
                     f"director-evaluator-loop: Controller must return a list of (action_symbol value), got: {decision_val!r}",
