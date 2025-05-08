@@ -225,6 +225,12 @@ def main():
     parser.add_argument("--test-command", default="pytest tests/", help="The shell command to run for verification.")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging.")
     parser.add_argument("--trace-sexp", action="store_true", help="Enable detailed S-expression evaluation tracing.")
+    parser.add_argument(
+        "--max-retries",
+        type=int,
+        default=3, # Default to 3 retries
+        help="Maximum number of retry iterations for the coding loop."
+    )
     args = parser.parse_args()
 
     if args.debug:
@@ -256,6 +262,7 @@ def main():
     logger.info(f"Using Goal: {initial_user_goal}")
     logger.info(f"Using Context Data (length): {len(initial_context_data)}")
     logger.info(f"Using Test Command: {user_test_command}")
+    logger.info(f"Using Max Retries: {args.max_retries}")
 
     # --- Instantiate Application ---
     try:
@@ -338,7 +345,8 @@ def main():
     initial_params = {
         "initial-user-goal": initial_user_goal,
         "initial-context-data": initial_context_data,
-        "user-test-command": user_test_command
+        "user-test-command": user_test_command,
+        "max_iterations_config": args.max_retries # Pass the max retries value
     }
     logger.debug(f"Initial parameters for workflow execution: {initial_params}")
 
