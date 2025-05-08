@@ -707,9 +707,12 @@ class SpecialFormProcessor:
             max_iter_val = self.evaluator._eval(clauses["max-iterations"], env)
             if not isinstance(max_iter_val, int) or max_iter_val < 0:
                 raise SexpEvaluationError(
-                    f"iterative-loop: 'max-iterations' must evaluate to a non-negative integer, got {max_iter_val!r} (type: {type(max_iter_val)}).",
+                    f"'max-iterations' must evaluate to a non-negative integer, got {max_iter_val!r} (type: {type(max_iter_val)}).",
                     original_expr_str
                 )
+        except SexpEvaluationError as e:
+            # Re-raise SexpEvaluationError directly to preserve its details
+            raise
         except Exception as e:
             raise SexpEvaluationError(f"iterative-loop: Error evaluating 'max-iterations': {e}", original_expr_str, error_details=str(e)) from e
 
