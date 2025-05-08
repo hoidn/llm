@@ -385,33 +385,44 @@ class SystemExecutorFunctions:
                 ).model_dump(exclude_none=True)
             else:
                 # Command execution failed
-                error_msg = result_dict.get('stderr', '') or result_dict.get('error', 'Unknown command execution error')
-                logger.warning(f"Shell command failed: '{command}'. Error: {error_msg}")
-                
-                # Determine failure reason
-                # Check if the error message indicates an unsafe command (based on command_executor logic)
-                # This requires knowledge of command_executor's error messages. Assume "Unsafe command" substring for now.
+                exit_code = result_dict.get('exit_code')
+                stdout_capture = result_dict.get('stdout', '')
+                stderr_capture = result_dict.get('stderr', '')
+                # Determine primary error message for TaskFailureError.message
+                # Prioritize stderr if present, else use 'error' field from command_executor, or a default.
+                error_content_for_task_failure_message = stderr_capture or result_dict.get('error', 'Command execution failed without specific error message.')
+
+                logger.warning(f"Shell command failed: '{command}'. Exit Code: {exit_code}. Stderr (snippet): {stderr_capture[:200]}...")
+
+                # Determine failure reason based on the primary error content
                 reason: TaskFailureReason = "tool_execution_error"
-                if "Unsafe command" in error_msg:
+                if "Unsafe command" in error_content_for_task_failure_message:
                     reason = "input_validation_failure"
-                # Check for timeout indicators in the error message
-                elif "Timeout" in error_msg or "timed out" in error_msg.lower() or "TimeoutExpired" in error_msg:
+                elif "Timeout" in error_content_for_task_failure_message or \
+                     "timed out" in error_content_for_task_failure_message.lower() or \
+                     "TimeoutExpired" in error_content_for_task_failure_message:
                     reason = "execution_timeout"
-                    
+                
+                # Construct TaskResult.content summary
+                content_summary = f"Command '{command}' failed with exit code {exit_code}."
+
+                # Construct TaskResult.notes
+                notes_dict = {
+                    'success': False,
+                    'exit_code': exit_code,
+                    'stdout': stdout_capture,
+                    'stderr': stderr_capture,
+                    'error': TaskFailureError(
+                        type="TASK_FAILURE",
+                        reason=reason,
+                        message=error_content_for_task_failure_message
+                    ).model_dump(exclude_none=True)
+                }
+                
                 return TaskResult(
                     status="FAILED",
-                    content=error_msg,
-                    notes={
-                        'success': False,
-                        'exit_code': result_dict.get('exit_code'),
-                        'stdout': result_dict.get('stdout', ''),
-                        'stderr': result_dict.get('stderr', ''),
-                        'error': TaskFailureError(
-                            type="TASK_FAILURE",
-                            reason=reason,
-                            message=error_msg
-                        ).model_dump(exclude_none=True) # Dump the error model too
-                    }
+                    content=content_summary,
+                    notes=notes_dict
                 ).model_dump(exclude_none=True)
                 
         except Exception as e:

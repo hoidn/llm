@@ -621,3 +621,50 @@ def test_execute_shell_command_unexpected_error(system_executor_instance):
     assert "Unexpected command error" in result["content"]
     assert "error" in result["notes"]
     assert result["notes"]["error"]["reason"] == "unexpected_error"
+
+def test_execute_shell_command_failure_reporting(system_executor_instance):
+    """Test correct reporting for a failed shell command (e.g., pytest failure)."""
+    # Setup
+    command_to_test = "pytest tests/"
+    mock_command_output = {
+        'success': False,
+        'exit_code': 1,
+        'stdout': '== test session starts ==\n...collected 1 item...\nFAILED tests/test_example.py::test_failure - AssertionError',
+        'stderr': 'tests/test_example.py:5: AssertionError\n== 1 failed in 0.01s ==',
+        'error': 'pytest command failed' # This might be set by command_executor on non-zero exit
+    }
+    system_executor_instance.command_executor.execute_command_safely.return_value = mock_command_output
+    
+    params = {"command": command_to_test}
+
+    # Act
+    result = system_executor_instance.execute_shell_command(params)
+
+    # Assert
+    assert isinstance(result, dict)
+    assert result["status"] == "FAILED"
+    
+    expected_content_summary = f"Command '{command_to_test}' failed with exit code 1."
+    assert result["content"] == expected_content_summary
+    
+    assert "notes" in result
+    notes = result["notes"]
+    assert notes["success"] is False
+    assert notes["exit_code"] == 1
+    assert notes["stdout"] == mock_command_output['stdout']
+    assert notes["stderr"] == mock_command_output['stderr']
+    
+    assert "error" in notes
+    error_details = notes["error"]
+    assert isinstance(error_details, dict)
+    assert error_details["type"] == "TASK_FAILURE"
+    assert error_details["reason"] == "tool_execution_error" # Default for non-zero exit unless specific pattern matches
+    # The message in TaskFailureError should prioritize stderr if available
+    assert error_details["message"] == mock_command_output['stderr']
+
+    # Verify command_executor was called
+    system_executor_instance.command_executor.execute_command_safely.assert_called_once_with(
+        command=command_to_test,
+        cwd=None,
+        timeout=None
+    )
