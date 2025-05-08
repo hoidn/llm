@@ -2601,20 +2601,9 @@ class TestSexpEvaluatorIterativeLoop:
         with pytest.raises(SexpEvaluationError, match="Each clause must be a list"):
             evaluator.evaluate_string("(iterative-loop ...)")
 
-    def test_iterative_loop_config_max_iter_not_int(self, evaluator, mock_parser, mocker):
-        # The _create_loop_ast helper will create (quote "not-an-int") if passed "'not-an-int'"
-        # We need _eval to return the string "not-an-int" for that clause's expression.
-        ast = self._create_loop_ast(max_iter="'not-an-int'")
+    def test_iterative_loop_config_max_iter_not_int(self, evaluator, mock_parser):
+        ast = self._create_loop_ast(max_iter="'not-an-int'") # String literal
         mock_parser.parse_string.return_value = ast
-        
-        def eval_side_effect(node, env):
-            if node == [Symbol("quote"), Symbol("not-an-int")]: return "not-an-int"
-            # Handle other config expressions to return valid types for this test
-            if node == [Symbol("quote"), Symbol("start")]: return "start"
-            if node == [Symbol("quote"), Symbol("echo test")]: return "echo test"
-            if isinstance(node, list) and node[0] == Symbol("lambda"): return MagicMock(spec=Callable) # For phase fns
-            return MagicMock() 
-        mocker.patch.object(evaluator, '_eval', side_effect=eval_side_effect)
         
         with pytest.raises(SexpEvaluationError, match="'max-iterations' must evaluate to a non-negative integer, got 'not-an-int'"):
             evaluator.evaluate_string("(iterative-loop ...)")
