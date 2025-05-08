@@ -508,33 +508,40 @@ class SpecialFormProcessor:
 
             try:
                 # b. Director Phase
-                # Use the evaluator's helper which handles quoting and error wrapping
-                plan_val = self.evaluator._call_phase_function( 
-                    "director", director_fn, [current_director_input_val, current_iteration], 
-                    phase_execution_env, original_expr_str, current_iteration
+                # --- FIX: Pass phase_execution_env ---
+                plan_val = self.evaluator._call_phase_function(
+                    "director", director_fn, [current_director_input_val, current_iteration],
+                    phase_execution_env, original_expr_str, current_iteration # Pass correct env
                 )
+                # --- END FIX ---
                 logger.debug(f"    Director result: {str(plan_val)[:200]}...")
 
                 # c. Executor Phase
+                # --- FIX: Pass phase_execution_env ---
                 exec_result_val = self.evaluator._call_phase_function(
-                    "executor", executor_fn, [plan_val, current_iteration], 
-                    phase_execution_env, original_expr_str, current_iteration
+                    "executor", executor_fn, [plan_val, current_iteration],
+                    phase_execution_env, original_expr_str, current_iteration # Pass correct env
                 )
+                # --- END FIX ---
                 logger.debug(f"    Executor result: {str(exec_result_val)[:200]}...")
                 last_exec_result_val = exec_result_val # Store last successful exec result
 
                 # d. Evaluator Phase
+                # --- FIX: Pass phase_execution_env ---
                 eval_feedback_val = self.evaluator._call_phase_function(
-                    "evaluator", evaluator_fn, [exec_result_val, plan_val, current_iteration], 
-                    phase_execution_env, original_expr_str, current_iteration
+                    "evaluator", evaluator_fn, [exec_result_val, plan_val, current_iteration],
+                    phase_execution_env, original_expr_str, current_iteration # Pass correct env
                 )
+                # --- END FIX ---
                 logger.debug(f"    Evaluator result: {str(eval_feedback_val)[:200]}...")
 
                 # e. Controller Phase
+                # --- FIX: Pass phase_execution_env ---
                 decision_val = self.evaluator._call_phase_function(
-                    "controller", controller_fn, [eval_feedback_val, plan_val, exec_result_val, current_iteration], 
-                    phase_execution_env, original_expr_str, current_iteration
+                    "controller", controller_fn, [eval_feedback_val, plan_val, exec_result_val, current_iteration],
+                    phase_execution_env, original_expr_str, current_iteration # Pass correct env
                 )
+                # --- END FIX ---
                 logger.debug(f"    Controller result: {str(decision_val)[:200]}...")
             except Exception as phase_error:
                 # Catch errors from _call_phase_function (which already wraps SexpEvaluationError)
