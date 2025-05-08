@@ -50,14 +50,42 @@ class SexpEnvironment:
                        of its ancestor environments. This signals an unbound symbol error
                        during S-expression evaluation.
         """
-        logger.debug(f"Lookup: Searching for '{name}' in env id={id(self)}") # Log entry
-        logger.debug(f"  Local bindings in env id={id(self)}: {list(self._bindings.keys())}") # Log local keys
+        # <<< ADD LOGGING HERE (Start) >>>
+        logger.debug(f"*** lookup ENTER: name='{name}' (type: {type(name)}, repr: {repr(name)}) in EnvID={id(self)}")
+        logger.debug(f"*** lookup: self._bindings type: {type(self._bindings)}, id: {id(self._bindings)}")
+        try:
+            bindings_keys = list(self._bindings.keys())
+            logger.debug(f"*** lookup: self._bindings keys (repr): {repr(bindings_keys)}")
+            logger.debug(f"*** lookup: self._bindings key types: {[type(k) for k in bindings_keys]}")
+            logger.debug(f"*** lookup: self._bindings keys detailed repr: {[repr(k) for k in bindings_keys]}")
 
+            # Explicitly check for the target key before the 'in' operator
+            target_key_found_explicitly = False
+            for key in self._bindings:
+                comparison_result = (name == key)
+                logger.debug(f"    Explicit Compare: name ({repr(name)}) == key ({repr(key)}) -> {comparison_result}")
+                if comparison_result:
+                    target_key_found_explicitly = True
+                    logger.debug(f"    Explicit Compare: MATCH FOUND for key {repr(key)}")
+                    break # Stop after first match
+            logger.debug(f"*** lookup: Explicit key check result for '{name}': {target_key_found_explicitly}")
+
+        except Exception as log_err:
+            logger.error(f"*** lookup: Error during debug logging of bindings: {log_err}")
+        # <<< ADD LOGGING HERE (End) >>>
+
+        # The original lookup logic:
         if name in self._bindings:
+            # <<< ADD LOGGING HERE >>>
+            logger.debug(f"*** lookup: 'if name in self._bindings' SUCCEEDED for name='{repr(name)}' in EnvID={id(self)}")
+            # <<< END LOGGING >>>
             value = self._bindings[name]
             logger.debug(f"  Found '{name}' in local bindings of env id={id(self)}. Value type: {type(value)}")
             return value
         elif self._parent is not None:
+            # <<< ADD LOGGING HERE >>>
+            logger.debug(f"*** lookup: 'if name in self._bindings' FAILED for name='{repr(name)}' in EnvID={id(self)}. Checking parent.")
+            # <<< END LOGGING >>>
             parent_id = id(self._parent)
             logger.debug(f"  '{name}' not found locally, checking parent env id={parent_id}")
             try:
