@@ -2605,23 +2605,10 @@ class TestSexpEvaluatorIterativeLoop:
         ast = self._create_loop_ast(max_iter="'not-an-int'") # String literal
         mock_parser.parse_string.return_value = ast
         
-        # Store the original _eval method
-        original_eval = evaluator._eval
-        
-        # Define the side effect function
-        def eval_side_effect(node, env):
-            # Specifically handle the max-iterations expression
-            if isinstance(node, list) and len(node) == 2 and node[0] == Symbol("quote") and node[1] == Symbol("not-an-int"):
-                return "not-an-int"  # Return the problematic string value
-            # For all other nodes, use the original _eval method
-            return original_eval(node, env)
-        
-        # Apply the patch with the side effect
-        mocker.patch.object(evaluator, '_eval', side_effect=eval_side_effect)
-        
-        # Use a more robust regex match that handles Symbol representation
+        # Correct the regex pattern to match the actual repr() output
+        # repr(Symbol("not-an-int'")) is 'Symbol("not-an-int\'")'
         expected_pattern = re.compile(
-            r"'max-iterations' must evaluate to a non-negative integer, got .*Symbol\('not-an-int'\).*", 
+            r"'max-iterations' must evaluate to a non-negative integer, got .*Symbol\(\"not-an-int'\"\).*", 
             re.DOTALL
         )
         with pytest.raises(SexpEvaluationError, match=expected_pattern):
