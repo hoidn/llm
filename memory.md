@@ -73,6 +73,7 @@
 - **Fix `run_coding_workflow.py` S-expression:** Replaced `director-evaluator-loop` with `iterative-loop` and corrected an `if` statement's missing `else` branch within the validator lambda.
 - **Fix Dispatcher Initial Environment Handling:** Modified `dispatcher.execute_programmatic_task` to correctly extract `SexpEnvironment` from `flags['initial_env']` and pass it to `SexpEvaluator`.
 - **Fix Dispatcher Initial Environment Instantiation:** Corrected `dispatcher.execute_programmatic_task` to properly instantiate `SexpEnvironment` using the bindings provided in `flags['initial_env']` before passing it to the evaluator.
+- **Fix Workflow S-expression Symbols:** Changed underscored symbols (e.g., `initial_user_goal`) to hyphenated symbols (e.g., `initial-user-goal`) in `src/scripts/run_coding_workflow.py`'s main S-expression to match the keys passed in the initial environment. Corrected the analysis task name called in the controller. Updated Python dictionary keys accordingly.
 
 ## Next Steps
 
