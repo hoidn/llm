@@ -379,7 +379,8 @@ class LLMInteractionManager:
             # Make our dedicated loop the current one for the upcoming run_sync
             asyncio.set_event_loop(self._event_loop)
 
-            # Determine the system prompt to use for the call
+            try:
+                # Determine the system prompt to use for the call
             current_system_prompt = (
                 system_prompt_override
                 if system_prompt_override is not None
@@ -518,19 +519,17 @@ class LLMInteractionManager:
                 "usage": usage,
                 "error": None,
             }
-
+            except Exception as e:
+                logging.error(
+                    f"Error during pydantic-ai agent execution: {e}", exc_info=True
+                )
+                return {
+                    "success": False,
+                    "content": None,
+                    "tool_calls": None,
+                    "usage": None,
+                    "error": f"Agent execution failed: {e}",
+                }
         finally:
             # Always restore whatever loop was active before we hijacked it.
             asyncio.set_event_loop(_prev_loop)
-
-        except Exception as e:
-            logging.error(
-                f"Error during pydantic-ai agent execution: {e}", exc_info=True
-            )
-            return {
-                "success": False,
-                "content": None,
-                "tool_calls": None,
-                "usage": None,
-                "error": f"Agent execution failed: {e}",
-            }
