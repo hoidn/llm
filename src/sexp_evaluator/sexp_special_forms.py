@@ -803,11 +803,13 @@ class SpecialFormProcessor:
                         error_details=details # type: ignore
                     ) from phase_error
                 else: # Wrap unexpected errors
-                    raise SexpEvaluationError(
+                    new_error = SexpEvaluationError(
                         f"Unexpected error during iterative-loop iteration {current_iteration}: {phase_error}",
                         original_expr_str,
                         error_details={"iteration": current_iteration, "original_error": str(phase_error)}
-                    ) from phase_error
+                    )
+                    logger.error(f"About to re-raise wrapped SexpEvaluationError from iterative-loop: {new_error}")
+                    raise new_error from phase_error
 
             # --- Process Decision (with validation) ---
             if not (isinstance(decision_val, list) and len(decision_val) == 2 and isinstance(decision_val[0], Symbol)):
