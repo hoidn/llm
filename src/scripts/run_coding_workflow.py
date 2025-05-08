@@ -88,7 +88,7 @@ DEFATOM_COMBINED_ANALYSIS_S_EXPRESSION = """
     (test_stdout string)
     (test_stderr string)
     (test_exit_code int)
-    (previous_files list)      ;; NEW – gives the LLM full context
+    (previous_files list) ;; <-- ADD THIS LINE
     (iteration integer)
     (max_retries integer)
   )
