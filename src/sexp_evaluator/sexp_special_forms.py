@@ -80,32 +80,41 @@ class SpecialFormProcessor:
             raise SexpEvaluationError("'let' requires at least one body expression.", original_expr_str)
 
         logging.debug(f"  'let' processing {len(bindings_list_expr)} binding expressions.")
+        # Create the child environment *before* evaluating values, but evaluate values in the *outer* env.
         let_env = env.extend({}) # Create child environment for the 'let' scope
 
+        # --- FIX: Evaluate values in the OUTER environment (env) ---
+        evaluated_bindings = {} # Temporarily store evaluated values
         for binding_expr in bindings_list_expr:
             binding_expr_repr = str(binding_expr)
             if not (isinstance(binding_expr, list) and len(binding_expr) == 2 and isinstance(binding_expr[0], Symbol)):
                 raise SexpEvaluationError(f"Invalid 'let' binding format: expected (symbol expression), got {binding_expr_repr}", original_expr_str)
-            
+
             var_name_symbol = binding_expr[0]
             value_expr = binding_expr[1]
             var_name_str = var_name_symbol.value()
 
             try:
-                # Evaluate value expression in the *outer* environment (env, not let_env yet)
+                # *** CRITICAL FIX: Evaluate value expression in the OUTER environment (env) ***
+                logger.debug(f"    Evaluating value for '{var_name_str}' using OUTER env (id={id(env)})")
                 evaluated_value = self.evaluator._eval(value_expr, env)
-                let_env.define(var_name_str, evaluated_value) # Define in the *new* child environment
-                logging.debug(f"    Defined '{var_name_str}' = {evaluated_value} in 'let' scope {id(let_env)}")
+                evaluated_bindings[var_name_str] = evaluated_value # Store evaluated value
+                logger.debug(f"    Evaluated value for '{var_name_str}': {evaluated_value}")
             except Exception as e:
                 logging.exception(f"  Error evaluating value for 'let' binding '{var_name_str}': {e}")
                 if isinstance(e, SexpEvaluationError): raise
                 raise SexpEvaluationError(f"Error evaluating value for 'let' binding '{var_name_str}': {value_expr}", original_expr_str, error_details=str(e)) from e
-        
-        # Evaluate body expressions in the new 'let' environment
+
+        # --- FIX: Define all evaluated bindings in the INNER environment (let_env) ---
+        for var_name_str, evaluated_value in evaluated_bindings.items():
+            let_env.define(var_name_str, evaluated_value)
+            logger.debug(f"    Defined '{var_name_str}' = {evaluated_value} in 'let' scope {id(let_env)}")
+
+        # Evaluate body expressions in the new 'let' environment (let_env) - This part was correct
         final_result = [] # Default for empty body (though disallowed by check above)
         for i, body_item_expr in enumerate(body_exprs):
             try:
-                final_result = self.evaluator._eval(body_item_expr, let_env)
+                final_result = self.evaluator._eval(body_item_expr, let_env) # Use INNER env
                 logging.debug(f"  'let' body expression {i+1} evaluated to: {final_result}")
             except Exception as e:
                 logging.exception(f"  Error evaluating 'let' body expression {i+1} '{body_item_expr}': {e}")
