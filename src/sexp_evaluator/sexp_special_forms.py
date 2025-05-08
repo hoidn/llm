@@ -660,6 +660,178 @@ class SpecialFormProcessor:
         logger.debug(f"SpecialFormProcessor.handle_or_form END: All args falsey, returning last value -> {last_value!r}")
         return last_value # All arguments were falsey, return the value of the last one.
 
+    def handle_iterative_loop(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> Any:
+        """
+        Handles the 'iterative-loop' special form.
+        (iterative-loop
+          (max-iterations <number-expr>)
+          (initial-input <structured-expr>)
+          (test-command <cmd-string-expr>)
+          (executor   <executor-function-expr>)
+          (validator  <validator-function-expr>)
+          (controller <controller-function-expr>)
+        )
+        """
+        logger.debug(f"SpecialFormProcessor.handle_iterative_loop START: {original_expr_str}")
+
+        # 1. Parse and Validate Loop Structure
+        clauses: Dict[str, SexpNode] = {}
+        required_clauses = {"max-iterations", "initial-input", "test-command", "executor", "validator", "controller"}
+
+        for arg_expr in arg_exprs:
+            if not (isinstance(arg_expr, list) and len(arg_expr) == 2 and isinstance(arg_expr[0], Symbol)):
+                raise SexpEvaluationError(
+                    f"iterative-loop: Each clause must be a list of (ClauseName Expression), got: {arg_expr}",
+                    original_expr_str
+                )
+            clause_name_symbol: Symbol = arg_expr[0]
+            clause_name_str = clause_name_symbol.value()
+            clause_expr_node: SexpNode = arg_expr[1]
+
+            if clause_name_str in clauses:
+                raise SexpEvaluationError(
+                    f"iterative-loop: Duplicate clause '{clause_name_str}' found.",
+                    original_expr_str
+                )
+            clauses[clause_name_str] = clause_expr_node
+
+        missing = required_clauses - set(clauses.keys())
+        if missing:
+            raise SexpEvaluationError(
+                f"iterative-loop: Missing required clauses: {', '.join(sorted(list(missing)))}",
+                original_expr_str
+            )
+
+        # 2. Evaluate Configuration Expressions (with validation)
+        try:
+            max_iter_val = self.evaluator._eval(clauses["max-iterations"], env)
+            if not isinstance(max_iter_val, int) or max_iter_val < 0:
+                raise SexpEvaluationError(
+                    f"iterative-loop: 'max-iterations' must evaluate to a non-negative integer, got {max_iter_val!r} (type: {type(max_iter_val)}).",
+                    original_expr_str
+                )
+        except Exception as e:
+            raise SexpEvaluationError(f"iterative-loop: Error evaluating 'max-iterations': {e}", original_expr_str, error_details=str(e)) from e
+
+        try:
+            current_loop_input = self.evaluator._eval(clauses["initial-input"], env)
+        except Exception as e:
+            raise SexpEvaluationError(f"iterative-loop: Error evaluating 'initial-input': {e}", original_expr_str, error_details=str(e)) from e
+
+        try:
+            test_cmd_string = self.evaluator._eval(clauses["test-command"], env)
+            if not isinstance(test_cmd_string, str):
+                raise SexpEvaluationError(
+                    f"iterative-loop: 'test-command' must evaluate to a string, got {test_cmd_string!r} (type: {type(test_cmd_string)}).",
+                    original_expr_str
+                )
+        except Exception as e:
+            raise SexpEvaluationError(f"iterative-loop: Error evaluating 'test-command': {e}", original_expr_str, error_details=str(e)) from e
+
+        # 3. Evaluate and Validate Phase Function Expressions (with validation)
+        phase_functions: Dict[str, Any] = {}
+        for phase_name in ["executor", "validator", "controller"]:
+            try:
+                resolved_fn = self.evaluator._eval(clauses[phase_name], env)
+                if not isinstance(resolved_fn, Closure) and not callable(resolved_fn): # Check for Closure or general callable
+                    raise SexpEvaluationError(
+                        f"iterative-loop: '{phase_name}' expression must evaluate to a callable S-expression function or Python callable, got {type(resolved_fn)}: {resolved_fn!r}",
+                        original_expr_str
+                    )
+                phase_functions[phase_name] = resolved_fn
+            except Exception as e:
+                raise SexpEvaluationError(f"iterative-loop: Error evaluating '{phase_name}' function expression: {e}", original_expr_str, error_details=str(e)) from e
+
+        executor_fn   = phase_functions["executor"]
+        validator_fn  = phase_functions["validator"]
+        controller_fn = phase_functions["controller"]
+
+        # 4. Initialize Loop State
+        current_iteration = 1
+        loop_result: Any = []  # Default result is nil/[] if max_iter is 0 or loop doesn't run
+        last_exec_result_val: Any = loop_result # Store last successful exec result
+
+        if max_iter_val == 0:
+            logger.info("iterative-loop: max-iterations is 0, returning [].")
+            return []
+
+        # 5. Main Loop
+        while current_iteration <= max_iter_val:
+            logger.info(f"--- Iterative Loop (via SpecialFormProcessor): Iteration {current_iteration}/{max_iter_val} ---")
+
+            try:
+                # --- Executor Phase ---
+                # Args: (current_structured_input: Dict|AssocList, iteration_number: int)
+                executor_result = self.evaluator._call_phase_function(
+                    "executor", executor_fn, [current_loop_input, current_iteration],
+                    env, original_expr_str, current_iteration
+                )
+                last_exec_result_val = executor_result # Store potentially final result
+
+                # --- Validator Phase ---
+                # Args: (test_command_string: string, iteration_number: int)
+                validation_result = self.evaluator._call_phase_function(
+                    "validator", validator_fn, [test_cmd_string, current_iteration],
+                    env, original_expr_str, current_iteration
+                )
+
+                # --- Controller Phase ---
+                # Args: (executor_result: TaskResult, validation_result: ValidationResult, current_structured_input: Dict|AssocList, iteration_number: int)
+                decision_val = self.evaluator._call_phase_function(
+                    "controller", controller_fn, [executor_result, validation_result, current_loop_input, current_iteration],
+                    env, original_expr_str, current_iteration
+                )
+
+            except Exception as phase_error:
+                logging.exception(f"  Error during iterative-loop iteration {current_iteration}: {phase_error}")
+                if isinstance(phase_error, SexpEvaluationError):
+                    details = phase_error.error_details or {}
+                    if "iteration" not in details: # type: ignore
+                        details["iteration"] = current_iteration # type: ignore
+                    raise SexpEvaluationError(
+                        phase_error.args[0] if phase_error.args else str(phase_error),
+                        original_expr_str,
+                        error_details=details # type: ignore
+                    ) from phase_error
+                else:
+                    raise SexpEvaluationError(
+                        f"Unexpected error during iterative-loop iteration {current_iteration}: {phase_error}",
+                        original_expr_str,
+                        error_details={"iteration": current_iteration, "original_error": str(phase_error)}
+                    ) from phase_error
+
+            # --- Process Decision (with validation) ---
+            if not (isinstance(decision_val, list) and len(decision_val) == 2 and isinstance(decision_val[0], Symbol)):
+                raise SexpEvaluationError(
+                    f"iterative-loop: Controller must return a list of (action_symbol value), got: {decision_val!r}",
+                    original_expr_str
+                )
+
+            action_symbol: Symbol = decision_val[0]
+            action_value: Any = decision_val[1]
+            action_str = action_symbol.value()
+
+            if action_str == "stop":
+                logger.info(f"iterative-loop: Stopping at iteration {current_iteration} due to controller 'stop'. Final result: {str(action_value)[:100]}...")
+                loop_result = action_value
+                break 
+            elif action_str == "continue":
+                logger.info(f"iterative-loop: Continuing to next iteration. Next input: {str(action_value)[:100]}...")
+                current_loop_input = action_value
+                current_iteration += 1
+            else: 
+                raise SexpEvaluationError(
+                    f"iterative-loop: Controller decision action must be 'continue' or 'stop' symbol, got: '{action_str}'",
+                    original_expr_str
+                )
+        else: # Loop finished because current_iteration > max_iter_val (and not stopped early)
+            logger.info(f"iterative-loop: Finished after reaching max_iterations ({max_iter_val}). Returning last executor result.")
+            loop_result = last_exec_result_val
+
+        logger.info(f"SpecialFormProcessor.handle_iterative_loop END. Iterations: {current_iteration-1 if current_iteration > 0 else 0}. Final loop_result type: {type(loop_result)}")
+        logger.debug(f"SpecialFormProcessor.handle_iterative_loop END -> {str(loop_result)[:200]}...")
+        return loop_result
+
     def handle_and_form(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> Any:
         """
         Handles the 'and' special form: (and expr...)
