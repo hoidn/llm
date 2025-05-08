@@ -2530,3 +2530,438 @@ def test_string_append_with_numeric_args(evaluator, mock_parser):
     ast = [Symbol('string-append'), "Value: ", 123, " units", 4.5]
     mock_parser.parse_string.return_value = ast
     assert evaluator.evaluate_string(sexp_str) == "Value: 123 units4.5"
+
+from typing import Callable # Add this import
+
+class TestSexpEvaluatorIterativeLoop:
+
+    # Helper to create a basic valid loop AST for tests
+    def _create_loop_ast(self, max_iter=1, initial_input_expr="'start'", test_cmd_expr="'echo test'", executor_body="'exec_result'", validator_body="(list (list 'stdout' \"ok\") (list 'stderr' \"\") (list 'exit_code 0))", controller_body="(list 'stop 'final_result')"):
+        S = Symbol
+        # Ensure initial_input_expr and test_cmd_expr are quoted if they are simple strings
+        # The helper was already doing this with [S("quote"), initial_input_expr]
+        # but the default values were strings like "'start'" which would become (quote 'start')
+        # Let's assume the expressions passed to the helper are already valid S-expression nodes
+        # or simple values that _eval can handle.
+        # For simplicity in the helper, we'll assume they are expressions that need quoting if literal.
+        # However, the tests often pass direct values for max_iter, so we need to be careful.
+
+        # Let's refine the helper to construct AST nodes more directly for literals
+        # or use a placeholder for complex expressions that tests will mock _eval for.
+
+        def make_expr_node(val):
+            if isinstance(val, str) and val.startswith("'") and val.endswith("'"): # Quoted symbol like 'start'
+                return [S("quote"), S(val[1:-1])]
+            if isinstance(val, str): # Simple string literal
+                return val
+            if isinstance(val, (int, float, bool)) or val is None: # Numeric/bool/nil literals
+                return val
+            return val # Assume it's already an AST node if complex
+
+        return [
+            S("iterative-loop"),
+            [S("max-iterations"), make_expr_node(max_iter)],
+            [S("initial-input"), make_expr_node(initial_input_expr)],
+            [S("test-command"), make_expr_node(test_cmd_expr)],
+            [S("executor"),   [S("lambda"), [S("ci"), S("it")], make_expr_node(executor_body)]],
+            [S("validator"),  [S("lambda"), [S("tc"), S("it")], validator_body if isinstance(validator_body, list) else make_expr_node(validator_body)]],
+            [S("controller"), [S("lambda"), [S("er"), S("vr"), S("ci"), S("it")], controller_body if isinstance(controller_body, list) else make_expr_node(controller_body)]]
+        ]
+
+
+    def test_iterative_loop_syntax_missing_clause(self, evaluator, mock_parser):
+        ast = self._create_loop_ast()
+        # Remove controller: it's the 7th element (index 6) in the list returned by _create_loop_ast
+        # [iterative-loop, max-iter-clause, initial-input-clause, test-cmd-clause, executor-clause, validator-clause, controller-clause]
+        # So, ast[0] is 'iterative-loop', ast[1] is max-iter clause, ..., ast[6] is controller clause.
+        # To remove controller, we pop the last element if it's the default structure.
+        # A more robust way is to filter by clause name if the helper returned a dict, but it returns a list.
+        # Let's assume the structure from _create_loop_ast is fixed for this removal.
+        # The list is [loop_sym, clause1, clause2, clause3, clause4, clause5, clause6]
+        # So, to remove controller (last clause), we can do:
+        filtered_ast = [item for item in ast if not (isinstance(item, list) and item[0] == Symbol("controller"))]
+
+        mock_parser.parse_string.return_value = filtered_ast
+        with pytest.raises(SexpEvaluationError, match="Missing required clauses:.*controller"):
+            evaluator.evaluate_string("(iterative-loop ...)")
+
+    def test_iterative_loop_syntax_duplicate_clause(self, evaluator, mock_parser):
+        ast = self._create_loop_ast()
+        ast.append([Symbol("max-iterations"), 5]) # Add duplicate
+        mock_parser.parse_string.return_value = ast
+        with pytest.raises(SexpEvaluationError, match="Duplicate clause 'max-iterations'"):
+            evaluator.evaluate_string("(iterative-loop ...)")
+
+    def test_iterative_loop_syntax_invalid_clause_format(self, evaluator, mock_parser):
+        ast = self._create_loop_ast()
+        ast[1] = Symbol("max-iterations") # Invalid format, should be [Symbol("max-iterations"), value_expr]
+        mock_parser.parse_string.return_value = ast
+        with pytest.raises(SexpEvaluationError, match="Each clause must be a list"):
+            evaluator.evaluate_string("(iterative-loop ...)")
+
+    def test_iterative_loop_config_max_iter_not_int(self, evaluator, mock_parser, mocker):
+        # The _create_loop_ast helper will create (quote "not-an-int") if passed "'not-an-int'"
+        # We need _eval to return the string "not-an-int" for that clause's expression.
+        ast = self._create_loop_ast(max_iter="'not-an-int'")
+        mock_parser.parse_string.return_value = ast
+        
+        def eval_side_effect(node, env):
+            if node == [Symbol("quote"), Symbol("not-an-int")]: return "not-an-int"
+            # Handle other config expressions to return valid types for this test
+            if node == [Symbol("quote"), Symbol("start")]: return "start"
+            if node == [Symbol("quote"), Symbol("echo test")]: return "echo test"
+            if isinstance(node, list) and node[0] == Symbol("lambda"): return MagicMock(spec=Callable) # For phase fns
+            return MagicMock() 
+        mocker.patch.object(evaluator, '_eval', side_effect=eval_side_effect)
+        
+        with pytest.raises(SexpEvaluationError, match="'max-iterations' must evaluate to a non-negative integer, got 'not-an-int'"):
+            evaluator.evaluate_string("(iterative-loop ...)")
+
+
+    def test_iterative_loop_config_max_iter_negative(self, evaluator, mock_parser, mocker):
+        ast = self._create_loop_ast(max_iter=-1) # Pass -1 directly
+        mock_parser.parse_string.return_value = ast
+        
+        def eval_side_effect(node, env):
+            if node == -1: return -1 # max-iter value
+            if node == [Symbol("quote"), Symbol("start")]: return "start"
+            if node == [Symbol("quote"), Symbol("echo test")]: return "echo test"
+            if isinstance(node, list) and node[0] == Symbol("lambda"): return MagicMock(spec=Callable)
+            return MagicMock()
+        mocker.patch.object(evaluator, '_eval', side_effect=eval_side_effect)
+        
+        with pytest.raises(SexpEvaluationError, match="'max-iterations' must evaluate to a non-negative integer"):
+            evaluator.evaluate_string("(iterative-loop ...)")
+
+    def test_iterative_loop_config_test_cmd_not_string(self, evaluator, mock_parser, mocker):
+        ast = self._create_loop_ast(test_cmd_expr=123) # Pass 123 directly
+        mock_parser.parse_string.return_value = ast
+
+        def eval_side_effect(node, env):
+            if node == 1: return 1 # max-iter
+            if node == [Symbol("quote"), Symbol("start")]: return "start"
+            if node == 123: return 123 # test-command value
+            if isinstance(node, list) and node[0] == Symbol("lambda"): return MagicMock(spec=Callable)
+            return MagicMock()
+        mocker.patch.object(evaluator, '_eval', side_effect=eval_side_effect)
+
+        with pytest.raises(SexpEvaluationError, match="'test-command' must evaluate to a string"):
+            evaluator.evaluate_string("(iterative-loop ...)")
+
+    def test_iterative_loop_config_phase_fn_not_callable(self, evaluator, mock_parser, mocker):
+        ast = self._create_loop_ast()
+        # Modify the executor clause to be a number instead of a lambda expression
+        # ast[0] = 'iterative-loop'
+        # ast[1] = (max-iterations ...)
+        # ast[2] = (initial-input ...)
+        # ast[3] = (test-command ...)
+        # ast[4] = (executor ...)
+        ast[4] = [Symbol("executor"), 123] # Executor expression is now the number 123
+        mock_parser.parse_string.return_value = ast
+
+        def eval_side_effect(node, env):
+            if node == 1: return 1 # max-iter
+            if node == [Symbol("quote"), Symbol("start")]: return "start"
+            if node == [Symbol("quote"), Symbol("echo test")]: return "echo test"
+            if node == 123: return 123 # This is what the executor expression (123) evaluates to
+            # For other phase functions (validator, controller), return a mock callable
+            if isinstance(node, list) and node[0] == Symbol('lambda'): return MagicMock(spec=Callable)
+            return MagicMock() 
+        mocker.patch.object(evaluator, '_eval', side_effect=eval_side_effect)
+
+        with pytest.raises(SexpEvaluationError, match="'executor' expression must evaluate to a callable"):
+            evaluator.evaluate_string("(iterative-loop ...)")
+
+    def test_iterative_loop_config_eval_error(self, evaluator, mock_parser, mocker):
+        # initial_input_expr is already an S-expression node in the helper
+        ast = self._create_loop_ast(initial_input_expr=Symbol("unbound-symbol"))
+        mock_parser.parse_string.return_value = ast
+        
+        # Mock _eval: fail when 'unbound-symbol' is evaluated for initial-input
+        def eval_side_effect(node, env):
+            if node == Symbol("unbound-symbol"): raise SexpEvaluationError("Eval failed for unbound!")
+            if node == 1: return 1 # max-iter
+            # if node == [Symbol("quote"), Symbol("start")]: return "start" # Not used here
+            if node == [Symbol("quote"), Symbol("echo test")]: return "echo test"
+            if isinstance(node, list) and node[0] == Symbol("lambda"): return MagicMock(spec=Callable)
+            return MagicMock()
+        mocker.patch.object(evaluator, '_eval', side_effect=eval_side_effect)
+        
+        with pytest.raises(SexpEvaluationError, match="Error evaluating 'initial-input': Eval failed for unbound!"):
+            evaluator.evaluate_string("(iterative-loop ...)")
+
+    def test_iterative_loop_stops_immediately(self, evaluator, mock_parser, mocker):
+        """Test stops on first controller 'stop'."""
+        final_val = {"result": "stopped early"}
+        ast = self._create_loop_ast(
+            max_iter=5,
+            # Controller body needs to be a list for (list 'stop 'final_val)
+            controller_body=[Symbol("list"), [Symbol("quote"), Symbol("stop")], [Symbol("quote"), final_val]]
+        )
+        mock_parser.parse_string.return_value = ast
+
+        # Mock _eval for config expressions
+        def config_eval_side_effect(node, env):
+            if node == 5: return 5
+            if node == [Symbol("quote"), Symbol("start")]: return "start"
+            if node == [Symbol("quote"), Symbol("echo test")]: return "echo test"
+            # For lambda expressions, return a mock callable (Closure or Python function)
+            if isinstance(node, list) and node[0] == Symbol("lambda"):
+                # This mock will be the 'func_to_call' in _call_phase_function
+                return MagicMock(spec=Callable, name=f"lambda_{node[1][0].value() if len(node) > 1 and len(node[1]) > 0 else 'anon'}")
+            return MagicMock() # Default for other unexpected _eval calls
+        mocker.patch.object(evaluator, '_eval', side_effect=config_eval_side_effect)
+
+
+        # Mock the _call_phase_function helper
+        mock_executor_result = TaskResult(status="COMPLETE", content="Exec Iter 1")
+        mock_validator_result = {"stdout": "Test OK", "stderr": "", "exit_code": 0}
+        # The controller's lambda will be called by _call_phase_function.
+        # The lambda itself, when called, should return [Symbol("stop"), final_val]
+        # So, _call_phase_function for controller should return this.
+        mock_controller_decision = [Symbol("stop"), final_val]
+
+
+        mock_call_phase = mocker.patch.object(evaluator, '_call_phase_function')
+        mock_call_phase.side_effect = [
+            mock_executor_result,    # Executor result iter 1
+            mock_validator_result,   # Validator result iter 1
+            mock_controller_decision # Controller result iter 1
+        ]
+
+        result = evaluator.evaluate_string("(iterative-loop ...)")
+
+        assert result == final_val
+        assert mock_call_phase.call_count == 3 # Called once for each phase
+        # Arguments to _call_phase_function: phase_name, func_to_call, args_list, env, original_loop_expr, iteration
+        mock_call_phase.assert_any_call("executor", mocker.ANY, ["start", 1], mocker.ANY, mocker.ANY, 1)
+        mock_call_phase.assert_any_call("validator", mocker.ANY, ["echo test", 1], mocker.ANY, mocker.ANY, 1)
+        mock_call_phase.assert_any_call("controller", mocker.ANY, [mock_executor_result, mock_validator_result, "start", 1], mocker.ANY, mocker.ANY, 1)
+
+
+    def test_iterative_loop_continues_once_then_stops(self, evaluator, mock_parser, mocker):
+        """Test continue -> stop flow."""
+        final_val = {"result": "stopped iter 2"}
+        # Controller body will be mocked via _call_phase_function side_effect
+        ast = self._create_loop_ast(max_iter=5) 
+        mock_parser.parse_string.return_value = ast
+
+        # Mock _eval for config expressions
+        def config_eval_side_effect(node, env):
+            if node == 5: return 5
+            if node == [Symbol("quote"), Symbol("start")]: return "start"
+            if node == [Symbol("quote"), Symbol("echo test")]: return "echo test"
+            if isinstance(node, list) and node[0] == Symbol("lambda"): return MagicMock(spec=Callable)
+            return MagicMock()
+        mocker.patch.object(evaluator, '_eval', side_effect=config_eval_side_effect)
+
+        mock_exec_res_1 = TaskResult(status="COMPLETE", content="Exec Iter 1")
+        mock_val_res_1 = {"stdout": "Test Failed", "stderr": "AssertionError", "exit_code": 1}
+        next_input_iter_1 = {"prompt": "Revise 1", "files": ["f1"]}
+        mock_ctrl_dec_1 = [Symbol("continue"), next_input_iter_1] 
+
+        mock_exec_res_2 = TaskResult(status="COMPLETE", content="Exec Iter 2")
+        mock_val_res_2 = {"stdout": "Test OK", "stderr": "", "exit_code": 0}
+        mock_ctrl_dec_2 = [Symbol("stop"), final_val] 
+
+        mock_call_phase = mocker.patch.object(evaluator, '_call_phase_function')
+        mock_call_phase.side_effect = [
+            mock_exec_res_1, mock_val_res_1, mock_ctrl_dec_1, # Iter 1
+            mock_exec_res_2, mock_val_res_2, mock_ctrl_dec_2  # Iter 2
+        ]
+
+        result = evaluator.evaluate_string("(iterative-loop ...)")
+
+        assert result == final_val
+        assert mock_call_phase.call_count == 6 
+        mock_call_phase.assert_any_call("executor", mocker.ANY, [next_input_iter_1, 2], mocker.ANY, mocker.ANY, 2)
+
+    def test_iterative_loop_reaches_max_iterations(self, evaluator, mock_parser, mocker):
+        """Test loop terminates by max_iterations."""
+        ast = self._create_loop_ast(max_iter=2) 
+        mock_parser.parse_string.return_value = ast
+
+        def config_eval_side_effect(node, env):
+            if node == 2: return 2 # max_iter
+            if node == [Symbol("quote"), Symbol("start")]: return "start"
+            if node == [Symbol("quote"), Symbol("echo test")]: return "echo test"
+            if isinstance(node, list) and node[0] == Symbol("lambda"): return MagicMock(spec=Callable)
+            return MagicMock()
+        mocker.patch.object(evaluator, '_eval', side_effect=config_eval_side_effect)
+
+
+        mock_exec_res_1 = TaskResult(status="COMPLETE", content="Exec Iter 1")
+        mock_val_res_1 = {"stdout": "Test Failed", "stderr": "Error 1", "exit_code": 1}
+        mock_ctrl_dec_1 = [Symbol("continue"), "next_input_1"]
+
+        mock_exec_res_2 = TaskResult(status="COMPLETE", content="Exec Iter 2 - Last") 
+        mock_val_res_2 = {"stdout": "Test Failed Again", "stderr": "Error 2", "exit_code": 1}
+        mock_ctrl_dec_2 = [Symbol("continue"), "next_input_2"] 
+
+        mock_call_phase = mocker.patch.object(evaluator, '_call_phase_function')
+        mock_call_phase.side_effect = [
+            mock_exec_res_1, mock_val_res_1, mock_ctrl_dec_1, 
+            mock_exec_res_2, mock_val_res_2, mock_ctrl_dec_2  
+        ]
+
+        result = evaluator.evaluate_string("(iterative-loop ...)")
+
+        assert result == mock_exec_res_2 
+        assert mock_call_phase.call_count == 6
+
+    def test_iterative_loop_zero_iterations(self, evaluator, mock_parser, mocker):
+        """Test loop with max_iterations=0."""
+        ast = self._create_loop_ast(max_iter=0)
+        mock_parser.parse_string.return_value = ast
+
+        def config_eval_side_effect(node, env):
+            if node == 0: return 0 # max_iter
+            if node == [Symbol("quote"), Symbol("start")]: return "start" # initial-input
+            if node == [Symbol("quote"), Symbol("echo test")]: return "echo test" # test-command
+            if isinstance(node, list) and node[0] == Symbol("lambda"): return MagicMock(spec=Callable)
+            return MagicMock()
+        mocker.patch.object(evaluator, '_eval', side_effect=config_eval_side_effect)
+        
+        mock_call_phase = mocker.patch.object(evaluator, '_call_phase_function')
+
+        result = evaluator.evaluate_string("(iterative-loop ...)")
+
+        assert result == [] 
+        mock_call_phase.assert_not_called()
+
+    def test_iterative_loop_controller_invalid_decision_format(self, evaluator, mock_parser, mocker):
+        """Test controller returning invalid format."""
+        # Controller body is a string literal, not (list 'action value)
+        ast = self._create_loop_ast(controller_body="'stop_string_literal'") 
+        mock_parser.parse_string.return_value = ast
+
+        def config_eval_side_effect(node, env):
+            if node == 1: return 1 # max_iter
+            if node == [Symbol("quote"), Symbol("start")]: return "start"
+            if node == [Symbol("quote"), Symbol("echo test")]: return "echo test"
+            if isinstance(node, list) and node[0] == Symbol("lambda"): return MagicMock(spec=Callable)
+            return MagicMock()
+        mocker.patch.object(evaluator, '_eval', side_effect=config_eval_side_effect)
+
+        mock_exec_res = TaskResult(status="COMPLETE", content="Exec")
+        mock_val_res = {"stdout": "OK", "stderr": "", "exit_code": 0}
+        # This is what the controller's lambda (mocked by _eval) will return to _call_phase_function
+        # And _call_phase_function will return this to _eval_iterative_loop
+        mock_invalid_decision = "stop_string_literal" 
+
+        mock_call_phase = mocker.patch.object(evaluator, '_call_phase_function')
+        mock_call_phase.side_effect = [mock_exec_res, mock_val_res, mock_invalid_decision]
+
+        with pytest.raises(SexpEvaluationError, match="Controller must return a list of .*action_symbol value"):
+            evaluator.evaluate_string("(iterative-loop ...)")
+
+    def test_iterative_loop_controller_invalid_action_symbol(self, evaluator, mock_parser, mocker):
+        """Test controller returning invalid action symbol."""
+        ast = self._create_loop_ast(controller_body=[Symbol("list"), [Symbol("quote"), Symbol("stahp")], [Symbol("quote"), "val"]])
+        mock_parser.parse_string.return_value = ast
+
+        def config_eval_side_effect(node, env):
+            if node == 1: return 1
+            if node == [Symbol("quote"), Symbol("start")]: return "start"
+            if node == [Symbol("quote"), Symbol("echo test")]: return "echo test"
+            if isinstance(node, list) and node[0] == Symbol("lambda"): return MagicMock(spec=Callable)
+            return MagicMock()
+        mocker.patch.object(evaluator, '_eval', side_effect=config_eval_side_effect)
+
+
+        mock_exec_res = TaskResult(status="COMPLETE", content="Exec")
+        mock_val_res = {"stdout": "OK", "stderr": "", "exit_code": 0}
+        mock_invalid_decision = [Symbol("stahp"), "val"]
+
+        mock_call_phase = mocker.patch.object(evaluator, '_call_phase_function')
+        mock_call_phase.side_effect = [mock_exec_res, mock_val_res, mock_invalid_decision]
+
+        with pytest.raises(SexpEvaluationError, match="Controller decision action must be 'continue' or 'stop'"):
+            evaluator.evaluate_string("(iterative-loop ...)")
+
+    def test_iterative_loop_error_in_executor(self, evaluator, mock_parser, mocker):
+        """Test error propagation from executor phase."""
+        ast = self._create_loop_ast()
+        mock_parser.parse_string.return_value = ast
+
+        def config_eval_side_effect(node, env): # For _eval of config clauses
+            if node == 1: return 1
+            if node == [Symbol("quote"), Symbol("start")]: return "start"
+            if node == [Symbol("quote"), Symbol("echo test")]: return "echo test"
+            if isinstance(node, list) and node[0] == Symbol("lambda"): return MagicMock(spec=Callable)
+            return MagicMock()
+        mocker.patch.object(evaluator, '_eval', side_effect=config_eval_side_effect)
+        
+        mock_call_phase = mocker.patch.object(evaluator, '_call_phase_function')
+        # _call_phase_function for executor raises error
+        mock_call_phase.side_effect = SexpEvaluationError("Executor failed!") 
+
+        with pytest.raises(SexpEvaluationError, match="Error in 'executor' phase.*Executor failed!"):
+            evaluator.evaluate_string("(iterative-loop ...)")
+
+    def test_iterative_loop_error_in_validator(self, evaluator, mock_parser, mocker):
+        """Test error propagation from validator phase."""
+        ast = self._create_loop_ast()
+        mock_parser.parse_string.return_value = ast
+
+        def config_eval_side_effect(node, env):
+            if node == 1: return 1
+            if node == [Symbol("quote"), Symbol("start")]: return "start"
+            if node == [Symbol("quote"), Symbol("echo test")]: return "echo test"
+            if isinstance(node, list) and node[0] == Symbol("lambda"): return MagicMock(spec=Callable)
+            return MagicMock()
+        mocker.patch.object(evaluator, '_eval', side_effect=config_eval_side_effect)
+
+        mock_call_phase = mocker.patch.object(evaluator, '_call_phase_function')
+        mock_call_phase.side_effect = [
+            TaskResult(status="COMPLETE", content="Exec OK"), 
+            SexpEvaluationError("Validator failed!") 
+        ]
+
+        with pytest.raises(SexpEvaluationError, match="Error in 'validator' phase.*Validator failed!"):
+            evaluator.evaluate_string("(iterative-loop ...)")
+
+    def test_iterative_loop_error_in_controller(self, evaluator, mock_parser, mocker):
+        """Test error propagation from controller phase."""
+        ast = self._create_loop_ast()
+        mock_parser.parse_string.return_value = ast
+
+        def config_eval_side_effect(node, env):
+            if node == 1: return 1
+            if node == [Symbol("quote"), Symbol("start")]: return "start"
+            if node == [Symbol("quote"), Symbol("echo test")]: return "echo test"
+            if isinstance(node, list) and node[0] == Symbol("lambda"): return MagicMock(spec=Callable)
+            return MagicMock()
+        mocker.patch.object(evaluator, '_eval', side_effect=config_eval_side_effect)
+
+        mock_call_phase = mocker.patch.object(evaluator, '_call_phase_function')
+        mock_call_phase.side_effect = [
+            TaskResult(status="COMPLETE", content="Exec OK"), 
+            {"stdout": "OK", "stderr": "", "exit_code": 0}, 
+            SexpEvaluationError("Controller failed!") 
+        ]
+
+        with pytest.raises(SexpEvaluationError, match="Error in 'controller' phase.*Controller failed!"):
+            evaluator.evaluate_string("(iterative-loop ...)")
+
+    def test_iterative_loop_integration_simple_counter(self, evaluator, mock_parser):
+        """Test a simple counter loop using actual lambdas and primitives."""
+        sexp_string = """
+        (iterative-loop
+          (max-iterations 5)
+          (initial-input 0) 
+          (test-command "'true'") 
+          (executor   (lambda (current-count iter) (+ current-count 1))) 
+          (validator  (lambda (cmd iter) (list (list 'stdout "") (list 'stderr "") (list 'exit_code 0)))) 
+          (controller (lambda (exec-res valid-res current-in iter)
+                        (if (< exec-res 3) 
+                            (list 'continue exec-res) 
+                            (list 'stop exec-res)))) 
+        )
+        """
+        # Use the real parser for this integration test
+        real_parser = SexpParser()
+        mock_parser.parse_string.side_effect = real_parser.parse_string
+        
+        result = evaluator.evaluate_string(sexp_string)
+        assert result == 3

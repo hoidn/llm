@@ -17,7 +17,7 @@ try:
         ReturnStatus, TaskType, AtomicTaskSubtype,
         HandlerConfig, TaskResult, ContextGenerationInput,
         # Import new models
-        DevelopmentPlan, FeedbackResult
+        DevelopmentPlan, FeedbackResult, StructuredAnalysisResult
     )
 except ImportError:
      pytest.skip("Skipping model tests, src.system.models not found or dependencies missing", allow_module_level=True)
@@ -414,3 +414,96 @@ def test_feedback_result_invalid_types():
         FeedbackResult.model_validate({"status": "REVISE", "next_prompt": 123})
     with pytest.raises(ValidationError): # explanation not string when present
         FeedbackResult.model_validate({"status": "SUCCESS", "explanation": []})
+
+# --- Test Iterative Loop Specific Models ---
+
+class TestStructuredAnalysisResult:
+    def test_structured_analysis_result_success_no_next(self):
+        """Test valid success case, next_input can be None."""
+        data = {
+            "success": True,
+            "analysis": "Everything looks great!",
+            "next_input": None, # Explicitly None
+            "new_files": ["new_feature.py"]
+        }
+        res = StructuredAnalysisResult.model_validate(data)
+        assert res.success is True
+        assert res.analysis == "Everything looks great!"
+        assert res.next_input is None
+        assert res.new_files == ["new_feature.py"]
+
+        data_no_next_input_field = { # next_input field omitted entirely
+            "success": True,
+            "analysis": "Everything looks great!",
+        }
+        res2 = StructuredAnalysisResult.model_validate(data_no_next_input_field)
+        assert res2.next_input is None # Default is None
+
+    def test_structured_analysis_result_failure_requires_next_input(self):
+        """Test valid failure case, next_input is provided."""
+        data = {
+            "success": False,
+            "analysis": "Tests failed, need to revise.",
+            "next_input": "Please fix the failing tests in test_feature.py.",
+            "new_files": None # Explicitly None
+        }
+        res = StructuredAnalysisResult.model_validate(data)
+        assert res.success is False
+        assert res.analysis == "Tests failed, need to revise."
+        assert res.next_input == "Please fix the failing tests in test_feature.py."
+        assert res.new_files is None
+
+        data_no_new_files_field = { # new_files field omitted entirely
+            "success": False,
+            "analysis": "Tests failed.",
+            "next_input": "Revise."
+        }
+        res2 = StructuredAnalysisResult.model_validate(data_no_new_files_field)
+        assert res2.new_files is None # Default is None
+
+    def test_structured_analysis_result_failure_missing_next_input_raises_error(self):
+        """Test failure case where next_input is missing raises ValidationError."""
+        data_missing_next_input = {
+            "success": False,
+            "analysis": "This should fail validation."
+            # next_input is missing
+        }
+        with pytest.raises(ValidationError, match="'next_input' is required when success is False"):
+            StructuredAnalysisResult.model_validate(data_missing_next_input)
+
+        data_next_input_is_none = {
+            "success": False,
+            "analysis": "This should also fail validation.",
+            "next_input": None # Explicitly None when success is False
+        }
+        with pytest.raises(ValidationError, match="'next_input' is required when success is False"):
+            StructuredAnalysisResult.model_validate(data_next_input_is_none)
+
+    def test_structured_analysis_result_invalid_types(self):
+        """Test validation failure for incorrect data types."""
+        with pytest.raises(ValidationError): # success not bool
+            StructuredAnalysisResult.model_validate({"success": "true", "analysis": "...", "next_input": "..."})
+        with pytest.raises(ValidationError): # analysis not string
+            StructuredAnalysisResult.model_validate({"success": True, "analysis": 123})
+        with pytest.raises(ValidationError): # next_input not string when present
+            StructuredAnalysisResult.model_validate({"success": False, "analysis": "...", "next_input": True})
+        with pytest.raises(ValidationError): # new_files not list of strings
+            StructuredAnalysisResult.model_validate({"success": True, "analysis": "...", "new_files": ["file1", 2]})
+
+    def test_structured_analysis_result_minimal_valid_success(self):
+        """Test minimal valid success case."""
+        data = {"success": True, "analysis": "Minimal success."}
+        res = StructuredAnalysisResult.model_validate(data)
+        assert res.success is True
+        assert res.analysis == "Minimal success."
+        assert res.next_input is None
+        assert res.new_files is None
+
+    def test_structured_analysis_result_minimal_valid_failure(self):
+        """Test minimal valid failure case."""
+        data = {"success": False, "analysis": "Minimal failure.", "next_input": "Fix it."}
+        res = StructuredAnalysisResult.model_validate(data)
+        assert res.success is False
+        assert res.analysis == "Minimal failure."
+        assert res.next_input == "Fix it."
+        assert res.new_files is None

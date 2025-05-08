@@ -388,3 +388,25 @@ class CombinedAnalysisResult(BaseModel):
         if self.verdict == 'RETRY' and self.next_prompt is None:
             raise ValueError("'next_prompt' is required when verdict is 'RETRY'")
         return self
+
+class StructuredAnalysisResult(BaseModel):
+    """
+    Structured output from the LLM analysis task called within the
+    iterative-loop's controller phase. Provides feedback on iteration success
+    and guidance for the next step.
+    [Type: Loop:StructuredAnalysisResult:1.0]
+    """
+    success: bool = Field(description="True if the iteration's goal was met (e.g., tests passed and goal achieved).")
+    analysis: str = Field(description="Explanation/summary of the iteration's outcome.")
+    next_input: Optional[str] = Field(default=None, description="The prompt/input for the *next* executor iteration. Required if success=false.")
+    new_files: Optional[List[str]] = Field(default=None, description="Optional list of new file paths identified during analysis to add/consider for the next iteration's context.")
+
+    @model_validator(mode='after')
+    def check_next_input_on_failure(self) -> 'StructuredAnalysisResult':
+        """Validate that next_input is provided if success is False."""
+        # The validator function in Pydantic v2 should return self
+        if not self.success and self.next_input is None:
+            # Raise ValueError for Pydantic v2 validation errors within model_validator
+            raise ValueError("'next_input' is required when success is False")
+        # It's okay for next_input to be None if success is True
+        return self
