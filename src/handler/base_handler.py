@@ -246,9 +246,9 @@ class BaseHandler:
                 )
             return existing_paths
         else:
+            # Use the most relevant error message
+            error_msg = result.get('error_message') or result.get('stderr', 'Unknown error')
             logging.error(
-                # Use the most relevant error message
-                error_msg = result.get('error_message') or result.get('stderr', 'Unknown error')
                 f"Command execution failed (Exit Code: {result.get('exit_code')}): {command}. Error: {error_msg}"
             )
             return []
