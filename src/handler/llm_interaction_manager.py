@@ -368,7 +368,17 @@ class LLMInteractionManager:
         #         "error": "AgentNotInitializedError: LLM Agent not initialized.",
         #     }
 
+        # Cache the previously-active loop (if any) *once* so we can restore it later
+        _prev_loop: Optional[asyncio.AbstractEventLoop] = None
         try:
+            try:
+                _prev_loop = asyncio.get_event_loop()
+            except RuntimeError:
+                _prev_loop = None  # No running loop in this thread – that’s fine
+
+            # Make our dedicated loop the current one for the upcoming run_sync
+            asyncio.set_event_loop(self._event_loop)
+
             # Determine the system prompt to use for the call
             current_system_prompt = (
                 system_prompt_override
