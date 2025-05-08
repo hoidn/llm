@@ -557,11 +557,13 @@ class SpecialFormProcessor:
                              "original_error_details": str(current_details) if current_details else "N/A"
                          }
                      # --- END FIX for TypeError ---
-                     raise SexpEvaluationError(
+                     new_error = SexpEvaluationError(
                          phase_error.args[0] if phase_error.args else str(phase_error),
                          original_expr_str,
                          error_details=details # Pass the potentially modified dict
-                     ) from phase_error
+                     )
+                     logger.error(f"About to re-raise SexpEvaluationError from iterative-loop: {new_error}")
+                     raise new_error from phase_error
                  else:
                      raise SexpEvaluationError(
                          f"Unexpected error during loop iteration {current_iteration}: {phase_error}",
