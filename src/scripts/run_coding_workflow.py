@@ -214,7 +214,6 @@ MAIN_WORKFLOW_S_EXPRESSION = """
                                         ;; Decision is STOP_FAILURE or unexpected
                                         (list 'stop analysis_task_result) ;; Stop with the analysis result explaining why
                                     ))))))))))
-  ) ;; End iterative-loop
 ) ;; End progn
 """
 
