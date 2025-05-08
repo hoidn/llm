@@ -60,7 +60,6 @@ logger = logging.getLogger("CodingWorkflowScript")
 # S-expression to define the planning task (outputs instructions/files ONLY)
 DEFATOM_GENERATE_PLAN_S_EXPRESSION = """
 (defatom user:generate-plan-from-goal
-  (params (goal string) (context_string string)) ;; <<< RENAMED HERE
   (instructions
     "Analyze the user's goal: '{{goal}}' with the provided context: '{{context_string}}'.
     Your *only* task is to generate a development plan. Do *not* attempt to execute any tools or commands yourself.
@@ -70,6 +69,7 @@ DEFATOM_GENERATE_PLAN_S_EXPRESSION = """
     Do NOT generate a 'test_command'.
     Output ONLY a single JSON object conforming to the DevelopmentPlan schema (ignore the test_command field). No other text."
   )
+  (params (goal string) (context_string string)) ;; <<< RENAMED HERE
   (output_format ((type "json") (schema "src.system.models.DevelopmentPlan")))
   (description "Generates DevelopmentPlan JSON (instructions/files only) from goal/context.")
   ;; (model "...") ; Optionally specify model
