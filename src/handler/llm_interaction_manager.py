@@ -1,6 +1,7 @@
 import json
 import logging
 import os  # Add os import for environment variable checking
+import asyncio         # NEW – we’ll manage a dedicated event-loop
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Type, Union
 
 # Import pydantic-ai directly
@@ -75,6 +76,13 @@ class LLMInteractionManager:
         self._base_prompt = self.base_system_prompt
         self._agent_config = self.config.get("pydantic_ai_agent_config", {})
         self.agent: Optional[Any] = None # The default, pre-initialized agent
+
+        # --- NEW: create a single reusable event-loop ---
+        # All pydantic-ai calls made by this manager will run on this loop,
+        # preventing “object bound to a different event loop” errors.
+        self._event_loop: asyncio.AbstractEventLoop = asyncio.new_event_loop()
+        # Do *not* start run_forever(); we’ll drive it with run_until_complete ad-hoc
+
         logging.info("LLMInteractionManager initialized (Agent creation deferred).")
 
     def _initialize_pydantic_ai_agent(self) -> Optional[Any]:
@@ -500,6 +508,10 @@ class LLMInteractionManager:
                 "usage": usage,
                 "error": None,
             }
+
+        finally:
+            # Always restore whatever loop was active before we hijacked it.
+            asyncio.set_event_loop(_prev_loop)
 
         except Exception as e:
             logging.error(
