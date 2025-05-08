@@ -2620,37 +2620,21 @@ class TestSexpEvaluatorIterativeLoop:
             evaluator.evaluate_string("(iterative-loop ...)")
 
 
-    def test_iterative_loop_config_max_iter_negative(self, evaluator, mock_parser, mocker):
+    def test_iterative_loop_config_max_iter_negative(self, evaluator, mock_parser):
         ast = self._create_loop_ast(max_iter=-1) # Pass -1 directly
         mock_parser.parse_string.return_value = ast
-        
-        def eval_side_effect(node, env):
-            if node == -1: return -1 # max-iter value
-            if node == [Symbol("quote"), Symbol("start")]: return "start"
-            if node == [Symbol("quote"), Symbol("echo test")]: return "echo test"
-            if isinstance(node, list) and node[0] == Symbol("lambda"): return MagicMock(spec=Callable)
-            return MagicMock()
-        mocker.patch.object(evaluator, '_eval', side_effect=eval_side_effect)
         
         with pytest.raises(SexpEvaluationError, match="'max-iterations' must evaluate to a non-negative integer"):
             evaluator.evaluate_string("(iterative-loop ...)")
 
-    def test_iterative_loop_config_test_cmd_not_string(self, evaluator, mock_parser, mocker):
+    def test_iterative_loop_config_test_cmd_not_string(self, evaluator, mock_parser):
         ast = self._create_loop_ast(test_cmd_expr=123) # Pass 123 directly
         mock_parser.parse_string.return_value = ast
-
-        def eval_side_effect(node, env):
-            if node == 1: return 1 # max-iter
-            if node == [Symbol("quote"), Symbol("start")]: return "start"
-            if node == 123: return 123 # test-command value
-            if isinstance(node, list) and node[0] == Symbol("lambda"): return MagicMock(spec=Callable)
-            return MagicMock()
-        mocker.patch.object(evaluator, '_eval', side_effect=eval_side_effect)
 
         with pytest.raises(SexpEvaluationError, match="'test-command' must evaluate to a string"):
             evaluator.evaluate_string("(iterative-loop ...)")
 
-    def test_iterative_loop_config_phase_fn_not_callable(self, evaluator, mock_parser, mocker):
+    def test_iterative_loop_config_phase_fn_not_callable(self, evaluator, mock_parser):
         ast = self._create_loop_ast()
         # Modify the executor clause to be a number instead of a lambda expression
         # ast[0] = 'iterative-loop'
@@ -2661,35 +2645,15 @@ class TestSexpEvaluatorIterativeLoop:
         ast[4] = [Symbol("executor"), 123] # Executor expression is now the number 123
         mock_parser.parse_string.return_value = ast
 
-        def eval_side_effect(node, env):
-            if node == 1: return 1 # max-iter
-            if node == [Symbol("quote"), Symbol("start")]: return "start"
-            if node == [Symbol("quote"), Symbol("echo test")]: return "echo test"
-            if node == 123: return 123 # This is what the executor expression (123) evaluates to
-            # For other phase functions (validator, controller), return a mock callable
-            if isinstance(node, list) and node[0] == Symbol('lambda'): return MagicMock(spec=Callable)
-            return MagicMock() 
-        mocker.patch.object(evaluator, '_eval', side_effect=eval_side_effect)
-
         with pytest.raises(SexpEvaluationError, match="'executor' expression must evaluate to a callable"):
             evaluator.evaluate_string("(iterative-loop ...)")
 
-    def test_iterative_loop_config_eval_error(self, evaluator, mock_parser, mocker):
+    def test_iterative_loop_config_eval_error(self, evaluator, mock_parser):
         # initial_input_expr is already an S-expression node in the helper
         ast = self._create_loop_ast(initial_input_expr=Symbol("unbound-symbol"))
         mock_parser.parse_string.return_value = ast
         
-        # Mock _eval: fail when 'unbound-symbol' is evaluated for initial-input
-        def eval_side_effect(node, env):
-            if node == Symbol("unbound-symbol"): raise SexpEvaluationError("Eval failed for unbound!")
-            if node == 1: return 1 # max-iter
-            # if node == [Symbol("quote"), Symbol("start")]: return "start" # Not used here
-            if node == [Symbol("quote"), Symbol("echo test")]: return "echo test"
-            if isinstance(node, list) and node[0] == Symbol("lambda"): return MagicMock(spec=Callable)
-            return MagicMock()
-        mocker.patch.object(evaluator, '_eval', side_effect=eval_side_effect)
-        
-        with pytest.raises(SexpEvaluationError, match="Error evaluating 'initial-input': Eval failed for unbound!"):
+        with pytest.raises(SexpEvaluationError, match="Error evaluating 'initial-input'.*Unbound symbol.*unbound-symbol"):
             evaluator.evaluate_string("(iterative-loop ...)")
 
     def test_iterative_loop_stops_immediately(self, evaluator, mock_parser, mocker):
