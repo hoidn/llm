@@ -77,26 +77,25 @@ def execute_programmatic_task(
             sexp_evaluator = SexpEvaluator(task_system_instance, handler_instance, memory_system)
             
             # Prepare initial environment if params are meant to be bound
-            # --- START MODIFICATION ---
-            # Extract initial_env from flags if provided
-            env_to_use = flags.get("initial_env") if flags else None
-            if env_to_use and not isinstance(env_to_use, SexpEnvironment):
-                logging.warning(f"Invalid type provided for 'initial_env' in flags: {type(env_to_use)}. Ignoring.")
-                env_to_use = None # Fallback to default empty env
+            # --- START MODIFICATION: Instantiate Environment Correctly ---
+            initial_bindings_from_flags = flags.get("initial_env") if flags else None
+            env_to_pass: Optional[SexpEnvironment] = None # Initialize as None
 
-            if env_to_use:
-                logging.debug(f"Using provided initial environment: {env_to_use}")
+            if isinstance(initial_bindings_from_flags, dict):
+                # If flags contain a dictionary for initial_env, use it for bindings
+                env_to_pass = SexpEnvironment(bindings=initial_bindings_from_flags)
+                logger.debug(f"Created initial SexpEnvironment from flags['initial_env'] bindings: {list(initial_bindings_from_flags.keys())}")
+            elif isinstance(initial_bindings_from_flags, SexpEnvironment):
+                 # If flags somehow contain an actual SexpEnvironment object (less likely from script)
+                 env_to_pass = initial_bindings_from_flags
+                 logger.debug(f"Using provided initial SexpEnvironment object from flags['initial_env']")
             else:
-                logging.debug("No valid initial environment provided, SexpEvaluator will create a new one.")
-                # If no env provided, and if params were intended for a default env, this is where they'd be bound.
-                # However, the calling script (run_coding_workflow.py) explicitly creates and passes the env,
-                # and sends empty params to handle_task_command for S-expressions.
-                # So, if env_to_use is None here, it means the caller didn't intend to provide one via flags.
-                # initial_bindings = params.copy() # This would be used if params were the source for a default env.
-                # env_to_use = SexpEnvironment(bindings=initial_bindings)
+                # If no valid initial_env in flags, the evaluator will create a default empty one
+                 logger.debug("No valid initial environment bindings found in flags. SexpEvaluator will create a new empty environment.")
+                 # env_to_pass remains None
 
-            # Pass the extracted (or None) environment to evaluate_string
-            raw_result = sexp_evaluator.evaluate_string(identifier, initial_env=env_to_use)
+            # Pass the potentially created SexpEnvironment object (or None) to evaluate_string
+            raw_result = sexp_evaluator.evaluate_string(identifier, initial_env=env_to_pass)
             # --- END MODIFICATION ---
 
             # Convert raw result to TaskResult object/dict
