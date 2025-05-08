@@ -126,16 +126,16 @@ DEFATOM_COMBINED_ANALYSIS_S_EXPRESSION = """
 # REVISED S-expression for the main DEEC loop workflow
 MAIN_WORKFLOW_S_EXPRESSION = """
 (progn
-  (log-message "Starting iterative-loop workflow for goal:" initial_user_goal)
-  (log-message "Using Test Command:" user_test_command)
+  (log-message "Starting iterative-loop workflow for goal:" initial-user-goal) ;; Use hyphenated symbol
+  (log-message "Using Test Command:" fixed-test-command) ;; Use hyphenated symbol
 
   ;; Variables initial_plan_data, fixed_test_command, initial_user_goal, max_iterations_config
-  ;; are expected to be bound in the initial environment passed from Python.
+  ;; are expected to be bound in the initial environment passed from Python (using hyphens).
 
   (iterative-loop
-    (max-iterations max_iterations_config)
-    (initial-input initial_plan_data) ;; Pass the initial plan dict/assoc-list
-    (test-command fixed_test_command) ;; Pass the fixed test command string
+    (max-iterations max-iterations-config) ;; Use hyphenated symbol
+    (initial-input initial_plan_data) ;; Pass the initial plan dict/assoc-list (Keep underscore for now per user diff)
+    (test-command fixed-test-command) ;; Use hyphenated symbol
 
     ;; --- Executor Phase ---
     (executor (lambda (current-plan iter-num)
@@ -183,8 +183,8 @@ MAIN_WORKFLOW_S_EXPRESSION = """
                   (log-message "Controller (Iter " iter-num "): Analyzing Aider result status:" (get-field aider_result "status") " and Validation result exit_code:" (get-field validation_result "exit_code"))
                   ;; Call the analysis/revision LLM task
                   (let ((analysis_task_result
-                         (user:analyze-and-revise-plan
-                           (original_goal initial_user_goal) ;; From outer env
+                         (user:evaluate-and-retry-analysis ;; Corrected task name
+                           (original_goal initial-user-goal) ;; Use hyphenated symbol
                            (previous_instructions (get-field current_plan "instructions"))
                            (previous_files (get-field current_plan "files"))
                            (aider_status (get-field aider_result "status"))
@@ -193,7 +193,7 @@ MAIN_WORKFLOW_S_EXPRESSION = """
                            (test_stderr (get-field validation_result "stderr"))
                            (test_exit_code (get-field validation_result "exit_code"))
                            (iteration iter_num)
-                           (max_iterations max_iterations_config) ;; From outer env
+                           (max_iterations max-iterations-config) ;; Use hyphenated symbol
                           )))
                     (log-message "Controller: Analysis TaskResult:" analysis_task_result)
 
@@ -343,10 +343,11 @@ def main():
 
     # --- Prepare Initial Parameters for Dispatcher ---
     initial_params = {
-        "initial-user-goal": initial_user_goal,
-        "initial-context-data": initial_context_data,
-        "user-test-command": user_test_command,
-        "max_iterations_config": args.max_retries # Pass the max retries value
+        "initial-user-goal": initial_user_goal, # Use hyphenated key
+        "initial-context-data": initial_context_data, # Keep hyphenated key
+        "fixed-test-command": user_test_command, # Use hyphenated key to match Sexp
+        "max-iterations-config": args.max_retries # Use hyphenated key
+        # Note: 'initial-plan-data' is used in Sexp but not bound here yet.
     }
     logger.debug(f"Initial parameters for workflow execution: {initial_params}")
 
