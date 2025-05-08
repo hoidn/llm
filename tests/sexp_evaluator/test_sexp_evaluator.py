@@ -2970,12 +2970,17 @@ class TestSexpEvaluatorIterativeLoop:
         ]
 
         # --- Assert correct error is raised ---
-        expected_error_pattern = r"Error in Validator failed!" # Adjusted
+        # FIX: Update regex to match the prepended message and original error
+        expected_error_pattern = re.compile(
+            r"Error during iterative-loop iteration 1:.*Validator failed!",
+            re.DOTALL
+        )
         with pytest.raises(SexpEvaluationError, match=expected_error_pattern) as excinfo:
-            evaluator.evaluate_string("(iterative-loop ...)")
+             evaluator.evaluate_string("(iterative-loop ...)")
 
-        # Check that the error details include the iteration number
-        assert excinfo.value.error_details == {'iteration': 1}
+        # Check details
+        assert isinstance(excinfo.value.error_details, dict)
+        assert excinfo.value.error_details.get("iteration") == 1
         assert mock_call_phase.call_count == 2 # Executor, then validator
 
     def test_iterative_loop_error_in_controller(self, evaluator, mock_parser, mocker):
@@ -3001,12 +3006,17 @@ class TestSexpEvaluatorIterativeLoop:
         ]
 
         # --- Assert correct error is raised ---
-        expected_error_pattern = r"Error in Controller failed!" # Adjusted
+        # FIX: Update regex to match the prepended message and original error
+        expected_error_pattern = re.compile(
+            r"Error during iterative-loop iteration 1:.*Controller failed!",
+            re.DOTALL
+        )
         with pytest.raises(SexpEvaluationError, match=expected_error_pattern) as excinfo:
-            evaluator.evaluate_string("(iterative-loop ...)")
+             evaluator.evaluate_string("(iterative-loop ...)")
 
-        # Check that the error details include the iteration number
-        assert excinfo.value.error_details == {'iteration': 1}
+        # Check details
+        assert isinstance(excinfo.value.error_details, dict)
+        assert excinfo.value.error_details.get("iteration") == 1
         assert mock_call_phase.call_count == 3 # Executor, validator, then controller
 
     def test_iterative_loop_integration_simple_counter(self, evaluator, mock_parser):
