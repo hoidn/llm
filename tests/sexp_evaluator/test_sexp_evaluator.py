@@ -2545,9 +2545,10 @@ class TestSexpEvaluatorIterativeLoop:
     def _create_loop_ast(self, max_iter=1, initial_input_expr="'start'", test_cmd_expr="'echo test'", executor_body="'exec_result'", validator_body="(list (list 'stdout' \"ok\") (list 'stderr' \"\") (list 'exit_code 0))", controller_body="(list 'stop 'final_result')"):
         S = Symbol
         def make_expr_node(val):
-            if isinstance(val, str) and val.startswith("'") and len(val) > 1: # Ensure not just "'"
-                inner_symbol_name = val[1:] # Corrected: was val[1:-1] which fails for "'s"
-                return [S("quote"), S(inner_symbol_name)]
+            # Handle quoted symbols correctly ('symbol -> (quote symbol))
+            if isinstance(val, str) and val.startswith("'") and len(val) > 1:
+                inner_symbol_name = val[1:] # Get the actual name without the quote
+                return [S("quote"), S(inner_symbol_name)] # Correctly quote the inner symbol
             elif isinstance(val, str): # Simple string literal
                 return val
             elif isinstance(val, (int, float, bool)) or val is None: # Numeric/bool/nil literals
@@ -2663,6 +2664,9 @@ class TestSexpEvaluatorIterativeLoop:
         ]
         ast = self._create_loop_ast(
             max_iter=5,
+            initial_input_expr="'start'", # Creates (quote start)
+            test_cmd_expr="'echo test'", # Creates (quote echo test)
+            executor_body="'exec_result'", # Creates (quote exec_result)
             controller_body=controller_body_ast # Pass the constructed AST
         )
         mock_parser.parse_string.return_value = ast
@@ -2719,11 +2723,11 @@ class TestSexpEvaluatorIterativeLoop:
 
         # Verify the arguments passed TO _call_phase_function
         # Check that the correct mock lambda function was passed as func_to_call
-        # Executor receives Symbol('start') as current_structured_input for iter 1
-        mock_call_phase.assert_any_call("executor", mock_executor_lambda_func, [Symbol("start"), 1], mocker.ANY, mocker.ANY, 1)
+        # Executor receives "start" (string) as current_structured_input for iter 1
+        mock_call_phase.assert_any_call("executor", mock_executor_lambda_func, ["start", 1], mocker.ANY, mocker.ANY, 1)
         mock_call_phase.assert_any_call("validator", mock_validator_lambda_func, ["echo test", 1], mocker.ANY, mocker.ANY, 1)
-        # Controller also receives Symbol('start') as current_structured_input for iter 1
-        mock_call_phase.assert_any_call("controller", mock_controller_lambda_func, [mock_executor_result, mock_validator_result, Symbol("start"), 1], mocker.ANY, mocker.ANY, 1)
+        # Controller also receives "start" (string) as current_structured_input for iter 1
+        mock_call_phase.assert_any_call("controller", mock_controller_lambda_func, [mock_executor_result, mock_validator_result, "start", 1], mocker.ANY, mocker.ANY, 1)
 
 
     def test_iterative_loop_continues_once_then_stops(self, evaluator, mock_parser, mocker):
