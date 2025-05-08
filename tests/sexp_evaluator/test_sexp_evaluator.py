@@ -6,7 +6,7 @@ import pytest # Ensure pytest is imported
 import re # Import re for regular expression matching in error messages
 import logging
 from unittest.mock import MagicMock, call, ANY, patch # Ensure patch is imported
-from typing import Callable # Ensure imported
+from typing import Callable, Optional # Ensure imported
 from src.sexp_evaluator.sexp_evaluator import SexpEvaluator
 from src.sexp_evaluator.sexp_environment import SexpEnvironment
 from src.system.errors import SexpSyntaxError, SexpEvaluationError # Ensure error is imported
