@@ -350,9 +350,14 @@ class SexpEvaluator:
                     if isinstance(e_arg_eval, SexpEvaluationError): raise
                     raise SexpEvaluationError(f"Error evaluating argument {i+1} for closure: {arg_node}", original_call_expr_str, error_details=str(e_arg_eval)) from e_arg_eval
             
-            # Create new call frame: Its parent is the calling_env, enabling dynamic-like scoping for special variables.
-            logger.debug(f"    Creating new call frame. Parent (calling_env) ID: {id(calling_env)}")
-            call_frame_env = calling_env.extend({})
+            # --- START FIX for Lexical Scope ---
+            # Create new call frame: Its parent MUST be the closure's definition environment
+            definition_env_for_closure = closure_to_apply.definition_env
+            logger.debug(f"    Creating new call frame. Parent (definition_env) ID: {id(definition_env_for_closure)}")
+            # Use the definition_env's extend method to link correctly
+            call_frame_env = definition_env_for_closure.extend({})
+            # --- END FIX for Lexical Scope ---
+
 
             for param_symbol, arg_value in zip(closure_to_apply.params_ast, evaluated_args):
                 param_name = param_symbol.value()
@@ -360,10 +365,11 @@ class SexpEvaluator:
                 logger.debug(f"      Bound '{param_name}' = {arg_value} in call frame (id={id(call_frame_env)})")
             
             final_body_result: Any = []
-            logger.debug(f"    Evaluating closure body with {len(closure_to_apply.body_ast)} expressions in call frame (id={id(call_frame_env)}) which has parent (calling_env) id={id(calling_env)}")
+            # --- Use the new call_frame_env for body evaluation ---
+            logger.debug(f"    Evaluating closure body with {len(closure_to_apply.body_ast)} expressions in call frame (id={id(call_frame_env)}) which has parent (definition_env) id={id(definition_env_for_closure)}")
             for i, body_node in enumerate(closure_to_apply.body_ast):
                 try:
-                    final_body_result = self._eval(body_node, call_frame_env)
+                    final_body_result = self._eval(body_node, call_frame_env) # Evaluate in call_frame_env
                     logger.debug(f"      Body expression {i+1} evaluated to: {final_body_result}")
                 except Exception as e_body_eval:
                     logger.exception(f"      Error evaluating closure body expression {i+1} '{body_node}': {e_body_eval}")
@@ -499,16 +505,15 @@ class SexpEvaluator:
                 original_expr_str
             )
 
-        # 2. Evaluate Configuration Expressions
+        # 2. Evaluate Configuration Expressions (with validation)
         try:
             max_iter_val = self._eval(clauses["max-iterations"], env)
-            # --- ADD VALIDATION ---
+            # --- ADDED VALIDATION ---
             if not isinstance(max_iter_val, int) or max_iter_val < 0:
                 raise SexpEvaluationError(
                     f"iterative-loop: 'max-iterations' must evaluate to a non-negative integer, got {max_iter_val!r} (type: {type(max_iter_val)}).",
                     original_expr_str # Pass original expression string for context
                 )
-            # --- END VALIDATION ---
         except SexpEvaluationError as e:
             # Ensure the original expression string is included in the re-raised error
             raise SexpEvaluationError(f"iterative-loop: Error evaluating 'max-iterations': {e.args[0] if e.args else str(e)}", original_expr_str, error_details=e.error_details if hasattr(e, 'error_details') else str(e)) from e
@@ -524,13 +529,12 @@ class SexpEvaluator:
 
         try:
             test_cmd_string = self._eval(clauses["test-command"], env)
-            # --- ADD VALIDATION ---
+            # --- ADDED VALIDATION ---
             if not isinstance(test_cmd_string, str):
                 raise SexpEvaluationError(
                     f"iterative-loop: 'test-command' must evaluate to a string, got {test_cmd_string!r} (type: {type(test_cmd_string)}).",
                     original_expr_str
                 )
-            # --- END VALIDATION ---
         except SexpEvaluationError as e:
             raise SexpEvaluationError(f"iterative-loop: Error evaluating 'test-command': {e.args[0] if e.args else str(e)}", original_expr_str, error_details=e.error_details if hasattr(e, 'error_details') else str(e)) from e
         except Exception as e: # Catch unexpected errors during eval
@@ -541,13 +545,13 @@ class SexpEvaluator:
         for phase_name in ["executor", "validator", "controller"]:
             try:
                 resolved_fn = self._eval(clauses[phase_name], env)
-                # --- ADD VALIDATION ---
+                # --- ADDED VALIDATION ---
+                # Check if it's our Closure or a general Python callable
                 if not isinstance(resolved_fn, Closure) and not callable(resolved_fn):
                     raise SexpEvaluationError(
-                        f"iterative-loop: '{phase_name}' expression must evaluate to a callable S-expression function, got {type(resolved_fn)}: {resolved_fn!r}",
+                        f"iterative-loop: '{phase_name}' expression must evaluate to a callable S-expression function or Python callable, got {type(resolved_fn)}: {resolved_fn!r}",
                         original_expr_str
                     )
-                # --- END VALIDATION ---
                 phase_functions[phase_name] = resolved_fn
             except SexpEvaluationError as e:
                  raise SexpEvaluationError(f"iterative-loop: Error evaluating '{phase_name}' function expression: {e.args[0] if e.args else str(e)}", original_expr_str, error_details=e.error_details if hasattr(e, 'error_details') else str(e)) from e
@@ -560,15 +564,17 @@ class SexpEvaluator:
 
         # 4. Initialize Loop State
         current_iteration = 1
-        loop_result: Any = []  # S-expression 'nil' # CORRECT INITIALIZATION
+        loop_result: Any = []  # S-expression 'nil' / Python empty list
+        last_exec_result_val: Any = loop_result # Store last successful exec result
 
         # 5. Main Loop
         while current_iteration <= max_iter_val:
             logger.info(f"--- Iterative Loop: Iteration {current_iteration}/{max_iter_val} ---")
 
-            # --- Executor Phase ---
-            executor_result = self._call_phase_function(
-                "executor", executor_fn, [current_loop_input, current_iteration],
+            try: # Wrap entire iteration body for error propagation
+                # --- Executor Phase ---
+                executor_result = self._call_phase_function(
+                    "executor", executor_fn, [current_loop_input, current_iteration],
                 env, original_expr_str, current_iteration
             )
             # Basic validation of executor result (optional but recommended)
@@ -589,10 +595,26 @@ class SexpEvaluator:
             # --- Controller Phase ---
             decision_val = self._call_phase_function(
                 "controller", controller_fn, [executor_result, validation_result, current_loop_input, current_iteration],
-                env, original_expr_str, current_iteration # Pass the main 'env' for phase function execution context
+                env, original_expr_str, current_iteration
             )
+            # --- FIXED Error Handling ---
+            except Exception as phase_error:
+                # Catch errors from _call_phase_function (which already wraps SexpEvaluationError)
+                logging.exception(f"  Error during loop iteration {current_iteration}: {phase_error}")
+                # Re-raise, ensuring it's SexpEvaluationError with loop context
+                if isinstance(phase_error, SexpEvaluationError):
+                    # Add iteration info if not already present
+                    if "iteration" not in (phase_error.error_details or {}):
+                        details = phase_error.error_details or {}
+                        details["iteration"] = current_iteration
+                        raise SexpEvaluationError(phase_error.args[0], original_expr_str, error_details=details) from phase_error
+                    else:
+                        raise phase_error # Re-raise if it already has context
+                else: # Wrap unexpected errors
+                    raise SexpEvaluationError(f"Unexpected error during loop iteration {current_iteration}: {phase_error}", original_expr_str, error_details={"iteration": current_iteration, "original_error": str(phase_error)}) from phase_error
 
-            # --- Process Decision ---
+
+            # --- Process Decision (with validation) ---
             if not (isinstance(decision_val, list) and len(decision_val) == 2 and isinstance(decision_val[0], Symbol)):
                 raise SexpEvaluationError(
                     f"iterative-loop: Controller must return a list of (action_symbol value), got: {decision_val!r}",
@@ -610,8 +632,7 @@ class SexpEvaluator:
             elif action_str == "continue":
                 logger.info(f"Loop continuing to next iteration. Next input: {str(action_value)[:100]}...")
                 current_loop_input = action_value
-                # Store last executor result as potential fallback result if max_iterations is hit next
-                loop_result = executor_result # CORRECT ASSIGNMENT
+                # loop_result = executor_result # Don't update loop_result here, only on stop or max_iter
                 current_iteration += 1
             else: # Handle invalid action symbols
                 raise SexpEvaluationError(
@@ -621,9 +642,9 @@ class SexpEvaluator:
         # --- End While Loop ---
         else: # Loop finished because current_iteration > max_iter_val
             logger.info(f"Loop finished after reaching max_iterations ({max_iter_val}). Returning last executor result.")
-            # loop_result already holds the result from the last successful executor call if loop finished by max_iterations
-            # If loop was exited by 'stop', loop_result was set to action_value.
-            # If max_iter_val was 0, loop_result remains its initial value ([]).
+            # --- CORRECTED ASSIGNMENT ---
+            # If the loop finished naturally, the result is the last executor result
+            loop_result = last_exec_result_val
 
         logger.info(f"SexpEvaluator._eval_iterative_loop END. Iterations: {current_iteration-1 if current_iteration > 0 else 0}. Final loop_result type: {type(loop_result)}")
         logger.debug(f"SexpEvaluator._eval_iterative_loop END -> {str(loop_result)[:200]}...")
