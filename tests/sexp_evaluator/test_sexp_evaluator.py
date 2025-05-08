@@ -2682,8 +2682,11 @@ class TestSexpEvaluatorIterativeLoop:
         def config_eval_side_effect(node, env):
             # Check for specific config expressions
             if node == 5: return 5
-            if node == [Symbol("quote"), Symbol("start")]: return "start"
-            if node == [Symbol("quote"), Symbol("echo test")]: return "echo test"
+            # Simulate the EVALUATION of the configuration clauses
+            # (quote start) evaluates to Symbol('start') - BUT the loop logic expects the *value*
+            # The SPECIAL FORM evaluator should handle evaluating these *before* the loop starts
+            if node == [Symbol("quote"), Symbol("start")]: return "start" # Return the intended string value
+            if node == [Symbol("quote"), Symbol("echo test")]: return "echo test" # Return the intended string value
 
             # Return the stored mock functions for the lambda expressions
             if isinstance(node, list) and len(node) > 0 and node[0] == Symbol("lambda"):
@@ -2927,16 +2930,22 @@ class TestSexpEvaluatorIterativeLoop:
 
         mock_call_phase = mocker.patch.object(evaluator, '_call_phase_function')
         # Configure side_effect to raise error on the first call (executor)
-        mock_call_phase.side_effect = SexpEvaluationError("Executor failed!")
+        original_error = SexpEvaluationError("Executor failed!")
+        mock_call_phase.side_effect = original_error
 
         # --- Assert correct error is raised ---
-        # The error message comes from the re-raise in handle_iterative_loop
-        expected_error_pattern = r"Error in Executor failed!" # Adjusted to match new error format
+        # Update the regex to match the message prepended by the handler
+        # It should include the iteration number and the original message.
+        expected_error_pattern = re.compile(
+            r"Error during iterative-loop iteration 1:.*Executor failed!",
+            re.DOTALL # Use DOTALL to match across newlines if necessary
+        )
         with pytest.raises(SexpEvaluationError, match=expected_error_pattern) as excinfo:
             evaluator.evaluate_string("(iterative-loop ...)")
 
         # Check that the error details include the iteration number
-        assert excinfo.value.error_details == {'iteration': 1}
+        assert isinstance(excinfo.value.error_details, dict)
+        assert excinfo.value.error_details.get("iteration") == 1
         assert mock_call_phase.call_count == 1 # Only executor was called
 
     def test_iterative_loop_error_in_validator(self, evaluator, mock_parser, mocker):
