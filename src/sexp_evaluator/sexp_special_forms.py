@@ -492,69 +492,77 @@ class SpecialFormProcessor:
         last_exec_result_val: Any = loop_result # Store last successful exec result
 
         # Create the *loop-config* data structure (association list)
+        # This will be passed as an argument, not bound to the environment.
         loop_config_data = [
             [Symbol("max-iterations"), max_iter_val],
-            [Symbol("initial-director-input"), current_director_input_val] # Use the already evaluated initial input
+            [Symbol("initial-director-input"), current_director_input_val]
         ]
-        logger.debug(f"  Loop Init: max_iter_val={max_iter_val}, initial_director_input_val={current_director_input_val!r}, loop_config_data={loop_config_data!r}")
+        logger.debug(f"  Loop Init: loop_config_data={loop_config_data!r}")
+
+        # ... (Initialize loop state: current_iteration, loop_result, last_exec_result_val) ...
+        # current_iteration, loop_result, last_exec_result_val are initialized before this block
 
         # 5. Main Loop
         while current_iteration <= max_iter_val:
             logger.debug(f"  Loop Iteration {current_iteration}/{max_iter_val}")
 
-            # Create the phase-specific environment with *loop-config*
-            phase_execution_env = env.extend({"*loop-config*": loop_config_data})
-            logger.debug(f"    Created phase_execution_env id={id(phase_execution_env)} with parent id={id(env)} and bindings: {phase_execution_env.get_local_bindings()}")
+            # Use the original outer 'env' for phase calls, as dynamic binding is removed.
+            phase_call_env = env
 
             try:
                 # b. Director Phase
-                # --- FIX: Pass phase_execution_env ---
+                # Pass loop_config_data as the last argument
                 plan_val = self.evaluator._call_phase_function(
-                    "director", director_fn, [current_director_input_val, current_iteration],
-                    phase_execution_env, original_expr_str, current_iteration # Pass correct env
+                    "director", director_fn, [current_director_input_val, current_iteration, loop_config_data],
+                    phase_call_env, original_expr_str, current_iteration
                 )
-                # --- END FIX ---
                 logger.debug(f"    Director result: {str(plan_val)[:200]}...")
 
                 # c. Executor Phase
-                # --- FIX: Pass phase_execution_env ---
+                # Pass loop_config_data as the last argument
                 exec_result_val = self.evaluator._call_phase_function(
-                    "executor", executor_fn, [plan_val, current_iteration],
-                    phase_execution_env, original_expr_str, current_iteration # Pass correct env
+                    "executor", executor_fn, [plan_val, current_iteration, loop_config_data],
+                    phase_call_env, original_expr_str, current_iteration
                 )
-                # --- END FIX ---
                 logger.debug(f"    Executor result: {str(exec_result_val)[:200]}...")
-                last_exec_result_val = exec_result_val # Store last successful exec result
+                last_exec_result_val = exec_result_val
 
                 # d. Evaluator Phase
-                # --- FIX: Pass phase_execution_env ---
+                # Pass loop_config_data as the last argument
                 eval_feedback_val = self.evaluator._call_phase_function(
-                    "evaluator", evaluator_fn, [exec_result_val, plan_val, current_iteration],
-                    phase_execution_env, original_expr_str, current_iteration # Pass correct env
+                    "evaluator", evaluator_fn, [exec_result_val, plan_val, current_iteration, loop_config_data],
+                    phase_call_env, original_expr_str, current_iteration
                 )
-                # --- END FIX ---
                 logger.debug(f"    Evaluator result: {str(eval_feedback_val)[:200]}...")
 
                 # e. Controller Phase
-                # --- FIX: Pass phase_execution_env ---
+                # Pass loop_config_data as the last argument
                 decision_val = self.evaluator._call_phase_function(
-                    "controller", controller_fn, [eval_feedback_val, plan_val, exec_result_val, current_iteration],
-                    phase_execution_env, original_expr_str, current_iteration # Pass correct env
+                    "controller", controller_fn, [eval_feedback_val, plan_val, exec_result_val, current_iteration, loop_config_data],
+                    phase_call_env, original_expr_str, current_iteration
                 )
-                # --- END FIX ---
                 logger.debug(f"    Controller result: {str(decision_val)[:200]}...")
-            except Exception as phase_error:
-                # Catch errors from _call_phase_function (which already wraps SexpEvaluationError)
-                logging.exception(f"  Error during loop iteration {current_iteration}: {phase_error}")
-                # Re-raise, ensuring it's SexpEvaluationError with loop context
-                if isinstance(phase_error, SexpEvaluationError):
-                    # If it already has context, maybe just re-raise? Or add more?
-                    # For now, just re-raise to avoid losing original details.
-                    raise phase_error
-                else:
-                    raise SexpEvaluationError(f"Unexpected error during loop iteration {current_iteration}: {phase_error}", original_expr_str, error_details=str(phase_error)) from phase_error
 
-            # f. Validate decision_val (VALIDATION ADDED)
+            # ... (Error handling for phase_error remains the same) ...
+            except Exception as phase_error:
+                 logging.exception(f"  Error during loop iteration {current_iteration}: {phase_error}")
+                 if isinstance(phase_error, SexpEvaluationError):
+                     details = phase_error.error_details or {}
+                     if "iteration" not in details:
+                         details["iteration"] = current_iteration
+                     raise SexpEvaluationError(
+                         phase_error.args[0] if phase_error.args else str(phase_error),
+                         original_expr_str,
+                         error_details=details
+                     ) from phase_error
+                 else:
+                     raise SexpEvaluationError(
+                         f"Unexpected error during loop iteration {current_iteration}: {phase_error}",
+                         original_expr_str,
+                         error_details={"iteration": current_iteration, "original_error": str(phase_error)}
+                     ) from phase_error
+
+            # ... (Decision validation and processing remains the same) ...
             if not (isinstance(decision_val, list) and len(decision_val) == 2 and isinstance(decision_val[0], Symbol)):
                 raise SexpEvaluationError(
                     f"director-evaluator-loop: Controller must return a list of (action_symbol value), got: {decision_val!r}",
