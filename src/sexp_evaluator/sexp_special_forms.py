@@ -507,7 +507,6 @@ class SpecialFormProcessor:
             logger.debug(f"    Created phase_execution_env id={id(phase_execution_env)} with parent id={id(env)} and bindings: {phase_execution_env.get_local_bindings()}")
 
             try:
-            try:
                 # b. Director Phase
                 # Use the evaluator's helper which handles quoting and error wrapping
                 plan_val = self.evaluator._call_phase_function( 
