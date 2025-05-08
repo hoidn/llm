@@ -79,19 +79,6 @@ DEFATOM_GENERATE_PLAN_S_EXPRESSION = """
 # S-expression to define the combined analysis task
 DEFATOM_COMBINED_ANALYSIS_S_EXPRESSION = """
 (defatom user:evaluate-and-retry-analysis
-  (params
-    (original_goal string)
-    (aider_instructions string) ;; The prompt given to Aider this round
-    (aider_status string) ;; Status of the aider:automatic task result
-    (aider_diff string) ;; Content (diff/error) from the aider:automatic task result
-    (test_command string)
-    (test_stdout string)
-    (test_stderr string)
-    (test_exit_code int)
-    (previous_files list) ;; <-- ADD THIS LINE
-    (iteration integer)
-    (max_retries integer)
-  )
   (instructions
     "You are an AI evaluator reviewing a coding task iteration ({{iteration}}/{{max_retries}}).
     Goal: {{original_goal}}
@@ -121,6 +108,19 @@ DEFATOM_COMBINED_ANALYSIS_S_EXPRESSION = """
     Ensure 'next_prompt' is provided *only* if verdict is 'RETRY'.
     If you output \"verdict\":\"RETRY\" you must echo a non-empty \"files\" array; otherwise the controller will reuse the prior list.
     **IMPORTANT:** Your entire response MUST be the JSON object itself, starting with `{` and ending with `}`."
+  )
+  (params
+    (original_goal string)
+    (aider_instructions string) ;; The prompt given to Aider this round
+    (aider_status string) ;; Status of the aider:automatic task result
+    (aider_diff string) ;; Content (diff/error) from the aider:automatic task result
+    (test_command string)
+    (test_stdout string)
+    (test_stderr string)
+    (test_exit_code int)
+    (previous_files list) ;; <-- ADD THIS LINE
+    (iteration integer)
+    (max_retries integer)
   )
   (output_format ((type "json") (schema "src.system.models.CombinedAnalysisResult")))
   (description "Analyzes Aider and test results, determines success/failure/retry, and provides the next prompt if needed.")
