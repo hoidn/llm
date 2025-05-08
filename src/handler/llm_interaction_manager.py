@@ -3,6 +3,8 @@ import logging
 import os  # Add os import for environment variable checking
 import asyncio         # NEW – we’ll manage a dedicated event-loop
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Type, Union
+import uuid  # ADDED for unique task identifier
+from datetime import datetime  # ADDED for timestamp
 
 # Import pydantic-ai directly
 import pydantic_ai
@@ -395,17 +397,33 @@ class LLMInteractionManager:
 
                 # Log the full prompt and context to a file for debugging
                 try:
+                    task_id = str(uuid.uuid4())
+                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+                    log_filename_base = f"llm_full_prompt_{timestamp}_{task_id}"
+                    
                     log_data = {
+                        "task_id": task_id,
+                        "timestamp": timestamp,
                         "system_prompt": current_system_prompt,
                         "conversation_history": [msg.model_dump(exclude_none=True, round_trip=True) if hasattr(msg, 'model_dump') else str(msg) for msg in conversation_history],
                         "prompt": prompt,
                         "model_used": target_model_id_for_log, # Log which model was used
                     }
-                    with open("llm_full_prompt.log", "w") as _f:
-                        _f.write(json.dumps(log_data, indent=2))
-                    logger.info("LLM full prompt written to llm_full_prompt.log")
+
+                    # Write to .log file (human-readable, might be same as JSON or different format if preferred)
+                    log_file_path = f"{log_filename_base}.log"
+                    with open(log_file_path, "w") as _f:
+                        _f.write(json.dumps(log_data, indent=2)) # Currently same as JSON
+                    logger.info(f"LLM full prompt written to {log_file_path}")
+
+                    # Write to .json file (structured data)
+                    json_file_path = f"{log_filename_base}.json"
+                    with open(json_file_path, "w") as _f_json:
+                        json.dump(log_data, _f_json, indent=2)
+                    logger.info(f"LLM full prompt JSON data written to {json_file_path}")
+
                 except Exception as _e:
-                    logger.error(f"Failed to write full LLM prompt to file: {_e}")
+                    logger.error(f"Failed to write full LLM prompt to file(s): {_e}")
 
                 # Handle tools_override and active_tools
                 # --- START FIX for tools precedence ---
