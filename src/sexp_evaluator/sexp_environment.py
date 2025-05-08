@@ -31,8 +31,13 @@ class SexpEnvironment:
             parent: An optional parent environment for creating nested scopes.
                     Defaults to None, indicating a top-level scope.
         """
-        self._bindings: Dict[str, Any] = bindings if bindings is not None else {}
+        # --- START FIX ---
+        # Store a COPY of the bindings dictionary to prevent potential
+        # issues with external modifications if the original dict reference was stored.
+        self._bindings: Dict[str, Any] = bindings.copy() if bindings is not None else {}
+        # --- END FIX ---
         self._parent: Optional['SexpEnvironment'] = parent
+        # Keep the logging
         logging.debug(f"Initialized SexpEnvironment (Parent: {parent is not None}, Bindings: {list(self._bindings.keys())})")
 
     def lookup(self, name: str) -> Any:
