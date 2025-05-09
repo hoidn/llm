@@ -379,18 +379,18 @@ class SpecialFormProcessor:
         count_expr, body_expr = arg_exprs
 
         try:
-            logging.debug(f"  Evaluating loop count expression: {count_expr}")
+            logger.debug(f"  Evaluating loop count expression: {count_expr}")
             count_value = self.evaluator._eval(count_expr, env)
-            logging.debug(f"  Loop count expression evaluated to: {count_value} (Type: {type(count_value)})")
+            logger.debug(f"  Loop count expression evaluated to: {count_value} (Type: {type(count_value)})")
         except SexpEvaluationError as e_count: 
-            logging.exception(f"Error evaluating loop count expression '{count_expr}': {e_count}")
+            logger.exception(f"Error evaluating loop count expression '{count_expr}': {e_count}")
             raise SexpEvaluationError(
                 f"Error evaluating loop count expression: {e_count.args[0] if e_count.args else str(e_count)}",
                 expression=original_expr_str, 
                 error_details=f"Failed on count_expr='{e_count.expression if hasattr(e_count, 'expression') else count_expr}'. Original detail: {e_count.error_details if hasattr(e_count, 'error_details') else str(e_count)}"
             ) from e_count
         except Exception as e: 
-            logging.exception(f"Error evaluating loop count expression '{count_expr}': {e}")
+            logger.exception(f"Error evaluating loop count expression '{count_expr}': {e}")
             raise SexpEvaluationError(f"Error evaluating loop count expression: {count_expr}", original_expr_str, error_details=str(e)) from e
 
         if not isinstance(count_value, int):
@@ -400,33 +400,33 @@ class SpecialFormProcessor:
 
         n = count_value
         if n == 0:
-            logging.debug("Loop count is 0, skipping body execution and returning [].")
+            logger.debug("Loop count is 0, skipping body execution and returning [].")
             return [] 
 
         last_result: Any = [] 
-        logging.debug(f"Starting loop execution for {n} iterations.")
+        logger.debug(f"Starting loop execution for {n} iterations.")
         for i in range(n):
             iteration = i + 1
-            logging.debug(f"  Loop iteration {iteration}/{n}. Evaluating body: {body_expr}")
+            logger.debug(f"  Loop iteration {iteration}/{n}. Evaluating body: {body_expr}")
             try:
                 last_result = self.evaluator._eval(body_expr, env)
-                logging.debug(f"  Iteration {iteration}/{n} result: {last_result}")
+                logger.debug(f"  Iteration {iteration}/{n} result: {last_result}")
             except SexpEvaluationError as e_body:
-                logging.exception(f"Error evaluating loop body during iteration {iteration}/{n} for '{body_expr}': {e_body}")
+                logger.exception(f"Error evaluating loop body during iteration {iteration}/{n} for '{body_expr}': {e_body}")
                 raise SexpEvaluationError(
                     f"Error during loop iteration {iteration}/{n}: {e_body.args[0] if e_body.args else str(e_body)}",
                     expression=original_expr_str, 
                     error_details=f"Failed on body_expr='{e_body.expression if hasattr(e_body, 'expression') else body_expr}'. Original detail: {e_body.error_details if hasattr(e_body, 'error_details') else str(e_body)}"
                 ) from e_body
             except Exception as e: 
-                logging.exception(f"Unexpected error evaluating loop body during iteration {iteration}/{n} for '{body_expr}': {e}")
+                logger.exception(f"Unexpected error evaluating loop body during iteration {iteration}/{n} for '{body_expr}': {e}")
                 raise SexpEvaluationError(
                     f"Unexpected error during loop iteration {iteration}/{n} processing body '{body_expr}': {str(e)}",
                     expression=original_expr_str,
                     error_details=str(e)
                 ) from e
                 
-        logging.debug(f"SpecialFormProcessor.handle_loop_form finished after {n} iterations. Returning last result: {last_result}")
+        logger.debug(f"SpecialFormProcessor.handle_loop_form finished after {n} iterations. Returning last result: {last_result}")
         return last_result
 
     def handle_director_evaluator_loop(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> Any:
@@ -731,7 +731,6 @@ class SpecialFormProcessor:
         )
         """
         logger.debug(f"SpecialFormProcessor.handle_iterative_loop START: {original_expr_str}")
-        # --- REMOVED DEBUG LOGGING ---
 
         # 1. Parse and Validate Loop Structure
         clauses: Dict[str, SexpNode] = {}
@@ -769,7 +768,7 @@ class SpecialFormProcessor:
                     f"'max-iterations' must evaluate to a non-negative integer, got {max_iter_val!r} (type: {type(max_iter_val)}).",
                     original_expr_str
                 )
-        except SexpEvaluationError as e:
+        except SexpEvaluationError:
             # Re-raise SexpEvaluationError directly to preserve its details
             raise
         except Exception as e:
@@ -779,16 +778,9 @@ class SpecialFormProcessor:
             current_loop_input = self.evaluator._eval(clauses["initial-input"], env)
             logger.debug(f"iterative-loop: Evaluated 'initial-input' to: {current_loop_input!r} (Type: {type(current_loop_input)})")
             
-            # Log the type and value BEFORE any potential conversion
-            logger.info(f"iterative-loop: BEFORE conversion - current_loop_input type: {type(current_loop_input)}, value: {current_loop_input!r}")
-            
             # Handle Quoted objects by extracting their inner value
             if isinstance(current_loop_input, sexpdata_Quoted):
                 try:
-                    # Log detailed information about the Quoted object
-                    logger.debug(f"iterative-loop: Found Quoted object: {repr(current_loop_input)}")
-                    logger.debug(f"iterative-loop: Quoted object dir(): {dir(current_loop_input)}")
-                    
                     # Try multiple attribute names that might contain the inner value
                     inner_val = None
                     for attr_name in ['x', 'val', 'value', '_value']:
@@ -814,14 +806,11 @@ class SpecialFormProcessor:
                     logger.exception(f"iterative-loop: Error extracting value from Quoted object: {e_quoted}")
             
             # Handle Symbol objects by converting to their string value
-            # Do this AFTER handling Quoted objects to also convert any Symbol extracted from a Quoted object
             if isinstance(current_loop_input, Symbol):
                 logger.debug(f"iterative-loop: Converting Symbol to string: {current_loop_input!r}")
                 current_loop_input = current_loop_input.value()
                 logger.debug(f"iterative-loop: Converted Symbol 'initial-input' to string: {current_loop_input}")
             
-            # Log the type and value AFTER any potential conversion
-            logger.info(f"iterative-loop: AFTER conversion - current_loop_input type: {type(current_loop_input)}, value: {current_loop_input!r}")
         except Exception as e:
             raise SexpEvaluationError(f"iterative-loop: Error evaluating 'initial-input': {e}", original_expr_str, error_details=str(e)) from e
 
@@ -865,24 +854,16 @@ class SpecialFormProcessor:
 
         # 5. Main Loop
         while current_iteration <= max_iter_val:
-            logger.info(f"--- Iterative Loop: Iteration {current_iteration}/{max_iter_val} ---")
+            logger.debug(f"--- Iterative Loop: Iteration {current_iteration}/{max_iter_val} ---")
 
             try:
                 # --- Executor Phase ---
-                logger.info(f"--- Iterative Loop: Before executor call in iteration {current_iteration}/{max_iter_val} ---")
-                logger.info(f"  current_loop_input type: {type(current_loop_input)}")
-                logger.info(f"  current_loop_input value: {current_loop_input!r}")
-                logger.info(f"  executor_fn type: {type(executor_fn)}")
-                if hasattr(executor_fn, 'params_ast'):
-                    logger.info(f"  executor_fn params: {executor_fn.params_ast}")
-            
                 executor_result = self.evaluator._call_phase_function(
                     "executor", executor_fn, [current_loop_input, current_iteration],
                     env, original_expr_str, current_iteration
                 )
-                logger.info(f"  executor_result type: {type(executor_result)}")
-                logger.info(f"  executor_result value: {executor_result!r}")
-            
+                logger.debug(f"  executor_result type: {type(executor_result)}")
+                
                 last_exec_result_val = executor_result # Store potentially final result
 
                 # --- Validator Phase ---
@@ -900,7 +881,6 @@ class SpecialFormProcessor:
             except Exception as phase_error:
                 logger.exception(f"  Error during iterative-loop iteration {current_iteration}: {phase_error}")
                 
-                # Simplify error handling for better test matching
                 # Always include iteration in both message and details
                 error_details = {"iteration": current_iteration}
                 
@@ -929,7 +909,6 @@ class SpecialFormProcessor:
                 logger.error(f"Re-raising error from iterative-loop: {error_msg}")
                 raise new_error from phase_error
 
-
             # --- Process Decision (with validation) ---
             if not (isinstance(decision_val, list) and len(decision_val) == 2 and isinstance(decision_val[0], Symbol)):
                 raise SexpEvaluationError(
@@ -942,13 +921,11 @@ class SpecialFormProcessor:
             action_str = action_symbol.value()
 
             if action_str == "stop":
-                logger.info(f"iterative-loop: Stopping at iteration {current_iteration} due to controller 'stop'. Final result: {str(action_value)[:100]}...")
-                logger.debug(f"DEBUG: action_value type={type(action_value)}, value={action_value!r}")
+                logger.debug(f"iterative-loop: Stopping at iteration {current_iteration} due to controller 'stop'.")
                 loop_result = action_value
-                logger.debug(f"DEBUG: loop_result after assignment: type={type(loop_result)}, value={loop_result!r}")
                 break 
             elif action_str == "continue":
-                logger.info(f"iterative-loop: Continuing to next iteration. Next input: {str(action_value)[:100]}...")
+                logger.debug(f"iterative-loop: Continuing to next iteration.")
                 current_loop_input = action_value
                 current_iteration += 1
             else: 
@@ -957,16 +934,14 @@ class SpecialFormProcessor:
                     original_expr_str
                 )
         else: # Loop finished because current_iteration > max_iter_val (and not stopped early)
-            logger.info(f"iterative-loop: Finished after reaching max_iterations ({max_iter_val}). Returning last executor result.")
+            logger.debug(f"iterative-loop: Finished after reaching max_iterations ({max_iter_val}).")
             # If we never executed anything (max_iter was 0), return empty list
             if last_exec_result_val is None:
                 loop_result = []
             else:
                 loop_result = last_exec_result_val
 
-        logger.info(f"SpecialFormProcessor.handle_iterative_loop END. Iterations run: {current_iteration-1 if max_iter_val > 0 else 0}. Final loop_result type: {type(loop_result)}")
-        logger.debug(f"SpecialFormProcessor.handle_iterative_loop END -> {str(loop_result)[:200]}...")
-        logger.debug(f"DEBUG: Final return value from handle_iterative_loop: type={type(loop_result)}, value={loop_result!r}")
+        logger.debug(f"SpecialFormProcessor.handle_iterative_loop END -> {loop_result}")
         return loop_result
 
     def handle_and_form(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> Any:
