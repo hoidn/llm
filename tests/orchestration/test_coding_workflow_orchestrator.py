@@ -160,7 +160,7 @@ def test_execute_code_success(mock_app):
     assert task_result_obj.notes.get("success") is True
     
     mock_app.handle_task_command.assert_called_once_with(
-        "aider:automatic",
+        "aider_automatic",
         params={"prompt": "Implement function foo", "relative_editable_files": ["src/foo.py"]}
     )
 
@@ -233,7 +233,7 @@ def test_validate_code_tests_pass(mock_app):
     assert "All tests passed!" in task_result_obj.content
     
     mock_app.handle_task_command.assert_called_once_with(
-        "system:execute_shell_command",
+        "system_execute_shell_command",
         params={"command": "pytest my_tests"}
     )
 

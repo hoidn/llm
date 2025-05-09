@@ -250,20 +250,19 @@ class CodingWorkflowOrchestrator:
             if analysis_decision.verdict == "SUCCESS":
                 self.overall_success = True
                 self.logger.info("Workflow iteration successful and complete based on analysis LLM verdict!")
-                # Construct a new, definitive SUCCESS result for the orchestrator
                 self.final_loop_result = {
                     "status": "COMPLETE", 
-                    "content": analysis_decision.message, 
+                    "content": aider_result.content if aider_result else "Aider execution result not available for successful iteration.", # <<< MODIFIED LINE
                     "criteria": None, 
                     "parsedContent": None, 
                     "notes": {
-                        "reason_for_success": "Analysis LLM confirmed goal achieved and tests passed.",
+                        "reason_for_success": analysis_decision.message, # Analysis message goes into notes
                         "final_aider_result_status": aider_result.status if aider_result else "N/A",
-                        "final_aider_content": aider_result.content if aider_result else "N/A",
+                        # "final_aider_content": aider_result.content if aider_result else "N/A", # Redundant with top-level content
                         "final_test_result_status": test_result.status if test_result else "N/A",
                         "final_test_stdout": test_result.content if test_result and test_result.status == "COMPLETE" else "",
                         "final_test_exit_code": test_result.notes.get("exit_code", -1) if test_result and test_result.notes else -1,
-                        "analysis_message": analysis_decision.message
+                        "analysis_message": analysis_decision.message # Keep analysis message in notes too
                     }
                 }
                 break

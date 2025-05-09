@@ -61,12 +61,12 @@ def test_execute_body_success(executor, mock_handler):
         file_context=None # Executor passes None for file_context
     )
     mock_handler._execute_llm_call.assert_called_once_with(
-        prompt="Do something with test_value.", # Check substituted main prompt
-        system_prompt_override="Mocked System Prompt", # Result from _build_system_prompt
-        tools_override=None, # Executor doesn't pass tools
-        output_type_override=None, # Adjust if task_def specifies output
-        model_override=task_def.get("model"),
-        history_config=None
+        prompt="Do something with test_value.",
+        system_prompt_override="Mocked System Prompt", # Ensure this matches what _build_system_prompt returns
+        tools_override=None,
+        output_type_override=None,
+        model_override=task_def.get("model"), # Will be None if not in task_def
+        history_config=None # Default if not passed to execute_body
     )
 
 def test_execute_body_missing_param(executor, mock_handler):
@@ -194,8 +194,8 @@ def test_execute_body_no_instructions(executor, mock_handler):
         system_prompt_override="Mocked System Prompt",
         tools_override=None,
         output_type_override=None,
-        model_override=task_def.get("model"),
-        history_config=None
+        model_override=task_def.get("model"), # Will be None if not in task_def
+        history_config=None # Default if not passed to execute_body
     )
 
 def test_substitute_large_dict_param(executor, mock_handler, caplog):
