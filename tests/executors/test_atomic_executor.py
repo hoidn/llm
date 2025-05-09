@@ -65,7 +65,8 @@ def test_execute_body_success(executor, mock_handler):
         system_prompt_override="Mocked System Prompt", # Result from _build_system_prompt
         tools_override=None, # Executor doesn't pass tools
         output_type_override=None, # Adjust if task_def specifies output
-        # Add checks for model_override if applicable and supported by handler
+        model_override=task_def.get("model"),
+        history_config=None
     )
 
 def test_execute_body_missing_param(executor, mock_handler):
@@ -193,6 +194,8 @@ def test_execute_body_no_instructions(executor, mock_handler):
         system_prompt_override="Mocked System Prompt",
         tools_override=None,
         output_type_override=None,
+        model_override=task_def.get("model"),
+        history_config=None
     )
 
 def test_substitute_large_dict_param(executor, mock_handler, caplog):

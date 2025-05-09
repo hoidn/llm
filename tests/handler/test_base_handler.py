@@ -202,8 +202,9 @@ def test_execute_file_path_command_success(
     mock_exec_safe.return_value = {
         "success": True,
         "exit_code": 0,
-        "output": "file1.py\n./subdir/file2.py\nnonexistent.py",
-        "error": "",
+        "stdout": "file1.py\n./subdir/file2.py\nnonexistent.py", # Key changed
+        "stderr": "",                                           # Key changed
+        "error_message": None                                   # Added key
     }
     mock_parse_paths.return_value = ["file1.py", "subdir/file2.py", "nonexistent.py"]
 
@@ -241,7 +242,7 @@ def test_execute_file_path_command_success(
     # Assert
     mock_exec_safe.assert_called_once_with(command, cwd="/test/base", timeout=10)
     mock_parse_paths.assert_called_once_with(
-        "file1.py\n./subdir/file2.py\nnonexistent.py"
+        "file1.py\n./subdir/file2.py\nnonexistent.py", base_dir="/test/base" # Ensure base_dir is passed
     )
     # Check that the returned paths are absolute and exist
     expected_paths = [

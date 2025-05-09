@@ -54,7 +54,7 @@ class TestAiderExecutorFunctions:
         # Arrange
         input_params = {
             "prompt": "Refactor this code.",
-            "file_context": json.dumps(["file1.py", "util/helper.py"]) # Pass as JSON string
+            "file_context": json.dumps(["file1.py", "util/helper.py"])
         }
         # Simulate bridge returning a successful TaskResult dict
         mock_response_dict = _create_task_result_dict(content="Refactoring diff...", notes={"success": True})
