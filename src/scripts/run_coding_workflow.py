@@ -45,7 +45,7 @@ from src.main import Application
 from src.orchestration.coding_workflow_orchestrator import CodingWorkflowOrchestrator # Import the orchestrator
 
 # --- Logging Setup ---
-LOG_LEVEL = logging.INFO 
+LOG_LEVEL = logging.DEBUG 
 logging.basicConfig(
     level=LOG_LEVEL,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
