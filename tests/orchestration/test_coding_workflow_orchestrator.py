@@ -2,12 +2,13 @@ import pytest
 import json
 from unittest.mock import MagicMock, patch
 from src.orchestration.coding_workflow_orchestrator import CodingWorkflowOrchestrator
-from src.system.models import DevelopmentPlan, TaskResult # Add TaskResult for _execute_code mock if needed later
+from src.system.models import DevelopmentPlan, TaskResult, CombinedAnalysisResult # Added CombinedAnalysisResult
+from src.main import Application # Added Application for spec
 
 # Mock Application for basic instantiation tests
 @pytest.fixture
 def mock_app():
-    app = MagicMock()
+    app = MagicMock(spec=Application) # Use spec for better mocking
     # If Application methods are called in __init__ or early, mock them here
     # For now, a simple MagicMock should suffice for instantiation.
     return app
@@ -26,39 +27,40 @@ def test_orchestrator_instantiation(mock_app):
     assert orchestrator.app == mock_app
     assert orchestrator.max_retries == 2
 
-def test_orchestrator_run_completes_with_stubs(mock_app):
-    """Test that the run() method completes using the stubbed phase methods."""
+def test_orchestrator_run_completes_with_stub_logic(mock_app): # Renamed for clarity
+    """
+    Test that the run() method completes using mocked phase methods
+    to simulate the original stub logic.
+    """
     orchestrator = CodingWorkflowOrchestrator(
         app=mock_app,
         initial_goal="Test Goal",
         initial_context="Test Context",
         test_command="pytest tests",
-        max_retries=1 # Limit retries for this stub test
+        max_retries=1
     )
 
-    # Setup mock_app for _generate_plan (Phase 2 version) to succeed
-    mock_plan_data = {"instructions": "Dummy plan instructions", "files": ["dummy.py"], "test_command": "pytest tests"}
-    mock_app.handle_task_command.return_value = {
-        "status": "COMPLETE",
-        "content": json.dumps(mock_plan_data),
-        "parsedContent": mock_plan_data
-    }
-    
-    # With current stubs for _execute_code, _validate_code, _analyze_iteration,
-    # and a successful _generate_plan, it should complete in 1 iteration.
-    result = orchestrator.run()
-    
-    assert result is not None
-    assert orchestrator.overall_success is True
-    assert result.get("status") == "COMPLETE" # Based on current _analyze_iteration stub
-    assert result.get("content") == "Simulated Aider diff" # Based on current _execute_code stub
-    
-    # Check that _generate_plan was called
-    mock_app.handle_task_command.assert_called_once_with(
-        "user:generate-plan-from-goal",
-        params={"goal": "Test Goal", "context_string": "Test Context"}
-    )
+    # Mock the internal phase methods to behave like the original stubs
+    with patch.object(orchestrator, '_generate_plan', return_value=True) as mock_gen_plan, \
+         patch.object(orchestrator, '_execute_code', return_value=TaskResult(status="COMPLETE", content="Simulated Aider diff", notes={"success": True})) as mock_exec_code, \
+         patch.object(orchestrator, '_validate_code', return_value=TaskResult(status="COMPLETE", content="Simulated test output", notes={"exit_code": 0})) as mock_validate_code, \
+         patch.object(orchestrator, '_analyze_iteration', return_value=CombinedAnalysisResult(verdict="SUCCESS", message="Simulated successful analysis")) as mock_analyze:
 
+        # To simulate _generate_plan setting self.current_plan:
+        orchestrator.current_plan = DevelopmentPlan(instructions="Dummy plan", files=["dummy.py"], test_command="dummy_cmd")
+
+        result = orchestrator.run()
+
+        assert result is not None
+        assert orchestrator.overall_success is True
+        assert result.get("status") == "COMPLETE"
+        assert result.get("content") == "Simulated Aider diff" # This should now pass
+
+        mock_gen_plan.assert_called_once()
+        # If _generate_plan returns True and sets current_plan, these should be called
+        mock_exec_code.assert_called_once()
+        mock_validate_code.assert_called_once()
+        mock_analyze.assert_called_once()
 
 def test_generate_plan_success(mock_app):
     orchestrator = CodingWorkflowOrchestrator(
@@ -69,12 +71,12 @@ def test_generate_plan_success(mock_app):
         max_retries=1
     )
 
-    mock_plan_data = {"instructions": "Generated plan instructions", "files": ["file1.py", "file2.py"], "test_command": "pytest tests"}
-    # Note: DevelopmentPlan.test_command is optional. If the LLM doesn't provide it,
-    # it will default to None or the value from orchestrator.test_command if logic is added.
-    # For this test, we assume the LLM provides it or it's handled.
-    # The current DevelopmentPlan model has test_command as optional.
-
+    # mock_plan_data for this test should not include test_command if it's not expected from the LLM
+    # The DevelopmentPlan model has test_command as optional.
+    # If the LLM is not prompted to return it, it won't be in parsedContent.
+    # The orchestrator's self.test_command is used by _validate_code, not set by _generate_plan.
+    mock_plan_data = {"instructions": "Generated plan instructions", "files": ["file1.py", "file2.py"]}
+    
     mock_app.handle_task_command.return_value = {
         "status": "COMPLETE",
         "content": json.dumps(mock_plan_data), 
@@ -88,7 +90,10 @@ def test_generate_plan_success(mock_app):
     assert isinstance(orchestrator.current_plan, DevelopmentPlan)
     assert orchestrator.current_plan.instructions == "Generated plan instructions"
     assert orchestrator.current_plan.files == ["file1.py", "file2.py"]
-    assert orchestrator.current_plan.test_command == "pytest tests"
+    # The DevelopmentPlan's test_command will be None if not in mock_plan_data,
+    # or it will take a default from the model if one is set.
+    # Let's assert it's None if not provided by the LLM mock.
+    assert orchestrator.current_plan.test_command is None
 
 
     mock_app.handle_task_command.assert_called_once_with(
