@@ -82,6 +82,7 @@
     - Added unit tests for `_analyze_iteration` and integration tests for the `run()` method's loop logic in `tests/orchestration/test_coding_workflow_orchestrator.py`.
     - Updated `src/scripts/run_coding_workflow.py` to use `CodingWorkflowOrchestrator`.
     - Updated `src/orchestration/coding_workflow_orchestrator_IDL.md`.
+- **Fix Tool Invocation Names in Orchestrator:** Changed tool invocation in `CodingWorkflowOrchestrator` from colon-separated (e.g., "aider:automatic") to underscore-separated (e.g., "aider_automatic") to match how tools are registered in `Application`. This resolves "Identifier not found" errors from the `Dispatcher`.
 
 ## Next Steps
 
