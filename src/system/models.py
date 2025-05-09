@@ -246,6 +246,11 @@ class ContextGenerationInput(BaseModel):
     previousOutputs: Optional[str] = None
     matching_strategy: Optional[Literal['content', 'metadata']] = None # Default handled by consumer
 
+class HistoryConfigSettings(BaseModel):
+    use_session_history: bool = Field(True, description="If false, task starts with empty history for LLM call.")
+    history_turns_to_include: Optional[PositiveInt] = Field(None, description="If use_session_history=true, max past turns to include.")
+    record_in_session_history: bool = Field(True, description="If true, this task's turn is added to session history.")
+
 # --- Subtask Request Definition ---
 class SubtaskRequest(BaseModel):
     """
