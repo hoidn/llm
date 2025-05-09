@@ -95,8 +95,8 @@ class CodingWorkflowOrchestrator:
         }
         
         try:
-            self.logger.debug(f"Calling app.handle_task_command for 'aider:automatic' with params: {aider_params}")
-            result_dict = self.app.handle_task_command("aider:automatic", params=aider_params)
+            self.logger.debug(f"Calling app.handle_task_command for 'aider_automatic' with params: {aider_params}")
+            result_dict = self.app.handle_task_command("aider_automatic", params=aider_params)
             
             if not isinstance(result_dict, dict):
                 self.logger.error(f"'aider:automatic' task returned non-dict: {type(result_dict)}. Full response: {result_dict}")
@@ -125,8 +125,8 @@ class CodingWorkflowOrchestrator:
         test_params = {"command": self.test_command}
         
         try:
-            self.logger.debug(f"Calling app.handle_task_command for 'system:execute_shell_command' with params: {test_params}")
-            result_dict = self.app.handle_task_command("system:execute_shell_command", params=test_params)
+            self.logger.debug(f"Calling app.handle_task_command for 'system_execute_shell_command' with params: {test_params}")
+            result_dict = self.app.handle_task_command("system_execute_shell_command", params=test_params)
 
             if not isinstance(result_dict, dict):
                 self.logger.error(f"'system:execute_shell_command' task returned non-dict: {type(result_dict)}. Full response: {result_dict}")
