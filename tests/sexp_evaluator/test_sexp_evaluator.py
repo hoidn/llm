@@ -728,7 +728,7 @@ class TestSexpEvaluatorDefatom:
         with pytest.raises(SexpEvaluationError, match=r"'defatom' task name must be a Symbol"):
             evaluator.evaluate_string('(defatom "name" ...)')
 
-    def test_defatom_missing_params(self, evaluator, mock_parser):
+    def test_defatom_missing_params(self, evaluator, mock_parser, mock_task_system):
         """Test defatom without a (params ...) definition."""
         sexp_ast = [Symbol("defatom"), Symbol("name"), [Symbol("instructions"), "inst"]] # Missing params
         mock_parser.parse_string.return_value = sexp_ast
@@ -2860,7 +2860,7 @@ class TestSexpEvaluatorIterativeLoop:
             
         # Check each call individually with detailed error messages
         try:
-            mock_call_phase.assert_any_call("executor", mock_executor_lambda_func, ["start", 1], mocker.ANY, mocker.ANY, 1)
+            mock_call_phase.assert_any_call("executor", mock_executor_lambda_func, [Symbol("start"), 1], mocker.ANY, mocker.ANY, 1)
             logging.debug("Executor call assertion passed")
         except AssertionError as e:
             logging.error(f"Executor call assertion failed: {e}")
@@ -2877,7 +2877,7 @@ class TestSexpEvaluatorIterativeLoop:
             
         # Controller also receives "start" as current_structured_input for iter 1
         try:
-            mock_call_phase.assert_any_call("controller", mock_controller_lambda_func, [mock_executor_result, mock_validator_result, "start", 1], mocker.ANY, mocker.ANY, 1)
+            mock_call_phase.assert_any_call("controller", mock_controller_lambda_func, [mock_executor_result, mock_validator_result, Symbol("start"), 1], mocker.ANY, mocker.ANY, 1)
             logging.debug("Controller call assertion passed")
         except AssertionError as e:
             logging.error(f"Controller call assertion failed: {e}")

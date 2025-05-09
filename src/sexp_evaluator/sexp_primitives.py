@@ -212,9 +212,29 @@ class PrimitiveProcessor:
                         if field_name_val in target_obj.model_fields:
                             # Field exists in the model definition but might be None/unset
                             logger.debug(f"  'get-field': Field '{field_name_val}' exists in model_fields but not accessible via getattr")
+                            
+                            # Try model_dump (Pydantic v2) to get the actual value
+                            try:
+                                if hasattr(target_obj, "model_dump") and callable(getattr(target_obj, "model_dump")):
+                                    model_dict = target_obj.model_dump()
+                                    if field_name_val in model_dict:
+                                        val = model_dict[field_name_val]
+                                        logger.debug(f"  'get-field': Found in model_dump(): {val!r}")
+                                        return val
+                                # Try dict() method (Pydantic v1)
+                                elif hasattr(target_obj, "dict") and callable(getattr(target_obj, "dict")):
+                                    model_dict = target_obj.dict()
+                                    if field_name_val in model_dict:
+                                        val = model_dict[field_name_val]
+                                        logger.debug(f"  'get-field': Found in dict(): {val!r}")
+                                        return val
+                            except Exception as e:
+                                logger.debug(f"  'get-field': Error in model_dump/dict() access: {e}")
+                            
+                            # If we couldn't get the value from model_dump/dict, return None
                             return None
                     
-                    # Fall back to model_dump only if getattr fails
+                    # Fall back to model_dump only if getattr fails and field not in model_fields
                     try:
                         # Try model_dump (Pydantic v2)
                         if hasattr(target_obj, "model_dump") and callable(getattr(target_obj, "model_dump")):
