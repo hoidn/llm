@@ -144,11 +144,59 @@ class CodingWorkflowOrchestrator:
             })
 
     def _analyze_iteration(self, aider_result: TaskResult, test_result: TaskResult) -> Optional[CombinedAnalysisResult]:
-        self.logger.debug(f"Executing Phase: _analyze_iteration (Iteration: {self.iteration})")
-        # Placeholder
-        self.logger.info("Placeholder: Simulating analysis.")
-        # Simulate success to allow loop to terminate in basic tests
-        return CombinedAnalysisResult(verdict="SUCCESS", message="Simulated successful analysis")
+        self.logger.info(f"Executing Phase: _analyze_iteration (Iteration: {self.iteration})")
+
+        if not self.current_plan: # Should ideally not happen if called within a valid iteration
+            self.logger.error("_analyze_iteration called without a self.current_plan.")
+            self.final_loop_result = {"status": "FAILED", "reason": "Analysis skipped: No current plan."}
+            return None
+
+        analysis_params = {
+            "original_goal": self.initial_goal,
+            "initial_task_context": self.initial_context,
+            "aider_instructions": self.current_plan.instructions,
+            "aider_status": aider_result.status,
+            "aider_diff": aider_result.content, # Pass the diff/output from Aider
+            "test_command": self.test_command, # The command that was run
+            "test_stdout": test_result.content if test_result.status == "COMPLETE" else "", # stdout is in content
+            "test_stderr": test_result.notes.get("stderr", ""),
+            "test_exit_code": test_result.notes.get("exit_code", -1), # Default to -1 if not found
+            "previous_files": self.current_plan.files, # Pass the files used in this iteration
+            "iteration": self.iteration,
+            "max_retries": self.max_retries
+        }
+        
+        try:
+            self.logger.debug(f"Calling app.handle_task_command for 'user:evaluate-and-retry-analysis' with params: {analysis_params}")
+            result_dict = self.app.handle_task_command("user:evaluate-and-retry-analysis", params=analysis_params)
+
+            if not isinstance(result_dict, dict):
+                self.logger.error(f"'user:evaluate-and-retry-analysis' task returned non-dict: {type(result_dict)}. Full response: {result_dict}")
+                self.final_loop_result = {"status": "FAILED", "reason": "Analysis task returned invalid type", "details": f"Expected dict, got {type(result_dict)}"}
+                return None
+            
+            self.logger.debug(f"Raw 'user:evaluate-and-retry-analysis' result_dict: {result_dict}")
+
+            if result_dict.get("status") == "FAILED" or not result_dict.get("parsedContent"):
+                self.logger.error(f"Analysis task failed or no parsedContent. Status: {result_dict.get('status')}, Content: {result_dict.get('content')}")
+                self.final_loop_result = {"status": "FAILED", "reason": "Analysis task failed", "details": result_dict}
+                return None
+            
+            parsed_content = result_dict["parsedContent"]
+            if isinstance(parsed_content, CombinedAnalysisResult):
+                analysis_data = parsed_content
+            elif isinstance(parsed_content, dict):
+                analysis_data = CombinedAnalysisResult.model_validate(parsed_content)
+            else:
+                raise TypeError(f"parsedContent for analysis is not a CombinedAnalysisResult object or a dict, but {type(parsed_content)}")
+                
+            self.logger.info(f"Analysis completed. Verdict: {analysis_data.verdict}, Message: '{analysis_data.message[:50]}...'")
+            return analysis_data
+
+        except Exception as e:
+            self.logger.exception(f"Exception calling/processing app.handle_task_command for 'user:evaluate-and-retry-analysis': {e}")
+            self.final_loop_result = {"status": "FAILED", "reason": "Analysis task call/parsing failed", "details": str(e)}
+            return None
 
     def run(self) -> Dict[str, Any]:
         self.logger.info(f"Starting coding workflow run for goal: '{self.initial_goal[:50]}...'")
@@ -192,7 +240,8 @@ class CodingWorkflowOrchestrator:
 
             if not analysis_decision:
                 self.logger.error(f"Iteration {self.iteration}: Analysis phase failed or returned no decision.")
-                if not self.final_loop_result:  # If not already set by _analyze_iteration
+                # final_loop_result might have been set by _analyze_iteration if it caught an exception
+                if not self.final_loop_result:
                     self.final_loop_result = {"status": "FAILED", "reason": "Analysis phase error (no decision)"}
                 break
 
@@ -200,32 +249,42 @@ class CodingWorkflowOrchestrator:
 
             if analysis_decision.verdict == "SUCCESS":
                 self.overall_success = True
-                self.final_loop_result = aider_result.model_dump() if aider_result else {"status": "COMPLETE", "content": "Success (Aider result N/A)"}
+                self.final_loop_result = aider_result.model_dump() if isinstance(aider_result, TaskResult) else \
+                                       (aider_result if isinstance(aider_result, dict) else {"status": "COMPLETE", "content": str(aider_result)})
                 self.logger.info("Workflow iteration successful and complete!")
                 break
             elif analysis_decision.verdict == "RETRY":
                 if self.current_plan and analysis_decision.next_prompt and analysis_decision.next_files is not None:
-                    # Ensure current_plan is not None before trying to assign to its attributes
                     self.current_plan.instructions = analysis_decision.next_prompt
-                    self.current_plan.files = analysis_decision.next_files # Assuming next_files is List[str]
-                    self.logger.info("Retrying with new plan based on analysis...")
-                else:
-                    self.logger.error("Analysis suggested RETRY but no valid next plan or current_plan missing. Aborting.")
-                    self.final_loop_result = {"status": "FAILED", "reason": "Analysis error: RETRY without valid next plan"}
+                    self.current_plan.files = analysis_decision.next_files
+                    self.logger.info(f"Retrying with new plan: Instr='{self.current_plan.instructions[:50]}...', Files={self.current_plan.files}")
+                elif not self.current_plan:
+                    self.logger.error("Analysis suggested RETRY, but current_plan is None. This should not happen. Aborting.")
+                    self.final_loop_result = {"status": "FAILED", "reason": "Internal error: RETRY with no current_plan"}
+                    break
+                else: # Missing next_prompt or next_files
+                    self.logger.error("Analysis suggested RETRY but no valid next_prompt or next_files provided. Aborting.")
+                    self.final_loop_result = {"status": "FAILED", "reason": "Analysis error: RETRY without valid next plan details"}
                     break
             else:  # FAILURE or unexpected verdict
                 self.logger.info(f"Analysis verdict is {analysis_decision.verdict}. Stopping workflow.")
-                self.final_loop_result = {"status": "FAILED",
-                                          "reason": f"Analysis verdict: {analysis_decision.verdict}",
-                                          "details": analysis_decision.message,
-                                          "analysis_data": analysis_decision.model_dump()}
+                self.final_loop_result = {
+                    "status": "FAILED",
+                    "reason": f"Analysis verdict: {analysis_decision.verdict}",
+                    "details": analysis_decision.message,
+                    "analysis_data": analysis_decision.model_dump()
+                }
                 break
         # End of while loop
 
         if self.iteration >= self.max_retries and not self.overall_success:
             self.logger.warning(f"Max retries ({self.max_retries}) reached. Workflow did not succeed.")
-            if self.final_loop_result is None or self.final_loop_result.get("status") != "FAILED": # Don't overwrite a more specific failure
+            if self.final_loop_result is None: # If loop finished due to max_retries without an explicit failure verdict
                  self.final_loop_result = {"status": "FAILED", "reason": "Max retries reached"}
+            elif self.final_loop_result.get("status") != "FAILED": # Don't overwrite a more specific failure from analysis
+                 self.final_loop_result = {"status": "FAILED", "reason": "Max retries reached", "previous_result": self.final_loop_result}
+
 
         self.logger.info("Coding workflow run finished.")
-        return self.final_loop_result if self.final_loop_result else {"status": "FAILED", "reason": "Workflow ended unexpectedly"}
+        return self.final_loop_result if self.final_loop_result else \
+               {"status": "FAILED", "reason": "Workflow ended unexpectedly without a final result."}

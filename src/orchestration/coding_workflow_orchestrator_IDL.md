@@ -37,9 +37,9 @@ module src.orchestration.coding_workflow_orchestrator {
         // - Manages the iterative loop:
         //   1. Calls an internal method `_generate_plan` (which uses `app.handle_task_command` for "user:generate-plan-from-goal").
         //   2. In a loop (up to `max_retries`):
-        //      a. Calls `_execute_code` (uses `app.handle_task_command` for an Aider task like "aider:automatic" or a more specific one).
+        //      a. Calls `_execute_code` (uses `app.handle_task_command` for an Aider task like "aider:automatic").
         //      b. Calls `_validate_code` (uses `app.handle_task_command` for "system:execute_shell_command").
-        //      c. Calls `_analyze_iteration` (uses `app.handle_task_command` for "user:analyze-aider-result" or "user:evaluate-and-retry-analysis").
+        //      c. Calls `_analyze_iteration` (uses `app.handle_task_command` for "user:evaluate-and-retry-analysis").
         //      d. Based on analysis, either stops (SUCCESS/FAILURE) or updates the plan and continues (RETRY).
         // - Returns the final result dictionary.
         // @raises_error(None) // Errors are typically handled internally and reflected in the returned dictionary's status/error fields.

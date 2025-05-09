@@ -43,7 +43,8 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 # --- Application Imports ---
 from src.main import Application
-from src.sexp_evaluator.sexp_environment import SexpEnvironment
+# from src.sexp_evaluator.sexp_environment import SexpEnvironment # No longer needed for Sexp initial_env
+from src.orchestration.coding_workflow_orchestrator import CodingWorkflowOrchestrator # Add this import
 import json
 
 # --- Logging Setup ---
@@ -256,13 +257,7 @@ def main():
     parser.add_argument("--context-file", help="Optional path to a file containing initial context.")
     parser.add_argument("--test-command", default="pytest tests/", help="The shell command to run for verification.")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging.")
-    parser.add_argument("--trace-sexp", action="store_true", help="Enable detailed S-expression evaluation tracing.")
-    parser.add_argument(
-        "--max-retries",
-        type=int,
-        default=8, # Default to 3 retries
-        help="Maximum number of retry iterations for the coding loop."
-    )
+    parser.add_argument("--max-retries", type=int, default=3, help="Max retry iterations.")
     args = parser.parse_args()
 
     if args.debug:
@@ -271,8 +266,6 @@ def main():
         for handler in logging.getLogger().handlers:
             handler.setLevel(logging.DEBUG)
         logger.info("Debug logging enabled.")
-        
-        # Set environment variable for additional debug info
         os.environ['DEBUG_LLM_FLOW'] = 'true'
 
     initial_user_goal = args.goal
@@ -296,133 +289,77 @@ def main():
     logger.info(f"Using Test Command: {user_test_command}")
     logger.info(f"Using Max Retries: {args.max_retries}")
 
-    # --- Instantiate Application ---
     try:
-        # Ensure Aider is enabled if needed by the workflow
         os.environ['AIDER_ENABLED'] = 'true'
-        
-        logger.info("Initializing Application for coding workflow...")
-        
-        # Explicitly enable Aider via config and set model
         app_config = {
             "aider": {"enabled": True},
             "handler_config": {
                 "default_model_identifier": "google-gla:gemini-2.5-pro-exp-03-25"
-                #"default_model_identifier": "google-gla:gemini-2.0-flash"
             }
         }
-        
-        logger.debug(f"Application config: {json.dumps(app_config, indent=2)}")
-        
-        # Initialize the application with our config
         app = Application(config=app_config)
-        
-        # Verify the model configuration was applied
-        if hasattr(app, 'passthrough_handler') and app.passthrough_handler:
-            model_id = app.passthrough_handler.get_provider_identifier()
-            logger.info(f"Using LLM provider: {model_id}")
-            
-        if args.debug:
-             if hasattr(app, 'passthrough_handler') and app.passthrough_handler:
-                 app.passthrough_handler.set_debug_mode(True)
-             else:
-                 logger.warning("Could not enable debug mode on handler (not found).")
-
+        if args.debug and hasattr(app, 'passthrough_handler') and app.passthrough_handler:
+            app.passthrough_handler.set_debug_mode(True)
         logger.info("Application instantiated.")
-    except Exception as e:
-        logger.exception("Failed to instantiate Application. Exiting.")
-        sys.exit(1)
 
-    # --- !!! ADD THIS STEP: Index the Repository !!! ---
-    logger.info(f"Indexing repository: {PROJECT_ROOT}") # Assuming PROJECT_ROOT is the target
-    index_options = { # Optional: Define specific include/exclude patterns if needed
-         "include_patterns": ["src/**/*.py", "*.py", "*.md"],
-         "exclude_patterns": ["**/venv/**", "**/.*/**", "**/__pycache__/**"]
-    }
-    try:
-        success = app.index_repository(str(PROJECT_ROOT), options=index_options) # Ensure PROJECT_ROOT is string
-        if not success:
-            logger.warning("Repository indexing failed or returned False. Context might be incomplete.")
-            # Decide whether to exit or continue
-        else:
-            logger.info("Repository indexing complete.")
-    except Exception as index_err:
-        logger.exception(f"Error during repository indexing: {index_err}")
-        # Decide whether to exit or continue
-    # --- END ADDED STEP ---
+        logger.info(f"Indexing repository: {PROJECT_ROOT}")
+        index_options = {
+             "include_patterns": ["src/**/*.py", "*.py", "*.md"],
+             "exclude_patterns": ["**/venv/**", "**/.*/**", "**/__pycache__/**"]
+        }
+        app.index_repository(str(PROJECT_ROOT), options=index_options)
+        logger.info("Repository indexing complete (or attempted).")
 
-    # --- Define Atomic Tasks ---
-    logger.info("Defining atomic tasks via defatom...")
-    try:
-        # Execute Plan Generator Defatom
         plan_def_result = app.handle_task_command(DEFATOM_GENERATE_PLAN_S_EXPRESSION)
         if plan_def_result.get("status") == "FAILED":
              logger.error(f"Failed to define 'user:generate-plan-from-goal': {plan_def_result.get('content')}")
              sys.exit(1)
-        logger.debug("Defined 'user:generate-plan-from-goal'")
-
-        # Execute COMBINED Feedback Analyzer Defatom
-        combined_analysis_def_result = app.handle_task_command(DEFATOM_COMBINED_ANALYSIS_S_EXPRESSION)
-        if combined_analysis_def_result.get("status") == "FAILED":
-             logger.error(f"Failed to define 'user:evaluate-and-retry-analysis': {combined_analysis_def_result.get('content')}")
+        
+        analysis_def_result = app.handle_task_command(DEFATOM_COMBINED_ANALYSIS_S_EXPRESSION)
+        if analysis_def_result.get("status") == "FAILED":
+             logger.error(f"Failed to define 'user:evaluate-and-retry-analysis': {analysis_def_result.get('content')}")
              sys.exit(1)
-        logger.debug("Defined 'user:evaluate-and-retry-analysis'")
+        logger.info("Atomic tasks for workflow defined successfully.")
 
-        logger.info("Atomic tasks defined successfully.")
-    except Exception as e:
-         logger.exception("Error occurred while defining atomic tasks. Exiting.")
-         sys.exit(1)
-
-
-    # --- Prepare Initial Parameters for Dispatcher ---
-    initial_params = {
-        "initial-user-goal": initial_user_goal, # Use hyphenated key
-        "initial-context-data": initial_context_data, # Keep hyphenated key
-        "fixed-test-command": user_test_command, # Use hyphenated key to match Sexp
-        "max-iterations-config": args.max_retries, # Use hyphenated key
-        "initial-plan-data": {} # Add empty dict as placeholder for initial plan data
-    }
-    logger.debug(f"Initial parameters for workflow execution: {initial_params}")
-
-    # --- Execute Main Workflow ---
-    logger.info("Executing main workflow S-expression...")
-    try:
-        # Use the main workflow string defined earlier
-        flags = {
-            "is_sexp_string": True,
-            "trace_sexp": args.trace_sexp
-            # REMOVE "initial_env": initial_params from here
-        }
-        logger.debug(f"*** Flags being passed to handle_task_command: {flags}") # Confirm removal
-
-        final_result = app.handle_task_command(
-            identifier=MAIN_WORKFLOW_S_EXPRESSION,
-            params=initial_params, # <<< PASS BINDINGS DICTIONARY HERE
-            flags=flags
+        orchestrator = CodingWorkflowOrchestrator(
+            app=app,
+            initial_goal=initial_user_goal,
+            initial_context=initial_context_data,
+            test_command=user_test_command,
+            max_retries=args.max_retries
         )
-        logger.info("Main workflow execution finished.")
+        
+        logger.info("Executing Python-driven coding workflow...")
+        final_result = orchestrator.run()
+        logger.info("Python-driven coding workflow finished.")
+
     except Exception as e:
-        logger.exception("An error occurred during main workflow execution.")
-        final_result = {"status": "FAILED", "content": f"Python script error: {e}", "notes": {}}
+        logger.exception("An error occurred during main script execution.")
+        final_result = {"status": "SCRIPT_ERROR", "content": f"Python script error: {e}", "notes": {}}
 
-
-    # --- Print Final Result ---
-    print("\n" + "="*20 + " Workflow Final Result " + "="*20)
+    print("\n" + "="*20 + " Workflow Final Result (Python Orchestrator) " + "="*20)
     try:
         print(json.dumps(final_result, indent=2))
         if final_result.get("status") == "FAILED":
             print("\n--- WORKFLOW FAILED ---")
-        elif final_result.get("status") == "COMPLETE":
-             print("\n--- WORKFLOW COMPLETED ---")
+            print(f"Reason: {final_result.get('reason', 'Unknown')}")
+            if "details" in final_result: # Check if 'details' key exists
+                details_content = final_result['details']
+                # If details is a dict (e.g. from model_dump), pretty print it
+                if isinstance(details_content, dict):
+                    print(f"Details: {json.dumps(details_content, indent=2)}")
+                else:
+                    print(f"Details: {details_content}")
+        elif final_result.get("status") == "COMPLETE" or final_result.get("status") == "SUCCESS":
+            print("\n--- WORKFLOW COMPLETED SUCCESSFULLY (according to orchestrator) ---")
         else:
-             print("\n--- WORKFLOW ENDED WITH UNEXPECTED STATUS ---")
+            print(f"\n--- WORKFLOW ENDED WITH STATUS: {final_result.get('status')} ---")
 
     except Exception as e:
         logger.error(f"Error formatting/printing final result: {e}")
         print("\nRaw Final Result:")
         print(final_result)
-    print("="*63)
-
+    print("="*70) # Adjusted length to match the header
 
 if __name__ == "__main__":
     main()

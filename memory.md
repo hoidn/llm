@@ -75,11 +75,18 @@
 - **Define IDL for CodingWorkflowOrchestrator:** Created `src/orchestration/coding_workflow_orchestrator_IDL.md` to specify the public contract of the orchestrator. Updated `docs/IDL.md`, `docs/project_rules.md`, `docs/start_here.md`, and `memory.md` to reflect this.
 - **Implement CodingWorkflowOrchestrator (Phases 3 & 4):** Implemented `_execute_code` method to call `app.handle_task_command` for "aider:automatic" using `current_plan`. Implemented `_validate_code` method to call `app.handle_task_command` for "system:execute_shell_command" using `test_command`. Added comprehensive unit/integration tests for both methods in `tests/orchestration/test_coding_workflow_orchestrator.py`.
 - **Fix `test_generate_plan_success`:** Made `test_command` field optional in `DevelopmentPlan` Pydantic model (`src/system/models.py`) to align with `user:generate-plan-from-goal` task output, resolving `ValidationError` in `_generate_plan` and fixing the test.
+- **Implement CodingWorkflowOrchestrator (Phases 5, 6, 7):**
+    - Added `next_files` to `CombinedAnalysisResult` in `src/system/models.py`.
+    - Implemented `_analyze_iteration` method in `CodingWorkflowOrchestrator` to call "user:evaluate-and-retry-analysis" task.
+    - Finalized the `run()` method logic in `CodingWorkflowOrchestrator`.
+    - Added unit tests for `_analyze_iteration` and integration tests for the `run()` method's loop logic in `tests/orchestration/test_coding_workflow_orchestrator.py`.
+    - Updated `src/scripts/run_coding_workflow.py` to use `CodingWorkflowOrchestrator`.
+    - Updated `src/orchestration/coding_workflow_orchestrator_IDL.md`.
 
 ## Next Steps
 
-1.  **Implement `CodingWorkflowOrchestrator._analyze_iteration()` (Phase 5):** Integrate LLM call via `self.app.handle_task_command` using "user:analyze-aider-result" (or a similar task like "user:evaluate-and-retry-analysis") to get `CombinedAnalysisResult`. This method will take `aider_result: TaskResult` and `test_result: TaskResult` as input.
-2.  **Full Integration and Testing of `CodingWorkflowOrchestrator`**: Write end-to-end tests for the orchestrator's `run()` method, mocking `Application` layer interactions for each phase. Ensure the loop logic (RETRY, SUCCESS, FAILED verdicts) is thoroughly tested.
+1.  **Manual End-to-End Testing:** Thoroughly test `src/scripts/run_coding_workflow.py` with various scenarios (simple success, retry, max retries failure), potentially mocking LLM/Aider interactions for predictability.
+2.  **Review and Refine:** Review the entire `CodingWorkflowOrchestrator` implementation and its tests for clarity, robustness, and adherence to project guidelines.
 3.  **Phase 9.3 Testing:** Implement unit tests for `LLMInteractionManager` and `BaseHandler` to verify the `model_override` logic (if still pending).
 4.  **Phase 8: Aider Integration (Core):** Review and complete core `AiderBridge` implementation and its direct tests if not fully covered by orchestrator tasks. Ensure the "aider:automatic" tool is correctly registered and functional within the `Application` and `AiderExecutorFunctions`.
 

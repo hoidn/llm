@@ -293,3 +293,239 @@ def test_validate_code_app_call_exception(mock_app):
     assert task_result_obj.status == "FAILED"
     assert "Shell command execution task call failed: Shell task execution error" in task_result_obj.content
     assert task_result_obj.notes["error"]["type"] == "ORCHESTRATOR_EXCEPTION"
+
+# Tests for _analyze_iteration (Phase 5)
+
+@pytest.fixture
+def mock_aider_result_success(): # Removed self
+    return TaskResult(status="COMPLETE", content="Aider diff good", notes={"success": True})
+
+@pytest.fixture
+def mock_aider_result_failure(): # Removed self
+    return TaskResult(status="FAILED", content="Aider execution error", notes={})
+
+@pytest.fixture
+def mock_test_result_pass(): # Removed self
+    return TaskResult(status="COMPLETE", content="Tests passed!", notes={"exit_code": 0, "stdout": "PASSED", "stderr": ""})
+
+@pytest.fixture
+def mock_test_result_fail(): # Removed self
+    return TaskResult(status="COMPLETE", content="Tests failed!", notes={"exit_code": 1, "stdout": "FAILED", "stderr": "AssertionError"})
+
+def test_analyze_iteration_suggests_success(mock_app, mock_aider_result_success, mock_test_result_pass):
+    orchestrator = CodingWorkflowOrchestrator(mock_app, "g", "c", "test_cmd", 3)
+    orchestrator.iteration = 1
+    orchestrator.current_plan = DevelopmentPlan(instructions="Plan A", files=["a.py"], test_command="test_cmd")
+
+    mock_analysis_data = {"verdict": "SUCCESS", "message": "All good!"}
+    mock_app.handle_task_command.return_value = {
+        "status": "COMPLETE", 
+        "parsedContent": mock_analysis_data
+    }
+
+    analysis_decision = orchestrator._analyze_iteration(mock_aider_result_success, mock_test_result_pass)
+
+    assert analysis_decision is not None
+    assert analysis_decision.verdict == "SUCCESS"
+    mock_app.handle_task_command.assert_called_once()
+    call_args = mock_app.handle_task_command.call_args[0]
+    assert call_args[0] == "user:evaluate-and-retry-analysis"
+    assert call_args[1]["params"]["aider_status"] == "COMPLETE"
+    assert call_args[1]["params"]["test_exit_code"] == 0
+
+def test_analyze_iteration_suggests_retry(mock_app, mock_aider_result_success, mock_test_result_fail):
+    orchestrator = CodingWorkflowOrchestrator(mock_app, "g", "c", "test_cmd", 3)
+    orchestrator.iteration = 1
+    orchestrator.current_plan = DevelopmentPlan(instructions="Plan A", files=["a.py"], test_command="test_cmd")
+
+    mock_analysis_data = {
+        "verdict": "RETRY", 
+        "next_prompt": "Try fixing X", 
+        "next_files": ["a.py", "b.py"],
+        "message": "Tests failed, suggest retry."
+    }
+    mock_app.handle_task_command.return_value = {
+        "status": "COMPLETE",
+        "parsedContent": mock_analysis_data
+    }
+    
+    analysis_decision = orchestrator._analyze_iteration(mock_aider_result_success, mock_test_result_fail)
+
+    assert analysis_decision is not None
+    assert analysis_decision.verdict == "RETRY"
+    assert analysis_decision.next_prompt == "Try fixing X"
+    assert analysis_decision.next_files == ["a.py", "b.py"]
+    mock_app.handle_task_command.assert_called_once()
+    assert mock_app.handle_task_command.call_args[0][1]["params"]["test_exit_code"] == 1
+
+
+def test_analyze_iteration_suggests_failure(mock_app, mock_aider_result_failure, mock_test_result_fail):
+    orchestrator = CodingWorkflowOrchestrator(mock_app, "g", "c", "test_cmd", 3)
+    orchestrator.iteration = 3 # Simulate max retries
+    orchestrator.current_plan = DevelopmentPlan(instructions="Plan A", files=["a.py"], test_command="test_cmd")
+
+    mock_analysis_data = {"verdict": "FAILURE", "message": "Too many retries or unfixable."}
+    mock_app.handle_task_command.return_value = {
+        "status": "COMPLETE",
+        "parsedContent": mock_analysis_data
+    }
+    
+    analysis_decision = orchestrator._analyze_iteration(mock_aider_result_failure, mock_test_result_fail)
+
+    assert analysis_decision is not None
+    assert analysis_decision.verdict == "FAILURE"
+    mock_app.handle_task_command.assert_called_once()
+    assert mock_app.handle_task_command.call_args[0][1]["params"]["aider_status"] == "FAILED"
+
+def test_analyze_iteration_llm_task_fails(mock_app, mock_aider_result_success, mock_test_result_pass):
+    orchestrator = CodingWorkflowOrchestrator(mock_app, "g", "c", "test_cmd", 3)
+    orchestrator.iteration = 1
+    orchestrator.current_plan = DevelopmentPlan(instructions="Plan A", files=["a.py"], test_command="test_cmd")
+
+    mock_app.handle_task_command.return_value = {
+        "status": "FAILED",
+        "content": "Analysis LLM unavailable",
+        "parsedContent": None
+    }
+    
+    analysis_decision = orchestrator._analyze_iteration(mock_aider_result_success, mock_test_result_pass)
+    
+    assert analysis_decision is None
+    assert orchestrator.final_loop_result is not None
+    assert orchestrator.final_loop_result["reason"] == "Analysis task failed"
+
+def test_analyze_iteration_llm_returns_invalid_verdict_structure(mock_app, mock_aider_result_success, mock_test_result_pass):
+    orchestrator = CodingWorkflowOrchestrator(mock_app, "g", "c", "test_cmd", 3)
+    orchestrator.iteration = 1
+    orchestrator.current_plan = DevelopmentPlan(instructions="Plan A", files=["a.py"], test_command="test_cmd")
+
+    mock_invalid_analysis_data = {"bad_key": "WRONG_VERDICT", "message": "LLM misunderstood schema"}
+    mock_app.handle_task_command.return_value = {
+        "status": "COMPLETE",
+        "parsedContent": mock_invalid_analysis_data 
+    }
+    
+    analysis_decision = orchestrator._analyze_iteration(mock_aider_result_success, mock_test_result_pass)
+    
+    assert analysis_decision is None # Parsing CombinedAnalysisResult will fail
+    assert orchestrator.final_loop_result is not None
+    assert orchestrator.final_loop_result["reason"] == "Analysis task call/parsing failed" # Due to Pydantic validation
+
+# Tests for run() method (Phase 6)
+
+def test_run_success_first_iteration(mock_app):
+    orchestrator = CodingWorkflowOrchestrator(mock_app, "g", "c", "test_cmd", 3)
+
+    with patch.object(orchestrator, '_generate_plan', return_value=True) as mock_gen_plan, \
+         patch.object(orchestrator, '_execute_code') as mock_exec_code, \
+         patch.object(orchestrator, '_validate_code') as mock_validate_code, \
+         patch.object(orchestrator, '_analyze_iteration') as mock_analyze:
+        
+        orchestrator.current_plan = DevelopmentPlan(instructions="Initial", files=["f.py"], test_command="cmd")
+
+        mock_exec_code.return_value = TaskResult(status="COMPLETE", content="Aider V1", notes={})
+        mock_validate_code.return_value = TaskResult(status="COMPLETE", content="Tests Pass V1", notes={"exit_code": 0})
+        mock_analyze.return_value = CombinedAnalysisResult(verdict="SUCCESS", message="Great success!")
+
+        result = orchestrator.run()
+
+        assert result.get("status") == "COMPLETE"
+        assert result.get("content") == "Aider V1"
+        assert orchestrator.overall_success is True
+        assert orchestrator.iteration == 1
+        mock_gen_plan.assert_called_once()
+        mock_exec_code.assert_called_once()
+        mock_validate_code.assert_called_once()
+        mock_analyze.assert_called_once()
+
+def test_run_one_retry_then_success(mock_app):
+    orchestrator = CodingWorkflowOrchestrator(mock_app, "g", "c", "test_cmd", 3)
+
+    with patch.object(orchestrator, '_generate_plan', return_value=True) as mock_gen_plan, \
+         patch.object(orchestrator, '_execute_code') as mock_exec_code, \
+         patch.object(orchestrator, '_validate_code') as mock_validate_code, \
+         patch.object(orchestrator, '_analyze_iteration') as mock_analyze:
+
+        orchestrator.current_plan = DevelopmentPlan(instructions="Initial Plan", files=["f.py"], test_command="cmd")
+
+        mock_exec_code.side_effect = [
+            TaskResult(status="COMPLETE", content="Aider V1 Output", notes={}), 
+            TaskResult(status="COMPLETE", content="Aider V2 Output", notes={})
+        ]
+        mock_validate_code.side_effect = [
+            TaskResult(status="COMPLETE", content="Tests Fail V1", notes={"exit_code": 1, "stderr": "Fail"}),
+            TaskResult(status="COMPLETE", content="Tests Pass V2", notes={"exit_code": 0})
+        ]
+        mock_analyze.side_effect = [
+            CombinedAnalysisResult(verdict="RETRY", next_prompt="Revised Plan", next_files=["f_rev.py"], message="Try again"),
+            CombinedAnalysisResult(verdict="SUCCESS", message="Now it works!")
+        ]
+        
+        result = orchestrator.run()
+
+        assert result.get("status") == "COMPLETE"
+        assert result.get("content") == "Aider V2 Output"
+        assert orchestrator.overall_success is True
+        assert orchestrator.iteration == 2
+        assert mock_exec_code.call_count == 2
+        assert mock_validate_code.call_count == 2
+        assert mock_analyze.call_count == 2
+        assert orchestrator.current_plan.instructions == "Revised Plan"
+        assert orchestrator.current_plan.files == ["f_rev.py"]
+
+
+def test_run_max_retries_then_fail(mock_app):
+    orchestrator = CodingWorkflowOrchestrator(mock_app, "g", "c", "test_cmd", max_retries=2)
+
+    with patch.object(orchestrator, '_generate_plan', return_value=True) as mock_gen_plan, \
+         patch.object(orchestrator, '_execute_code', return_value=TaskResult(status="COMPLETE", content="Aider Output", notes={})) as mock_exec_code, \
+         patch.object(orchestrator, '_validate_code', return_value=TaskResult(status="COMPLETE", content="Tests Fail", notes={"exit_code": 1})) as mock_validate_code, \
+         patch.object(orchestrator, '_analyze_iteration') as mock_analyze:
+        
+        orchestrator.current_plan = DevelopmentPlan(instructions="Initial", files=["f.py"], test_command="cmd")
+        
+        mock_analyze.return_value = CombinedAnalysisResult(verdict="RETRY", next_prompt="Revised Plan", next_files=["f.py"], message="Try again")
+        
+        result = orchestrator.run()
+
+        assert result.get("status") == "FAILED"
+        assert result.get("reason") == "Max retries reached"
+        assert orchestrator.overall_success is False
+        assert orchestrator.iteration == 2 
+        assert mock_exec_code.call_count == 2
+        assert mock_validate_code.call_count == 2
+        assert mock_analyze.call_count == 2
+
+def test_run_initial_plan_generation_fails(mock_app):
+    orchestrator = CodingWorkflowOrchestrator(mock_app, "g", "c", "test_cmd", 3)
+    with patch.object(orchestrator, '_generate_plan', return_value=False) as mock_gen_plan, \
+         patch.object(orchestrator, '_execute_code') as mock_exec_code: # Also mock other phases to check not called
+        
+        orchestrator.final_loop_result = {"status": "FAILED", "reason": "Initial planning failed (mocked)"}
+        
+        result = orchestrator.run()
+        
+        assert result.get("status") == "FAILED"
+        assert "Initial planning failed" in result.get("reason", "")
+        mock_gen_plan.assert_called_once()
+        mock_exec_code.assert_not_called()
+
+def test_run_analysis_suggests_direct_failure(mock_app):
+    orchestrator = CodingWorkflowOrchestrator(mock_app, "g", "c", "test_cmd", 3)
+    with patch.object(orchestrator, '_generate_plan', return_value=True) as mock_gen_plan, \
+         patch.object(orchestrator, '_execute_code', return_value=TaskResult(status="COMPLETE", content="Aider V1", notes={})) as mock_exec_code, \
+         patch.object(orchestrator, '_validate_code', return_value=TaskResult(status="COMPLETE", content="Tests Fail V1", notes={"exit_code": 1})) as mock_validate_code, \
+         patch.object(orchestrator, '_analyze_iteration') as mock_analyze:
+
+        orchestrator.current_plan = DevelopmentPlan(instructions="Initial", files=["f.py"], test_command="cmd")
+        analysis_failure_data = CombinedAnalysisResult(verdict="FAILURE", message="Cannot proceed, fundamental issue.")
+        mock_analyze.return_value = analysis_failure_data
+        
+        result = orchestrator.run()
+
+        assert result.get("status") == "FAILED"
+        assert result.get("reason") == "Analysis verdict: FAILURE"
+        assert result.get("details") == "Cannot proceed, fundamental issue."
+        assert result.get("analysis_data") == analysis_failure_data.model_dump()
+        assert orchestrator.iteration == 1
+        mock_analyze.assert_called_once()

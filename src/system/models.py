@@ -382,11 +382,17 @@ class CombinedAnalysisResult(BaseModel):
     verdict: Literal['SUCCESS', 'RETRY', 'FAILURE'] = Field(description="Overall verdict: SUCCESS (tests passed), RETRY (tests failed, suggest retry), FAILURE (tests failed, stop).")
     next_prompt: Optional[str] = Field(None, description="If verdict is RETRY, the revised prompt for the next Aider iteration.")
     message: str = Field(description="A concise explanation of the verdict.")
+    next_files: Optional[List[str]] = Field(None, description="If verdict is RETRY, the list of files for the next Aider iteration. If None, previous files might be reused.")
+
 
     @model_validator(mode='after')
     def check_next_prompt_on_retry(self) -> 'CombinedAnalysisResult':
-        if self.verdict == 'RETRY' and self.next_prompt is None:
-            raise ValueError("'next_prompt' is required when verdict is 'RETRY'")
+        if self.verdict == 'RETRY':
+            if self.next_prompt is None:
+                raise ValueError("'next_prompt' is required when verdict is 'RETRY'")
+            # next_files can be optional even on RETRY, implying orchestrator might reuse.
+            # If next_files must be provided on RETRY, add validation here.
+            # For now, we allow it to be None.
         return self
 
 class StructuredAnalysisResult(BaseModel):
