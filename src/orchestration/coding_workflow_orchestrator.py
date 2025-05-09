@@ -74,20 +74,74 @@ class CodingWorkflowOrchestrator:
             return False
 
     def _execute_code(self) -> Optional[TaskResult]:
-        self.logger.debug(f"Executing Phase: _execute_code (Iteration: {self.iteration})")
+        self.logger.info(f"Executing Phase: _execute_code (Iteration: {self.iteration})")
         if not self.current_plan:
-            self.logger.warning("_execute_code called without a current_plan.")
-            # Ensure TaskResult is created correctly, notes can be an empty dict
-            return TaskResult(status="FAILED", content="No plan to execute", notes={})
-        # Placeholder
-        self.logger.info("Placeholder: Simulating Aider execution.")
-        return TaskResult(status="COMPLETE", content="Simulated Aider diff", notes={"success": True})
+            self.logger.error("_execute_code called without a valid self.current_plan.")
+            # Option 1: Return None, let run() handle it
+            # return None
+            # Option 2: Return a FAILED TaskResult
+            return TaskResult(status="FAILED", content="Execution phase skipped: No current plan available.", notes={})
 
-    def _validate_code(self) -> Optional[TaskResult]:
-        self.logger.debug(f"Executing Phase: _validate_code (Iteration: {self.iteration})")
-        # Placeholder
-        self.logger.info("Placeholder: Simulating test execution.")
-        return TaskResult(status="COMPLETE", content="Simulated test output", notes={"exit_code": 0})
+        if not self.current_plan.instructions or self.current_plan.files is None: # Files can be empty list
+            self.logger.error(f"Current plan is missing instructions or files. Plan: {self.current_plan.model_dump_json(indent=2)}")
+            return TaskResult(status="FAILED", content="Execution phase skipped: Plan missing instructions or files.", notes={})
+
+        self.logger.info(f"  Plan Instructions: '{self.current_plan.instructions[:100]}...'")
+        self.logger.info(f"  Plan Files: {self.current_plan.files}")
+
+        aider_params = {
+            "prompt": self.current_plan.instructions,
+            "relative_editable_files": self.current_plan.files # This should be a list of strings
+        }
+        
+        try:
+            self.logger.debug(f"Calling app.handle_task_command for 'aider:automatic' with params: {aider_params}")
+            result_dict = self.app.handle_task_command("aider:automatic", params=aider_params)
+            
+            if not isinstance(result_dict, dict):
+                self.logger.error(f"'aider:automatic' task returned non-dict: {type(result_dict)}. Full response: {result_dict}")
+                return TaskResult(status="FAILED", content=f"Aider task returned invalid type: {type(result_dict)}", notes={})
+
+            self.logger.debug(f"Raw 'aider:automatic' result_dict: {result_dict}")
+            # Validate and convert to TaskResult object
+            return TaskResult.model_validate(result_dict)
+
+        except Exception as e:
+            self.logger.exception(f"Exception calling app.handle_task_command for 'aider:automatic': {e}")
+            # Return a FAILED TaskResult
+            return TaskResult(status="FAILED", content=f"Aider execution task call failed: {e}", notes={
+                "error": {"type": "ORCHESTRATOR_EXCEPTION", "message": str(e)}
+            })
+
+    def _validate_code(self) -> Optional[TaskResult]: # Return Optional[TaskResult] for consistency
+        self.logger.info(f"Executing Phase: _validate_code (Iteration: {self.iteration})")
+        if not self.test_command:
+            self.logger.warning("No test_command configured for validation. Skipping validation phase.")
+            # Return a TaskResult indicating skipped validation, or handle as appropriate
+            return TaskResult(status="COMPLETE", content="Validation skipped: No test command.", notes={"skipped_validation": True})
+
+        self.logger.info(f"  Test Command: '{self.test_command}'")
+        
+        test_params = {"command": self.test_command}
+        
+        try:
+            self.logger.debug(f"Calling app.handle_task_command for 'system:execute_shell_command' with params: {test_params}")
+            result_dict = self.app.handle_task_command("system:execute_shell_command", params=test_params)
+
+            if not isinstance(result_dict, dict):
+                self.logger.error(f"'system:execute_shell_command' task returned non-dict: {type(result_dict)}. Full response: {result_dict}")
+                return TaskResult(status="FAILED", content=f"Shell command task returned invalid type: {type(result_dict)}", notes={})
+            
+            self.logger.debug(f"Raw 'system:execute_shell_command' result_dict: {result_dict}")
+            # Validate and convert to TaskResult object
+            return TaskResult.model_validate(result_dict)
+
+        except Exception as e:
+            self.logger.exception(f"Exception calling app.handle_task_command for 'system:execute_shell_command': {e}")
+            # Return a FAILED TaskResult
+            return TaskResult(status="FAILED", content=f"Shell command execution task call failed: {e}", notes={
+                "error": {"type": "ORCHESTRATOR_EXCEPTION", "message": str(e)}
+            })
 
     def _analyze_iteration(self, aider_result: TaskResult, test_result: TaskResult) -> Optional[CombinedAnalysisResult]:
         self.logger.debug(f"Executing Phase: _analyze_iteration (Iteration: {self.iteration})")

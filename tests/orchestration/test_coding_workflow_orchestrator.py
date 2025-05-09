@@ -133,3 +133,158 @@ def test_generate_plan_app_call_exception(mock_app):
     assert orchestrator.final_loop_result is not None
     assert orchestrator.final_loop_result["reason"] == "Plan generation task call failed"
     assert "Network error" in orchestrator.final_loop_result.get("details", "")
+
+# Tests for _execute_code (Phase 3)
+
+def test_execute_code_success(mock_app):
+    orchestrator = CodingWorkflowOrchestrator(mock_app, "g", "c", "t")
+    orchestrator.current_plan = DevelopmentPlan(
+        instructions="Implement function foo", 
+        files=["src/foo.py"],
+        test_command="pytest" # Will be ignored by _execute_code
+    )
+    
+    mock_aider_result_dict = {"status": "COMPLETE", "content": "```diff\n+ def foo(): pass\n```", "notes": {"success": True}}
+    mock_app.handle_task_command.return_value = mock_aider_result_dict
+
+    task_result_obj = orchestrator._execute_code()
+
+    assert task_result_obj is not None
+    assert task_result_obj.status == "COMPLETE"
+    assert "def foo()" in task_result_obj.content
+    assert task_result_obj.notes.get("success") is True
+    
+    mock_app.handle_task_command.assert_called_once_with(
+        "aider:automatic",
+        params={"prompt": "Implement function foo", "relative_editable_files": ["src/foo.py"]}
+    )
+
+def test_execute_code_aider_fails(mock_app):
+    orchestrator = CodingWorkflowOrchestrator(mock_app, "g", "c", "t")
+    orchestrator.current_plan = DevelopmentPlan(instructions="Bad plan", files=["bad.py"], test_command="cmd")
+    
+    mock_aider_failure_dict = {"status": "FAILED", "content": "Aider tool error", "notes": {"error": {"message": "Aider tool error"}}}
+    mock_app.handle_task_command.return_value = mock_aider_failure_dict
+
+    task_result_obj = orchestrator._execute_code()
+
+    assert task_result_obj is not None
+    assert task_result_obj.status == "FAILED"
+    assert task_result_obj.content == "Aider tool error"
+    mock_app.handle_task_command.assert_called_once()
+
+def test_execute_code_no_plan(mock_app):
+    orchestrator = CodingWorkflowOrchestrator(mock_app, "g", "c", "t")
+    orchestrator.current_plan = None # Simulate no plan being set
+
+    task_result_obj = orchestrator._execute_code()
+    
+    assert task_result_obj is not None
+    assert task_result_obj.status == "FAILED"
+    assert "No current plan available" in task_result_obj.content
+    mock_app.handle_task_command.assert_not_called()
+
+def test_execute_code_plan_missing_instructions(mock_app):
+    orchestrator = CodingWorkflowOrchestrator(mock_app, "g", "c", "t")
+    # Plan is missing instructions
+    orchestrator.current_plan = DevelopmentPlan(instructions="", files=["src/foo.py"], test_command="cmd") 
+
+    task_result_obj = orchestrator._execute_code()
+
+    assert task_result_obj is not None
+    assert task_result_obj.status == "FAILED"
+    assert "Plan missing instructions or files" in task_result_obj.content
+    mock_app.handle_task_command.assert_not_called() # Should not call if plan is invalid
+
+def test_execute_code_app_call_exception(mock_app):
+    orchestrator = CodingWorkflowOrchestrator(mock_app, "g", "c", "t")
+    orchestrator.current_plan = DevelopmentPlan(instructions="Valid plan", files=["f.py"], test_command="cmd")
+    mock_app.handle_task_command.side_effect = Exception("Network error during Aider call")
+
+    task_result_obj = orchestrator._execute_code()
+
+    assert task_result_obj is not None
+    assert task_result_obj.status == "FAILED"
+    assert "Aider execution task call failed: Network error during Aider call" in task_result_obj.content
+    assert task_result_obj.notes["error"]["type"] == "ORCHESTRATOR_EXCEPTION"
+
+# Tests for _validate_code (Phase 4)
+
+def test_validate_code_tests_pass(mock_app):
+    orchestrator = CodingWorkflowOrchestrator(mock_app, "g", "c", "pytest my_tests")
+    
+    mock_shell_result_dict = {
+        "status": "COMPLETE", 
+        "content": "All tests passed!", 
+        "notes": {"exit_code": 0, "stdout": "All tests passed!", "stderr": ""}
+    }
+    mock_app.handle_task_command.return_value = mock_shell_result_dict
+
+    task_result_obj = orchestrator._validate_code()
+
+    assert task_result_obj is not None
+    assert task_result_obj.status == "COMPLETE"
+    assert task_result_obj.notes.get("exit_code") == 0
+    assert "All tests passed!" in task_result_obj.content
+    
+    mock_app.handle_task_command.assert_called_once_with(
+        "system:execute_shell_command",
+        params={"command": "pytest my_tests"}
+    )
+
+def test_validate_code_tests_fail(mock_app):
+    orchestrator = CodingWorkflowOrchestrator(mock_app, "g", "c", "pytest my_tests_fail")
+
+    mock_shell_failure_dict = {
+        "status": "COMPLETE", # The command itself completed
+        "content": "1 test failed", 
+        "notes": {"exit_code": 1, "stdout": "...", "stderr": "AssertionError: ..."}
+    }
+    mock_app.handle_task_command.return_value = mock_shell_failure_dict
+
+    task_result_obj = orchestrator._validate_code()
+
+    assert task_result_obj is not None
+    assert task_result_obj.status == "COMPLETE" # Command ran, but tests failed
+    assert task_result_obj.notes.get("exit_code") == 1
+    assert "AssertionError" in task_result_obj.notes.get("stderr", "")
+    mock_app.handle_task_command.assert_called_once()
+
+def test_validate_code_shell_command_execution_fails(mock_app):
+    orchestrator = CodingWorkflowOrchestrator(mock_app, "g", "c", "invalid_command")
+    
+    mock_shell_error_dict = {
+        "status": "FAILED", 
+        "content": "Command not found", 
+        "notes": {"error": {"message": "Command not found"}}
+    }
+    mock_app.handle_task_command.return_value = mock_shell_error_dict
+    
+    task_result_obj = orchestrator._validate_code()
+
+    assert task_result_obj is not None
+    assert task_result_obj.status == "FAILED"
+    assert "Command not found" in task_result_obj.content
+    mock_app.handle_task_command.assert_called_once()
+
+def test_validate_code_no_test_command(mock_app):
+    orchestrator = CodingWorkflowOrchestrator(mock_app, "g", "c", test_command="") # Empty test command
+    
+    task_result_obj = orchestrator._validate_code()
+    
+    assert task_result_obj is not None
+    assert task_result_obj.status == "COMPLETE" # Phase completes by skipping
+    assert "Validation skipped" in task_result_obj.content
+    assert task_result_obj.notes.get("skipped_validation") is True
+    mock_app.handle_task_command.assert_not_called()
+
+def test_validate_code_app_call_exception(mock_app):
+    orchestrator = CodingWorkflowOrchestrator(mock_app, "g", "c", "valid_test_cmd")
+    mock_app.handle_task_command.side_effect = Exception("Shell task execution error")
+
+    task_result_obj = orchestrator._validate_code()
+
+    assert task_result_obj is not None
+    assert task_result_obj.status == "FAILED"
+    assert "Shell command execution task call failed: Shell task execution error" in task_result_obj.content
+    assert task_result_obj.notes["error"]["type"] == "ORCHESTRATOR_EXCEPTION"
