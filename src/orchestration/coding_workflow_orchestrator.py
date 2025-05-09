@@ -249,9 +249,23 @@ class CodingWorkflowOrchestrator:
 
             if analysis_decision.verdict == "SUCCESS":
                 self.overall_success = True
-                self.final_loop_result = aider_result.model_dump() if isinstance(aider_result, TaskResult) else \
-                                       (aider_result if isinstance(aider_result, dict) else {"status": "COMPLETE", "content": str(aider_result)})
-                self.logger.info("Workflow iteration successful and complete!")
+                self.logger.info("Workflow iteration successful and complete based on analysis LLM verdict!")
+                # Construct a new, definitive SUCCESS result for the orchestrator
+                self.final_loop_result = {
+                    "status": "COMPLETE", 
+                    "content": analysis_decision.message, 
+                    "criteria": None, 
+                    "parsedContent": None, 
+                    "notes": {
+                        "reason_for_success": "Analysis LLM confirmed goal achieved and tests passed.",
+                        "final_aider_result_status": aider_result.status if aider_result else "N/A",
+                        "final_aider_content": aider_result.content if aider_result else "N/A",
+                        "final_test_result_status": test_result.status if test_result else "N/A",
+                        "final_test_stdout": test_result.content if test_result and test_result.status == "COMPLETE" else "",
+                        "final_test_exit_code": test_result.notes.get("exit_code", -1) if test_result and test_result.notes else -1,
+                        "analysis_message": analysis_decision.message
+                    }
+                }
                 break
             elif analysis_decision.verdict == "RETRY":
                 if self.current_plan and analysis_decision.next_prompt and analysis_decision.next_files is not None:

@@ -83,10 +83,11 @@
     - Updated `src/scripts/run_coding_workflow.py` to use `CodingWorkflowOrchestrator`.
     - Updated `src/orchestration/coding_workflow_orchestrator_IDL.md`.
 - **Fix Tool Invocation Names in Orchestrator:** Changed tool invocation in `CodingWorkflowOrchestrator` from colon-separated (e.g., "aider:automatic") to underscore-separated (e.g., "aider_automatic") to match how tools are registered in `Application`. This resolves "Identifier not found" errors from the `Dispatcher`.
+- **Refine Orchestrator Success Reporting:** Modified `CodingWorkflowOrchestrator.run()` to construct a definitive "COMPLETE" `TaskResult` when the analysis phase verdict is "SUCCESS", rather than returning the potentially "FAILED" `aider_result`. This ensures the overall workflow status accurately reflects the analysis outcome.
 
 ## Next Steps
 
-1.  **Manual End-to-End Testing:** Thoroughly test `src/scripts/run_coding_workflow.py` with various scenarios (simple success, retry, max retries failure), potentially mocking LLM/Aider interactions for predictability.
+1.  **Manual End-to-End Testing:** Thoroughly test `src/scripts/run_coding_workflow.py` with various scenarios (simple success, retry, max retries failure), paying close attention to the final reported status and the details in the `notes` field.
 2.  **Review and Refine:** Review the entire `CodingWorkflowOrchestrator` implementation and its tests for clarity, robustness, and adherence to project guidelines.
 3.  **Phase 9.3 Testing:** Implement unit tests for `LLMInteractionManager` and `BaseHandler` to verify the `model_override` logic (if still pending).
 4.  **Phase 8: Aider Integration (Core):** Review and complete core `AiderBridge` implementation and its direct tests if not fully covered by orchestrator tasks. Ensure the "aider:automatic" tool is correctly registered and functional within the `Application` and `AiderExecutorFunctions`.
