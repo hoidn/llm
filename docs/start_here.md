@@ -159,7 +159,7 @@ When assigned to implement or modify a component specified by an IDL (or tacklin
     *   **`docs/implementation_rules.md`**: Detailed coding and testing rules.
     *   **`docs/project_rules.md`**: General project conventions (directory structure, Git workflow).
     *   **`docs/examples/`**: Contains example usage patterns and guides, such as the `workflow_orchestrator_guide.md`.
-    *   **`src/**/\*_IDL.md`**: The specific interface definitions you will implement.
+    *   **`src/**/\*_IDL.md`**: The specific interface definitions you will implement (e.g., `src/orchestration/coding_workflow_orchestrator_IDL.md`).
 *   **`README.md`**: Top-level project overview.
 
 **9. Development Workflow & Recommended Practices**

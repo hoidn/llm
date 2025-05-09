@@ -39,7 +39,8 @@ project_root/
 │   │
 │   ├── orchestration/       # Workflow orchestration components
 │   │   ├── __init__.py
-│   │   └── coding_workflow_orchestrator.py
+│   │   ├── coding_workflow_orchestrator.py
+│   │   └── coding_workflow_orchestrator_IDL.md
 │   │
 │   ├── repl/                # REPL interface (If applicable)
 │   │   ├── __init__.py

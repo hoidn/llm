@@ -72,10 +72,11 @@
 - **Fix Dispatcher Initial Environment Instantiation:** Corrected `dispatcher.execute_programmatic_task` to properly instantiate `SexpEnvironment` using the bindings provided in `flags['initial_env']` before passing it to the evaluator.
 - **Fix Workflow S-expression Symbols:** Changed underscored symbols (e.g., `initial_user_goal`) to hyphenated symbols (e.g., `initial-user-goal`) in `src/scripts/run_coding_workflow.py`'s main S-expression to match the keys passed in the initial environment. Corrected the analysis task name called in the controller. Updated Python dictionary keys accordingly.
 - **Implement CodingWorkflowOrchestrator (Phases 1 & 2):** Created `CodingWorkflowOrchestrator` class in `src/orchestration/coding_workflow_orchestrator.py` with `__init__`, phase stubs (`_execute_code`, `_validate_code`, `_analyze_iteration`), and main `run()` loop. Implemented `_generate_plan` method to call `app.handle_task_command` for "user:generate-plan-from-goal". Added unit tests in `tests/orchestration/test_coding_workflow_orchestrator.py` for instantiation, `run()` loop with stubs, and `_generate_plan` (success, task failure, parsing failure, app call exception). Updated `project_rules.md` and `memory.md`.
+- **Define IDL for CodingWorkflowOrchestrator:** Created `src/orchestration/coding_workflow_orchestrator_IDL.md` to specify the public contract of the orchestrator. Updated `docs/IDL.md`, `docs/project_rules.md`, `docs/start_here.md`, and `memory.md` to reflect this.
 
 ## Next Steps
 
-1.  **Implement `CodingWorkflowOrchestrator._execute_code()` (Phase 3):** Integrate Aider calls via `self.app.handle_task_command` using an Aider-specific task identifier (e.g., "aider:execute-task").
+1.  **Implement `CodingWorkflowOrchestrator._execute_code()` (Phase 3):** Integrate Aider calls via `self.app.handle_task_command` using an Aider-specific task identifier (e.g., "aider:execute-task" or "aider_automatic").
 2.  **Implement `CodingWorkflowOrchestrator._validate_code()` (Phase 4):** Integrate shell command execution for running tests using `self.app.handle_task_command` with "system:execute_shell_command".
 3.  **Implement `CodingWorkflowOrchestrator._analyze_iteration()` (Phase 5):** Integrate LLM call via `self.app.handle_task_command` using "user:analyze-aider-result" to get `CombinedAnalysisResult`.
 4.  **Full Integration and Testing of `CodingWorkflowOrchestrator`**: Write end-to-end tests for the orchestrator's `run()` method, mocking `Application` layer interactions.
