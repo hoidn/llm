@@ -195,30 +195,37 @@ class SexpEvaluator:
             logging.debug(f"Eval Quoted: Encountered node: {node!r}")
             logging.debug(f"Eval Quoted: Type of node: {type(node)}")
             try:
-                # The 'sexpdata.Quoted' object is a namedtuple with a single field 'x'.
-                # This 'x' field holds the actual quoted data.
-                # Use getattr to be more robust against different implementations
-                actual_val = getattr(node, 'x', None)
-                if actual_val is None:
-                    # Try alternative attribute names that might be used in different versions
-                    for attr in ['val', 'value', '_value']:
-                        if hasattr(node, attr):
-                            actual_val = getattr(node, attr)
-                            logging.debug(f"Eval Quoted: Found alternative attribute '{attr}': {actual_val!r}")
-                            break
-                
-                if actual_val is None:
-                    # If we still don't have a value, try to get the first item if it's a sequence
-                    if hasattr(node, '__getitem__'):
-                        try:
-                            actual_val = node[0]
-                            logging.debug(f"Eval Quoted: Extracted first item: {actual_val!r}")
-                        except (IndexError, TypeError):
-                            pass
-                
-                if actual_val is not None:
-                    logging.debug(f"Eval Quoted: Extracted value: {actual_val!r}")
+                # First try the standard attribute 'x' which is the primary field in sexpdata.Quoted
+                if hasattr(node, 'x'):
+                    actual_val = node.x
+                    logging.debug(f"Eval Quoted: Extracted value from 'x' attribute: {actual_val!r}")
                     return actual_val
+                
+                # Try alternative attribute names that might be used in different versions
+                for attr in ['val', 'value', '_value']:
+                    if hasattr(node, attr):
+                        actual_val = getattr(node, attr)
+                        logging.debug(f"Eval Quoted: Found alternative attribute '{attr}': {actual_val!r}")
+                        return actual_val
+                
+                # If we still don't have a value, try to get the first item if it's a sequence
+                if hasattr(node, '__getitem__'):
+                    try:
+                        actual_val = node[0]
+                        logging.debug(f"Eval Quoted: Extracted first item: {actual_val!r}")
+                        return actual_val
+                    except (IndexError, TypeError):
+                        pass
+                
+                # If we get here, we couldn't extract a value
+                # Try one more approach - maybe it's a tuple with a specific structure
+                if hasattr(node, '__iter__'):
+                    try:
+                        for item in node:
+                            logging.debug(f"Eval Quoted: Trying item from iteration: {item!r}")
+                            return item  # Return the first item from iteration
+                    except Exception:
+                        pass
                 
                 # If we get here, we couldn't extract a value
                 logging.error(f"Eval Quoted: Could not extract value from {node!r}")

@@ -181,7 +181,7 @@ MAIN_WORKFLOW_S_EXPRESSION = """
                            (set! stderr_val (if (null? (get-field test_notes "stderr")) "" (get-field test_notes "stderr")))
                            (set! exit_code_val (if (null? (get-field test_notes "exit_code")) -1 (get-field test_notes "exit_code")))
                          )
-                         nil ;; <<< CORRECTED 'if': Added nil else branch
+                         nil ;; 'if' else branch returns nil
                      )
                      ;; Set error value if the task itself failed
                      (if (string=? (get-field test_task_result "status") "FAILED")
@@ -202,19 +202,18 @@ MAIN_WORKFLOW_S_EXPRESSION = """
                   ;; Call the analysis/revision LLM task
                   (let ((analysis_task_result
                          (user:evaluate-and-retry-analysis ;; Corrected task name
-                           ;; *** START FIX: Corrected Parameter Names ***
+                           ;; Parameters for user:evaluate-and-retry-analysis
                            (original_goal initial-user-goal) 
                            (aider_instructions (get-field current-plan "instructions"))
-                           (previous_files (get-field current-plan "files")) ;; <-- ADDED
+                           (previous_files (get-field current-plan "files"))
                            (aider_status (get-field aider_result "status"))
-                           (aider_diff (get-field aider_result "content")) ;; Use expected name (passing content as diff)
-                           (test_command fixed-test-command) ;; ADDED missing required parameter
+                           (aider_diff (get-field aider_result "content"))
+                           (test_command fixed-test-command)
                            (test_stdout (get-field validation_result "stdout"))
                            (test_stderr (get-field validation_result "stderr"))
-                           (test_exit_code (get-field validation_result "exit_code")) ;; Ensure this is passed if expected by defatom
+                           (test_exit_code (get-field validation_result "exit_code"))
                            (iteration iter_num)
-                           (max_retries max-iterations-config) ;; Use expected name
-                           ;; *** END FIX ***
+                           (max_retries max-iterations-config)
                           )))
                     (log-message "Controller: Analysis TaskResult:" analysis_task_result)
 
