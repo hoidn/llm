@@ -64,14 +64,14 @@ DEFATOM_GENERATE_PLAN_S_EXPRESSION = """
     Your *only* task is to generate a development plan. Do *not* attempt to execute any tools or commands yourself.
     The plan must include ONLY:
     1. 'instructions': Detailed steps for an AI coder (Aider).
-    2. 'files': List of relative file paths to create / modify or use as context (including both source modules and their associated test files).
+    2. 'files': List of relative file paths to create / modify or use as context (including both souce modules and their associated test files).
     Do NOT generate a 'test_command'.
     Output ONLY a single JSON object conforming to the DevelopmentPlan schema (which has 'instructions' and 'files' as required, 'test_command' is optional). No other text."
   )
   (params (goal string) (context_string string))
   (output_format ((type "json") (schema "src.system.models.DevelopmentPlan")))
   (description "Generates DevelopmentPlan JSON (instructions/files only) from goal/context.")
-  (model "google-gla:gemini-2.5-pro-exp-03-25") # Or your preferred model
+  (model "google-gla:gemini-2.5-pro-exp-03-25")
 )
 """
 
@@ -127,7 +127,7 @@ DEFATOM_COMBINED_ANALYSIS_S_EXPRESSION = """
   )
   (output_format ((type "json") (schema "src.system.models.CombinedAnalysisResult")))
   (description "Analyzes Aider and test results, determines success/failure/retry, and provides the next prompt and files if needed.")
-  (model "google-gla:gemini-2.5-pro-exp-03-25") 
+  (model "google-gla:gemini-2.5-pro-exp-03-25")
 )
 """
 
@@ -192,7 +192,7 @@ def main():
         # Index repository
         logger.info(f"Indexing repository: {PROJECT_ROOT}")
         index_options = {
-             "include_patterns": ["src/**/*.py", "*.py", "*.md", "pyproject.toml", "README.md"], # Broader include
+             "include_patterns": ["src/**/*.py", "*.py", "*.md", "pyproject.toml", "README.md"], 
              "exclude_patterns": ["**/venv/**", "**/.*/**", "**/__pycache__/**", "**/node_modules/**", "*.log", "tests/**"]
         }
         app.index_repository(str(PROJECT_ROOT), options=index_options)
@@ -248,7 +248,7 @@ def main():
             analysis_data = final_result.get("analysis_data")
             if analysis_data:
                 print(f"Final Analysis Data: {json.dumps(analysis_data, indent=2)}")
-        elif status == "COMPLETE" or status == "SUCCESS": # Orchestrator might return COMPLETE from Aider result
+        elif status == "COMPLETE" or status == "SUCCESS": 
             print("\n--- WORKFLOW COMPLETED SUCCESSFULLY ---")
             print(f"Final Content/Diff: {final_result.get('content')}")
         else:
