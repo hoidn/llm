@@ -355,7 +355,7 @@ class DevelopmentPlan(BaseModel):
     """
     instructions: str = Field(description="Detailed step-by-step instructions for the coding task, suitable for passing directly to an AI coding assistant like Aider.")
     files: List[str] = Field(description="List of file paths (relative to the repository root) that the coding assistant should focus on or modify.")
-    test_command: str = Field(description="The exact shell command needed to run the relevant tests for this task within the repository.")
+    test_command: Optional[str] = Field(None, description="The exact shell command needed to run the relevant tests for this task within the repository.")
     # Consider adding model_config = ConfigDict(extra='ignore') if needed
 
 class FeedbackResult(BaseModel):
