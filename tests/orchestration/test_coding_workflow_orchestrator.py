@@ -328,10 +328,14 @@ def test_analyze_iteration_suggests_success(mock_app, mock_aider_result_success,
     assert analysis_decision is not None
     assert analysis_decision.verdict == "SUCCESS"
     mock_app.handle_task_command.assert_called_once()
-    call_args = mock_app.handle_task_command.call_args[0]
-    assert call_args[0] == "user:evaluate-and-retry-analysis"
-    assert call_args[1]["params"]["aider_status"] == "COMPLETE"
-    assert call_args[1]["params"]["test_exit_code"] == 0
+    
+    # Corrected access to call arguments
+    called_identifier = mock_app.handle_task_command.call_args[0][0]
+    called_params_dict = mock_app.handle_task_command.call_args[1]['params']
+    
+    assert called_identifier == "user:evaluate-and-retry-analysis"
+    assert called_params_dict["aider_status"] == "COMPLETE"
+    assert called_params_dict["test_exit_code"] == 0
 
 def test_analyze_iteration_suggests_retry(mock_app, mock_aider_result_success, mock_test_result_fail):
     orchestrator = CodingWorkflowOrchestrator(mock_app, "g", "c", "test_cmd", 3)
@@ -356,7 +360,10 @@ def test_analyze_iteration_suggests_retry(mock_app, mock_aider_result_success, m
     assert analysis_decision.next_prompt == "Try fixing X"
     assert analysis_decision.next_files == ["a.py", "b.py"]
     mock_app.handle_task_command.assert_called_once()
-    assert mock_app.handle_task_command.call_args[0][1]["params"]["test_exit_code"] == 1
+    
+    # Corrected access to call arguments
+    called_params_dict = mock_app.handle_task_command.call_args[1]['params']
+    assert called_params_dict["test_exit_code"] == 1
 
 
 def test_analyze_iteration_suggests_failure(mock_app, mock_aider_result_failure, mock_test_result_fail):
@@ -375,7 +382,10 @@ def test_analyze_iteration_suggests_failure(mock_app, mock_aider_result_failure,
     assert analysis_decision is not None
     assert analysis_decision.verdict == "FAILURE"
     mock_app.handle_task_command.assert_called_once()
-    assert mock_app.handle_task_command.call_args[0][1]["params"]["aider_status"] == "FAILED"
+
+    # Corrected access to call arguments
+    called_params_dict = mock_app.handle_task_command.call_args[1]['params']
+    assert called_params_dict["aider_status"] == "FAILED"
 
 def test_analyze_iteration_llm_task_fails(mock_app, mock_aider_result_success, mock_test_result_pass):
     orchestrator = CodingWorkflowOrchestrator(mock_app, "g", "c", "test_cmd", 3)
