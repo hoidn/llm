@@ -44,6 +44,7 @@ from src.handler.llm_interaction_manager import LLMInteractionManager
 from src.system.models import (
     TaskError,
     TaskResult,
+    HistoryConfigSettings, # Add import
 )  # Import TaskResult for type hints
 
 # Forward declarations for type hinting cycles
@@ -454,6 +455,7 @@ class BaseHandler:
         tools_override: Optional[List[Callable]] = None, # Explicitly list of callables
         output_type_override: Optional[Type] = None,
         model_override: Optional[str] = None, # ADDED PARAMETER
+        history_config: Optional[HistoryConfigSettings] = None # ADDED PARAMETER
     ) -> TaskResult:
         """
         Internal method to execute a call via the LLMInteractionManager and update history.
@@ -542,60 +544,58 @@ class BaseHandler:
         # --- End Prepare tools ---
 
         # Store history *before* the call
-        history_dicts_before_call = list(self.conversation_history)
+        # history_dicts_before_call = list(self.conversation_history) # No longer needed directly here
 
-        from typing import Union
+        # --- History Preparation Logic ---
+        history_for_llm_call: List[Any] = [] # Will hold pydantic-ai message objects
 
-        logging.debug(f"--- Before History Conversion Loop ---")
+        # Defaults
+        use_session_hist = True
+        num_turns_to_include: Optional[int] = None
+        record_current_turn = True
 
-        # --- Convert History to Objects ---
-        message_objects_for_agent = [] # Will hold PydanticModelMessage objects
-        
-        if PydanticMessagesAvailable:
-            for msg_dict in history_dicts_before_call:
-                role = msg_dict.get("role")
-                content = msg_dict.get("content", "") # Default to empty string if missing
-
-                # --- START: Ensure content is always string for ModelMessage ---
-                # Convert potential Pydantic models/JSON strings in history to simple strings
-                # before creating the ModelMessage object.
-                if role == "assistant" and not isinstance(content, str):
-                    # Example: If content might be a Pydantic model or dict
-                    if hasattr(content, 'model_dump_json'):
-                        try:
-                            content_str = content.model_dump_json()
-                        except Exception:
-                            content_str = str(content) # Fallback
-                    elif isinstance(content, dict):
-                        try:
-                            content_str = json.dumps(content)
-                        except Exception:
-                             content_str = str(content) # Fallback
-                    else:
-                        content_str = str(content) # General fallback
-                    content = content_str # Update content variable
-                # --- END: Ensure content is always string for ModelMessage ---
-
-                if role == "assistant":
-                    # Create ModelResponse for assistant
-                    message_objects_for_agent.append(ModelResponse(parts=[TextPart(content=content)]))
-                elif role == "user":
-                    # **FIX: Create ModelRequest containing UserPromptPart for user turns**
-                    message_objects_for_agent.append(ModelRequest(parts=[UserPromptPart(content=content)]))
-                else:
-                    logging.warning(f"Unsupported role '{role}' found in history, skipping.")
-                    continue # Skip unknown roles
-
-            logging.debug(f"Converted history to {len(message_objects_for_agent)} pydantic-ai message objects.")
+        if history_config:
+            use_session_hist = history_config.use_session_history
+            num_turns_to_include = history_config.history_turns_to_include
+            record_current_turn = history_config.record_in_session_history
+            self.log_debug(f"Using history_config: use_session={use_session_hist}, include_turns={num_turns_to_include}, record_turn={record_current_turn}")
         else:
-            logging.error("Cannot convert history to ModelMessage objects: pydantic_ai.messages not available")
-            # Create empty list - the LLM manager will need to handle this case
-        # --- End History Conversion ---
+            self.log_debug("No history_config provided, using default history behavior.")
+
+        if use_session_hist:
+            source_history_dicts = list(self.conversation_history) # Operate on a copy
+            if num_turns_to_include is not None and num_turns_to_include > 0:
+                # Slicing: N turns means N user messages + N assistant messages = 2*N items
+                # Take the last 2*N items from the history.
+                num_items_to_include = num_turns_to_include * 2
+                if len(source_history_dicts) > num_items_to_include:
+                    source_history_dicts = source_history_dicts[-num_items_to_include:]
+                    self.log_debug(f"Sliced session history to last {num_turns_to_include} turns ({len(source_history_dicts)} items).")
+            
+            # Convert List[Dict] to List[pydantic_ai_message_object]
+            if PydanticMessagesAvailable: # Check if imports were successful
+                for msg_dict in source_history_dicts:
+                    role = msg_dict.get("role")
+                    content_str = str(msg_dict.get("content", "")) # Ensure string
+                    if role == "user":
+                        history_for_llm_call.append(ModelRequest(parts=[UserPromptPart(content=content_str)]))
+                    elif role == "assistant":
+                        history_for_llm_call.append(ModelResponse(parts=[TextPart(content=content_str)]))
+                    # System messages in history are usually handled by the agent's system_prompt
+            else:
+                self.log_debug("Pydantic-AI message types not available. Passing raw history (may cause issues).")
+                history_for_llm_call = source_history_dicts # Fallback, likely problematic
+
+            self.log_debug(f"Prepared {len(history_for_llm_call)} message objects for LLM from session history.")
+        else:
+            self.log_debug("use_session_history is false. LLM call will have empty history.")
+            # history_for_llm_call remains empty
+        # --- End History Preparation ---
         
         # Delegate the call to the manager
         call_kwargs = {
             "prompt": prompt,
-            "conversation_history": message_objects_for_agent, # Pass the CONVERTED list of objects
+            "conversation_history": history_for_llm_call, # PASS PREPARED HISTORY
             "system_prompt_override": system_prompt_override,
             "tools_override": executors_for_agent, # Pass resolved executors
             "output_type_override": output_type_override,
@@ -638,25 +638,30 @@ class BaseHandler:
             self.log_debug(
                 f"LLM call successful. Response: '{str(assistant_content)[:100]}...'"
             )
-            # Update history correctly - ADD DICTIONARIES
-            self.conversation_history.append({"role": "user", "content": prompt})
-            # Ensure assistant content added is a string
-            assistant_content_str = str(assistant_content) if assistant_content is not None else ""
-            # Store as dictionary in the conversation history
-            self.conversation_history.append(
-                {"role": "assistant", "content": assistant_content_str}
-            )
-            self.log_debug(
-                f"Conversation history updated. New length: {len(self.conversation_history)}"
-            )
+            
+            # --- History Recording Logic ---
+            if record_current_turn:
+                self.conversation_history.append({"role": "user", "content": prompt})
+                # Ensure assistant content added is a string
+                assistant_content_str_for_history = str(assistant_content) if assistant_content is not None else ""
+                self.conversation_history.append(
+                    {"role": "assistant", "content": assistant_content_str_for_history}
+                )
+                self.log_debug(f"Current turn recorded in session history. New length: {len(self.conversation_history)}")
+            else:
+                self.log_debug("Current turn NOT recorded in session history as per history_config.")
+            # --- End History Recording Logic ---
+
             if tool_calls:
                 logging.warning(
                     f"LLM agent returned tool calls, but handling is not implemented: {tool_calls}"
                 )
             # Create TaskResult object, including parsedContent
+            # Ensure assistant_content (for TaskResult.content) is also a string
+            assistant_content_for_result = str(assistant_content) if assistant_content is not None else ""
             return TaskResult(
                 status="COMPLETE",
-                content=assistant_content_str,
+                content=assistant_content_for_result,
                 parsedContent=parsed_content, # Add parsed content here
                 notes={"usage": usage_data} if usage_data else {},
             )

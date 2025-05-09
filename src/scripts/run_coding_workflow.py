@@ -72,6 +72,7 @@ DEFATOM_GENERATE_PLAN_S_EXPRESSION = """
   (output_format ((type "json") (schema "src.system.models.DevelopmentPlan")))
   (description "Generates DevelopmentPlan JSON (instructions/files only) from goal/context.")
   (model "google-gla:gemini-2.5-pro-exp-03-25")
+  (history_config (quote ((use_session_history false) (record_in_session_history true))))
 )
 """
 
@@ -128,6 +129,7 @@ DEFATOM_COMBINED_ANALYSIS_S_EXPRESSION = """
   (output_format ((type "json") (schema "src.system.models.CombinedAnalysisResult")))
   (description "Analyzes Aider and test results, determines success/failure/retry, and provides the next prompt and files if needed.")
   (model "google-gla:gemini-2.5-pro-exp-03-25")
+  (history_config (quote ((use_session_history false) (record_in_session_history true))))
 )
 """
 

@@ -10,7 +10,7 @@ from typing import Any, Dict, Optional, Type # Added Type for output_type_overri
 
 # Assuming BaseHandler and TaskResult types are available for hinting
 # from src.handler.base_handler import BaseHandler # Import actual when available
-from src.system.models import TaskResult, TaskFailureReason, TaskFailureError, resolve_model_class, ModelNotFoundError
+from src.system.models import TaskResult, TaskFailureReason, TaskFailureError, resolve_model_class, ModelNotFoundError, HistoryConfigSettings
 from pydantic import ValidationError
 
 # Regex to find {{parameter.name.access}} placeholders
@@ -115,7 +115,8 @@ class AtomicTaskExecutor:
         self,
         atomic_task_def: Dict[str, Any],
         params: Dict[str, Any],
-        handler: Any # Represents BaseHandler instance
+        handler: Any, # Represents BaseHandler instance
+        history_config: Optional[HistoryConfigSettings] = None
     ) -> Dict[str, Any]: # Returns TaskResult structure as dict
         """
         Executes the body of a pre-parsed atomic task template.
@@ -231,9 +232,10 @@ class AtomicTaskExecutor:
             handler_result = handler._execute_llm_call(
                 prompt=main_prompt,
                 system_prompt_override=final_system_prompt,
-                tools_override=None,
+                tools_override=None, # Or relevant tools
                 output_type_override=output_type_override,
-                # model_override=atomic_task_def.get("model") # Pass if handler supports it
+                model_override=atomic_task_def.get("model"), # Pass model if specified
+                history_config=history_config # PASS THE HISTORY_CONFIG OBJECT
             )
 
             # --- 4. Process Handler Result ---

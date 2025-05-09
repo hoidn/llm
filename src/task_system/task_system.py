@@ -13,7 +13,8 @@ from .template_registry import TemplateRegistry
 from src.system.models import (
     SubtaskRequest, TaskResult, ContextManagement,
     ContextGenerationInput, AssociativeMatchResult, MatchTuple,
-    SUBTASK_CONTEXT_DEFAULTS, TaskError, TaskFailureError, TaskFailureReason # Added TaskFailureError, TaskFailureReason
+    SUBTASK_CONTEXT_DEFAULTS, TaskError, TaskFailureError, TaskFailureReason, # Added TaskFailureError, TaskFailureReason
+    HistoryConfigSettings # Added import
 )
 # Import the executor and its specific error
 from src.executors.atomic_executor import AtomicTaskExecutor, ParameterMismatchError
@@ -213,6 +214,34 @@ class TaskSystem:
         # We will pass file_paths to the executor for potential future use or logging.
         context_summary = "Context handling delegated to Handler/Executor" # Placeholder note
 
+        # Resolve HistoryConfigSettings
+        template_history_config_dict: Optional[Dict[str, Any]] = template_def.get("history_config")
+        request_history_config_obj: Optional[HistoryConfigSettings] = request.history_config
+
+        final_history_settings: HistoryConfigSettings
+
+        if request_history_config_obj is not None:
+            # Request-level config takes full precedence
+            final_history_settings = request_history_config_obj
+            logging.debug(f"Using history_config from SubtaskRequest for '{request.name}'.")
+        elif template_history_config_dict is not None:
+            # Template-level config
+            try:
+                final_history_settings = HistoryConfigSettings.model_validate(template_history_config_dict)
+                logging.debug(f"Using history_config from template definition for '{request.name}'.")
+            except PydanticValidationError as e_val: # Catch Pydantic ValidationError
+                logging.error(f"Invalid history_config in template '{request.name}': {e_val}. Using defaults.")
+                final_history_settings = HistoryConfigSettings() # Default
+        else:
+            # No config specified, use defaults
+            final_history_settings = HistoryConfigSettings()
+            logging.debug(f"No specific history_config found for '{request.name}'. Using defaults.")
+
+        # Ensure final_history_settings is always a HistoryConfigSettings object
+        if not isinstance(final_history_settings, HistoryConfigSettings):
+            logging.error(f"Internal error: final_history_settings is not a HistoryConfigSettings object. Type: {type(final_history_settings)}. Forcing default.")
+            final_history_settings = HistoryConfigSettings()
+
         # 6. Execute Atomic Task Body
         try:
             # Execute using the instantiated executor
@@ -220,7 +249,8 @@ class TaskSystem:
             result_dict = self._atomic_executor.execute_body(
                 atomic_task_def=template_def,
                 params=request.inputs,
-                handler=handler
+                handler=handler,
+                history_config=final_history_settings # PASS THE RESOLVED OBJECT
                 # file_paths=file_paths, # Pass files if executor signature changes
                 # context_summary=context_summary # Pass context if executor signature changes
             )

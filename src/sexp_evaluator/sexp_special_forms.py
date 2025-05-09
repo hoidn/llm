@@ -250,6 +250,7 @@ class SpecialFormProcessor:
         # Keys that expect a simple string value
         simple_string_optionals = {"subtype", "description", "model"}
         # Keys that expect a structured value (list of lists/pairs)
+        # Add "history_config" to structured_optionals
         structured_optionals = {"output_format", "history_config"}
 
         # Process collected optional arguments
@@ -286,15 +287,42 @@ class SpecialFormProcessor:
                     )
                 
                 structured_dict: Dict[str, Any] = {}
-                for pair in value_node:
+                for pair in value_node: # value_node is the (quote (...)) part's content
                     if not (isinstance(pair, list) and len(pair) == 2 and isinstance(pair[0], Symbol)):
                         raise SexpEvaluationError(
                             f"Invalid pair format in '{key_str}'. Expected (key_symbol value), got: {pair}",
                             original_expr_str
                         )
                     inner_key_symbol: Symbol = pair[0]
-                    inner_value: Any = pair[1] # Value can be string or another nested structure
-                    structured_dict[inner_key_symbol.value()] = inner_value
+                    inner_sexp_value: Any = pair[1] # This is an S-expression value
+
+                    # Convert S-expression value to Python value
+                    python_value: Any
+                    if isinstance(inner_sexp_value, Symbol):
+                        if inner_sexp_value.value() == 'true':
+                            python_value = True
+                        elif inner_sexp_value.value() == 'false':
+                            python_value = False
+                        elif inner_sexp_value.value() == 'nil': # Handle nil for optional integers
+                            python_value = None
+                        else:
+                            raise SexpEvaluationError(
+                                f"Invalid symbol value '{inner_sexp_value.value()}' for key '{inner_key_symbol.value()}' in '{key_str}'. Expected 'true', 'false', or 'nil'.",
+                                original_expr_str
+                            )
+                    elif isinstance(inner_sexp_value, int):
+                        python_value = inner_sexp_value
+                    elif inner_sexp_value is None and key_str == "history_config" and inner_key_symbol.value() == "history_turns_to_include":
+                        # This case might not be hit if nil symbol is used above.
+                        python_value = None
+                    else:
+                        # Add more specific type checks if other S-expression types are expected for certain keys
+                        raise SexpEvaluationError(
+                            f"Invalid value type for key '{inner_key_symbol.value()}' in '{key_str}'. Expected symbol (true/false/nil) or integer, got {type(inner_sexp_value)}: {inner_sexp_value}",
+                            original_expr_str
+                        )
+                    
+                    structured_dict[inner_key_symbol.value()] = python_value
                 optional_args_map[key_str] = structured_dict
                 logger.debug(f"Parsed structured optional arg '{key_str}': {structured_dict}")
             else:
@@ -312,7 +340,7 @@ class SpecialFormProcessor:
             template_dict["model"] = optional_args_map["model"]
         if "output_format" in optional_args_map:
             template_dict["output_format"] = optional_args_map["output_format"]
-        if "history_config" in optional_args_map:
+        if "history_config" in optional_args_map: # This key is now correctly added by the modified parsing logic
             template_dict["history_config"] = optional_args_map["history_config"]
 
 
