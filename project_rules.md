@@ -37,6 +37,10 @@ project_root/
 │   │       ├── git_repository_indexer.py
 │   │       └── text_extraction.py
 │   │
+│   ├── orchestration/       # Workflow orchestration components
+│   │   ├── __init__.py
+│   │   └── coding_workflow_orchestrator.py
+│   │
 │   ├── repl/                # REPL interface (If applicable)
 │   │   ├── __init__.py
 │   │   └── repl.py
@@ -98,6 +102,8 @@ project_root/
 │   │   ├── test_memory_system.py
 │   │   └── indexers/
 │   │       └── test_git_repository_indexer.py
+│   ├── orchestration/       # Tests for workflow orchestration
+│   │   └── test_coding_workflow_orchestrator.py
 │   ├── sexp_evaluator/      # Tests for S-expression evaluator
 │   │   ├── test_sexp_environment.py
 │   │   └── test_sexp_evaluator.py

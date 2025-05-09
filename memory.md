@@ -1,25 +1,22 @@
 <description>Developer's working memory log for tracking current task, progress, next steps, and context.</description>
 # Developer Working Memory
 
-## Current Task/Focus (As of: 2025-05-01)
+## Current Task/Focus (As of: 2025-05-09)
 
-**Goal:** Enhance S-expression DSL capabilities.
+**Goal:** Implement Python-Driven Coding Workflow Orchestrator.
 
-**Current Sub-task:** Phase 10b - Implement Core S-expression Primitives (`eq?`, `null?`, `set!`, `+`, `-`) and `SexpEnvironment.set_value_in_scope`.
+**Current Sub-task:** Phases 1 & 2 - Define `CodingWorkflowOrchestrator` class structure, implement `__init__`, phase stubs, `run()` loop, and `_generate_plan()` method with tests.
 
 **Relevant Files:**
-- `src/sexp_evaluator/sexp_evaluator.py`
-- `src/sexp_evaluator/sexp_primitives.py`
-- `src/sexp_evaluator/sexp_environment.py`
-- `tests/sexp_evaluator/test_sexp_evaluator.py`
-- `tests/sexp_evaluator/test_sexp_environment.py`
-- `src/sexp_evaluator/sexp_evaluator_IDL.md`
-- `src/sexp_evaluator/sexp_environment_IDL.md`
+- `src/orchestration/coding_workflow_orchestrator.py`
+- `tests/orchestration/test_coding_workflow_orchestrator.py`
+- `src/main.py` (dependency for `Application`)
+- `src/system/models.py` (dependency for `DevelopmentPlan`, `TaskResult`, `CombinedAnalysisResult`)
+- `docs/implementation_rules.md`
 - `memory.md` (This file)
 
 **Related IDLs:**
-- `src/sexp_evaluator/sexp_evaluator_IDL.md`
-- `src/sexp_evaluator/sexp_environment_IDL.md`
+- (Potentially `src/orchestration/coding_workflow_orchestrator_IDL.md` if created later)
 
 ## Recent Activity Log
 
@@ -74,14 +71,16 @@
 - **Fix Dispatcher Initial Environment Handling:** Modified `dispatcher.execute_programmatic_task` to correctly extract `SexpEnvironment` from `flags['initial_env']` and pass it to `SexpEvaluator`.
 - **Fix Dispatcher Initial Environment Instantiation:** Corrected `dispatcher.execute_programmatic_task` to properly instantiate `SexpEnvironment` using the bindings provided in `flags['initial_env']` before passing it to the evaluator.
 - **Fix Workflow S-expression Symbols:** Changed underscored symbols (e.g., `initial_user_goal`) to hyphenated symbols (e.g., `initial-user-goal`) in `src/scripts/run_coding_workflow.py`'s main S-expression to match the keys passed in the initial environment. Corrected the analysis task name called in the controller. Updated Python dictionary keys accordingly.
+- **Implement CodingWorkflowOrchestrator (Phases 1 & 2):** Created `CodingWorkflowOrchestrator` class in `src/orchestration/coding_workflow_orchestrator.py` with `__init__`, phase stubs (`_execute_code`, `_validate_code`, `_analyze_iteration`), and main `run()` loop. Implemented `_generate_plan` method to call `app.handle_task_command` for "user:generate-plan-from-goal". Added unit tests in `tests/orchestration/test_coding_workflow_orchestrator.py` for instantiation, `run()` loop with stubs, and `_generate_plan` (success, task failure, parsing failure, app call exception). Updated `project_rules.md` and `memory.md`.
 
 ## Next Steps
 
-1.  **Phase 9.3 Testing:** Implement unit tests for `LLMInteractionManager` and `BaseHandler` to verify the `model_override` logic.
-2.  **Full Phase 10b Implementation (Remaining):** Consider if other basic arithmetic/logic primitives are immediately needed (e.g., `*`, `/`, `and`, `or`, `not`). (Note: `get-field`, `string=?`, `log-message`, `eq?`, `null?`, `set!`, `+`, `-`, `string-append`, `<` are now implemented. Others are pending).
-4.  **Phase 8: Aider Integration:** Implement `AiderBridge`, Aider tool specs, Aider executors, and related `Application` logic. Add integration tests.
-5.  **Merge Streams & Finalize Deferred Methods:** Integrate all changes and complete any remaining deferred method implementations and their tests.
-6.  **Integration Testing & Documentation:** Enhance overall integration tests and update all documentation to reflect the final state.
+1.  **Implement `CodingWorkflowOrchestrator._execute_code()` (Phase 3):** Integrate Aider calls via `self.app.handle_task_command` using an Aider-specific task identifier (e.g., "aider:execute-task").
+2.  **Implement `CodingWorkflowOrchestrator._validate_code()` (Phase 4):** Integrate shell command execution for running tests using `self.app.handle_task_command` with "system:execute_shell_command".
+3.  **Implement `CodingWorkflowOrchestrator._analyze_iteration()` (Phase 5):** Integrate LLM call via `self.app.handle_task_command` using "user:analyze-aider-result" to get `CombinedAnalysisResult`.
+4.  **Full Integration and Testing of `CodingWorkflowOrchestrator`**: Write end-to-end tests for the orchestrator's `run()` method, mocking `Application` layer interactions.
+5.  **Phase 9.3 Testing:** Implement unit tests for `LLMInteractionManager` and `BaseHandler` to verify the `model_override` logic (if still pending).
+6.  **Phase 8: Aider Integration (Core):** Review and complete core `AiderBridge` implementation and its direct tests if not fully covered by orchestrator tasks.
 
 ## Notes & Context
 
