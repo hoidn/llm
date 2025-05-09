@@ -856,7 +856,7 @@ class SpecialFormProcessor:
         # 4. Initialize Loop State
         current_iteration = 1
         loop_result: Any = []  # Default result is nil/[] if max_iter is 0 or loop doesn't run
-        last_exec_result_val: Any = loop_result # Store last successful exec result
+        last_exec_result_val: Any = None # Store last successful exec result
 
         if max_iter_val == 0:
             logger.info("iterative-loop: max-iterations is 0, returning [].")
@@ -968,7 +968,11 @@ class SpecialFormProcessor:
                 )
         else: # Loop finished because current_iteration > max_iter_val (and not stopped early)
             logger.info(f"iterative-loop: Finished after reaching max_iterations ({max_iter_val}). Returning last executor result.")
-            loop_result = last_exec_result_val
+            # If we never executed anything (max_iter was 0), return empty list
+            if last_exec_result_val is None:
+                loop_result = []
+            else:
+                loop_result = last_exec_result_val
 
         logger.info(f"SpecialFormProcessor.handle_iterative_loop END. Iterations run: {current_iteration-1 if max_iter_val > 0 else 0}. Final loop_result type: {type(loop_result)}")
         logger.debug(f"SpecialFormProcessor.handle_iterative_loop END -> {str(loop_result)[:200]}...")

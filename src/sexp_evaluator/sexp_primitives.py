@@ -194,18 +194,26 @@ class PrimitiveProcessor:
                 logger.warning(f"  'get-field': Key '{field_name_val}' not found in assoc-list. Returning None.")
                 return None
                 
-            # Pydantic model access - simplify to primarily use direct attribute access
+            # Pydantic model access - prioritize direct attribute access
             elif isinstance(target_obj, BaseModel):
                 logger.debug(f"  'get-field': Target is a Pydantic model: {type(target_obj).__name__}")
                 logger.debug(f"  'get-field': About to access field '{field_name_val}' via getattr on object type {type(target_obj)}")
                 
-                # Try direct attribute access (most reliable)
+                # First try direct attribute access
                 try:
                     val = getattr(target_obj, field_name_val)
                     logger.debug(f"  'get-field': Direct getattr for '{field_name_val}' succeeded -> {val!r} (Type: {type(val)})")
                     return val.value() if isinstance(val, Symbol) else val
                 except AttributeError:
                     logger.debug(f"  'get-field': Direct getattr for '{field_name_val}' failed with AttributeError")
+                    
+                    # Next try model_fields to check if it's an optional field that's None
+                    if hasattr(target_obj, "model_fields"):
+                        if field_name_val in target_obj.model_fields:
+                            # Field exists in the model definition but might be None/unset
+                            logger.debug(f"  'get-field': Field '{field_name_val}' exists in model_fields but not accessible via getattr")
+                            return None
+                    
                     # Fall back to model_dump only if getattr fails
                     try:
                         # Try model_dump (Pydantic v2)

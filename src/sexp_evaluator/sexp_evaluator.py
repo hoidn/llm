@@ -108,9 +108,7 @@ class SexpEvaluator:
             "-": self.primitive_processor.apply_subtract_primitive,
             "<": self.primitive_processor.apply_less_than_primitive,
             "string-append": self.primitive_processor.apply_string_append_primitive,
-            # --- ADD THIS LINE ---
             "not": self.primitive_processor.apply_not_primitive,
-            # --- END ADD ---
         }
         logging.debug(f"SexpEvaluator INITIALIZED. SPECIAL_FORM_HANDLERS keys: {list(self.SPECIAL_FORM_HANDLERS.keys())}")
         logging.debug(f"SexpEvaluator INITIALIZED. PRIMITIVE_APPLIERS keys: {list(self.PRIMITIVE_APPLIERS.keys())}")
