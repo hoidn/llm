@@ -81,7 +81,10 @@ DEFATOM_COMBINED_ANALYSIS_S_EXPRESSION = """
 (defatom user:evaluate-and-retry-analysis
   (instructions
     "You are an AI evaluator reviewing a coding task iteration ({{iteration}}/{{max_retries}}).
-    Goal: {{original_goal}}
+    Original User Goal: {{original_goal}}
+    Original Task Context File Content:
+    {{initial_task_context}}
+
     Aider Prompt This Iteration: {{aider_instructions}}
     Aider Task Status: {{aider_status}}
     Aider Output/Diff/Error:
@@ -112,6 +115,7 @@ DEFATOM_COMBINED_ANALYSIS_S_EXPRESSION = """
   )
   (params
     (original_goal string)
+    (initial_task_context string) ;; <<< ADD THIS NEW PARAMETER
     (aider_instructions string) ;; The prompt given to Aider this round
     (aider_status string) ;; Status of the aider:automatic task result
     (aider_diff string) ;; Content (diff/error) from the aider:automatic task result
@@ -203,7 +207,8 @@ MAIN_WORKFLOW_S_EXPRESSION = """
                   (let ((analysis_task_result
                          (user:evaluate-and-retry-analysis ;; Corrected task name
                            ;; Parameters for user:evaluate-and-retry-analysis
-                           (original_goal initial-user-goal) 
+                           (original_goal initial-user-goal)
+                           (initial_task_context initial-context-data) ;; <<< ADD THIS ARGUMENT
                            (aider_instructions (get-field current-plan "instructions"))
                            (previous_files (get-field current-plan "files"))
                            (aider_status (get-field aider_result "status"))
