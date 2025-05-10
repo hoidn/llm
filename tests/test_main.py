@@ -82,14 +82,16 @@ PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 def app_components(mocker, tmp_path):
     """Provides mocked components for Application testing using autospec."""
     
-    with patch('src.main.MemorySystem', autospec=True) as MockMemory, \
-         patch('src.main.TaskSystem', autospec=True) as MockTask, \
-         patch('src.main.PassthroughHandler', autospec=True) as MockHandler, \
-         patch('src.main.FileAccessManager', autospec=True) as MockFileAccessManager, \
-         patch('src.handler.base_handler.LLMInteractionManager', autospec=True) as MockLLMInteractionManager, \
-         patch('src.main.AiderBridge', autospec=True) as MockAiderBridge, \
-         patch('src.main.GitRepositoryIndexer', autospec=True) as MockIndexer, \
-         patch('src.main.SystemExecutorFunctions', autospec=True) as MockSysExecCls, \
+    # For classes that will be instantiated, we want the patch to replace the class
+    # with a MagicMock that is callable (like a constructor) and returns our instance mock.
+    with patch('src.main.MemorySystem', new_callable=MagicMock) as MockMemory, \
+         patch('src.main.TaskSystem', new_callable=MagicMock) as MockTask, \
+         patch('src.main.PassthroughHandler', new_callable=MagicMock) as MockHandler, \
+         patch('src.main.FileAccessManager', new_callable=MagicMock) as MockFileAccessManager, \
+         patch('src.handler.base_handler.LLMInteractionManager', new_callable=MagicMock) as MockLLMInteractionManager, \
+         patch('src.main.AiderBridge', new_callable=MagicMock) as MockAiderBridge, \
+         patch('src.main.GitRepositoryIndexer', new_callable=MagicMock) as MockIndexer, \
+         patch('src.main.SystemExecutorFunctions', new_callable=MagicMock) as MockSysExecCls, \
          patch('src.main.AiderExecutors', autospec=True) as MockAiderExec, \
          patch('src.handler.llm_interaction_manager.Agent', autospec=True) as MockPydanticAgent, \
          patch('src.tools.anthropic_tools.view', autospec=True) as mock_anthropic_view_func, \
