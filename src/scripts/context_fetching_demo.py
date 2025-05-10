@@ -175,7 +175,7 @@ if __name__ == "__main__":
         default=str(PROJECT_ROOT), # Default to the project root
         help="Path to the root of the Git repository to index."
     )
-    args = parser.parse_args()
+    args, _ = parser.parse_known_args()
 
     # Validate repo path
     if not os.path.isdir(args.repo):

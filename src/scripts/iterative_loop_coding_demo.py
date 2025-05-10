@@ -228,7 +228,9 @@ def parse_arguments() -> argparse.Namespace:
                         help="Maximum number of iterations to attempt (default: 3).")
     parser.add_argument("--debug", action="store_true",
                         help="Enable debug logging.")
-    return parser.parse_args()
+    # Only parse known args to avoid errors when running in test environments
+    args, _ = parser.parse_known_args()
+    return args
 
 def load_context_file(file_path: Optional[str]) -> str:
     """Load context from a file if provided, otherwise return empty string."""

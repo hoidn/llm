@@ -121,10 +121,10 @@ DEFATOM_COMBINED_ANALYSIS_S_EXPRESSION = """
     (test_command string)
     (test_stdout string)
     (test_stderr string)
-    (test_exit_code int)
+    (test_exit_code integer)
     (previous_files list) 
-    (iteration int)
-    (max_retries int)
+    (iteration integer)
+    (max_retries integer)
   )
   (output_format ((type "json") (schema "src.system.models.CombinedAnalysisResult")))
   (description "Analyzes Aider and test results, determines success/failure/retry, and provides the next prompt and files if needed.")
@@ -146,7 +146,8 @@ def main():
         default=3, 
         help="Maximum number of retry iterations for the coding loop."
     )
-    args = parser.parse_args()
+    # Only parse known args to avoid errors when running in test environments
+    args, _ = parser.parse_known_args()
 
     if args.debug:
         logging.getLogger().setLevel(logging.DEBUG)

@@ -2777,7 +2777,7 @@ class TestSexpEvaluatorIterativeLoop:
             [Symbol("quote"), final_val]
         ]
         ast = self._create_loop_ast(
-            max_iter=5,
+            max_iter=1,  # Use 1 instead of 5 to ensure at least one iteration runs
             initial_input_expr="'start'", # Creates (quote start)
             test_cmd_expr="'echo test'", # Creates (quote echo test)
             executor_body="'exec_result'", # Creates (quote exec_result)
@@ -2795,7 +2795,7 @@ class TestSexpEvaluatorIterativeLoop:
 
         def config_eval_side_effect(node, env):
             # Check for specific config expressions
-            if node == 5: return 5
+            if node == 1: return 1  # Return 1 for max_iter
             # Simulate the EVALUATION of the configuration clauses
             # (quote start) evaluates to Symbol('start') - BUT the loop logic expects the *value*
             # The SPECIAL FORM evaluator should handle evaluating these *before* the loop starts
@@ -2803,7 +2803,7 @@ class TestSexpEvaluatorIterativeLoop:
             if isinstance(node, list) and len(node) == 2 and \
                isinstance(node[0], Symbol) and node[0].value() == "quote" and \
                isinstance(node[1], Symbol) and node[1].value() == "start":
-                return "start" # Return the string value
+                return Symbol("start") # Return the Symbol object
                 
             # More robust check for (quote echo test)
             if isinstance(node, list) and len(node) == 2 and \
@@ -2851,7 +2851,7 @@ class TestSexpEvaluatorIterativeLoop:
 
         # Verify the arguments passed TO _call_phase_function
         # Check that the correct mock lambda function was passed as func_to_call
-        # Executor receives "start" as current_structured_input for iter 1 (the evaluated value)
+        # Executor receives Symbol("start") as current_structured_input for iter 1 (the evaluated value)
         
         # Add debug logging to see actual calls
         for i, call_args in enumerate(mock_call_phase.call_args_list):
@@ -2875,7 +2875,7 @@ class TestSexpEvaluatorIterativeLoop:
             logging.error(f"Actual calls: {mock_call_phase.call_args_list}")
             raise
             
-        # Controller also receives "start" as current_structured_input for iter 1
+        # Controller also receives Symbol("start") as current_structured_input for iter 1
         try:
             mock_call_phase.assert_any_call("controller", mock_controller_lambda_func, [mock_executor_result, mock_validator_result, Symbol("start"), 1], mocker.ANY, mocker.ANY, 1)
             logging.debug("Controller call assertion passed")

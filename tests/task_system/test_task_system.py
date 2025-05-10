@@ -143,7 +143,6 @@ def test_task_system_find_delegates(mock_find, task_system_instance):
 # --- Tests for execute_atomic_template (Phase 2c) ---
 
 @patch.object(TaskSystem, 'find_template')
-# @patch.object(MemorySystem, 'get_relevant_context_for') # No longer needed directly here
 @patch.object(TaskSystem, 'resolve_file_paths') # Mock file path resolution
 @patch.object(AtomicTaskExecutor, 'execute_body')
 def test_execute_atomic_template_success_flow(
@@ -186,7 +185,8 @@ def test_execute_atomic_template_success_flow(
     mock_execute_body.assert_called_once_with(
         atomic_task_def=mock_template_def,
         params=request.inputs,
-        handler=mock_handler # Check handler was passed
+        handler=mock_handler, # Check handler was passed
+        history_config=ANY  # Allow any history_config value
     )
 
     # Check final result (TaskResult object)

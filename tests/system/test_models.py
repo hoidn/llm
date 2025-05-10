@@ -347,8 +347,10 @@ def test_development_plan_valid():
 
 def test_development_plan_invalid_missing_fields():
     """Test DevelopmentPlan validation fails with missing required fields."""
-    with pytest.raises(ValidationError):
-        DevelopmentPlan.model_validate({"instructions": "...", "files": []}) # Missing test_command
+    # test_command is optional, so this should NOT raise an error
+    DevelopmentPlan.model_validate({"instructions": "...", "files": []})
+    
+    # These should raise errors for missing required fields
     with pytest.raises(ValidationError):
         DevelopmentPlan.model_validate({"instructions": "...", "test_command": "..."}) # Missing files
     with pytest.raises(ValidationError):

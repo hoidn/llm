@@ -280,7 +280,7 @@ if __name__ == "__main__":
         default=None,
         help="Optional: Default Aider model identifier to suggest/use."
     )
-    args = parser.parse_args()
+    args, _ = parser.parse_known_args()
 
     # Set AIDER_ENABLED in the current process environment
     # This ensures it's available for any subprocess or module that checks it
