@@ -45,7 +45,7 @@ from src.main import Application
 from src.orchestration.coding_workflow_orchestrator import CodingWorkflowOrchestrator # Import the orchestrator
 
 # --- Logging Setup ---
-LOG_LEVEL = logging.DEBUG 
+LOG_LEVEL = logging.INFO
 logging.basicConfig(
     level=LOG_LEVEL,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -63,15 +63,15 @@ DEFATOM_GENERATE_PLAN_S_EXPRESSION = """
     "Analyze the user's goal: '{{goal}}' with the provided context: '{{context_string}}'.
     Your *only* task is to generate a development plan. Do *not* attempt to execute any tools or commands yourself.
     The plan must include ONLY:
-    1. 'instructions': Detailed steps for an AI coder (Aider).
-    2. 'files': List of relative file paths to create / modify or use as context (including both souce modules and their associated test files).
+    1. 'instructions': Detailed steps for an AI coder (Aider), derived from the user's goal.
+    2. 'files': A list of ALL file paths that need to be created or modified to implement the plan. **Carefully review the '{{goal}}' for any explicitly mentioned file paths (e.g., under sections like 'File to Modify' or paths mentioned in test names like 'tests/some_module/test_file.py') and ensure these are accurately extracted and included in this 'files' list.** This list should include both source code modules and their associated test files if they are mentioned or clearly implied as needing changes by the goal.
     Do NOT generate a 'test_command'.
     Output ONLY a single JSON object conforming to the DevelopmentPlan schema (which has 'instructions' and 'files' as required, 'test_command' is optional). No other text."
   )
   (params (goal string) (context_string string))
   (output_format ((type "json") (schema "src.system.models.DevelopmentPlan")))
   (description "Generates DevelopmentPlan JSON (instructions/files only) from goal/context.")
-  (model "google-gla:gemini-2.5-pro-exp-03-25")
+  (model "google-gla:gemini-2.5-pro-exp-03-25") 
   (history_config (quote ((use_session_history false) (record_in_session_history true))))
 )
 """
@@ -153,7 +153,7 @@ def main():
         logging.getLogger().setLevel(logging.DEBUG)
         logger.setLevel(logging.DEBUG)
         for handler in logging.getLogger().handlers: # Ensure handlers also respect the level
-            handler.setLevel(logging.DEBUG)
+            handler.setLevel(logging.INFO)
         logger.info("Debug logging enabled.")
         os.environ['DEBUG_LLM_FLOW'] = 'true' # For LLMInteractionManager logging
 
