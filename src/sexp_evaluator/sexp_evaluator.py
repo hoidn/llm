@@ -23,7 +23,7 @@ from .sexp_primitives import PrimitiveProcessor
 from sexpdata import Symbol, Quoted as sexpdata_Quoted  # Renamed for clarity in debugging
 from src.system.models import (
     TaskResult, SubtaskRequest, ContextGenerationInput, ContextManagement,
-    TaskFailureError, AssociativeMatchResult, MatchTuple,
+    TaskFailureError, AssociativeMatchResult,
     TaskError 
 )
 from src.system.errors import SexpSyntaxError, SexpEvaluationError
