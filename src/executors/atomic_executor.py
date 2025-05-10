@@ -208,7 +208,7 @@ class AtomicTaskExecutor:
                     elif name in handler.tool_executors and not definition:
                         logging.warning(f"Tool '{name}' specified in template, executor found, but definition not in handler.active_tool_definitions. Skipping.")
                     else:
-                        logger.warning(f"Tool '{name}' specified in template but not found in handler's registered executors or active definitions. Skipping.")
+                        logging.warning(f"Tool '{name}' specified in template but not found in handler's registered executors or active definitions. Skipping.")
                 task_tools_config_override = (selected_executors, selected_definitions)
             else:
                 logging.debug(f"Template '{task_name}' did not specify allowed_tools. Handler's active tools will be used by default.")
