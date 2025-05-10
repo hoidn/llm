@@ -105,7 +105,7 @@ DEFATOM_COMBINED_ANALYSIS_S_EXPRESSION = """
         - Check if iteration < max_retries.
         - If yes, analyze the failure (test output, Aider diff) and generate a *revised* 'next_prompt' AND 'next_files' list for Aider to fix the issues. Verdict is 'RETRY'. The 'next_files' list should include all relevant files for the fix.
         - If no (max retries reached or failure seems unfixable), verdict is 'FAILURE'.
-    - If the Aider task itself reported failure, continue to retry unless the failure looks critical (provide 'next_prompt', 'next_files', and verdict 'RETRY').
+    - If the Aider task itself reported failure, consider whether aider's self-assesment might be wrong. ignore aider's feedback unless the failure looks critical. If you decide to retry, provide 'next_prompt', 'next_files', and verdict 'RETRY'.
 
     Provide a concise explanation in 'message'.
     Output ONLY JSON conforming to the CombinedAnalysisResult schema.
