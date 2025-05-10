@@ -172,14 +172,14 @@ class TaskSystem:
 
         # 3. Resolve Context Management Settings
         template_context_settings = template_def.get("context_management")
-        request_context_settings = request.context_management.model_dump(exclude_none=True) if request.context_management else None
+        request_context_settings_dict = request.context_management.model_dump(exclude_none=True) if request.context_management else None
 
         final_context_settings, context_error = self._validate_and_merge_context_settings(
-            template_context_settings, request_context_settings, subtype
+            template_context_settings, request_context_settings_dict, subtype
         )
         if context_error:
             # context_error is already a TaskError object
-            return TaskResult(content=context_error.message, status="FAILED", notes={"error": context_error})
+            return TaskResult(content=context_error.message, status="FAILED", notes={"error": context_error.model_dump(exclude_none=True)})
 
         # 4. Resolve File Paths
         file_paths = []

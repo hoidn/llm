@@ -371,6 +371,7 @@ def test_base_handler_execute_llm_call_success(base_handler_instance):
     assert call_kwargs.get("output_type_override") is None
     assert call_kwargs.get("active_tools") is None
     assert call_kwargs.get("model_override") is None
+    assert call_kwargs.get("history_config") is None # Default history_config
 
     # Assert history update
     assert len(base_handler_instance.conversation_history) == initial_history_len + 2
@@ -419,7 +420,8 @@ def test_base_handler_execute_llm_call_failure(base_handler_instance):
         tools_override=None, # No tools passed
         output_type_override=None,
         active_tools=None, # Expecting None
-        model_override=None # Add model_override parameter
+        model_override=None, 
+        history_config=None # Default history_config
     )
     # Assert history was NOT updated on failure
     assert base_handler_instance.conversation_history == initial_history

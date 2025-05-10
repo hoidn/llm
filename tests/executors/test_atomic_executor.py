@@ -436,3 +436,51 @@ def test_execute_body_default_history_config_is_none(executor, mock_handler):
         model_override=None,
         history_config=None # Expect None to be passed to handler
     )
+
+def test_execute_body_with_history_config(executor, mock_handler):
+    """Verify history_config is passed to handler._execute_llm_call."""
+    task_def = {
+        "name": "test_history_task",
+        "instructions": "Process with history config.",
+    }
+    params = {}
+    custom_history_config = HistoryConfigSettings(
+        use_session_history=False,
+        history_turns_to_include=3,
+        record_in_session_history=False
+    )
+
+    # Act
+    executor.execute_body(task_def, params, mock_handler, history_config=custom_history_config)
+
+    # Assert
+    mock_handler._execute_llm_call.assert_called_once_with(
+        prompt="Process with history config.",
+        system_prompt_override="Mocked System Prompt",
+        tools_override=None,
+        output_type_override=None,
+        model_override=None,
+        history_config=custom_history_config # Check the custom config was passed
+    )
+
+def test_execute_body_default_history_config_is_none(executor, mock_handler):
+    """Verify default history_config passed to handler is None if not provided to execute_body."""
+    task_def = {
+        "name": "test_default_history_task",
+        "instructions": "Process with default history.",
+    }
+    params = {}
+
+    # Act
+    # Call execute_body without history_config argument
+    executor.execute_body(task_def, params, mock_handler)
+
+    # Assert
+    mock_handler._execute_llm_call.assert_called_once_with(
+        prompt="Process with default history.",
+        system_prompt_override="Mocked System Prompt",
+        tools_override=None,
+        output_type_override=None,
+        model_override=None,
+        history_config=None # Expect None to be passed to handler
+    )
