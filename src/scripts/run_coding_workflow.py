@@ -61,7 +61,9 @@ DEFATOM_GENERATE_PLAN_S_EXPRESSION = """
 (defatom user:generate-plan-from-goal
   (instructions
     "Analyze the user's goal: '{{goal}}' with the provided context: '{{context_string}}'.
-    Your *only* task is to generate a development plan. Do *not* attempt to execute any tools or commands yourself.
+    Your *only* task is to generate a development plan. Do *not* attempt to execute any tools or commands yourself. 
+    Before generating the plan, read start_here.md. Then consider the user's goal. Which IDLs and other architectural constraints address it? Which components does it implicate? trace call chains. 
+    After completing your analysis, draft an implementation plan for the user's goal.
     The plan must include ONLY:
     1. 'instructions': Detailed steps for an AI coder (Aider), derived from the user's goal.
     2. 'files': A list of ALL file paths that need to be created or modified to implement the plan. **Carefully review the '{{goal}}' for any explicitly mentioned file paths (e.g., under sections like 'File to Modify' or paths mentioned in test names like 'tests/some_module/test_file.py') and ensure these are accurately extracted and included in this 'files' list.** This list should include both source code modules and their associated test files if they are mentioned or clearly implied as needing changes by the goal.
