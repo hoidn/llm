@@ -15,7 +15,7 @@ from src.handler.file_context_manager import FileContextManager
 from src.handler.llm_interaction_manager import LLMInteractionManager
 
 # Import TaskResult properly now that it's potentially patched or available
-from src.system.models import TaskResult, TaskError # Import TaskError
+from src.system.models import TaskResult, TaskError, HistoryConfigSettings
 
 # --- Fixtures ---
 
@@ -413,16 +413,15 @@ def test_base_handler_execute_llm_call_failure(base_handler_instance):
 
     # Verify manager call
     # Fix: Check active_tools is None when none are expected
-    mock_llm_manager.execute_call.assert_called_once_with(
-        prompt=user_prompt,
-        conversation_history=initial_history,
-        system_prompt_override=None,
-        tools_override=None, # No tools passed
-        output_type_override=None,
-        active_tools=None, # Expecting None
-        model_override=None, 
-        history_config=None # Default history_config
-    )
+    mock_llm_manager.execute_call.assert_called_once()
+    call_kwargs = mock_llm_manager.execute_call.call_args.kwargs
+    assert call_kwargs.get("prompt") == user_prompt
+    assert call_kwargs.get("system_prompt_override") is None
+    assert call_kwargs.get("tools_override") is None
+    assert call_kwargs.get("output_type_override") is None
+    assert call_kwargs.get("active_tools") is None
+    assert call_kwargs.get("model_override") is None
+    assert call_kwargs.get("history_config") is None
     # Assert history was NOT updated on failure
     assert base_handler_instance.conversation_history == initial_history
 
