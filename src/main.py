@@ -518,172 +518,115 @@ Select the best matching paths *from the provided metadata* and output the JSON.
             logger.error("Cannot register system tools: SystemExecutorFunctions not initialized.")
             return
 
-        tools_to_register = [
-            {
-                "spec": {
-                    "name": "system_get_context",
-                    "description": "Retrieves relevant context based on a query.",
-                    "input_schema": { # Define expected input structure
-                        "type": "object",
-                        "properties": {
-                            "query": {"type": "string", "description": "The query to find context for."},
-                            # Add other params from ContextGenerationInput if needed
-                        },
-                        "required": ["query"]
-                    }
-                },
-                "executor": self.system_executors.execute_get_context # Pass instance method directly
+        # Explicitly define tool specifications with colon-separated names
+        tool_definitions = {
+            "execute_get_context": {
+                "name": "system:get_context",
+                "description": "Gets relevant context from the memory system based on a query.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {"query": {"type": "string"}},
+                    "required": ["query"],
+                }
             },
-            {
-                "spec": {
-                    "name": "system_read_files",
-                    "description": "Reads the content of specified files.",
-                     "input_schema": {
-                        "type": "object",
-                        "properties": {
-                            "file_paths": {
-                                "type": "array",
-                                "items": {"type": "string"},
-                                "description": "List of file paths to read."
-                            },
-                            "max_size": {"type": "integer", "description": "Optional max size per file."}
-                        },
-                        "required": ["file_paths"]
-                    }
-                },
-                "executor": self.system_executors.execute_read_files # Pass instance method directly
+            "execute_read_files": {
+                "name": "system:read_files",
+                "description": "Reads the content of specified files.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {"file_paths": {"type": "array", "items": {"type": "string"}}},
+                    "required": ["file_paths"],
+                }
             },
-            {
-                "spec": {
-                    "name": "system_list_directory",
-                    "description": "Lists the contents of a specified directory.",
-                    "input_schema": {
-                        "type": "object",
-                        "properties": {
-                            "directory_path": {"type": "string", "description": "Path to the directory to list."}
-                        },
-                        "required": ["directory_path"]
-                    }
-                },
-                "executor": self.system_executors.execute_list_directory # Pass instance method directly
+            "execute_list_directory": {
+                "name": "system:list_directory",
+                "description": "Lists the contents of a directory.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {"directory_path": {"type": "string"}},
+                    "required": ["directory_path"],
+                }
             },
-            {
-                "spec": {
-                    "name": "system_write_file",
-                    "description": "Writes content to a specified file.",
-                    "input_schema": {
-                        "type": "object",
-                        "properties": {
-                            "file_path": {"type": "string", "description": "Path to the file to write."},
-                            "content": {"type": "string", "description": "Content to write to the file."},
-                            "overwrite": {"type": "boolean", "description": "Whether to overwrite if the file exists (default: false)."}
-                        },
-                        "required": ["file_path", "content"]
-                    }
-                },
-                "executor": self.system_executors.execute_write_file # Pass instance method directly
-            },
-            {
-                "spec": {
-                    "name": "system_execute_shell_command",
-                    "description": "Executes a shell command safely.",
-                    "input_schema": {
-                        "type": "object",
-                        "properties": {
-                            "command": {"type": "string", "description": "The shell command to execute."},
-                            "cwd": {"type": "string", "description": "Optional working directory for the command."},
-                            "timeout": {"type": "integer", "description": "Optional timeout in seconds."}
-                        },
-                        "required": ["command"]
-                    }
-                },
-                "executor": self.system_executors.execute_shell_command # Pass instance method directly
-            }
-        ]
-
-        registered_count = 0
-        for tool in tools_to_register:
-            try:
-                # Check if dependencies for the executor are met before registering
-                if tool['spec']['name'] == 'system:get_context' and not self.memory_system:
-                    logger.error("Skipping registration of system:get_context: MemorySystem not initialized.")
-                    continue
-                # Check file_manager dependency for file-related tools
-                if tool['spec']['name'] in ['system:read_files', 'system:list_directory', 'system:write_file'] and not self.passthrough_handler.file_manager:
-                    logger.error(f"Skipping registration of {tool['spec']['name']}: FileAccessManager not initialized in handler.")
-                    continue
-                # Check command_executor dependency for shell command tool
-                if tool['spec']['name'] == 'system:execute_shell_command' and not self.system_executors.command_executor:
-                    logger.error(f"Skipping registration of {tool['spec']['name']}: Command executor module not available.")
-                    continue
-
-
-                success = self.passthrough_handler.register_tool(tool["spec"], tool["executor"])
-                if success:
-                    registered_count += 1
-                else:
-                    logger.warning(f"Failed to register system tool: {tool['spec']['name']}")
-            except Exception as e:
-                logger.exception(f"Error registering system tool {tool['spec']['name']}: {e}")
-        logger.info(f"Registered {registered_count}/{len(tools_to_register)} system tools.")
-
-        # Inside _register_system_tools method
-        # ... (after other tool registrations) ...
-
-        executors_ready_for_handler_tools = (
-            self.system_executors and 
-            hasattr(self.system_executors, 'handler_instance') and 
-            self.system_executors.handler_instance
-        )
-
-        if executors_ready_for_handler_tools:
-            # Tool: system_clear_handler_data_context
-            clear_context_tool_spec = {
-                "name": "system_clear_handler_data_context", # Use underscores for LLM compatibility
-                "description": "Clears the active data context in the handler.",
-                "input_schema": {"type": "object", "properties": {}} # No params
-            }
-            success_clear = self.passthrough_handler.register_tool(
-                clear_context_tool_spec,
-                self.system_executors.execute_clear_handler_data_context
-            )
-            if success_clear:
-                # registered_count += 1 # Uncomment if registered_count is used
-                logger.debug(f"Registered system tool: {clear_context_tool_spec['name']}")
-            else:
-                logger.warning(f"Failed to register system tool: {clear_context_tool_spec['name']}")
-
-            # Tool: system_prime_handler_data_context
-            prime_context_tool_spec = {
-                "name": "system_prime_handler_data_context", # Use underscores
-                "description": "Primes the data context in the handler using a query or initial files.",
+            "execute_write_file": {
+                "name": "system:write_file",
+                "description": "Writes content to a file.",
                 "input_schema": {
                     "type": "object",
                     "properties": {
-                        "query": {"type": ["string", "null"], "description": "Optional query for associative matching."},
-                        "initial_files": {
-                            "type": ["array", "null"], 
-                            "items": {"type": "string"}, 
-                            "description": "Optional list of file paths to seed context."
-                        }
-                    }
-                    # No 'required' field; executor validates at least one key is present.
+                        "file_path": {"type": "string"},
+                        "content": {"type": "string"},
+                        "overwrite": {"type": "boolean", "default": False}
+                    },
+                    "required": ["file_path", "content"],
+                }
+            },
+            "execute_shell_command": {
+                "name": "system:execute_shell_command",
+                "description": "Executes a shell command.",
+                 "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "command": {"type": "string"},
+                        "cwd": {"type": ["string", "null"]}, # Optional
+                        "timeout": {"type": ["integer", "null"]} # Optional
+                    },
+                    "required": ["command"],
+                }
+            },
+            "execute_clear_handler_data_context": {
+                "name": "system:clear_handler_data_context",
+                "description": "Clears the active data context in the handler.",
+                "input_schema": {"type": "object", "properties": {}} # No params
+            },
+            "execute_prime_handler_data_context": {
+                "name": "system:prime_handler_data_context",
+                "description": "Primes the handler's data context with initial files or a query.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": ["string", "null"]},
+                        "initial_files": {"type": ["array", "null"], "items": {"type": "string"}}
+                    },
                 }
             }
-            success_prime = self.passthrough_handler.register_tool(
-                prime_context_tool_spec,
-                self.system_executors.execute_prime_handler_data_context
-            )
-            if success_prime:
-                # registered_count += 1 # Uncomment if registered_count is used
-                logger.debug(f"Registered system tool: {prime_context_tool_spec['name']}")
+        }
+
+        registered_count = 0
+        total_expected = len(tool_definitions)
+
+        for method_name, tool_spec in tool_definitions.items():
+            if hasattr(self.system_executors, method_name):
+                executor_method = getattr(self.system_executors, method_name)
+                if callable(executor_method):
+                    # Check dependencies before registering
+                    if tool_spec['name'] == 'system:get_context' and not self.memory_system:
+                        logger.error("Skipping registration of system:get_context: MemorySystem not initialized.")
+                        continue
+                    if tool_spec['name'] in ['system:read_files', 'system:list_directory', 'system:write_file'] \
+                            and (not self.passthrough_handler or not self.passthrough_handler.file_manager):
+                        logger.error(f"Skipping registration of {tool_spec['name']}: FileAccessManager not initialized in handler.")
+                        continue
+                    if tool_spec['name'] == 'system:execute_shell_command' \
+                            and (not self.system_executors or not self.system_executors.command_executor):
+                        logger.error(f"Skipping registration of {tool_spec['name']}: Command executor module not available.")
+                        continue
+                    if tool_spec['name'] in ['system:clear_handler_data_context', 'system:prime_handler_data_context'] \
+                            and (not self.system_executors or not self.system_executors.handler_instance):
+                        logger.error(f"Skipping registration of {tool_spec['name']}: SystemExecutorFunctions not properly initialized with a handler instance.")
+                        continue
+                        
+                    if self.passthrough_handler.register_tool(tool_spec, executor_method):
+                        registered_count += 1
+                    else:
+                        logger.error(f"Failed to register system tool: {tool_spec['name']}")
+                else:
+                    logger.error(f"Executor method '{method_name}' in SystemExecutorFunctions is not callable.")
             else:
-                logger.warning(f"Failed to register system tool: {prime_context_tool_spec['name']}")
-        else:
-            logger.error(
-                "Skipping registration of system_clear_handler_data_context and system_prime_handler_data_context: "
-                "SystemExecutorFunctions not properly initialized with a handler instance."
-            )
+                logger.error(f"Method '{method_name}' not found in SystemExecutorFunctions. Cannot register tool '{tool_spec['name']}'.")
+        
+        logger.info(f"Registered {registered_count}/{total_expected} system tools.")
+        if registered_count != total_expected:
+            logger.warning("Not all expected system tools were registered. Check logs for errors.")
 
 
     def _load_mcp_config(self, config_path: str = ".mcp.json"):
