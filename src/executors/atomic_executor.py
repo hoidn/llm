@@ -200,21 +200,14 @@ class AtomicTaskExecutor:
         # --- 3. Construct Handler Payload & Invoke Handler ---
         try:
             # Build the final system prompt
-            file_context_str = None
-            fc = params.get("file_contents")
-            if isinstance(fc, dict) and fc:
-                pieces = []
-                for path, content in fc.items():
-                    if content:
-                        pieces.append(f"--- File: {path} ---\n{content}\n--- End File: {path} ---")
-                file_context_str = "\n\n".join(pieces)
-
+            # The 'substituted_system_prompt_template' is the content from the template's 'system' field,
+            # after its own {{placeholders}} have been filled. This becomes the 'template_specific_instructions'.
             final_system_prompt = handler._build_system_prompt(
-                template=substituted_system_prompt_template,
-                file_context=file_context_str
+                template_specific_instructions=substituted_system_prompt_template
             )
 
-            # Main prompt is the substituted instructions
+            # Main prompt for the LLM is the content from the template's 'instructions' field,
+            # after its {{placeholders}} have been filled.
             main_prompt = substituted_instructions
             if not main_prompt:
                 logging.warning(f"Task '{task_name}' has empty instructions after substitution.")
