@@ -14,7 +14,7 @@ import anyio # Add import for anyio.EndOfStream
 # Import system models
 # Assuming these paths are correct relative to your project structure
 try:
-    from src.system.models import TaskResult, TaskFailureError, TaskFailureReason, ContextGenerationInput, AssociativeMatchResult, MatchTuple, TaskFailureDetails
+    from src.system.models import TaskResult, TaskFailureError, TaskFailureReason, ContextGenerationInput, AssociativeMatchResult, MatchItem, TaskFailureDetails # Changed MatchTuple to MatchItem
 except ImportError as e:
     # Provide a more informative error if internal imports fail
     raise ImportError(f"Failed to import internal project modules: {e}. Ensure PYTHONPATH is set correctly or run from the project root.") from e
