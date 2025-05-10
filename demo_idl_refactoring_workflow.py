@@ -241,7 +241,7 @@ async def main():
     )
     workflow_manager.add_step(step1_def)
     logger.info(f"Running Step 1: Find relevant IDLs with query: '{INITIAL_IDL_SEARCH_QUERY}'")
-    pt1_context = await workflow_manager.run()
+    pt1_context = workflow_manager.run()
     logger.info(f"Step 1 Result Context: {pt1_context}")
 
     found_idls_task_result_dict = pt1_context.get("found_idls_result")
@@ -378,7 +378,7 @@ async def main():
         output_name="final_context_cleared"
     )
     workflow_manager.add_step(final_clear_def)
-    final_clear_context_result = await workflow_manager.run()
+    final_clear_context_result = workflow_manager.run()
     logger.info(f"Final context clear result: {final_clear_context_result}")
     logger.info("--- End of Demo ---")
 

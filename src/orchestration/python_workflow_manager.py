@@ -34,7 +34,7 @@ class PythonWorkflowManager:
         self.workflow_steps.append(step_definition)
         logger.debug(f"Added step: {step_definition.task_name} (output: {step_definition.output_name})")
 
-    async def run(self) -> Dict[str, Any]: # Return type matches demo script expectation
+    def run(self) -> Dict[str, Any]: # Return type matches demo script expectation
         """
         Executes the defined workflow sequentially.
         Returns:

@@ -77,7 +77,7 @@ module src.orchestration.python_workflow_manager {
         // @raises_error(condition="InvalidWorkflowDefinition", description="If the workflow is empty or a step definition is malformed.")
         // Expected JSON format for initial_workflow_context: { "key": "Any", ... }
         // Expected JSON format for return value: { "step1_output_name": TaskResult_dict, "step2_output_name": TaskResult_dict, ... }
-        async dict<string, Any> run(optional dict<string, Any> initial_workflow_context);
+        dict<string, Any> run(optional dict<string, Any> initial_workflow_context);
 
         // Invariants:
         // - `app_or_dispatcher_instance` is a valid callable instance.
