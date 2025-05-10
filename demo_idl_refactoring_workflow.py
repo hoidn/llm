@@ -38,6 +38,19 @@ import json
 import logging
 import os
 import sys
+
+# --- BEGIN FIX: Apply nest_asyncio ---
+try:
+    import nest_asyncio
+    nest_asyncio.apply()
+    # Optional: Add a print or log statement for confirmation
+    print("INFO: nest_asyncio.apply() called successfully at script startup.")
+except ImportError:
+    print("WARNING: nest_asyncio library not found. Event loop errors may occur.")
+except Exception as e:
+    print(f"WARNING: An error occurred while applying nest_asyncio: {e}")
+# --- END FIX ---
+
 from typing import List, Dict, Any, Optional # Added Optional
 
 # Add project root to sys.path to allow imports from src
