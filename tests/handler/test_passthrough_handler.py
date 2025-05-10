@@ -203,7 +203,7 @@ def test_handle_query_active_subtask_continues(passthrough_handler, mocker):
 
 
 def test_handle_query_notes_include_relevant_files_from_context(passthrough_handler, mocker):
-from src.system.models import TaskResult, DataContext, MatchItem # Add DataContext and MatchItem imports
+# from src.system.models import TaskResult, DataContext, MatchItem # Add DataContext and MatchItem imports # Moved to top
 
 # ...
 
