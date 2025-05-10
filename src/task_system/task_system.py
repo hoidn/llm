@@ -12,9 +12,9 @@ from .file_path_resolver import resolve_paths_from_template
 from .template_registry import TemplateRegistry
 from src.system.models import (
     SubtaskRequest, TaskResult, ContextManagement,
-    ContextGenerationInput, AssociativeMatchResult, MatchTuple,
-    SUBTASK_CONTEXT_DEFAULTS, TaskError, TaskFailureError, TaskFailureReason, # Added TaskFailureError, TaskFailureReason
-    HistoryConfigSettings # Added import
+    ContextGenerationInput, AssociativeMatchResult, MatchItem, # Removed MatchTuple, added MatchItem
+    SUBTASK_CONTEXT_DEFAULTS, TaskError, TaskFailureError, TaskFailureReason,
+    HistoryConfigSettings
 )
 # Import the executor and its specific error
 from src.executors.atomic_executor import AtomicTaskExecutor, ParameterMismatchError
