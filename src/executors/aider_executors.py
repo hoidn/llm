@@ -43,7 +43,7 @@ class AiderExecutorFunctions:
         Args:
             params: Dictionary containing:
                 - 'prompt': string (required) - The instruction for code changes.
-                - 'file_context': string (optional) - JSON string array of explicit file paths.
+                - 'editable_files' or 'file_context': List[str] or JSON string array (optional) - Explicit file paths.
                 - 'model': string (optional) - Specific model override for Aider.
             aider_bridge: Instance of AiderBridge (MCP Client).
 
@@ -90,9 +90,9 @@ class AiderExecutorFunctions:
         # Referencing docs/librarydocs/aider_MCP_server.md
         mcp_params = {
             "ai_coding_prompt": prompt,
-            "editable_paths": relative_files, # Assuming context files are editable
-            "relative_readonly_files": [], # Always send empty list instead of None to avoid server-side TypeError
-            "model": model_override # Pass None if not provided
+            "relative_editable_files": relative_files, # MODIFIED KEY
+            "relative_readonly_files": [], 
+            "model": model_override
         }
 
         try:
@@ -122,12 +122,13 @@ class AiderExecutorFunctions:
     async def execute_aider_interactive(params: Dict[str, Any], aider_bridge: AiderBridge) -> Dict[str, Any]:
         """
         Executor logic for the 'aider:interactive' Direct Tool.
-        Currently maps to the 'aider_ai_code' tool on the Aider MCP Server via the bridge.
+        Via MCP, this performs a single-shot code generation task similar to 'aider_automatic'.
+        It does NOT provide a true interactive terminal session.
 
         Args:
             params: Dictionary containing:
                 - 'query' or 'prompt': string (required) - The initial query/instruction.
-                - 'file_context': string (optional) - JSON string array of explicit file paths.
+                - 'editable_files' or 'file_context': List[str] or JSON string array (optional) - Explicit file paths.
                 - 'model': string (optional) - Specific model override for Aider.
             aider_bridge: Instance of AiderBridge (MCP Client).
 
@@ -177,8 +178,8 @@ class AiderExecutorFunctions:
         # Assuming interactive mode also uses aider_ai_code for now
         mcp_params = {
             "ai_coding_prompt": prompt,
-            "editable_paths": relative_files,
-            "relative_readonly_files": [], # Always send empty list instead of None to avoid server-side TypeError
+            "relative_editable_files": relative_files, # MODIFIED KEY
+            "relative_readonly_files": [],
             "model": model_override
         }
 
