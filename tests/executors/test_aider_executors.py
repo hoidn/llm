@@ -48,13 +48,13 @@ class TestAiderExecutorFunctions:
 
     # --- Tests for execute_aider_automatic ---
 
-    @pytest.mark.asyncio # Mark test as async
-    async def test_execute_aider_automatic_success(self, mock_aider_bridge): # Make test async
-        """Verify execute_aider_automatic calls bridge correctly on success."""
+    @pytest.mark.asyncio
+    async def test_execute_aider_automatic_success_with_editable_files_list(self, mock_aider_bridge):
+        """Verify execute_aider_automatic calls bridge correctly when editable_files is a list."""
         # Arrange
         input_params = {
             "prompt": "Refactor this code.",
-            "file_context": json.dumps(["file1.py", "util/helper.py"])
+            "editable_files": ["file1.py", "util/helper.py"] # Use editable_files as list
         }
         # Simulate bridge returning a successful TaskResult dict
         mock_response_dict = _create_task_result_dict(content="Refactoring diff...", notes={"success": True})
@@ -83,16 +83,20 @@ class TestAiderExecutorFunctions:
         assert result == mock_response_dict # Should return the bridge's result directly
 
     @pytest.mark.asyncio
-    async def test_execute_aider_automatic_success_no_context(self, mock_aider_bridge):
-        """Verify execute_aider_automatic works without file_context."""
+    async def test_execute_aider_automatic_success_with_editable_files_json_string(self, mock_aider_bridge):
+        """Verify execute_aider_automatic calls bridge correctly when editable_files is a JSON string."""
         # Arrange
-        input_params = {"prompt": "Explain this."}
-        mock_response_dict = _create_task_result_dict(content="Explanation...")
+        input_params = {
+            "prompt": "Refactor this code.",
+            "editable_files": json.dumps(["file3.py", "module/file4.py"]) # Use editable_files as JSON string
+        }
+        mock_response_dict = _create_task_result_dict(content="Refactoring diff...", notes={"success": True})
         mock_aider_bridge.call_aider_tool.return_value = mock_response_dict
+
         expected_mcp_params = {
-            "ai_coding_prompt": "Explain this.",
-            "editable_files": [], # Expect empty list if no context
-            "relative_readonly_files": [], # Changed from None to empty list
+            "ai_coding_prompt": "Refactor this code.",
+            "editable_files": ["file3.py", "module/file4.py"],
+            "relative_readonly_files": [],
             "model": None
         }
         # Act
@@ -100,6 +104,79 @@ class TestAiderExecutorFunctions:
         # Assert
         mock_aider_bridge.call_aider_tool.assert_awaited_once_with(tool_name="aider_ai_code", params=expected_mcp_params)
         assert result == mock_response_dict
+
+    @pytest.mark.asyncio
+    async def test_execute_aider_automatic_success_no_files_provided(self, mock_aider_bridge):
+        """Verify execute_aider_automatic works without any files parameter."""
+        # Arrange
+        input_params = {"prompt": "Explain this."}
+        mock_response_dict = _create_task_result_dict(content="Explanation...")
+        mock_aider_bridge.call_aider_tool.return_value = mock_response_dict
+        expected_mcp_params = {
+            "ai_coding_prompt": "Explain this.",
+            "editable_files": [], # Expect empty list if no files key
+            "relative_readonly_files": [],
+            "model": None
+        }
+        # Act
+        result = await AiderExecutorFunctions.execute_aider_automatic(input_params, mock_aider_bridge)
+        # Assert
+        mock_aider_bridge.call_aider_tool.assert_awaited_once_with(tool_name="aider_ai_code", params=expected_mcp_params)
+        assert result == mock_response_dict
+
+    @pytest.mark.asyncio
+    @patch('src.executors.aider_executors.logger.warning')
+    async def test_execute_aider_automatic_fallback_to_file_context(self, mock_logger_warning, mock_aider_bridge):
+        """Verify fallback to file_context and warning log."""
+        # Arrange
+        input_params = {
+            "prompt": "Refactor this code.",
+            "file_context": ["fallback.py"] # Use deprecated file_context
+        }
+        mock_response_dict = _create_task_result_dict(content="Refactoring diff...", notes={"success": True})
+        mock_aider_bridge.call_aider_tool.return_value = mock_response_dict
+
+        expected_mcp_params = {
+            "ai_coding_prompt": "Refactor this code.",
+            "editable_files": ["fallback.py"],
+            "relative_readonly_files": [],
+            "model": None
+        }
+        # Act
+        result = await AiderExecutorFunctions.execute_aider_automatic(input_params, mock_aider_bridge)
+        # Assert
+        mock_aider_bridge.call_aider_tool.assert_awaited_once_with(tool_name="aider_ai_code", params=expected_mcp_params)
+        assert result == mock_response_dict
+        mock_logger_warning.assert_called_once()
+        assert "deprecated 'file_context' key" in mock_logger_warning.call_args[0][0]
+        assert "execute_aider_automatic" in mock_logger_warning.call_args[0][0]
+
+
+    @pytest.mark.asyncio
+    @patch('src.executors.aider_executors.logger.warning')
+    async def test_execute_aider_automatic_editable_files_takes_precedence(self, mock_logger_warning, mock_aider_bridge):
+        """Verify editable_files is used if both editable_files and file_context are present."""
+        # Arrange
+        input_params = {
+            "prompt": "Refactor this code.",
+            "editable_files": ["actual.py"],
+            "file_context": ["ignored.py"] # This should be ignored
+        }
+        mock_response_dict = _create_task_result_dict(content="Refactoring diff...", notes={"success": True})
+        mock_aider_bridge.call_aider_tool.return_value = mock_response_dict
+
+        expected_mcp_params = {
+            "ai_coding_prompt": "Refactor this code.",
+            "editable_files": ["actual.py"], # actual.py should be used
+            "relative_readonly_files": [],
+            "model": None
+        }
+        # Act
+        result = await AiderExecutorFunctions.execute_aider_automatic(input_params, mock_aider_bridge)
+        # Assert
+        mock_aider_bridge.call_aider_tool.assert_awaited_once_with(tool_name="aider_ai_code", params=expected_mcp_params)
+        assert result == mock_response_dict
+        mock_logger_warning.assert_not_called() # Warning should not be logged as fallback was not used
 
     @pytest.mark.asyncio
     async def test_execute_aider_automatic_bridge_failure(self, mock_aider_bridge):
@@ -122,7 +199,7 @@ class TestAiderExecutorFunctions:
     async def test_execute_aider_automatic_missing_prompt(self, mock_aider_bridge):
         """Verify execute_aider_automatic returns FAILED on missing prompt."""
         # Arrange
-        input_params = {"file_context": "[]"} # Missing prompt
+        input_params = {"editable_files": "[]"} # Missing prompt, using new key for consistency
         # mock_aider_bridge.call_aider_tool doesn't need specific config here
 
         # Act
@@ -138,10 +215,10 @@ class TestAiderExecutorFunctions:
         assert error_note.get("reason") == "input_validation_failure"
 
     @pytest.mark.asyncio
-    async def test_execute_aider_automatic_invalid_file_context(self, mock_aider_bridge):
-        """Verify execute_aider_automatic returns FAILED on invalid file_context JSON."""
+    async def test_execute_aider_automatic_invalid_files_param_json(self, mock_aider_bridge):
+        """Verify execute_aider_automatic returns FAILED on invalid files_param JSON."""
         # Arrange
-        input_params = {"prompt": "Test", "file_context": "not a valid json string"}
+        input_params = {"prompt": "Test", "editable_files": "not a valid json string"}
         # mock_aider_bridge.call_aider_tool doesn't need specific config here
 
         # Act
@@ -150,7 +227,7 @@ class TestAiderExecutorFunctions:
         # Assert
         mock_aider_bridge.call_aider_tool.assert_not_awaited()
         assert result.get("status") == "FAILED"
-        assert "Failed to parse 'file_context'" in result.get("content", "")
+        assert "Failed to parse files parameter string" in result.get("content", "")
         error_note = result.get("notes", {}).get("error")
         assert error_note is not None
         assert isinstance(error_note, dict)
@@ -161,12 +238,12 @@ class TestAiderExecutorFunctions:
     # Adjust tool_name and expected_mcp_params if a different server tool is used.
 
     @pytest.mark.asyncio
-    async def test_execute_aider_interactive_success(self, mock_aider_bridge):
-        """Verify execute_aider_interactive calls bridge correctly."""
+    async def test_execute_aider_interactive_success_with_editable_files_list(self, mock_aider_bridge):
+        """Verify execute_aider_interactive calls bridge correctly with editable_files list."""
         # Arrange
         input_params = {
             "query": "Start interactive refactor.", # Use 'query' key
-            "file_context": json.dumps(["main.py"])
+            "editable_files": ["main.py"] # Use editable_files as list
         }
         mock_response_dict = _create_task_result_dict(content="Interactive session started diff...")
         mock_aider_bridge.call_aider_tool.return_value = mock_response_dict
@@ -175,7 +252,7 @@ class TestAiderExecutorFunctions:
         expected_mcp_params = {
             "ai_coding_prompt": "Start interactive refactor.",
             "editable_files": ["main.py"],
-            "relative_readonly_files": [], # Changed from None to empty list
+            "relative_readonly_files": [],
             "model": None
         }
 
@@ -189,6 +266,83 @@ class TestAiderExecutorFunctions:
             params=expected_mcp_params
         )
         assert result == mock_response_dict
+
+    @pytest.mark.asyncio
+    async def test_execute_aider_interactive_success_with_editable_files_json(self, mock_aider_bridge):
+        """Verify execute_aider_interactive calls bridge correctly with editable_files JSON string."""
+        # Arrange
+        input_params = {
+            "prompt": "Start interactive refactor.", # Use 'prompt' key
+            "editable_files": json.dumps(["app.py", "tests/test_app.py"]) # Use editable_files as JSON
+        }
+        mock_response_dict = _create_task_result_dict(content="Interactive session started diff...")
+        mock_aider_bridge.call_aider_tool.return_value = mock_response_dict
+
+        expected_mcp_params = {
+            "ai_coding_prompt": "Start interactive refactor.",
+            "editable_files": ["app.py", "tests/test_app.py"],
+            "relative_readonly_files": [],
+            "model": None
+        }
+        # Act
+        result = await AiderExecutorFunctions.execute_aider_interactive(input_params, mock_aider_bridge)
+        # Assert
+        mock_aider_bridge.call_aider_tool.assert_awaited_once_with(tool_name="aider_ai_code", params=expected_mcp_params)
+        assert result == mock_response_dict
+
+    @pytest.mark.asyncio
+    @patch('src.executors.aider_executors.logger.warning')
+    async def test_execute_aider_interactive_fallback_to_file_context(self, mock_logger_warning, mock_aider_bridge):
+        """Verify interactive fallback to file_context and warning log."""
+        # Arrange
+        input_params = {
+            "query": "Interactive task",
+            "file_context": ["interactive_fallback.js"] # Use deprecated file_context
+        }
+        mock_response_dict = _create_task_result_dict(content="Interactive fallback diff...")
+        mock_aider_bridge.call_aider_tool.return_value = mock_response_dict
+
+        expected_mcp_params = {
+            "ai_coding_prompt": "Interactive task",
+            "editable_files": ["interactive_fallback.js"],
+            "relative_readonly_files": [],
+            "model": None
+        }
+        # Act
+        result = await AiderExecutorFunctions.execute_aider_interactive(input_params, mock_aider_bridge)
+        # Assert
+        mock_aider_bridge.call_aider_tool.assert_awaited_once_with(tool_name="aider_ai_code", params=expected_mcp_params)
+        assert result == mock_response_dict
+        mock_logger_warning.assert_called_once()
+        assert "deprecated 'file_context' key" in mock_logger_warning.call_args[0][0]
+        assert "execute_aider_interactive" in mock_logger_warning.call_args[0][0]
+
+
+    @pytest.mark.asyncio
+    @patch('src.executors.aider_executors.logger.warning')
+    async def test_execute_aider_interactive_editable_files_takes_precedence(self, mock_logger_warning, mock_aider_bridge):
+        """Verify interactive uses editable_files if both are present."""
+        # Arrange
+        input_params = {
+            "query": "Interactive task",
+            "editable_files": ["interactive_actual.ts"],
+            "file_context": ["interactive_ignored.js"] # This should be ignored
+        }
+        mock_response_dict = _create_task_result_dict(content="Interactive precedence diff...")
+        mock_aider_bridge.call_aider_tool.return_value = mock_response_dict
+
+        expected_mcp_params = {
+            "ai_coding_prompt": "Interactive task",
+            "editable_files": ["interactive_actual.ts"], # actual should be used
+            "relative_readonly_files": [],
+            "model": None
+        }
+        # Act
+        result = await AiderExecutorFunctions.execute_aider_interactive(input_params, mock_aider_bridge)
+        # Assert
+        mock_aider_bridge.call_aider_tool.assert_awaited_once_with(tool_name="aider_ai_code", params=expected_mcp_params)
+        assert result == mock_response_dict
+        mock_logger_warning.assert_not_called() # Fallback not used
 
     @pytest.mark.asyncio
     async def test_execute_aider_interactive_missing_query(self, mock_aider_bridge):
