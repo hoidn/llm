@@ -108,6 +108,13 @@ def app_components(mocker, tmp_path):
         mock_aider_bridge_instance = MagicMock(spec=AiderBridge)     # Instance for AiderBridge
         mock_indexer_instance = MagicMock(spec=GitRepositoryIndexer) # Instance for Indexer
         mock_sys_exec_instance = MagicMock(spec=SystemExecutorFunctions) # Instance for SystemExecutorFunctions
+        
+        # Create a mock for the command_executor module that SystemExecutorFunctions expects
+        # This will be assigned to mock_sys_exec_instance.command_executor
+        # and also passed to the constructor of the real SystemExecutorFunctions if it were used.
+        mock_cmd_exec_module_for_sys_exec = MagicMock(name="MockCommandExecutorModulePassedToSysExec")
+        mock_sys_exec_instance.command_executor = mock_cmd_exec_module_for_sys_exec
+
 
         # --- Configure Class Mocks to return these instances when called ---
         MockMemory.return_value = mock_memory_instance
@@ -185,7 +192,7 @@ def app_components(mocker, tmp_path):
             "mock_aider_bridge_instance": mock_aider_bridge_instance, # This is the INSTANCE mock
             "mock_indexer_instance": mock_indexer_instance,
             "mock_sys_exec_instance": mock_sys_exec_instance, # This is the INSTANCE mock
-            "mock_command_executor_module_passed_to_sys_exec": MagicMock(name="MockCommandExecutorModulePassedToSysExec"), # Add this
+            "mock_command_executor_module_passed_to_sys_exec": mock_cmd_exec_module_for_sys_exec, # Use the one created above
 
             "registered_tools_storage": registered_tools_storage,
             "tool_executors_storage": tool_executors_storage,
@@ -236,16 +243,14 @@ def test_application_init_wiring(app_components):
     # Let the real registration populate the mock handler's tool_executors.
 
     # Act: Instantiate Application
-    # Patch the local import of command_executor within Application.__init__
-    with patch('src.main.command_executor', app_components['mock_command_executor_module_passed_to_sys_exec']):
-        app = Application(config={}) # Pass empty config
+    app = Application(config={}) # Pass empty config
 
     # Assert component instances were created by the Mocks
-    assert app.memory_system == app_components['mock_memory_system_instance']
-    assert app.task_system == app_components['mock_task_system_instance']
+    assert app.memory_system == app_components['MockMemorySystem'].return_value
+    assert app.task_system == app_components['MockTaskSystem'].return_value
     # The app.passthrough_handler will be the return_value of the Patched PassthroughHandler class
     assert app.passthrough_handler == app_components['MockHandler'].return_value
-    assert app.file_access_manager == app_components['mock_fm_instance']
+    assert app.file_access_manager == app_components['MockFM'].return_value
     # Note: system_executors is a real instance, not a mock
 
     # Ensure the mock_handler_instance from the fixture is the one used by the app
