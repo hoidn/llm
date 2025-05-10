@@ -250,7 +250,6 @@ class SpecialFormProcessor:
         # Keys that expect a simple string value
         simple_string_optionals = {"subtype", "description", "model"}
         # Keys that expect a structured value (list of lists/pairs)
-        # Add "history_config" to structured_optionals
         structured_optionals = {"output_format", "history_config"}
 
         # Process collected optional arguments
