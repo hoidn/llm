@@ -168,82 +168,210 @@ class PassthroughHandler(BaseHandler):
         """
         Handles a raw text query from the user in passthrough mode.
 
-        Retrieves context, builds prompts, invokes the LLM via BaseHandler,
-        and updates conversation history.
+        Orchestrates context priming via BaseHandler, (placeholder) Aider command checks,
+        subtask creation or continuation, and LLM interaction.
 
         Args:
             query: The user's input string.
 
         Returns:
             A TaskResult object containing the outcome.
+            Returns a FAILED TaskResult if context priming fails.
         """
         logging.info(f"Handling passthrough query: {query[:50]}...")
 
-        # 1. Update History (User Turn) - Do this early
-        # BaseHandler._execute_llm_call handles history internally now.
-        # self.add_message_to_history("user", query) # No longer needed here
-
         try:
-            # 2. Retrieve Relevant Files & Create Context String
-            # Delegates to FileContextManager via BaseHandler methods
-            logging.debug("Getting relevant files...")
-            relevant_files = self._get_relevant_files(query) # Method inherited/delegated
-            logging.debug(f"Relevant files found: {relevant_files}")
+            # 1. Prime Data Context
+            logging.debug(f"Priming data context for query: {query[:50]}...")
+            priming_successful = self.prime_data_context(query=query) # BaseHandler method
 
-            logging.debug("Creating file context string...")
-            file_context_str = self._create_file_context(relevant_files) # Method inherited/delegated
-            if file_context_str:
-                 logging.debug(f"File context string created (length: {len(file_context_str)}).")
+            if not priming_successful:
+                logging.warning(f"Data context priming failed for query: {query[:50]}. Returning FAILED TaskResult.")
+                error_details = TaskFailureError(
+                    type="TASK_FAILURE",
+                    reason="context_priming_failure",
+                    message="Failed to prepare necessary data context to handle the query."
+                )
+                # Note: User query is not added to history if priming fails.
+                return TaskResult(
+                    status="FAILED",
+                    content="Error preparing data context for the query.",
+                    notes={"error": error_details.model_dump(exclude_none=True)}
+                )
+            logging.debug("Data context primed successfully.")
+
+            # 2. Aider Command Checks (Placeholder for this phase)
+            #    For this phase, no explicit Aider command parsing here.
+            #    Subtask logic might select an Aider task template based on query/config.
+            #    Example:
+            #    if query.startswith("/aider"):
+            #        # Potentially set a flag or task_name hint for _create_new_subtask
+            #        pass
+
+
+            # 3. Subtask Logic
+            #    PassthroughHandler is single-turn for now, so active_subtask_id won't persist across calls.
+            #    It's reset in reset_conversation and not set by _create_new_subtask.
+            #    Thus, we will primarily call _create_new_subtask.
+            #    If active_subtask_id was somehow set, _continue_subtask would be called.
+
+            current_active_subtask_id = self.active_subtask_id # Store before potential modification by helpers
+            
+            if current_active_subtask_id is None:
+                logging.debug("No active subtask. Creating a new one.")
+                result = self._create_new_subtask(query=query)
             else:
-                 logging.debug("No file context string created.")
+                # This branch is less likely to be hit with current single-turn design
+                logging.debug(f"Continuing active subtask: {current_active_subtask_id}")
+                result = self._continue_subtask(query=query) # Will reset active_subtask_id
 
-            # 3. Build System Prompt
-            # Uses BaseHandler method, incorporating base prompt and file context
-            final_system_prompt = self._build_system_prompt(file_context=file_context_str)
-            logging.debug(f"Final system prompt generated (length: {len(final_system_prompt)}).")
-
-            # 4. Execute LLM Call (Delegates to LLMInteractionManager via BaseHandler)
-            # This method now handles adding user query and assistant response to history on success.
-            logging.debug("Executing LLM call via BaseHandler...")
-            result: TaskResult = self._execute_llm_call(
-                prompt=query,
-                system_prompt_override=final_system_prompt
-                # Tools are implicitly available via registration if LLM manager handles it
-            )
             logging.info(f"Passthrough query handled. Result status: {result.status}")
-            # Add relevant files to notes for transparency
-            result.notes["relevant_files"] = relevant_files
+
+            # Populate notes with relevant files from context
+            if self.data_context and self.data_context.items:
+                # Ensure item.id exists before accessing
+                relevant_ids = [item.id for item in self.data_context.items if hasattr(item, 'id')]
+                result.notes["relevant_files_from_context"] = relevant_ids
+            else:
+                result.notes["relevant_files_from_context"] = []
+            
             return result
 
         except Exception as e:
-            # Catch unexpected errors during context retrieval or LLM call preparation
             logging.exception(f"Unexpected error during handle_query: {e}")
-            # Create a FAILED TaskResult
             error_details = TaskFailureError(
                 type="TASK_FAILURE",
                 reason="unexpected_error",
-                message=f"Failed to handle passthrough query: {e}"
+                message=f"Failed to handle passthrough query: {str(e)}" # Use str(e)
             )
-            # No need to manually add user query to history here
-            # BaseHandler._execute_llm_call handles this
-
             return TaskResult(
                 status="FAILED",
-                content=f"Error handling query: {e}",
+                content=f"Error handling query: {str(e)}", # Use str(e)
                 notes={"error": error_details.model_dump(exclude_none=True)}
             )
 
+    def _create_new_subtask(self, query: str) -> TaskResult:
+        """
+        Creates and executes a new subtask based on the user query.
+
+        Finds a suitable template, builds the system prompt using the
+        already primed data_context, and invokes the LLM.
+
+        Args:
+            query: The user's input string for the new subtask.
+
+        Returns:
+            A TaskResult from the LLM call.
+        """
+        logging.debug(f"Creating new subtask for query: {query[:50]}...")
+
+        # 1. Template Finding (Simplified for Passthrough)
+        #    Uses a configurable default template name.
+        template_name = self.config.get("passthrough_default_template_name", "generic_llm_task")
+        logging.debug(f"Attempting to find template: '{template_name}'")
+        template = self.task_system.find_template(template_name)
+
+        if not template:
+            logging.error(f"Template '{template_name}' not found for new subtask.")
+            error_details = TaskFailureError(
+                type="TASK_FAILURE",
+                reason="template_not_found",
+                message=f"Required template '{template_name}' not found."
+            )
+            return TaskResult(
+                status="FAILED",
+                content=f"Configuration error: Template {template_name} not found.",
+                notes={"error": error_details.model_dump(exclude_none=True)}
+            )
+        logging.debug(f"Using template: '{template_name}'")
+        
+        template_specific_instructions: Optional[str] = template.get("instructions") # Or "system_prompt_template", "body", etc.
+
+        # 2. Build final system prompt (BaseHandler._build_system_prompt uses self.data_context)
+        final_system_prompt = self._build_system_prompt(
+            template_specific_instructions=template_specific_instructions 
+        )
+        logging.debug(f"System prompt for new subtask (length: {len(final_system_prompt)}). Preview: {final_system_prompt[:200]}...")
+
+        # 3. Execute LLM call
+        logging.debug("Executing LLM call for new subtask...")
+        result = self._execute_llm_call( # BaseHandler method
+            prompt=query,
+            system_prompt_override=final_system_prompt
+            # Tools are implicitly available via BaseHandler's registered tools
+        )
+        
+        # 4. Active Subtask ID Management (Single-turn: not setting it)
+        # self.active_subtask_id = new_id_if_multi_turn
+
+        return result
+
+    def _continue_subtask(self, query: str) -> TaskResult:
+        """
+        Continues an existing active subtask with the new user query.
+        For current single-turn PassthroughHandler, this behaves like creating a new task
+        and ensures active_subtask_id is cleared.
+
+        Args:
+            query: The user's input string to continue the subtask.
+
+        Returns:
+            A TaskResult from the LLM call.
+        """
+        logging.debug(f"Continuing subtask {self.active_subtask_id} with query: {query[:50]}...")
+        logging.warning("PassthroughHandler is single-turn; _continue_subtask called, will behave like a new task and clear active_subtask_id.")
+
+        # For single-turn, effectively same as _create_new_subtask logic
+        template_name = self.config.get("passthrough_default_template_name", "generic_llm_task")
+        logging.debug(f"Attempting to find template: '{template_name}' for continuation (as new task).")
+        template = self.task_system.find_template(template_name)
+
+        if not template:
+            logging.error(f"Template '{template_name}' not found for continuation.")
+            error_details = TaskFailureError(
+                type="TASK_FAILURE",
+                reason="template_not_found",
+                message=f"Required template '{template_name}' not found."
+            )
+            return TaskResult(
+                status="FAILED",
+                content=f"Configuration error: Template {template_name} not found.",
+                notes={"error": error_details.model_dump(exclude_none=True)}
+            )
+        logging.debug(f"Using template: '{template_name}' for continuation.")
+
+        template_specific_instructions: Optional[str] = template.get("instructions")
+
+        final_system_prompt = self._build_system_prompt(
+            template_specific_instructions=template_specific_instructions
+        )
+        logging.debug(f"System prompt for continuing subtask (length: {len(final_system_prompt)}). Preview: {final_system_prompt[:200]}...")
+
+        result = self._execute_llm_call( # BaseHandler method
+            prompt=query,
+            system_prompt_override=final_system_prompt
+        )
+        
+        # Ensure active_subtask_id is cleared as it's single-turn.
+        self.active_subtask_id = None 
+        logging.debug("Active subtask ID cleared after continuation.")
+
+        return result
+
     def reset_conversation(self) -> None:
         """
-        Resets the conversation state, including history and active subtask ID.
+        Resets the conversation state.
+
+        Delegates to BaseHandler.reset_conversation() to clear conversation history
+        and data context, and resets PassthroughHandler-specific state like
+        the active subtask ID.
         """
         logging.info("Resetting PassthroughHandler conversation state.")
-        super().reset_conversation() # Calls BaseHandler reset (clears history, resets LLM manager state)
+        super().reset_conversation() # This now calls BaseHandler's version
         self.active_subtask_id = None
         logging.debug("PassthroughHandler state reset.")
 
     # Inherited methods used:
-    # - _get_relevant_files (delegates to FileContextManager)
     # - _create_file_context (delegates to FileContextManager)
     # - _build_system_prompt
     # - _execute_llm_call (delegates to LLMInteractionManager, handles history)

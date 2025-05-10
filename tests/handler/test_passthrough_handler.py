@@ -80,6 +80,11 @@ def passthrough_handler(mock_task_system, mock_memory_system, mocker):
     # Store mocks on the handler instance for easy access in tests
     handler._mock_file_context_manager = mock_file_context_manager
     handler._mock_llm_manager = mock_llm_manager
+    handler.task_system = mock_task_system # Ensure task_system is also available if needed directly
+
+    # Configure mock_task_system for template finding in subtask methods
+    mock_task_system.find_template.return_value = {"instructions": "mock template instructions"}
+
 
     return handler
 
@@ -111,16 +116,27 @@ def test_init_registers_command_tool(passthrough_handler):
     assert found_cmd_tool, f"Expected tool '{expected_cmd_tool_name}' was not registered."
     assert found_list_tool, f"Expected tool '{expected_list_tool_name}' was not registered."
 
-def test_handle_query_success(passthrough_handler):
+
+def test_handle_query_success(passthrough_handler, mocker):
     """Test successful query handling, checking delegation and history."""
     query = "User query here"
-    # Access mocks stored on the handler instance
-    mock_fcm = passthrough_handler._mock_file_context_manager
-    mock_llm = passthrough_handler._mock_llm_manager
+    
+    # Mock BaseHandler methods called by the new handle_query structure
+    passthrough_handler.prime_data_context = MagicMock(return_value=True)
+    # Mock _create_new_subtask to return a successful TaskResult
+    # This mock will be called since active_subtask_id is None by default
+    mock_subtask_result_content = "Subtask Response"
+    mock_subtask_result = TaskResult(status="COMPLETE", content=mock_subtask_result_content, notes={})
+    passthrough_handler._create_new_subtask = MagicMock(return_value=mock_subtask_result)
 
-    # Ensure history is initially empty (reset by fixture setup if needed)
+    # Mock data_context for notes population
+    mock_match_item = MagicMock(spec=MagicMock) # Use MagicMock for MatchItem to set 'id'
+    mock_match_item.id = "/mock/context_file.py"
+    passthrough_handler.data_context = MagicMock()
+    passthrough_handler.data_context.items = [mock_match_item]
+    
+    # Ensure history is initially empty
     passthrough_handler.conversation_history = []
-    initial_history_len = 0
 
     # Act
     result = passthrough_handler.handle_query(query)
@@ -128,78 +144,197 @@ def test_handle_query_success(passthrough_handler):
     # Assert result
     assert isinstance(result, TaskResult)
     assert result.status == "COMPLETE"
-    assert result.content == "Passthrough Response"
-    assert result.notes.get("relevant_files") == ['/mock/file.py'] # Check added note
+    assert result.content == mock_subtask_result_content
+    assert result.notes.get("relevant_files_from_context") == ["/mock/context_file.py"]
 
     # Assert delegation
-    # Check calls to mocked managers via BaseHandler methods
-    # _get_relevant_files -> FileContextManager.get_relevant_files
-    mock_fcm.get_relevant_files.assert_called_once_with(query)
-    # _create_file_context -> FileContextManager.create_file_context
-    mock_fcm.create_file_context.assert_called_once_with(['/mock/file.py'])
-    # _execute_llm_call -> LLMInteractionManager.execute_call
-    mock_llm.execute_call.assert_called_once()
-    call_args, call_kwargs = mock_llm.execute_call.call_args
-    # Check arguments passed to LLMInteractionManager
-    assert call_kwargs['prompt'] == query
-    assert "Base Prompt." in call_kwargs['system_prompt_override']
-    assert "Mock file context content." in call_kwargs['system_prompt_override']
-    # Check history PASSED TO the manager call (should be empty initially)
-    assert call_kwargs['conversation_history'] == []
+    passthrough_handler.prime_data_context.assert_called_once_with(query=query)
+    passthrough_handler._create_new_subtask.assert_called_once_with(query=query)
     
-    # Assert history update (BaseHandler._execute_llm_call should update it)
-    assert len(passthrough_handler.conversation_history) == initial_history_len + 2
-    assert passthrough_handler.conversation_history[0] == {"role": "user", "content": query}
-    assert passthrough_handler.conversation_history[1] == {"role": "assistant", "content": "Passthrough Response"}
+    # History is updated by _execute_llm_call, which is called within _create_new_subtask.
+    # If _create_new_subtask is fully mocked, we can't directly test history update here
+    # unless the mock itself simulates it or we test _create_new_subtask more deeply.
+    # For this level, we assume _create_new_subtask (if not mocked away) would handle history.
+    # If _create_new_subtask calls the real _execute_llm_call, then history would be updated.
+    # Let's assume for this test, _create_new_subtask is a high-level mock.
 
 
-def test_handle_query_llm_failure(passthrough_handler):
-    """Test query handling when the LLM call fails."""
-    query = "Query that causes failure"
-    mock_llm = passthrough_handler._mock_llm_manager
-    # Configure LLM Manager mock to return a failure dictionary
-    mock_llm.execute_call.return_value = {
-        "status": "FAILED",
-        "content": "LLM Error Occurred",
-        "notes": {
-            "error": {
-                "type": "TASK_FAILURE",
-                "reason": "llm_error",
-                "message": "LLM Error Occurred"
-            }
-        }
-    }
-    # Remove any side_effect that might interfere
-    mock_llm.execute_call.side_effect = None
-
+def test_handle_query_prime_data_context_failure(passthrough_handler, mocker):
+    """Test query handling when prime_data_context fails."""
+    query = "Query causing priming failure"
+    passthrough_handler.prime_data_context = MagicMock(return_value=False)
     passthrough_handler.conversation_history = []
-    initial_history_len = 0
 
-    # Act
     result = passthrough_handler.handle_query(query)
 
-    # Assert result
-    assert isinstance(result, TaskResult)
     assert result.status == "FAILED"
-    # Assert that the specific error message was extracted
-    assert result.content == "LLM Error Occurred"
-    assert result.notes is not None
-    assert "error" in result.notes
-    error_details = TaskFailureError.model_validate(result.notes["error"])
-    assert error_details.type == "TASK_FAILURE"
-    assert error_details.reason == "llm_error"
-    assert error_details.message == "LLM Error Occurred"
-
-    # Assert history wasn't updated on failure (BaseHandler logic)
+    assert "Error preparing data context" in result.content
+    assert result.notes["error"]["reason"] == "context_priming_failure"
+    passthrough_handler.prime_data_context.assert_called_once_with(query=query)
     assert passthrough_handler.conversation_history == []
 
 
+def test_handle_query_no_active_subtask_creates_new(passthrough_handler, mocker):
+    """Test that handle_query calls _create_new_subtask when no active subtask."""
+    query = "New query"
+    passthrough_handler.prime_data_context = MagicMock(return_value=True)
+    passthrough_handler._create_new_subtask = MagicMock(return_value=TaskResult(status="COMPLETE", content="created"))
+    passthrough_handler._continue_subtask = MagicMock() # Should not be called
+    passthrough_handler.active_subtask_id = None
+
+    passthrough_handler.handle_query(query)
+
+    passthrough_handler._create_new_subtask.assert_called_once_with(query=query)
+    passthrough_handler._continue_subtask.assert_not_called()
+
+
+def test_handle_query_active_subtask_continues(passthrough_handler, mocker):
+    """Test that handle_query calls _continue_subtask when an active subtask exists."""
+    query = "Continuation query"
+    passthrough_handler.prime_data_context = MagicMock(return_value=True)
+    passthrough_handler._create_new_subtask = MagicMock() # Should not be called
+    passthrough_handler._continue_subtask = MagicMock(return_value=TaskResult(status="COMPLETE", content="continued"))
+    passthrough_handler.active_subtask_id = "test_subtask_123"
+
+    passthrough_handler.handle_query(query)
+
+    passthrough_handler._continue_subtask.assert_called_once_with(query=query)
+    passthrough_handler._create_new_subtask.assert_not_called()
+
+
+def test_handle_query_notes_include_relevant_files_from_context(passthrough_handler, mocker):
+    """Test that relevant_files_from_context note is populated."""
+    query = "Query for notes test"
+    passthrough_handler.prime_data_context = MagicMock(return_value=True)
+    passthrough_handler._create_new_subtask = MagicMock(return_value=TaskResult(status="COMPLETE", content="notes test", notes={}))
+
+    # Setup mock data_context
+    mock_item1 = MagicMock()
+    mock_item1.id = "/file1.txt"
+    mock_item2 = MagicMock() # Item without id to test hasattr
+    mock_item3 = MagicMock()
+    mock_item3.id = "/file3.py"
+    
+    passthrough_handler.data_context = MagicMock()
+    passthrough_handler.data_context.items = [mock_item1, mock_item2, mock_item3]
+
+    result = passthrough_handler.handle_query(query)
+
+    assert "relevant_files_from_context" in result.notes
+    assert result.notes["relevant_files_from_context"] == ["/file1.txt", "/file3.py"]
+
+
+def test_handle_query_unexpected_exception(passthrough_handler, mocker):
+    """Test handle_query when an unexpected exception occurs during priming."""
+    query = "Query causing unexpected error"
+    passthrough_handler.prime_data_context = MagicMock(side_effect=RuntimeError("Unexpected priming error"))
+
+    result = passthrough_handler.handle_query(query)
+
+    assert result.status == "FAILED"
+    assert "Error handling query: Unexpected priming error" in result.content
+    assert result.notes["error"]["reason"] == "unexpected_error"
+    assert "Unexpected priming error" in result.notes["error"]["message"]
+
+
+def test_create_new_subtask_success(passthrough_handler, mocker):
+    """Test _create_new_subtask successfully finds template and calls LLM."""
+    query = "New subtask query"
+    mock_template_instructions = "Mock instructions for new subtask"
+    passthrough_handler.task_system.find_template.return_value = {"instructions": mock_template_instructions}
+    
+    # Mock BaseHandler methods called by _create_new_subtask
+    passthrough_handler._build_system_prompt = MagicMock(return_value="Final System Prompt for New Subtask")
+    mock_llm_response = TaskResult(status="COMPLETE", content="LLM response for new subtask")
+    passthrough_handler._execute_llm_call = MagicMock(return_value=mock_llm_response)
+
+    # Pre-set data_context as prime_data_context is called in handle_query
+    passthrough_handler.data_context = MagicMock() 
+    passthrough_handler.data_context.items = [] # Example
+
+    result = passthrough_handler._create_new_subtask(query)
+
+    assert result == mock_llm_response
+    passthrough_handler.task_system.find_template.assert_called_once_with("generic_llm_task") # Assuming default
+    passthrough_handler._build_system_prompt.assert_called_once_with(template_specific_instructions=mock_template_instructions)
+    passthrough_handler._execute_llm_call.assert_called_once_with(
+        prompt=query,
+        system_prompt_override="Final System Prompt for New Subtask"
+    )
+
+
+def test_create_new_subtask_template_not_found(passthrough_handler, mocker):
+    """Test _create_new_subtask when the template is not found."""
+    query = "Query for missing template"
+    passthrough_handler.task_system.find_template.return_value = None
+
+    result = passthrough_handler._create_new_subtask(query)
+
+    assert result.status == "FAILED"
+    assert "Template generic_llm_task not found" in result.content # Assuming default
+    assert result.notes["error"]["reason"] == "template_not_found"
+
+
+def test_create_new_subtask_llm_call_fails(passthrough_handler, mocker):
+    """Test _create_new_subtask when the LLM call fails."""
+    query = "Query for LLM failure"
+    passthrough_handler.task_system.find_template.return_value = {"instructions": "some instructions"}
+    passthrough_handler._build_system_prompt = MagicMock(return_value="system prompt")
+    
+    failed_llm_result = TaskResult(status="FAILED", content="LLM Error", notes={"error": {"type": "TASK_FAILURE", "reason": "llm_error", "message": "LLM Error"}})
+    passthrough_handler._execute_llm_call = MagicMock(return_value=failed_llm_result)
+
+    result = passthrough_handler._create_new_subtask(query)
+    assert result == failed_llm_result
+
+
+def test_continue_subtask_success(passthrough_handler, mocker):
+    """Test _continue_subtask success (behaves like new, clears active_subtask_id)."""
+    query = "Continue subtask query"
+    passthrough_handler.active_subtask_id = "active_id_123"
+    mock_template_instructions = "Mock instructions for continued subtask"
+    passthrough_handler.task_system.find_template.return_value = {"instructions": mock_template_instructions}
+    
+    passthrough_handler._build_system_prompt = MagicMock(return_value="Final System Prompt for Continued Subtask")
+    mock_llm_response = TaskResult(status="COMPLETE", content="LLM response for continued subtask")
+    passthrough_handler._execute_llm_call = MagicMock(return_value=mock_llm_response)
+    
+    passthrough_handler.data_context = MagicMock()
+    passthrough_handler.data_context.items = []
+
+    result = passthrough_handler._continue_subtask(query)
+
+    assert result == mock_llm_response
+    assert passthrough_handler.active_subtask_id is None # Verify active_subtask_id is cleared
+    passthrough_handler.task_system.find_template.assert_called_once_with("generic_llm_task")
+    passthrough_handler._build_system_prompt.assert_called_once_with(template_specific_instructions=mock_template_instructions)
+    passthrough_handler._execute_llm_call.assert_called_once_with(
+        prompt=query,
+        system_prompt_override="Final System Prompt for Continued Subtask"
+    )
+
+def test_continue_subtask_llm_call_fails(passthrough_handler, mocker):
+    """Test _continue_subtask when LLM call fails (clears active_subtask_id)."""
+    query = "Query for LLM failure in continue"
+    passthrough_handler.active_subtask_id = "active_id_456"
+    passthrough_handler.task_system.find_template.return_value = {"instructions": "some instructions"}
+    passthrough_handler._build_system_prompt = MagicMock(return_value="system prompt")
+    
+    failed_llm_result = TaskResult(status="FAILED", content="LLM Error", notes={"error": {"type": "TASK_FAILURE", "reason": "llm_error", "message": "LLM Error"}})
+    passthrough_handler._execute_llm_call = MagicMock(return_value=failed_llm_result)
+
+    result = passthrough_handler._continue_subtask(query)
+    assert result == failed_llm_result
+    assert passthrough_handler.active_subtask_id is None # Verify active_subtask_id is cleared
+
+
 def test_reset_conversation(passthrough_handler):
-    """Test resetting the conversation state."""
-    mock_llm = passthrough_handler._mock_llm_manager
-    # Add some history first
+    """Test resetting the conversation state, including data_context."""
+    # Add some history and set active_subtask_id
     passthrough_handler.conversation_history = [{"role": "user", "content": "test"}]
     passthrough_handler.active_subtask_id = "some_id"
+    # Set a mock data_context to ensure it's cleared
+    passthrough_handler.data_context = MagicMock() 
 
     # Act
     passthrough_handler.reset_conversation()
@@ -207,7 +342,7 @@ def test_reset_conversation(passthrough_handler):
     # Assert
     assert passthrough_handler.conversation_history == []
     assert passthrough_handler.active_subtask_id is None
-    # LLMInteractionManager doesn't have reset_conversation method
+    assert passthrough_handler.data_context is None # Verify data_context is cleared by super().reset_conversation()
 
 
 def test_command_execution_tool_wrapper_success(passthrough_handler, mocker):

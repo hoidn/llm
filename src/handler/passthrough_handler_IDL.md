@@ -37,19 +37,25 @@ module src.handler.passthrough_handler {
         // - Metadata includes information about the data context used (e.g., from notes in TaskResult).
         // - The conversation history and data context (in BaseHandler) are updated.
         // Behavior:
-        // - Adds the user query to the internal conversation history.
-        // - Calls `self.prime_data_context(query=query)` to populate/update the `BaseHandler`'s `data_context`.
-        // - Determines if the query matches an Aider command (internal logic).
-        // - If no active subtask, creates a new one (`_create_new_subtask`):
-        //   - Tries to find a matching template via TaskSystem.
-        //   - Invokes `_execute_llm_call`. The necessary data context string will be constructed internally
-        //     by `_build_system_prompt` using the primed `data_context`.
-        // - If an active subtask exists, continues it (`_continue_subtask`), similarly using the primed `data_context`.
-        // - The underlying BaseHandler logic uses the pydantic-ai agent to handle the LLM call.
-        // - Adds the assistant's response to the conversation history.
-        // @raises_error(condition="TASK_FAILURE", reason="llm_error", description="If interaction via the pydantic-ai agent fails.")
-        // @raises_error(condition="TASK_FAILURE", reason="tool_execution_error", description="If an LLM-invoked tool fails.")
-        // Expected JSON format for return value: TaskResult structure { "status": "string", "content": "string", "metadata": { "subtask_id": "string", "relevant_files": list<string>, "template?": {...} } }
+        // 1. Calls `BaseHandler.prime_data_context(query=query)` to populate `self.data_context`.
+        //    - If priming fails, returns a FAILED TaskResult with reason 'context_priming_failure'.
+        // 2. (Placeholder) Aider command checks.
+        // 3. Subtask Logic:
+        //    - If `self.active_subtask_id` is None, calls `_create_new_subtask(query)`.
+        //    - Else, calls `_continue_subtask(query)`.
+        //    (Note: Current implementation of _create_new_subtask and _continue_subtask are single-turn and do not set/persist active_subtask_id across calls).
+        // 4. The called subtask method (_create_new_subtask or _continue_subtask) will:
+        //    - Find a template (e.g., "generic_llm_task").
+        //    - Call `BaseHandler._build_system_prompt()` which uses `self.data_context`.
+        //    - Call `BaseHandler._execute_llm_call()` with the query and built system prompt.
+        // 5. Populates `result.notes["relevant_files_from_context"]` from `self.data_context`.
+        // 6. Returns the TaskResult from the subtask method.
+        // @raises_error(condition="TASK_FAILURE", reason="context_priming_failure", description="If data context priming fails.")
+        // @raises_error(condition="TASK_FAILURE", reason="template_not_found", description="If the default passthrough template is not found by subtask logic.")
+        // @raises_error(condition="TASK_FAILURE", reason="llm_error", description="If interaction via the pydantic-ai agent fails during subtask execution.")
+        // @raises_error(condition="TASK_FAILURE", reason="tool_execution_error", description="If an LLM-invoked tool fails during subtask execution.")
+        // @raises_error(condition="TASK_FAILURE", reason="unexpected_error", description="For other unexpected errors during query handling.")
+        // Expected JSON format for return value: TaskResult structure.
         dict<string, Any> handle_query(string query);
 
         // Registers the built-in command execution tool ('executeFilePathCommand').
@@ -64,7 +70,7 @@ module src.handler.passthrough_handler {
         // Resets the conversation state.
         // Preconditions: None.
         // Postconditions:
-        // - Calls `BaseHandler.reset_conversation()` (which now also clears `data_context`).
+        // - Calls `BaseHandler.reset_conversation()` (which clears conversation history and `data_context`).
         // - Resets the internal `active_subtask_id` to None.
         void reset_conversation();
 

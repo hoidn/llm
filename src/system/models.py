@@ -113,6 +113,7 @@ TaskFailureReason = Literal[
     'connection_error', # Added for MCP/network issues
     'protocol_error', # Added for MCP protocol issues
     'configuration_error', # Added for config issues (e.g., MCP command)
+    'context_priming_failure', # ADD THIS IF MISSING
     'unexpected_error'
 ]
 """
