@@ -202,11 +202,6 @@ def test_handle_query_active_subtask_continues(passthrough_handler, mocker):
     passthrough_handler._create_new_subtask.assert_not_called()
 
 
-def test_handle_query_notes_include_relevant_files_from_context(passthrough_handler, mocker):
-# from src.system.models import TaskResult, DataContext, MatchItem # Add DataContext and MatchItem imports # Moved to top
-
-# ...
-
 def test_handle_query_notes_include_relevant_files_from_context(passthrough_handler, mocker): # mocker might not be needed here
     """Test that relevant_files_from_context note is populated."""
     query = "Query for notes test"
