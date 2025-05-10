@@ -10,8 +10,7 @@ from inspect import signature # For signature check
 
 from src.executors.system_executors import SystemExecutorFunctions
 from src.system.models import (
-    ContextGenerationInput, AssociativeMatchResult, MatchTuple,
-    ContextGenerationInput, AssociativeMatchResult, MatchTuple,
+    ContextGenerationInput, AssociativeMatchResult,
     TaskResult, TaskFailureError, TaskFailureReason, DataContext, MatchItem
 )
 # Import classes for spec parameter in MagicMock
@@ -28,8 +27,8 @@ def mock_memory_system():
     mock_result = AssociativeMatchResult(
         context_summary="Test context summary",
         matches=[
-            MatchTuple(path="/path/file1.py", relevance=0.9),
-            MatchTuple(path="/path/file2.py", relevance=0.8)
+            MatchItem(id="/path/file1.py", content="mock content for file1.py", relevance_score=0.9, content_type="file_content", source_path="/path/file1.py"),
+            MatchItem(id="/path/file2.py", content="mock content for file2.py", relevance_score=0.8, content_type="file_content", source_path="/path/file2.py")
         ]
     )
     memory_system.get_relevant_context_for.return_value = mock_result

@@ -140,7 +140,9 @@ class SystemExecutorFunctions:
             # 4. Extract file paths from the result
             file_paths = []
             if result.matches: # Check if matches list is not None and not empty
-                file_paths = [match.path for match in result.matches]
+                # Assuming 'id' or 'source_path' holds the file path in MatchItem
+                # 'id' is more general and aligns with MatchItem's definition
+                file_paths = [match.id for match in result.matches if match.id]
 
             # 5. Format the successful result
             content = json.dumps(file_paths) # Content is JSON string of paths list
