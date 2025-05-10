@@ -4,7 +4,7 @@ import os
 import shlex
 import warnings # Ensure imported
 from datetime import datetime # Added import
-from typing import Any, Callable, Dict, List, Optional, Type, Union
+from typing import Any, Callable, Dict, List, Optional, Type, Union, Tuple
 
 # Import pydantic-ai directly
 import pydantic_ai
