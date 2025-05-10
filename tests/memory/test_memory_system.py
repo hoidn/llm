@@ -9,12 +9,19 @@ import os
 import logging # Ensure logging is imported
 from unittest.mock import patch # Added
 
+import pytest
+from unittest.mock import MagicMock, patch, call, ANY
+import os
+import logging # Ensure logging is imported
+import json # Ensure json is imported
+from unittest.mock import patch # Added
+
 # Assuming MemorySystem is importable
 from src.memory.memory_system import MemorySystem, DEFAULT_SHARDING_CONFIG
 # Import necessary models for tests
-from src.system.models import ContextGenerationInput, AssociativeMatchResult, MatchTuple, TaskResult, SubtaskRequest, ContextManagement, TaskFailureError # Added TaskResult, SubtaskRequest, ContextManagement, TaskFailureError
+from src.system.models import ContextGenerationInput, AssociativeMatchResult, MatchItem, TaskResult, SubtaskRequest, ContextManagement, TaskFailureError # Changed MatchTuple to MatchItem
+from pydantic import ValidationError as PydanticValidationError # Ensure PydanticValidationError is imported
 from src.task_system.task_system import TaskSystem # Added for patching
-from src.handler.file_access import FileAccessManager # For mock spec
 from src.handler.file_access import FileAccessManager # For mock spec
 from src.handler.base_handler import BaseHandler # For mock spec
 
@@ -309,7 +316,9 @@ def test_get_relevant_context_for_default_strategy_is_content(memory_system_inst
     memory_system_instance.global_index = {"/path/a.py": "meta a"}
     input_data = ContextGenerationInput(query="test")
     # Mock TaskSystem return for the content task
-    mock_task_result = TaskResult(status="COMPLETE", content=AssociativeMatchResult(context_summary="Content Result", matches=[]).model_dump_json())
+    # Ensure matches is a list of MatchItem for AssociativeMatchResult
+    mock_assoc_result_obj = AssociativeMatchResult(context_summary="Content Result", matches=[])
+    mock_task_result = TaskResult(status="COMPLETE", parsedContent=mock_assoc_result_obj, content="")
     mock_task_system.execute_atomic_template.return_value = mock_task_result
 
     memory_system_instance.get_relevant_context_for(input_data)
@@ -329,9 +338,11 @@ def test_get_relevant_context_for_content_strategy_flow(memory_system_instance, 
     mock_file_manager_ms.read_file.side_effect = lambda p, max_size=None: f"Content of {p}" if p in ["/path/a.py", "/path/b.py"] else None
 
     # Mock TaskSystem return
-    expected_matches = [MatchTuple(path="/path/a.py", relevance=0.9)]
-    mock_assoc_result = AssociativeMatchResult(context_summary="Content Result", matches=expected_matches)
-    mock_task_result = TaskResult(status="COMPLETE", content=mock_assoc_result.model_dump_json())
+    expected_match_items = [
+        MatchItem(id="/path/a.py", content="Content of /path/a.py", relevance_score=0.9, content_type="file_content")
+    ]
+    mock_assoc_result_obj = AssociativeMatchResult(context_summary="Content Result", matches=expected_match_items)
+    mock_task_result = TaskResult(status="COMPLETE", parsedContent=mock_assoc_result_obj, content="")
     mock_task_system.execute_atomic_template.return_value = mock_task_result
 
     result = memory_system_instance.get_relevant_context_for(input_data)
@@ -352,7 +363,8 @@ def test_get_relevant_context_for_content_strategy_flow(memory_system_instance, 
 
     # Assert final result
     assert isinstance(result, AssociativeMatchResult)
-    assert result.matches == expected_matches
+    assert result.matches == expected_match_items
+    assert result.matches[0].id == expected_match_items[0].id # Example check for MatchItem fields
     assert result.error is None
 
 def test_get_relevant_context_for_metadata_strategy_flow(memory_system_instance, mock_task_system, mock_file_manager_ms): # Corrected name
@@ -362,9 +374,11 @@ def test_get_relevant_context_for_metadata_strategy_flow(memory_system_instance,
     memory_system_instance.global_index = {"/path/a.py": "meta a", "/path/b.py": "meta b"}
 
     # Mock TaskSystem return
-    expected_matches = [MatchTuple(path="/path/b.py", relevance=0.8)]
-    mock_assoc_result = AssociativeMatchResult(context_summary="Metadata Result", matches=expected_matches)
-    mock_task_result = TaskResult(status="COMPLETE", content=mock_assoc_result.model_dump_json())
+    expected_match_items = [
+        MatchItem(id="/path/b.py", content="meta b", relevance_score=0.8, content_type="file_summary") # Example MatchItem
+    ]
+    mock_assoc_result_obj = AssociativeMatchResult(context_summary="Metadata Result", matches=expected_match_items)
+    mock_task_result = TaskResult(status="COMPLETE", parsedContent=mock_assoc_result_obj, content="")
     mock_task_system.execute_atomic_template.return_value = mock_task_result
 
     result = memory_system_instance.get_relevant_context_for(input_data)
@@ -382,7 +396,7 @@ def test_get_relevant_context_for_metadata_strategy_flow(memory_system_instance,
 
     # Assert final result
     assert isinstance(result, AssociativeMatchResult)
-    assert result.matches == expected_matches
+    assert result.matches == expected_match_items
     assert result.error is None
 
 def test_get_relevant_context_for_content_strategy_read_error(memory_system_instance, mock_task_system, mock_file_manager_ms): # Corrected name
@@ -393,9 +407,11 @@ def test_get_relevant_context_for_content_strategy_read_error(memory_system_inst
     mock_file_manager_ms.read_file.side_effect = lambda p, max_size=None: "Content of /path/a.py" if p == "/path/a.py" else None
 
     # Mock TaskSystem return (assuming it gets called with only the readable file)
-    expected_matches = [MatchTuple(path="/path/a.py", relevance=0.7)]
-    mock_assoc_result = AssociativeMatchResult(context_summary="Partial Content Result", matches=expected_matches)
-    mock_task_result = TaskResult(status="COMPLETE", content=mock_assoc_result.model_dump_json())
+    expected_match_items = [
+        MatchItem(id="/path/a.py", content="Content of /path/a.py", relevance_score=0.7, content_type="file_content")
+    ]
+    mock_assoc_result_obj = AssociativeMatchResult(context_summary="Partial Content Result", matches=expected_match_items)
+    mock_task_result = TaskResult(status="COMPLETE", parsedContent=mock_assoc_result_obj, content="")
     mock_task_system.execute_atomic_template.return_value = mock_task_result
 
     result = memory_system_instance.get_relevant_context_for(input_data)
@@ -409,7 +425,7 @@ def test_get_relevant_context_for_content_strategy_read_error(memory_system_inst
     assert '<file path="/path/a.py">Content of /path/a.py</file>' in contents
     assert '/path/error.py' not in contents
     # Assert final result
-    assert result.matches == expected_matches
+    assert result.matches == expected_match_items
 
 def test_get_relevant_context_for_task_system_call_fails(memory_system_instance, mock_task_system, mock_file_manager_ms): # Corrected name
     """Test when the TaskSystem call returns a FAILED status."""
@@ -430,12 +446,12 @@ def test_get_relevant_context_for_task_system_call_fails(memory_system_instance,
     assert "failed" in result.error
     assert "LLM timed out" in result.error # Check original error message is included
 
-def test_get_relevant_context_for_task_system_returns_invalid_json(memory_system_instance, mock_task_system, mock_file_manager_ms): # Corrected name
-    """Test when TaskSystem returns non-JSON content."""
+def test_get_relevant_context_for_task_system_returns_invalid_json_in_content(memory_system_instance, mock_task_system, mock_file_manager_ms):
+    """Test when TaskSystem returns non-JSON string in content and parsedContent is None."""
     input_data = ContextGenerationInput(query="test bad json", matching_strategy='metadata')
     memory_system_instance.global_index = {"/path/a.py": "meta a"}
     # Simulate TaskSystem returning bad content
-    mock_task_result = TaskResult(status="COMPLETE", content="This is not JSON", notes={})
+    mock_task_result = TaskResult(status="COMPLETE", content="This is not JSON", parsedContent=None, notes={})
     mock_task_system.execute_atomic_template.return_value = mock_task_result
 
     result = memory_system_instance.get_relevant_context_for(input_data)
@@ -443,8 +459,84 @@ def test_get_relevant_context_for_task_system_returns_invalid_json(memory_system
     assert isinstance(result, AssociativeMatchResult)
     assert result.matches == []
     assert result.error is not None
-    # Check for a key part of the Pydantic validation error message
-    assert "Failed to validate JSON" in result.error or "Invalid JSON" in result.error
+    assert "JSONDecodeError parsing AssociativeMatchResult from task output" in result.error
+
+def test_get_relevant_context_for_task_system_returns_valid_json_in_content(memory_system_instance, mock_task_system, mock_file_manager_ms):
+    """Test when TaskSystem returns valid JSON string in content and parsedContent is None."""
+    input_data = ContextGenerationInput(query="test good json content", matching_strategy='metadata')
+    memory_system_instance.global_index = {"/path/a.py": "meta a"}
+    
+    expected_match_items = [MatchItem(id="/path/a.py", content="meta a", relevance_score=0.9, content_type="file_summary")]
+    valid_assoc_result = AssociativeMatchResult(context_summary="Good JSON", matches=expected_match_items)
+    
+    mock_task_result = TaskResult(status="COMPLETE", content=valid_assoc_result.model_dump_json(), parsedContent=None, notes={})
+    mock_task_system.execute_atomic_template.return_value = mock_task_result
+
+    result = memory_system_instance.get_relevant_context_for(input_data)
+
+    assert isinstance(result, AssociativeMatchResult)
+    assert result.matches == expected_match_items
+    assert result.error is None
+
+
+def test_get_relevant_context_for_task_system_returns_valid_dict_in_parsed_content(memory_system_instance, mock_task_system, mock_file_manager_ms):
+    """Test when TaskSystem returns a valid dictionary in parsedContent."""
+    input_data = ContextGenerationInput(query="test dict parsedContent", matching_strategy='metadata')
+    memory_system_instance.global_index = {"/path/b.py": "meta b"}
+
+    expected_match_items = [MatchItem(id="/path/b.py", content="meta b", relevance_score=0.85, content_type="file_summary")]
+    valid_assoc_result_dict = AssociativeMatchResult(context_summary="Dict Parsed", matches=expected_match_items).model_dump()
+
+    mock_task_result = TaskResult(status="COMPLETE", content="", parsedContent=valid_assoc_result_dict, notes={})
+    mock_task_system.execute_atomic_template.return_value = mock_task_result
+
+    result = memory_system_instance.get_relevant_context_for(input_data)
+    assert isinstance(result, AssociativeMatchResult)
+    assert result.matches == expected_match_items
+    assert result.error is None
+
+
+def test_get_relevant_context_for_task_system_returns_invalid_dict_in_parsed_content(memory_system_instance, mock_task_system, mock_file_manager_ms):
+    """Test when TaskSystem returns an invalid dictionary (missing fields for MatchItem) in parsedContent."""
+    input_data = ContextGenerationInput(query="test invalid dict parsedContent", matching_strategy='metadata')
+    memory_system_instance.global_index = {"/path/c.py": "meta c"}
+
+    invalid_match_item_dict = {"id_typo": "/path/c.py", "relevance_score_typo": 0.7} # Missing required fields
+    invalid_assoc_result_dict = {"context_summary": "Invalid Dict", "matches": [invalid_match_item_dict]}
+
+    mock_task_result = TaskResult(status="COMPLETE", content="", parsedContent=invalid_assoc_result_dict, notes={})
+    mock_task_system.execute_atomic_template.return_value = mock_task_result
+    
+    result = memory_system_instance.get_relevant_context_for(input_data)
+    assert isinstance(result, AssociativeMatchResult)
+    assert result.matches == []
+    assert result.error is not None
+    assert "PydanticValidationError validating parsedContent dict as AssociativeMatchResult" in result.error
+
+
+def test_get_relevant_context_for_task_system_returns_non_matchitem_in_parsed_content_matches(memory_system_instance, mock_task_system, mock_file_manager_ms):
+    """Test when parsedContent is AssociativeMatchResult but its 'matches' contains non-MatchItem objects."""
+    input_data = ContextGenerationInput(query="test bad items in parsedContent", matching_strategy='content')
+    memory_system_instance.global_index = {"/path/d.py": "meta d"}
+    mock_file_manager_ms.read_file.return_value = "Content of /path/d.py"
+
+    # Create an AssociativeMatchResult where 'matches' contains a dictionary instead of a MatchItem instance
+    bad_matches_list = [{"id": "bad_item", "content": "bad", "relevance_score": 0.1, "content_type": "text"}] # type: ignore
+    malformed_assoc_result_obj = AssociativeMatchResult(context_summary="Malformed Matches", matches=bad_matches_list) # type: ignore 
+    # This direct assignment might bypass Pydantic validation if not careful,
+    # but we are testing the MemorySystem's handling of what it *receives*.
+    # Forcing the type for the test:
+    malformed_assoc_result_obj.matches = bad_matches_list # type: ignore
+
+    mock_task_result = TaskResult(status="COMPLETE", parsedContent=malformed_assoc_result_obj, content="")
+    mock_task_system.execute_atomic_template.return_value = mock_task_result
+
+    result = memory_system_instance.get_relevant_context_for(input_data)
+    assert isinstance(result, AssociativeMatchResult)
+    assert result.matches == []
+    assert result.error is not None
+    assert "Internal error: Parsed context items have incorrect type." in result.error
+
 
 def test_get_relevant_context_for_missing_task_system(memory_system_instance, mock_file_manager_ms): # Corrected name
     """Test when TaskSystem dependency is missing."""

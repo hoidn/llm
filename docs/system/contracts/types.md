@@ -130,6 +130,30 @@ interface DataContext {
     metadata?: dict<string, Any>; // Metadata about the context retrieval itself
 }
 
+/**
+ * Defines a single step in a Python-driven workflow, including input mappings.
+ * Used by PythonWorkflowManager.
+ * [Type:System:WorkflowStepDefinition:1.0] // NEW
+ */
+interface WorkflowStepDefinition {
+    task_name: string; // Name of the task/tool to execute (e.g., "user:generate-plan", "system:read_files")
+    
+    // Static input values provided directly for this task.
+    // { "param_template_name": "literal_value", ... }
+    static_inputs?: dict<string, Any>; 
+    
+    // Mappings for inputs that come from previous steps' outputs.
+    // { "param_template_name": "source_step_output_name.field.subfield", ... }
+    // "source_step_output_name" refers to the 'output_name' of a previous WorkflowStepDefinition.
+    // "field.subfield" is a path to extract from the TaskResult of the source step 
+    // (e.g., "parsedContent.plan_text", "content" if content is a simple string, "notes.file_path").
+    dynamic_input_mappings?: dict<string, string>;
+
+    // Name under which this step's TaskResult will be stored in the workflow context.
+    // Must be unique within the workflow.
+    output_name: string; 
+}
+
 ```
 
 ## Error Types

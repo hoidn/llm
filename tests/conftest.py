@@ -3,11 +3,16 @@ import os
 import subprocess # For git_repo fixture
 from unittest.mock import MagicMock, patch
 
+import pytest
+import os
+import subprocess # For git_repo fixture
+from unittest.mock import MagicMock, patch
+
 # Import Pydantic models for fixtures
 from src.system.models import (
     ContextGenerationInput,
     AssociativeMatchResult,
-    MatchTuple,
+    MatchItem, # Changed from MatchTuple
     TaskResult,
     ReturnStatus,
     TaskError,
@@ -23,18 +28,18 @@ from src.system.models import (
 def mock_memory_system():
     """Provides a mock MemorySystem instance."""
     ms = MagicMock(name="MockMemorySystem")
-    # Adjust MatchTuple mock to match Pydantic model (path, relevance, excerpt)
+    # Adjust MatchItem mock to match Pydantic model
     ms.get_relevant_context_for.return_value = AssociativeMatchResult(
         context_summary="Mocked context summary",
         matches=[
-            MatchTuple(path="/mock/file1.py", relevance=0.9, excerpt="mock excerpt 1"),
+            MatchItem(id="/mock/file1.py", content="mock content", relevance_score=0.9, content_type="file_content", metadata={"excerpt": "mock excerpt 1"})
         ],
         error=None
     )
     ms.get_relevant_context_with_description.return_value = AssociativeMatchResult(
         context_summary="Mocked context summary via desc",
         matches=[
-            MatchTuple(path="/mock/file_desc.py", relevance=0.8, excerpt="desc excerpt"),
+            MatchItem(id="/mock/file_desc.py", content="desc content", relevance_score=0.8, content_type="file_content", metadata={"excerpt": "desc excerpt"})
         ],
         error=None
     )
@@ -50,10 +55,10 @@ def mock_task_system():
     ts = MagicMock(name="MockTaskSystem")
     ts.find_template.return_value = {"name": "mock_template", "type": "atomic", "params": {}}
     ts.execute_atomic_template.return_value = TaskResult(status="COMPLETE", content="Mock task success")
-    # Adjust MatchTuple mock
+    # Adjust MatchItem mock
     ts.generate_context_for_memory_system.return_value = AssociativeMatchResult(
         context_summary="Mock generated context",
-        matches=[MatchTuple(path="/mock/gen_file.py", relevance=0.7, excerpt="gen excerpt")],
+        matches=[MatchItem(id="/mock/gen_file.py", content="gen content", relevance_score=0.7, content_type="file_content", metadata={"excerpt": "gen excerpt"})],
         error=None
     )
     ts.resolve_file_paths.return_value = (["/mock/resolved.py"], None)
@@ -113,8 +118,8 @@ def mock_associative_match_result():
     return AssociativeMatchResult(
         context_summary="Mock context summary",
         matches=[
-            MatchTuple(path="/mock/file1.py", relevance=0.9, excerpt="mock excerpt 1"),
-            MatchTuple(path="/mock/file2.txt", relevance=0.8, excerpt="mock excerpt 2"),
+            MatchItem(id="/mock/file1.py", content="mock content for file1", relevance_score=0.9, content_type="file_content"),
+            MatchItem(id="/mock/file2.txt", content="mock content for file2", relevance_score=0.8, content_type="text_chunk"),
         ],
         error=None
     )

@@ -5,8 +5,8 @@ module src.memory.memory_system {
     # @depends_on(src.task_system.task_system.TaskSystem) // For executing matching tasks
     # @depends_on(src.handler.file_access.FileAccessManager) // For reading file content
     # @depends_on(src.memory.indexers.git_repository_indexer.GitRepositoryIndexer) // For indexing repos
-    # @depends_on_type(docs.system.contracts.types.AssociativeMatchResult) // Its definition changed
     # @depends_on_type(docs.system.contracts.types.MatchItem)
+    # @depends_on_type(docs.system.contracts.types.AssociativeMatchResult)
 
     // Interface for the Memory System. Manages file metadata and context retrieval.
     interface MemorySystem {

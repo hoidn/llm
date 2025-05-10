@@ -256,15 +256,17 @@ class Application:
                         "file_contents": { "description": "A single string containing file contents wrapped in `<file path=...>...</file>` tags" }
                     },
                     "instructions": """Analyze the user query details in 'context_input'.
-Review the **full file contents** provided in the 'file_contents' parameter (a dictionary mapping paths to content).
-Based on the query and the **provided file contents**, select up to 10 relevant file paths *from the keys of the file_contents dictionary*. Assign a relevance score (0.0-1.0) to each selected path.
+Review the **full file contents** provided in the 'file_contents' parameter.
+Based on the query and the **provided file contents**, select up to 10 relevant file paths.
+For each relevant piece of context, provide the following information:
+- id: A unique identifier (e.g., filename or chunk ID).
+- content: The textual content of the match.
+- relevance_score: A numerical score from 0.0 to 1.0 indicating relevance.
+- content_type: A string describing the type of content (e.g., "file_content_chunk", "code_summary").
+- source_path: (Optional) The original source file path if applicable.
+- metadata: (Optional) A JSON object containing any additional relevant metadata (e.g., line numbers, language).
 Provide a brief 'context_summary' explaining the relevance based on the selected files' content.
-Output the result as a JSON object conforming to the AssociativeMatchResult structure:
-{
-  "context_summary": "string",
-  "matches": [ { "path": "string", "relevance": float (0.0-1.0) } ],
-  "error": null
-}
+Output the result as a JSON object conforming to the AssociativeMatchResult schema.
 
 Query Details: {{context_input.query}}
 
@@ -272,8 +274,8 @@ File Contents Snippet (Example Format - Actual input is the full dict):
 {{file_contents}}
 
 Select the best matching paths *from the provided file contents*.
-**IMPORTANT:** Your response MUST contain ONLY the valid JSON object conforming to the AssociativeMatchResult structure specified above. Do NOT include any introductory text, explanations, apologies, or concluding remarks. Your entire output must be the JSON object itself, starting with `{` and ending with `}`.""",
-                    "output_format": {"type": "json"}
+**IMPORTANT:** Your response MUST contain ONLY the valid JSON object conforming to the AssociativeMatchResult schema specified above. Do NOT include any introductory text, explanations, apologies, or concluding remarks. Your entire output must be the JSON object itself, starting with `{` and ending with `}`.""",
+                    "output_format": {"type": "json", "schema": "AssociativeMatchResult"}
                 }
                 self.task_system.register_template(assoc_matching_content_template)
                 logger.info(f"Registered template: {assoc_matching_content_template['name']}")
@@ -294,22 +296,24 @@ Select the best matching paths *from the provided file contents*.
                     },
                    "instructions": """Analyze the user query details in 'context_input'.
 Review the **file metadata** provided in the 'metadata_snippet' parameter (a dictionary mapping paths to metadata strings).
-Based on the query and the **provided metadata**, select the top 3-5 most relevant file paths *from the keys of the metadata_snippet dictionary*. Assign a relevance score (0.0-1.0) to each selected path.
+Based on the query and the **provided metadata**, select the top 3-5 most relevant file paths.
+For each relevant piece of context, provide the following information:
+- id: A unique identifier (e.g., filename or chunk ID).
+- content: The textual content of the match (this would be the metadata string itself in this case).
+- relevance_score: A numerical score from 0.0 to 1.0 indicating relevance.
+- content_type: A string describing the type of content (e.g., "file_summary", "metadata_entry").
+- source_path: (Optional) The original source file path if applicable (this would be the key from metadata_snippet).
+- metadata: (Optional) A JSON object containing any additional relevant metadata.
 Provide a brief 'context_summary' explaining the relevance based on the selected files' metadata.
-Output the result as a JSON object conforming to the AssociativeMatchResult structure:
-{
-  "context_summary": "string",
-  "matches": [ { "path": "string", "relevance": float (0.0-1.0) } ],
-  "error": null
-}
+Output the result as a JSON object conforming to the AssociativeMatchResult schema.
 
 Query Details: {{context_input.query}}
 
 Metadata Snippet (Example Format - Actual input is the full dict):
 {{ metadata_snippet | dict_slice(10) | format_dict_snippet(250) }}
 
-Select the best matching paths *from the provided metadata* and output the JSON.""", # Simplified template example
-                    "output_format": {"type": "json"}
+Select the best matching paths *from the provided metadata* and output the JSON.""",
+                    "output_format": {"type": "json", "schema": "AssociativeMatchResult"}
                 }
                 self.task_system.register_template(assoc_matching_metadata_template)
                 logger.info(f"Registered template: {assoc_matching_metadata_template['name']}")

@@ -6,11 +6,17 @@ from pydantic import ValidationError
 from datetime import datetime
 from typing import List, Optional, Literal # Added imports
 
+import pytest
+from pydantic import ValidationError
+from datetime import datetime
+from typing import List, Optional, Literal, Any, Dict # Added Any, Dict
+from enum import Enum # Added Enum
+
 # Attempt to import models from the correct location
 try:
     from src.system.models import (
         TurnMetrics, ContextMetrics, ResourceMetrics, ResourceLimits,
-        MatchTuple, AssociativeMatchResult,
+        MatchItemContentType, MatchItem, AssociativeMatchResult, DataContext, WorkflowStepDefinition, # Added new models, removed MatchTuple
         TaskFailureReason, ResourceExhaustionError, TaskFailureDetails, TaskFailureError,
         InvalidOutputError, ValidationError as ModelValidationError, XMLParseError, TaskError, # Alias ValidationError
         ContextManagement, SUBTASK_CONTEXT_DEFAULTS,
@@ -88,32 +94,127 @@ def test_resource_limits_invalid():
 
 # --- Test Associative Matching Types ---
 
-def test_match_tuple_valid():
-    match = MatchTuple(path="file.py", relevance=0.95, excerpt="def func():")
-    assert match.path == "file.py"
-    assert match.relevance == 0.95
-    assert match.excerpt == "def func():"
+# Placeholder for MatchItemContentType if you implement it
+# from src.system.models import MatchItemContentType 
 
-def test_match_tuple_defaults():
-    match = MatchTuple(path="file.py", relevance=0.9)
-    assert match.excerpt is None
+def test_match_item_instantiation_valid():
+    item = MatchItem(id="item1", content="some text", relevance_score=0.75, content_type="file_content")
+    assert item.id == "item1"
+    assert item.content == "some text"
+    assert item.relevance_score == 0.75
+    assert item.content_type == "file_content" # or MatchItemContentType.FILE_CONTENT.value
+    assert item.source_path is None
+    assert item.metadata is None
 
-def test_match_tuple_invalid():
+def test_match_item_relevance_score_constraints():
+    MatchItem(id="i", content="c", relevance_score=0.0, content_type="ct") # Valid
+    MatchItem(id="i", content="c", relevance_score=1.0, content_type="ct") # Valid
     with pytest.raises(ValidationError):
-        MatchTuple(path="file.py", relevance=1.1) # relevance > 1.0
+        MatchItem(id="i", content="c", relevance_score=-0.1, content_type="ct")
     with pytest.raises(ValidationError):
-        MatchTuple(path="file.py", relevance=-0.1) # relevance < 0.0
+        MatchItem(id="i", content="c", relevance_score=1.1, content_type="ct")
+
+def test_match_item_optional_fields_default_to_none():
+    item = MatchItem(id="item1", content="some text", relevance_score=0.75, content_type="file_content")
+    assert item.source_path is None
+    assert item.metadata is None
+    item_with_opts = MatchItem(id="item2", content="c2", relevance_score=0.5, content_type="ct2", source_path="/path", metadata={"key": "val"})
+    assert item_with_opts.source_path == "/path"
+    assert item_with_opts.metadata == {"key": "val"}
+
+def test_match_item_invalid_types_raise_validation_error():
+    with pytest.raises(ValidationError): # score wrong type
+        MatchItem(id="i", content="c", relevance_score="high", content_type="ct")
+    with pytest.raises(ValidationError): # content_type missing
+        MatchItem(id="i", content="c", relevance_score=0.5)
+    # Add more for other fields as necessary
+
+# Add if MatchItemContentType Enum is used:
+# def test_match_item_with_content_type_enum():
+#     item = MatchItem(id="item1", content="some text", relevance_score=0.75, content_type=MatchItemContentType.CODE_CHUNK)
+#     assert item.content_type == MatchItemContentType.CODE_CHUNK.value
+#     with pytest.raises(ValidationError):
+#         MatchItem(id="i", content="c", relevance_score=0.5, content_type="invalid_enum_value")
 
 def test_associative_match_result_valid():
-    matches = [MatchTuple(path="f1.py", relevance=0.8), MatchTuple(path="f2.py", relevance=0.7)]
+    # Replace MatchTuple with MatchItem
+    matches = [
+        MatchItem(id="f1.py", content="content1", relevance_score=0.8, content_type="file_content"),
+        MatchItem(id="f2.py", content="content2", relevance_score=0.7, content_type="file_content")
+    ]
     result = AssociativeMatchResult(context_summary="Summary", matches=matches, error=None)
     assert result.context_summary == "Summary"
     assert result.matches == matches
     assert result.error is None
+    assert result.matches[0].id == "f1.py"
+
 
 def test_associative_match_result_with_error():
     result = AssociativeMatchResult(context_summary="", matches=[], error="Failed to index")
     assert result.error == "Failed to index"
+
+def test_associative_match_result_empty_matches():
+    result = AssociativeMatchResult(context_summary="Summary", matches=[])
+    assert result.matches == []
+
+def test_associative_match_result_invalid_match_item_in_list():
+    with pytest.raises(ValidationError):
+        AssociativeMatchResult(context_summary="s", matches=[
+            {"id": "item1", "content": "c", "relevance_score": 0.5, "content_type": "text"} # This is a dict, not MatchItem instance
+        ]) 
+    # Test with a valid MatchItem and an invalid dict
+    valid_item = MatchItem(id="item1", content="c", relevance_score=0.5, content_type="text")
+    with pytest.raises(ValidationError):
+         AssociativeMatchResult(context_summary="s", matches=[valid_item, {"id": "item2"}])
+
+
+# --- Test DataContext ---
+def test_data_context_instantiation_valid():
+    items = [MatchItem(id="item1", content="c1", relevance_score=0.8, content_type="t1")]
+    dt_now = datetime.now().isoformat()
+    context = DataContext(retrieved_at=dt_now, items=items, source_query="test query")
+    assert context.retrieved_at == dt_now
+    assert context.items == items
+    assert context.source_query == "test query"
+    assert context.overall_summary is None
+    assert context.metadata is None
+
+def test_data_context_optional_fields_default_to_none():
+    dt_now = datetime.now().isoformat()
+    context = DataContext(retrieved_at=dt_now, items=[])
+    assert context.source_query is None
+    assert context.overall_summary is None
+    assert context.metadata is None
+
+def test_data_context_requires_match_items_in_list():
+    dt_now = datetime.now().isoformat()
+    with pytest.raises(ValidationError):
+        DataContext(retrieved_at=dt_now, items=[{"id": "not_a_match_item"}])
+
+def test_data_context_invalid_types_raise_validation_error():
+    with pytest.raises(ValidationError): # retrieved_at missing
+        DataContext(items=[])
+    # Add more for other fields
+
+
+# --- Test WorkflowStepDefinition ---
+def test_workflow_step_definition_instantiation_valid():
+    step = WorkflowStepDefinition(task_name="task:run", output_name="step1_out", static_inputs={"p1": "v1"})
+    assert step.task_name == "task:run"
+    assert step.output_name == "step1_out"
+    assert step.static_inputs == {"p1": "v1"}
+    assert step.dynamic_input_mappings is None
+
+def test_workflow_step_definition_optional_fields_default_to_none():
+    step = WorkflowStepDefinition(task_name="task:run", output_name="step1_out")
+    assert step.static_inputs is None
+    assert step.dynamic_input_mappings is None
+
+def test_workflow_step_definition_invalid_types_raise_validation_error():
+    with pytest.raises(ValidationError): # task_name missing
+        WorkflowStepDefinition(output_name="out")
+    # Add more for other fields
+
 
 # --- Test Error Types ---
 

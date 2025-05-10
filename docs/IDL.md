@@ -77,17 +77,20 @@ The IDL file serves as a **strict contract**. Implementations in Python (or othe
     // In src/memory/memory_system_IDL.md
     module src.memory.memory_system {
 
-        // Locally defined struct
-        struct MatchTuple {
-             path: string;
-             relevance: string;
-             score: float;
+        // Locally defined struct (Example updated to MatchItem)
+        struct MatchItem {
+             id: string;
+             content: string;
+             relevance_score: float; // Assuming float for IDL simplicity
+             content_type: string;
+             source_path: optional string;
+             metadata: optional dict<string, Any>;
         }
 
         // Struct referencing another local struct
         struct AssociativeMatchResult {
              context_summary: string;
-             matches: list<MatchTuple>;
+             matches: list<MatchItem>; // Updated to use MatchItem
              error: optional string;
         }
 

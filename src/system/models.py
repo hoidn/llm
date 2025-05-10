@@ -5,9 +5,10 @@ System-wide Pydantic models based on docs/system/contracts/types.md
 import importlib
 import logging
 from datetime import datetime
+from enum import Enum # Add Enum
 from typing import Any, Dict, List, Literal, Optional, Type, Union # Record is not standard, using Dict instead
 
-from pydantic import BaseModel, Field, PositiveInt, NonNegativeInt, conint, confloat, model_validator
+from pydantic import BaseModel, Field, PositiveInt, NonNegativeInt, conint, confloat, model_validator # Ensure confloat, NonNegativeInt, PositiveInt
 
 # Configure logger
 logger = logging.getLogger(__name__)
@@ -25,6 +26,17 @@ class ContextMetrics(BaseModel):
     used: NonNegativeInt
     limit: PositiveInt
     peakUsage: NonNegativeInt
+
+
+# --- MatchItemContentType Enum (NEW) ---
+class MatchItemContentType(str, Enum):
+    FILE_CONTENT = "file_content"
+    FILE_SUMMARY = "file_summary"
+    WEB_EXCERPT = "web_excerpt"
+    DATABASE_RECORD_SUMMARY = "database_record_summary"
+    CODE_CHUNK = "code_chunk"
+    TEXT_CHUNK = "text_chunk" # Generic text chunk from a larger document
+
 
 class ResourceMetrics(BaseModel):
     """
@@ -46,24 +58,41 @@ class ResourceLimits(BaseModel):
 
 # --- Associative Matching Types ---
 
-class MatchTuple(BaseModel):
+class MatchItem(BaseModel):
     """
-    Individual match result with relevance information
-    [Type:System:MatchTuple:1.0]
+    Represents a contextual item retrieved through associative matching or context gathering.
+    [Type:System:MatchItem:1.0]
     """
-    path: str  # Path to the matched item (e.g., file path)
-    relevance: confloat(ge=0.0, le=1.0)  # Relevance score (0.0 to 1.0)
-    excerpt: Optional[str] = None  # Optional excerpt from the matched content
-    # Removed 'score' as it's not in the IDL/Type definition
+    id: str = Field(description="A unique identifier for this item (e.g., absolute file path, URL + anchor, DB record ID). This helps in de-duplication and referencing.")
+    content: str = Field(description="The primary textual content of this item. Could be file content, a summary, an excerpt, or a serialized representation of structured data.")
+    relevance_score: confloat(ge=0.0, le=1.0) = Field(description="The relevance score of this item to the query (0.0 to 1.0).")
+    content_type: str = Field(description=f"Describes the nature of the 'content' and 'id'. Examples: {[e.value for e in MatchItemContentType]}.") # Or content_type: MatchItemContentType if using Enum directly
+    source_path: Optional[str] = Field(None, description="Optional: The original source path from which this item was derived if 'id' isn't sufficient or if 'content' is a processed version.")
+    metadata: Optional[Dict[str, Any]] = Field(None, description="Optional: Additional metadata about this item (e.g., line numbers, last modified date, language).")
+
 
 class AssociativeMatchResult(BaseModel):
     """
-    Result of associative matching operations
-    [Type:System:AssociativeMatchResult:1.0]
+    Result of associative matching operations (Memory System output)
+    [Type:System:AssociativeMatchResult:1.1] // Version incremented
     """
-    context_summary: str  # Summarized context information
-    matches: List[MatchTuple]  # List of matching items with relevance scores
-    error: Optional[str] = None  # Error message if the matching operation failed
+    context_summary: str
+    matches: List[MatchItem]  # REVISED: Uses new MatchItem
+    error: Optional[str] = None
+
+
+class DataContext(BaseModel):
+    """
+    Holds the result of associative matching and other context gathering, managed by the BaseHandler.
+    Separate from conversational session history.
+    [Type:System:DataContext:1.0]
+    """
+    retrieved_at: str = Field(description="ISO datetime string of when the context was retrieved.")
+    source_query: Optional[str] = Field(None, description="The query that led to this context.")
+    items: List[MatchItem] = Field(description="List of retrieved contextual items.")
+    overall_summary: Optional[str] = Field(None, description="An overall summary of the context, if available.")
+    metadata: Optional[Dict[str, Any]] = Field(None, description="Metadata about the context retrieval itself (e.g., sources consulted, timings).")
+
 
 # --- Error Types ---
 
@@ -245,6 +274,19 @@ class ContextGenerationInput(BaseModel):
     inheritedContext: Optional[str] = None
     previousOutputs: Optional[str] = None
     matching_strategy: Optional[Literal['content', 'metadata']] = None # Default handled by consumer
+
+
+class WorkflowStepDefinition(BaseModel):
+    """
+    Defines a single step in a Python-driven workflow, including input mappings.
+    Used by PythonWorkflowManager.
+    [Type:System:WorkflowStepDefinition:1.0]
+    """
+    task_name: str = Field(description="Name of the task/tool to execute (e.g., 'user:generate-plan', 'system:read_files').")
+    static_inputs: Optional[Dict[str, Any]] = Field(None, description="Static input values provided directly for this task. { \"param_template_name\": \"literal_value\", ... }")
+    dynamic_input_mappings: Optional[Dict[str, str]] = Field(None, description="Mappings for inputs from previous steps' outputs. { \"param_template_name\": \"source_step_output_name.field.subfield\", ... }")
+    output_name: str = Field(description="Name under which this step's TaskResult will be stored in the workflow context. Must be unique within the workflow.")
+
 
 class HistoryConfigSettings(BaseModel):
     use_session_history: bool = Field(True, description="If false, task starts with empty history for LLM call.")
