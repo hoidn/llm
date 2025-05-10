@@ -90,7 +90,7 @@ class AiderExecutorFunctions:
         # Referencing docs/librarydocs/aider_MCP_server.md
         mcp_params = {
             "ai_coding_prompt": prompt,
-            "editable_files": relative_files, # Assuming context files are editable
+            "editable_paths": relative_files, # Assuming context files are editable
             "relative_readonly_files": [], # Always send empty list instead of None to avoid server-side TypeError
             "model": model_override # Pass None if not provided
         }
@@ -177,7 +177,7 @@ class AiderExecutorFunctions:
         # Assuming interactive mode also uses aider_ai_code for now
         mcp_params = {
             "ai_coding_prompt": prompt,
-            "editable_files": relative_files,
+            "editable_paths": relative_files,
             "relative_readonly_files": [], # Always send empty list instead of None to avoid server-side TypeError
             "model": model_override
         }
