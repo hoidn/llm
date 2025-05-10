@@ -3,7 +3,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 # Need imports used by the original method's logic
 # Import the actual models needed for runtime use
-from src.system.models import ContextGenerationInput, MatchTuple, AssociativeMatchResult
+from src.system.models import ContextGenerationInput, MatchItem, AssociativeMatchResult # Changed MatchTuple to MatchItem
 
 # Types needed only for type hints
 from typing import TYPE_CHECKING
@@ -85,8 +85,14 @@ def resolve_paths_from_template(
             result: AssociativeMatchResult = memory_system.get_relevant_context_for(context_input) # type: ignore
             if result.error:
                 return [], f"Error getting context by description: {result.error}"
-            # Ensure matches are MatchTuple instances before accessing path
-            paths = [match.path for match in result.matches if isinstance(match, MatchTuple)]
+            # Ensure matches are MatchItem instances and extract path
+            paths = []
+            if result.matches:
+                for item in result.matches:
+                    if isinstance(item, MatchItem):
+                        path_to_add = item.source_path if item.source_path else item.id
+                        if path_to_add:
+                            paths.append(path_to_add)
             logging.debug(f"Context by description returned paths: {paths}")
             return paths, None
         except Exception as e:
@@ -107,8 +113,14 @@ def resolve_paths_from_template(
              result: AssociativeMatchResult = memory_system.get_relevant_context_for(context_input) # type: ignore
              if result.error:
                  return [], f"Error getting context by context_query: {result.error}"
-             # Ensure matches are MatchTuple instances before accessing path
-             paths = [match.path for match in result.matches if isinstance(match, MatchTuple)]
+             # Ensure matches are MatchItem instances and extract path
+             paths = []
+             if result.matches:
+                 for item in result.matches:
+                     if isinstance(item, MatchItem):
+                         path_to_add = item.source_path if item.source_path else item.id
+                         if path_to_add:
+                             paths.append(path_to_add)
              logging.debug(f"Context by context_query returned paths: {paths}")
              return paths, None
          except Exception as e:
