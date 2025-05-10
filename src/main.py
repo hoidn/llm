@@ -87,7 +87,9 @@ Initial Context:
 
 **IMPORTANT:** Your response MUST contain ONLY the valid JSON object conforming to the DevelopmentPlan schema. Do NOT include any introductory text, explanations, apologies, or concluding remarks. Your entire output must be the JSON object itself, starting with `{` and ending with `}`.
 """,
-    "output_format": {"type": "json", "schema": "src.system.models.DevelopmentPlan"}
+    "output_format": {"type": "json", "schema": "src.system.models.DevelopmentPlan"},
+    "allowed_tools": [],
+    "model": None
 }
 
 ANALYZE_AIDER_RESULT_TEMPLATE = {
