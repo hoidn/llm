@@ -6,7 +6,7 @@ the handling logic for all special forms in the S-expression language.
 import logging
 from typing import Any, List, TYPE_CHECKING, Dict
 
-from sexpdata import Symbol, Quoted as sexpdata_Quoted
+from sexpdata import Symbol, Quoted as sexpdata_Quoted, Quoted # Ensure Quoted is imported if used directly
 
 from src.sexp_evaluator.sexp_environment import SexpEnvironment
 from src.sexp_evaluator.sexp_closure import Closure # Added import
