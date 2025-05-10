@@ -122,6 +122,25 @@ Output the result ONLY as a valid JSON object conforming to the FeedbackResult s
     "output_format": {"type": "json", "schema": "src.system.models.FeedbackResult"}
 }
 
+# --- NEW TASK TEMPLATE ---
+USER_PASSTHROUGH_QUERY_TEMPLATE = {
+    "name": "user:passthrough_query",
+    "type": "atomic",
+    "subtype": "standard",
+    "description": "Executes a direct query/prompt against the LLM using the handler's currently primed context. The input 'query' parameter is used as the main LLM prompt.",
+    "params": {
+        "query": {"type": "string", "description": "The prompt to send to the LLM."}
+    },
+    "instructions": "{{query}}", # The 'query' param becomes the main LLM prompt
+    # No 'system_prompt_template' needed here, as the system prompt will be built
+    # by BaseHandler using its base prompt and the primed DataContext.
+    # No 'initial_context' param needed for this task, as context is already in handler.
+    "output_format": {"type": "text"}, # Assuming raw text output
+    "allowed_tools": [], # Typically no tools for a direct passthrough, unless specified
+    "model": None # Use default model
+}
+# --- END NEW TASK TEMPLATE ---
+
 
 # Helper function to create a standard FAILED TaskResult dictionary
 def _create_failed_result_dict(reason: TaskFailureReason, message: str, details: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -324,6 +343,11 @@ Select the best matching paths *from the provided metadata* and output the JSON.
 
                     self.task_system.register_template(ANALYZE_AIDER_RESULT_TEMPLATE)
                     logger.info(f"Registered template: {ANALYZE_AIDER_RESULT_TEMPLATE['name']}")
+
+                    # --- REGISTER THE NEW TEMPLATE ---
+                    self.task_system.register_template(USER_PASSTHROUGH_QUERY_TEMPLATE)
+                    logger.info(f"Registered template: {USER_PASSTHROUGH_QUERY_TEMPLATE['name']}")
+                    # --- END REGISTRATION ---
                 else:
                     # This indicates a programming error in the init sequence
                     logger.error("TaskSystem not initialized before template registration attempt.")
