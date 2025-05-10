@@ -284,12 +284,31 @@ async def main():
     workflow_manager.add_step(step2_def)
 
     # Step 3: Generate Phased Implementation Plan
-    plan_generation_prompt = LLM_PLAN_GENERATION_PROMPT_TEMPLATE.format(
-        refactoring_goal=ARCHITECTURAL_TASK_GOAL
-    )
+    # The user:generate-plan task template in src/main.py expects 'user_prompts' and 'initial_context'.
+    # The ARCHITECTURAL_TASK_GOAL will be our 'user_prompts'.
+    # The primed data context (which is implicitly available to the LLM via the handler
+    # when user:generate-plan is executed) will serve as the 'initial_context'.
+    # The LLM_PLAN_GENERATION_PROMPT_TEMPLATE is not directly used here as the
+    # user:generate-plan task's own template contains the detailed instructions for the LLM.
+
+    # We need to ensure the primed context from Step 2 is available to the 'user:generate-plan' task.
+    # The PassthroughHandler, when executing an atomic task that calls an LLM,
+    # should automatically use its primed self.data_context to build the system prompt.
+    # So, we just need to provide the 'user_prompts' (our goal) and 'initial_context' (a reference or summary).
+    # For 'initial_context', we can pass a placeholder string, as the actual IDL content
+    # is already in the handler's data_context due to the preceding prime_handler_data_context step.
+    # The 'user:generate-plan' template in main.py uses {{initial_context}} in its prompt.
+    # The PassthroughHandler's _build_system_prompt will inject the actual primed data.
+
     step3_def = WorkflowStepDefinition(
-        task_name="user:passthrough_query", # Assumes this task uses the primed context
-        static_inputs={"query": plan_generation_prompt},
+        task_name="user:generate-plan", # Use the registered task for plan generation
+        static_inputs={
+            "user_prompts": ARCHITECTURAL_TASK_GOAL,
+            # The 'initial_context' param for 'user:generate-plan' task template
+            # will be supplemented by the handler's primed data_context.
+            # We can provide a brief reference here.
+            "initial_context": "Refactoring IDL files. Context provided in primed data context."
+        },
         output_name="generated_plan_result"
     )
     workflow_manager.add_step(step3_def)
