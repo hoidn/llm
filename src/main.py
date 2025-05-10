@@ -521,7 +521,7 @@ Select the best matching paths *from the provided metadata* and output the JSON.
         # Explicitly define tool specifications with colon-separated names
         tool_definitions = {
             "execute_get_context": {
-                "name": "system:get_context",
+                "name": "system_get_context",
                 "description": "Gets relevant context from the memory system based on a query.",
                 "input_schema": {
                     "type": "object",
@@ -530,7 +530,7 @@ Select the best matching paths *from the provided metadata* and output the JSON.
                 }
             },
             "execute_read_files": {
-                "name": "system:read_files",
+                "name": "system_read_files",
                 "description": "Reads the content of specified files.",
                 "input_schema": {
                     "type": "object",
@@ -539,7 +539,7 @@ Select the best matching paths *from the provided metadata* and output the JSON.
                 }
             },
             "execute_list_directory": {
-                "name": "system:list_directory",
+                "name": "system_list_directory",
                 "description": "Lists the contents of a directory.",
                 "input_schema": {
                     "type": "object",
@@ -548,7 +548,7 @@ Select the best matching paths *from the provided metadata* and output the JSON.
                 }
             },
             "execute_write_file": {
-                "name": "system:write_file",
+                "name": "system_write_file",
                 "description": "Writes content to a file.",
                 "input_schema": {
                     "type": "object",
@@ -561,7 +561,7 @@ Select the best matching paths *from the provided metadata* and output the JSON.
                 }
             },
             "execute_shell_command": {
-                "name": "system:execute_shell_command",
+                "name": "system_execute_shell_command",
                 "description": "Executes a shell command.",
                  "input_schema": {
                     "type": "object",
@@ -574,12 +574,12 @@ Select the best matching paths *from the provided metadata* and output the JSON.
                 }
             },
             "execute_clear_handler_data_context": {
-                "name": "system:clear_handler_data_context",
+                "name": "system_clear_handler_data_context",
                 "description": "Clears the active data context in the handler.",
                 "input_schema": {"type": "object", "properties": {}} # No params
             },
             "execute_prime_handler_data_context": {
-                "name": "system:prime_handler_data_context",
+                "name": "system_prime_handler_data_context",
                 "description": "Primes the handler's data context with initial files or a query.",
                 "input_schema": {
                     "type": "object",
@@ -599,18 +599,18 @@ Select the best matching paths *from the provided metadata* and output the JSON.
                 executor_method = getattr(self.system_executors, method_name)
                 if callable(executor_method):
                     # Check dependencies before registering
-                    if tool_spec['name'] == 'system:get_context' and not self.memory_system:
-                        logger.error("Skipping registration of system:get_context: MemorySystem not initialized.")
+                    if tool_spec['name'] == 'system_get_context' and not self.memory_system:
+                        logger.error("Skipping registration of system_get_context: MemorySystem not initialized.")
                         continue
-                    if tool_spec['name'] in ['system:read_files', 'system:list_directory', 'system:write_file'] \
+                    if tool_spec['name'] in ['system_read_files', 'system_list_directory', 'system_write_file'] \
                             and (not self.passthrough_handler or not self.passthrough_handler.file_manager):
                         logger.error(f"Skipping registration of {tool_spec['name']}: FileAccessManager not initialized in handler.")
                         continue
-                    if tool_spec['name'] == 'system:execute_shell_command' \
+                    if tool_spec['name'] == 'system_execute_shell_command' \
                             and (not self.system_executors or not self.system_executors.command_executor):
                         logger.error(f"Skipping registration of {tool_spec['name']}: Command executor module not available.")
                         continue
-                    if tool_spec['name'] in ['system:clear_handler_data_context', 'system:prime_handler_data_context'] \
+                    if tool_spec['name'] in ['system_clear_handler_data_context', 'system_prime_handler_data_context'] \
                             and (not self.system_executors or not self.system_executors.handler_instance):
                         logger.error(f"Skipping registration of {tool_spec['name']}: SystemExecutorFunctions not properly initialized with a handler instance.")
                         continue

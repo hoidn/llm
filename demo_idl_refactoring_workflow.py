@@ -248,7 +248,7 @@ async def main():
 
     # Step 1: Find Relevant IDLs
     step1_def = WorkflowStepDefinition(
-        task_name="system:get_context", # This task should be registered in Application
+        task_name="system_get_context", # This task should be registered in Application
         static_inputs={"query": INITIAL_IDL_SEARCH_QUERY},
         output_name="found_idls_result"
     )
@@ -290,7 +290,7 @@ async def main():
 
     # Step 2: Prime Context with Found IDLs
     step2_def = WorkflowStepDefinition(
-        task_name="system:prime_handler_data_context", # This task should be registered
+        task_name="system_prime_handler_data_context", # This task should be registered
         static_inputs={"initial_files": idl_paths_to_prime},
         output_name="idls_primed_result"
     )
@@ -357,7 +357,7 @@ async def main():
 
         # Step 4 (Loop Iteration): Clear Previous Context
         step4_def = WorkflowStepDefinition(
-            task_name="system:clear_handler_data_context", # This task should be registered
+            task_name="system_clear_handler_data_context", # This task should be registered
             static_inputs={}, 
             output_name=f"context_cleared_step{i+1}"
         )
@@ -371,7 +371,7 @@ async def main():
 
         # Step 5 (Loop Iteration): Prime Context for Current Plan Step
         step5_def = WorkflowStepDefinition(
-            task_name="system:prime_handler_data_context",
+            task_name="system_prime_handler_data_context",
             static_inputs=current_step_context_params,
             output_name=f"step{i+1}_context_primed"
         )
@@ -405,7 +405,7 @@ async def main():
     logger.info("\n--- Demo Workflow Complete. Optional Final Cleanup ---")
     workflow_manager.clear_workflow()
     final_clear_def = WorkflowStepDefinition(
-        task_name="system:clear_handler_data_context",
+        task_name="system_clear_handler_data_context",
         static_inputs={},
         output_name="final_context_cleared"
     )
