@@ -173,7 +173,7 @@ class AtomicTaskExecutor:
 
             # --- 2. Determine Output Type Override (Isolate this step) ---
             output_format_config = atomic_task_def.get("output_format", {}) # Use atomic_task_def, rename var
-            schema_name = output_format.get("schema")
+            schema_name = output_format_config.get("schema") # Use output_format_config
             if schema_name:
                 try:
                     logging.debug(f"Attempting to resolve model class for schema: {schema_name}")
@@ -182,11 +182,39 @@ class AtomicTaskExecutor:
                 except ModelNotFoundError as e:
                     logging.warning(f"Failed to resolve model class for schema {schema_name}: {e}")
                     task_notes["schema_warning"] = f"Failed to resolve model class for schema {schema_name}: {e}"
-                except Exception as e:
+                except Exception as e: # Catch other errors during model resolution
                     logging.error(f"Unexpected error resolving model class for schema {schema_name}: {e}")
                     task_notes["schema_error"] = f"Unexpected error resolving model class: {e}"
+            
+            # --- Tool Configuration Logic ---
+            allowed_tool_names: Optional[List[str]] = atomic_task_def.get("allowed_tools")
+            task_tools_config_override: Optional[Tuple[List[Callable], List[Dict[str, Any]]]] = None
 
-        except (ParameterMismatchError, ValueError, TypeError) as sub_err:
+            if allowed_tool_names is not None:  # Template specifies allowed tools (could be an empty list)
+                logging.debug(f"Template '{task_name}' specified allowed_tools: {allowed_tool_names}")
+                selected_executors: List[Callable] = []
+                selected_definitions: List[Dict[str, Any]] = []
+
+                active_defs_map = {spec.get("name"): spec for spec in handler.active_tool_definitions}
+
+                for name in allowed_tool_names:
+                    executor = handler.tool_executors.get(name)
+                    definition = active_defs_map.get(name)
+
+                    if executor and definition:
+                        selected_executors.append(executor)
+                        selected_definitions.append(definition)
+                        logging.debug(f"Tool '{name}' allowed by template and found in active handler tools.")
+                    elif name in handler.tool_executors and not definition:
+                        logging.warning(f"Tool '{name}' specified in template, executor found, but definition not in handler.active_tool_definitions. Skipping.")
+                    else:
+                        logger.warning(f"Tool '{name}' specified in template but not found in handler's registered executors or active definitions. Skipping.")
+                task_tools_config_override = (selected_executors, selected_definitions)
+            else:
+                logging.debug(f"Template '{task_name}' did not specify allowed_tools. Handler's active tools will be used by default.")
+            # --- End Tool Configuration Logic ---
+
+        except (ParameterMismatchError, ValueError, TypeError) as sub_err: # Keep this for substitution errors
             # Catch errors ONLY from substitution or output type resolution
             logging.error(f"Parameter substitution or type resolution failed for task '{task_name}': {sub_err}")
             error_details = TaskFailureError(type="TASK_FAILURE", reason="input_validation_failure", message=str(sub_err))
