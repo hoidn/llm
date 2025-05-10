@@ -830,15 +830,34 @@ class BaseHandler:
         )
         return final_prompt
 
-    def _get_relevant_files(self, query: str) -> AssociativeMatchResult: # <<< CHANGE TYPE HINT
-        """Gets relevant context items based on a query.
-        This method is now primarily a helper for `prime_data_context`.
-        Delegates to `FileContextManager.get_relevant_files`.
+    def _get_relevant_files(self, query: str) -> Optional[AssociativeMatchResult]:
         """
-        self.log_debug(f"Getting relevant files for query: '{query[:100]}...'")
-        # This method should directly return what file_context_manager.get_relevant_files returns.
-        # FileContextManager.get_relevant_files is expected to return AssociativeMatchResult.
-        return self.file_context_manager.get_relevant_files(query)
+        Gets relevant context items from MemorySystem based on a query.
+        This method is a helper for `prime_data_context`.
+        Constructs a ContextGenerationInput and calls self.memory_system.get_relevant_context_for.
+        Returns an AssociativeMatchResult object or None if an error occurs.
+        """
+        self.log_debug(f"Getting relevant files from MemorySystem for query: '{query[:100]}...'")
+        if not self.memory_system:
+            self.log_debug("MemorySystem not available in BaseHandler._get_relevant_files.")
+            return None
+        try:
+            input_data = ContextGenerationInput(query=query)
+            # Assuming self.memory_system.get_relevant_context_for returns AssociativeMatchResult
+            # or raises an exception/returns an error structure that needs handling.
+            # For now, directly return, assuming it aligns with Optional[AssociativeMatchResult].
+            # If MemorySystem returns a result with an error field, this might need adjustment
+            # to return None on error.
+            result = self.memory_system.get_relevant_context_for(input_data)
+            if isinstance(result, AssociativeMatchResult):
+                return result
+            else:
+                # Log unexpected return type from memory_system
+                logging.warning(f"MemorySystem.get_relevant_context_for returned unexpected type: {type(result)}")
+                return None
+        except Exception as e:
+            logging.error(f"Error calling MemorySystem in _get_relevant_files: {e}", exc_info=True)
+            return None
 
     def _create_data_context_string(self, items: List[MatchItem]) -> str:
         """
