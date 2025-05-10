@@ -150,7 +150,15 @@ class AiderBridge:
         if not self._mcp_config.get("command"):
             return _create_failed_result_dict("configuration_error", "Aider MCP server command not configured.")
 
-        logger.debug(f"Calling Aider MCP tool '{tool_name}' with params: {params}")
+        # === START EDIT 1: Log params as received ===
+        logger.info(f"AiderBridge.call_aider_tool: Received tool_name='{tool_name}'")
+        try:
+            params_json_for_log_received = json.dumps(params, indent=2)
+        except TypeError: 
+            params_json_for_log_received = repr(params)
+        logger.info(f"AiderBridge.call_aider_tool: PARAMS AS RECEIVED: {params_json_for_log_received}")
+        # === END EDIT 1 ===
+
         logger.debug(f"Attempting MCP connection with config: {self._mcp_config}") # Log connection config
 
         try:
@@ -170,6 +178,15 @@ class AiderBridge:
                     await session.initialize()
                     logger.debug("MCP session initialized. Calling tool...")
 
+                    # === START EDIT 2: Log params before sending to MCP server ===
+                    logger.info(f"AiderBridge.call_aider_tool: About to call session.call_tool for tool_name='{tool_name}'")
+                    try:
+                        params_json_for_log_sending = json.dumps(params, indent=2)
+                    except TypeError:
+                        params_json_for_log_sending = repr(params)
+                    logger.info(f"AiderBridge.call_aider_tool: PARAMS BEING SENT TO MCP SERVER (via session.call_tool arguments): {params_json_for_log_sending}")
+                    # === END EDIT 2 ===
+                    
                     mcp_response_wrapper = await session.call_tool(name=tool_name, arguments=params) # Rename variable
 
                     # --- START FIX: Handle CallToolResult Wrapper ---
