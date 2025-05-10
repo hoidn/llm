@@ -5,7 +5,7 @@ the application logic for all built-in primitives in the S-expression language.
 """
 import logging
 from typing import Any, List, TYPE_CHECKING, Dict
-from pydantic import BaseModel # add once
+from pydantic import BaseModel as PydanticBaseModel # add once, aliased
 from src.system.models import TaskResult   # NEW – needed for isinstance check
 
 from sexpdata import Symbol
@@ -134,162 +134,58 @@ class PrimitiveProcessor:
         logging.debug(f"PrimitiveProcessor.apply_get_context_primitive END: -> {file_paths}")
         return file_paths
 
-    def apply_get_field_primitive(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> Any:
-        logger.debug(f"PrimitiveProcessor.apply_get_field_primitive: {original_expr_str}")
-        if len(arg_exprs) != 2:
-            raise SexpEvaluationError("'get-field' requires exactly two arguments: (get-field <object/dict> <field-name>)", original_expr_str)
+    def apply_get_field_primitive(self, args: List[Any], env: 'SexpEnvironment', original_expr_str: str) -> Any: # Match user's signature
+        logger.debug(f"PrimitiveProcessor.apply_get_field_primitive: {original_expr_str}") # Use original_expr_str
+        if len(args) != 2: # Use args
+            raise SexpEvaluationError(f"get-field: Expected 2 arguments, got {len(args)}", original_expr_str)
 
-        obj_expr = arg_exprs[0]
-        field_name_expr = arg_exprs[1]
+        target_obj_expr = args[0]
+        field_name_expr = args[1]
 
-        try:
-            target_obj = self.evaluator._eval(obj_expr, env)
-            field_name_val = self.evaluator._eval(field_name_expr, env)
-        except Exception as e_eval:
-            raise SexpEvaluationError(f"Error evaluating arguments for 'get-field': {e_eval}", original_expr_str, error_details=str(e_eval)) from e_eval
+        target_obj = self.evaluator._eval(target_obj_expr, env)
+        field_name_val_intermediate = self.evaluator._eval(field_name_expr, env)
 
-        if not isinstance(field_name_val, str):
-            if isinstance(field_name_val, Symbol):
-                field_name_val = field_name_val.value()
-            else:
-                raise SexpEvaluationError(f"'get-field' field name must be a string or symbol, got {type(field_name_val)}: {field_name_val!r}", original_expr_str)
-        
-        # More detailed logging for target_obj
-        logger.debug(f"  'get-field': target_obj type={type(target_obj)}, value (first 200 chars if str): {str(target_obj)[:200] if isinstance(target_obj, str) else repr(target_obj)}")
-        logger.debug(f"  'get-field': field_name_val='{field_name_val}'")
+        field_name_str: str
+        if isinstance(field_name_val_intermediate, Symbol):
+            field_name_str = field_name_val_intermediate.value()
+        elif isinstance(field_name_val_intermediate, str):
+            field_name_str = field_name_val_intermediate
+        else:
+            raise SexpEvaluationError(f"get-field: Field name must evaluate to a string or symbol, got {type(field_name_val_intermediate)}", original_expr_str)
+
         if isinstance(target_obj, dict):
-            logger.debug(f"  'get-field': target_obj is dict. Keys: {list(target_obj.keys())}")
-        elif hasattr(target_obj, '__dict__'):
-             logger.debug(f"  'get-field': target_obj has __dict__. Attributes: {list(target_obj.__dict__.keys())}")
-        elif hasattr(target_obj, 'model_fields'): # Pydantic model
-             logger.debug(f"  'get-field': target_obj is Pydantic model. Fields: {list(target_obj.model_fields.keys())}")
-
-        try:
-            # Dictionary access
-            if isinstance(target_obj, dict):
-                if field_name_val not in target_obj:
-                    logger.warning(f"  'get-field': Key '{field_name_val}' not found in dict. Returning None.")
+            if field_name_str in target_obj:
+                return target_obj[field_name_str]
+            else:
+                logger.warning(f"get-field: Key '{field_name_str}' not found in dictionary.")
+                return None 
+        elif isinstance(target_obj, PydanticBaseModel): # Use imported PydanticBaseModel
+            if hasattr(target_obj, field_name_str):
+                # Ensure it's in model_fields to avoid accessing private/computed attrs unexpectedly
+                if field_name_str in target_obj.__class__.model_fields:
+                     return getattr(target_obj, field_name_str)
+                else:
+                    logger.warning(f"get-field: Field '{field_name_str}' is not a declared model field for {type(target_obj).__name__}, though attribute exists.")
                     return None 
-                val = target_obj.get(field_name_val)
-                logger.debug(f"  'get-field': Dict lookup for '{field_name_val}' -> {val!r} (Type: {type(val)})")
-                return val.value() if isinstance(val, Symbol) else val
-                
-            # Association list access (lists of [key, value] pairs)
-            elif isinstance(target_obj, list):
-                logger.debug(f"  'get-field': Target is a list. Attempting assoc-list lookup for key '{field_name_val}'. List: {target_obj!r}")
-                for item in target_obj:
-                    # Check if item is a list of two elements [key_node, value_node]
-                    if isinstance(item, list) and len(item) == 2:
-                        key_candidate_node = item[0]
-                        
-                        # Convert key_candidate_node to string for comparison
-                        # It could be a Symbol or already a string if (list "key" val) was used
-                        current_key_str = None
-                        if isinstance(key_candidate_node, Symbol):
-                            current_key_str = key_candidate_node.value()
-                        elif isinstance(key_candidate_node, str):
-                            current_key_str = key_candidate_node
-                        
-                        if current_key_str == field_name_val:
-                            val = item[1]
-                            logger.debug(f"    Found key '{field_name_val}' in assoc-list item: {item!r} -> {val!r} (Type: {type(val)})")
-                            return val.value() if isinstance(val, Symbol) else val
-                logger.warning(f"  'get-field': Key '{field_name_val}' not found in assoc-list. Returning None.")
+            else:
+                logger.warning(f"get-field: Field '{field_name_str}' not found in Pydantic model {type(target_obj).__name__}.")
                 return None
-                
-            # Pydantic model access - prioritize direct attribute access
-            elif isinstance(target_obj, BaseModel):
-                logger.debug(f"  'get-field': Target is a Pydantic model: {type(target_obj).__name__}")
-                logger.debug(f"  'get-field': About to access field '{field_name_val}' via getattr on object type {type(target_obj)}")
-                
-                # First try direct attribute access
-                try:
-                    # Use hasattr first to check if the attribute exists
-                    if hasattr(target_obj, field_name_val):
-                        val = getattr(target_obj, field_name_val)
-                        logger.debug(f"  'get-field': Direct getattr for '{field_name_val}' succeeded -> {val!r} (Type: {type(val)})")
-                        return val.value() if isinstance(val, Symbol) else val
-                    else:
-                        logger.debug(f"  'get-field': Direct hasattr check for '{field_name_val}' failed")
-                except Exception as e:
-                    logger.debug(f"  'get-field': Error in direct attribute access: {e}")
-                
-                # Next try model_fields to check if it's a defined field
-                if hasattr(target_obj, "model_fields"):
-                    if field_name_val in target_obj.model_fields:
-                        logger.debug(f"  'get-field': Field '{field_name_val}' exists in model_fields")
-                        
-                        # Try model_dump (Pydantic v2) to get the actual value
-                        try:
-                            if hasattr(target_obj, "model_dump") and callable(getattr(target_obj, "model_dump")):
-                                model_dict = target_obj.model_dump()
-                                if field_name_val in model_dict:
-                                    val = model_dict[field_name_val]
-                                    logger.debug(f"  'get-field': Found in model_dump(): {val!r}")
-                                    return val
-                            # Try dict() method (Pydantic v1)
-                            elif hasattr(target_obj, "dict") and callable(getattr(target_obj, "dict")):
-                                model_dict = target_obj.dict()
-                                if field_name_val in model_dict:
-                                    val = model_dict[field_name_val]
-                                    logger.debug(f"  'get-field': Found in dict(): {val!r}")
-                                    return val
-                        except Exception as e:
-                            logger.debug(f"  'get-field': Error in model_dump/dict() access: {e}")
-                
-                # Fall back to model_dump even if field not in model_fields
-                try:
-                    # Try model_dump (Pydantic v2)
-                    if hasattr(target_obj, "model_dump") and callable(getattr(target_obj, "model_dump")):
-                        model_dict = target_obj.model_dump()
-                        if field_name_val in model_dict:
-                            val = model_dict[field_name_val]
-                            logger.debug(f"  'get-field': Found in model_dump(): {val!r}")
-                            return val
-                    # Try dict() method (Pydantic v1)
-                    elif hasattr(target_obj, "dict") and callable(getattr(target_obj, "dict")):
-                        model_dict = target_obj.dict()
-                        if field_name_val in model_dict:
-                            val = model_dict[field_name_val]
-                            logger.debug(f"  'get-field': Found in dict(): {val!r}")
-                            return val
-                except Exception as e:
-                    logger.debug(f"  'get-field': Error in model_dump/dict() fallback: {e}")
-                
-                logger.warning(f"get-field: '{field_name_val}' not found in Pydantic model {type(target_obj).__name__}")
-                return None
-                
-            # Special-case TaskResult
-            elif isinstance(target_obj, TaskResult):
-                # Direct attribute access first
-                try:
-                    val = getattr(target_obj, field_name_val)
-                    logger.debug(f"  'get-field': Direct access to TaskResult.{field_name_val} -> {val!r}")
-                    return val
-                except AttributeError:
-                    # Fallback: try parsedContent
-                    if hasattr(target_obj, 'parsedContent') and target_obj.parsedContent and isinstance(target_obj.parsedContent, dict):
-                        if field_name_val in target_obj.parsedContent:
-                            val = target_obj.parsedContent.get(field_name_val)
-                            logger.debug(f"  'get-field': Found in TaskResult.parsedContent: {val!r}")
-                            return val
-                    logger.warning(f"get-field: '{field_name_val}' missing in TaskResult and its parsedContent")
-                    return None
-                
-            # General object attribute access
-            # Try direct attribute access with explicit logging and error handling
-            logger.debug(f"  'get-field': Attempting to access attribute '{field_name_val}' on object of type {type(target_obj)}")
+        # Special-case TaskResult (if it's not a PydanticBaseModel or needs specific handling)
+        elif isinstance(target_obj, TaskResult):
             try:
-                val = getattr(target_obj, field_name_val)
-                logger.debug(f"  'get-field': Successfully accessed attribute '{field_name_val}' -> {val!r} (Type: {type(val)})")
-                return val.value() if isinstance(val, Symbol) else val
+                return getattr(target_obj, field_name_str)
             except AttributeError:
-                logger.warning(f"  'get-field': Field or attribute '{field_name_val}' not found in object of type {type(target_obj)}. Returning None.")
+                if hasattr(target_obj, 'parsedContent') and target_obj.parsedContent and isinstance(target_obj.parsedContent, dict):
+                    if field_name_str in target_obj.parsedContent:
+                        return target_obj.parsedContent.get(field_name_str)
+                logger.warning(f"get-field: '{field_name_str}' missing in TaskResult and its parsedContent")
                 return None
-                
-        except Exception as e_access:
-            logger.exception(f"  Error accessing field '{field_name_val}' in 'get-field': {e_access}")
-            raise SexpEvaluationError(f"Error accessing field '{field_name_val}': {e_access}", original_expr_str, error_details=str(e_access)) from e_access
+        else:
+            try: # General object attribute access
+                return getattr(target_obj, field_name_str)
+            except AttributeError:
+                logger.warning(f"get-field: Attribute '{field_name_str}' not found on object of type {type(target_obj)}.")
+                return None
 
     def apply_string_equal_primitive(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> bool:
         logger.debug(f"PrimitiveProcessor.apply_string_equal_primitive: {original_expr_str}")

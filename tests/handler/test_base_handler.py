@@ -559,31 +559,6 @@ from src.system.models import AssociativeMatchResult, MatchItem # Add these impo
 
 # ...
 
-def test_get_relevant_files_delegation(base_handler_instance):
-    """Verify _get_relevant_files delegates to FileContextManager and returns AssociativeMatchResult."""
-    mock_fcm = base_handler_instance.file_context_manager
-    
-    # Configure mock_fcm to return an AssociativeMatchResult object
-    # Use MatchItem as per src/system/models.py
-    mock_match_item1 = MatchItem(id="file1.txt", content="text from file1", relevance_score=0.9, content_type="file_content")
-    mock_match_item2 = MatchItem(id="file2.py", content="text from file2", relevance_score=0.8, content_type="file_content")
-    expected_amr = AssociativeMatchResult(
-        context_summary="Mocked summary",
-        matches=[mock_match_item1, mock_match_item2],
-        error=None # Explicitly set error to None for clarity
-    )
-    mock_fcm.get_relevant_files.return_value = expected_amr
-    
-    query = "search query"
-    result = base_handler_instance._get_relevant_files(query) # Should now return AssociativeMatchResult
-
-    mock_fcm.get_relevant_files.assert_called_once_with(query)
-    assert isinstance(result, AssociativeMatchResult)
-    assert result == expected_amr # Compare the whole object
-    assert result.matches[0].id == "file1.txt"
-    assert result.matches[1].id == "file2.py"
-
-
 # test_get_relevant_files_delegation is now obsolete as BaseHandler._get_relevant_files
 # interacts with self.memory_system, not self.file_context_manager for this.
 # New tests (e.g., test_get_relevant_files_success) cover MemorySystem interaction.
@@ -683,33 +658,29 @@ def test_set_active_tool_definitions_empty_list(base_handler_instance): # Rename
 
 # --- Tests for tools precedence logic in _execute_llm_call ---
 
-def test_execute_llm_call_tools_override_precedence(base_handler_instance):
-    """Test that explicit tools_override takes precedence over active_tool_definitions."""
+def test_execute_llm_call_tools_override_precedence(base_handler_instance): # Renamed to reflect task_tools_config
+    """Test that explicit task_tools_config takes precedence."""
     mock_llm_manager = base_handler_instance.llm_manager
     mock_llm_manager.execute_call.return_value = {"success": True, "content": "Response"}
 
-    # Register a tool and set active definitions
     active_spec = create_dummy_spec("active_tool")
     active_exec = create_dummy_executor("active_tool")
     base_handler_instance.register_tool(active_spec, active_exec)
     base_handler_instance.set_active_tool_definitions([active_spec])
 
-    # Create override tool (callable)
     override_exec = create_dummy_executor("override_tool")
-    override_tools_list: List[Callable] = [override_exec] # Must be list of callables
+    override_definitions = [create_dummy_spec("override_tool_def")] # Example definition
+    task_config_tuple: Tuple[List[Callable], List[Dict[str, Any]]] = ([override_exec], override_definitions) # CHANGED
 
-    # Call with tools_override
     base_handler_instance._execute_llm_call(
-        "Test prompt", tools_override=override_tools_list
+        "Test prompt", task_tools_config=task_config_tuple # CHANGED
     )
 
-    # Assert that llm_manager was called with tools_override (executors)
     mock_llm_manager.execute_call.assert_called_once()
     call_kwargs = mock_llm_manager.execute_call.call_args.kwargs
 
-    assert call_kwargs.get("tools_override") == override_tools_list
-    # Fix: Assert active_tools (definitions) is None because override was used
-    assert call_kwargs.get("active_tools") is None
+    assert call_kwargs.get("tools_override") == [override_exec]
+    assert call_kwargs.get("active_tools") == override_definitions
 
 def test_execute_llm_call_active_definitions_used(base_handler_instance): # Renamed test
     """Test that active_tool_definitions result in executors passed when no tools_override."""
@@ -796,7 +767,10 @@ def test_execute_llm_call_missing_executor_in_active_definitions(base_handler_in
         assert call_kwargs["active_tools"] == [real_spec, missing_spec]
 
         # Assert warning was logged
-        mock_warning.assert_any_call("Executor(s) not found for active tool definition(s): ['missing_tool']. These tools will not be passed to the agent.")
+        mock_warning.assert_any_call(
+        "Executor(s) not found for active tool definition(s): ['missing_tool']. " # Note the space
+        "These tools will not be passed to the agent if only definitions are used by manager." # CHANGED
+    )
 
 
 # --- Tests for set_active_tool_definitions and passing active tool definitions ---

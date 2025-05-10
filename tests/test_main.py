@@ -91,7 +91,7 @@ def app_components(mocker, tmp_path):
          patch('src.handler.base_handler.LLMInteractionManager', new_callable=MagicMock) as MockLLMInteractionManager, \
          patch('src.main.AiderBridge', new_callable=MagicMock) as MockAiderBridge, \
          patch('src.main.GitRepositoryIndexer', new_callable=MagicMock) as MockIndexer, \
-         patch('src.main.SystemExecutorFunctions', new_callable=MagicMock) as MockSysExecCls, \
+         patch('src.executors.system_executors.SystemExecutorFunctions', new_callable=MagicMock) as MockSysExecCls, \
          patch('src.main.AiderExecutors', autospec=True) as MockAiderExec, \
          patch('src.handler.llm_interaction_manager.Agent', autospec=True) as MockPydanticAgent, \
          patch('src.tools.anthropic_tools.view', autospec=True) as mock_anthropic_view_func, \
@@ -145,15 +145,22 @@ def app_components(mocker, tmp_path):
             return False
         
         mock_handler_instance.register_tool = MagicMock(side_effect=mock_register_tool_side_effect)
-        mock_handler_instance.registered_tools = registered_tools_storage
-        mock_handler_instance.tool_executors = tool_executors_storage
+        mock_handler_instance.registered_tools = registered_tools_storage # Keep this for direct access if needed
+        mock_handler_instance.tool_executors = tool_executors_storage # Keep this for direct access if needed
         
         def mock_get_tools_for_agent():
+            # This should return PydanticTool objects, but for simplicity in mock,
+            # we can return the executor functions if that's what initialize_agent expects.
+            # The actual get_tools_for_agent in BaseHandler converts specs to PydanticTool.
+            # For this test, if initialize_agent just needs callables, this is okay.
+            # If it needs PydanticTool objects, this mock needs to be more sophisticated.
+            # Based on current Application code, it seems to expect callables.
             return list(tool_executors_storage.values())
+
 
         mock_handler_instance.get_tools_for_agent = MagicMock(side_effect=mock_get_tools_for_agent)
         mock_handler_instance.set_active_tool_definitions = MagicMock()
-        mock_llm_manager_instance.initialize_agent = MagicMock() 
+        mock_llm_manager_instance.initialize_agent = MagicMock()
         
         # Configure other instance attributes if needed by Application.__init__
         mock_fm_instance.base_path = "/mocked/base/path"
@@ -178,6 +185,7 @@ def app_components(mocker, tmp_path):
             "mock_aider_bridge_instance": mock_aider_bridge_instance, # This is the INSTANCE mock
             "mock_indexer_instance": mock_indexer_instance,
             "mock_sys_exec_instance": mock_sys_exec_instance, # This is the INSTANCE mock
+            "mock_command_executor_module_passed_to_sys_exec": MagicMock(name="MockCommandExecutorModulePassedToSysExec"), # Add this
 
             "registered_tools_storage": registered_tools_storage,
             "tool_executors_storage": tool_executors_storage,
@@ -228,7 +236,9 @@ def test_application_init_wiring(app_components):
     # Let the real registration populate the mock handler's tool_executors.
 
     # Act: Instantiate Application
-    app = Application(config={}) # Pass empty config
+    # Patch the local import of command_executor within Application.__init__
+    with patch('src.main.command_executor', app_components['mock_command_executor_module_passed_to_sys_exec']):
+        app = Application(config={}) # Pass empty config
 
     # Assert component instances were created by the Mocks
     assert app.memory_system == app_components['mock_memory_system_instance']
@@ -246,11 +256,12 @@ def test_application_init_wiring(app_components):
     # Assert SystemExecutorFunctions instantiation call
     # Assuming app_components["MockSysExecCls"] is the patch object for SystemExecutorFunctions class
     # And app_components['mock_handler_instance'] is the mock for PassthroughHandler
+    assert app.system_executors == app_components['mock_sys_exec_instance'] # Check instance assignment
     app_components["MockSysExecCls"].assert_called_once_with(
-        memory_system=app.memory_system, # Or ANY if comparing instance is tricky
-        file_manager=app.file_access_manager, # Or ANY
-        command_executor_module=ANY, # Or a specific mock for command_executor module
-        handler_instance=app.passthrough_handler # Pass the actual handler instance from app
+        memory_system=app.memory_system,
+        file_manager=app.file_access_manager,
+        command_executor_module=app_components['mock_command_executor_module_passed_to_sys_exec'], # Check with the mocked module
+        handler_instance=app.passthrough_handler
     )
 
     # Verify attribute assignments

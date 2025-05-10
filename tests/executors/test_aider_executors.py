@@ -64,7 +64,7 @@ class TestAiderExecutorFunctions:
         # Expected parameters for the MCP server's tool
         expected_mcp_params = {
             "ai_coding_prompt": "Refactor this code.",
-            "editable_files": ["file1.py", "util/helper.py"], # Expect parsed list
+            "relative_editable_files": ["file1.py", "util/helper.py"], # CHANGED KEY
             # Add other defaults expected by the aider_ai_code tool if any
             "relative_readonly_files": [], # Changed from None to empty list
             "model": None # Assuming None if not provided
@@ -95,7 +95,7 @@ class TestAiderExecutorFunctions:
 
         expected_mcp_params = {
             "ai_coding_prompt": "Refactor this code.",
-            "editable_files": ["file3.py", "module/file4.py"],
+            "relative_editable_files": ["file3.py", "module/file4.py"], # CHANGED KEY
             "relative_readonly_files": [],
             "model": None
         }
@@ -114,7 +114,7 @@ class TestAiderExecutorFunctions:
         mock_aider_bridge.call_aider_tool.return_value = mock_response_dict
         expected_mcp_params = {
             "ai_coding_prompt": "Explain this.",
-            "editable_files": [], # Expect empty list if no files key
+            "relative_editable_files": [], # CHANGED KEY # Expect empty list if no files key
             "relative_readonly_files": [],
             "model": None
         }
@@ -138,7 +138,7 @@ class TestAiderExecutorFunctions:
 
         expected_mcp_params = {
             "ai_coding_prompt": "Refactor this code.",
-            "editable_files": ["fallback.py"],
+            "relative_editable_files": ["fallback.py"], # CHANGED KEY
             "relative_readonly_files": [],
             "model": None
         }
@@ -167,7 +167,7 @@ class TestAiderExecutorFunctions:
 
         expected_mcp_params = {
             "ai_coding_prompt": "Refactor this code.",
-            "editable_files": ["actual.py"], # actual.py should be used
+            "relative_editable_files": ["actual.py"], # CHANGED KEY # actual.py should be used
             "relative_readonly_files": [],
             "model": None
         }
@@ -251,7 +251,7 @@ class TestAiderExecutorFunctions:
         # Assuming interactive maps to aider_ai_code for now
         expected_mcp_params = {
             "ai_coding_prompt": "Start interactive refactor.",
-            "editable_files": ["main.py"],
+            "relative_editable_files": ["main.py"], # CHANGED KEY
             "relative_readonly_files": [],
             "model": None
         }
@@ -280,7 +280,7 @@ class TestAiderExecutorFunctions:
 
         expected_mcp_params = {
             "ai_coding_prompt": "Start interactive refactor.",
-            "editable_files": ["app.py", "tests/test_app.py"],
+            "relative_editable_files": ["app.py", "tests/test_app.py"], # CHANGED KEY
             "relative_readonly_files": [],
             "model": None
         }
@@ -304,7 +304,7 @@ class TestAiderExecutorFunctions:
 
         expected_mcp_params = {
             "ai_coding_prompt": "Interactive task",
-            "editable_files": ["interactive_fallback.js"],
+            "relative_editable_files": ["interactive_fallback.js"], # CHANGED KEY
             "relative_readonly_files": [],
             "model": None
         }
@@ -333,7 +333,7 @@ class TestAiderExecutorFunctions:
 
         expected_mcp_params = {
             "ai_coding_prompt": "Interactive task",
-            "editable_files": ["interactive_actual.ts"], # actual should be used
+            "relative_editable_files": ["interactive_actual.ts"], # CHANGED KEY # actual should be used
             "relative_readonly_files": [],
             "model": None
         }

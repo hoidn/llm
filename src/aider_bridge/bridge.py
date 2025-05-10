@@ -437,12 +437,32 @@ class AiderBridge:
                 logger.info(f"No relevant files found by MemorySystem for query: '{query}'")
                 return []
 
-            relevant_paths = [match.path for match in memory_result.matches]
-            logger.debug(f"MemorySystem returned {len(relevant_paths)} potential paths.")
-
-            # Use set_file_context to validate and update internal state
+            relevant_paths = []
+            for match_item in memory_result.matches: # Renamed 'match' to 'match_item' for clarity
+                # Prefer source_path if available and valid, otherwise use id
+                path_to_consider = match_item.source_path if match_item.source_path else match_item.id
+                
+                if path_to_consider:
+                    try:
+                        # Ensure the path is absolute. FAM's _resolve_path can help here.
+                        # It also checks if the path is within the FAM's base_path.
+                        abs_path = self.file_access_manager._resolve_path(path_to_consider) # type: ignore [reportPrivateUsage]
+                        if os.path.isfile(abs_path): # Check if it's an actual file
+                            relevant_paths.append(abs_path)
+                        else:
+                            logger.warning(f"Path from MatchItem '{path_to_consider}' (resolved to '{abs_path}') is not a file. Skipping.")
+                    except ValueError: # Path outside base_path, _resolve_path raises this
+                        logger.warning(f"Path from MatchItem '{path_to_consider}' is outside FileAccessManager's base path. Skipping.")
+                    except Exception as e_resolve: # Catch other potential errors during resolution
+                        logger.warning(f"Error resolving/checking path from MatchItem '{path_to_consider}': {e_resolve}. Skipping.")
+                else:
+                    # Log if a MatchItem has neither id nor source_path that's usable
+                    logger.warning(f"MatchItem (content type: {match_item.content_type}, id: {match_item.id}) missing usable path (id or source_path). Skipping.")
+            
+            logger.debug(f"Retrieved {len(relevant_paths)} relevant, existing, and accessible file paths from MemorySystem.")
+            # Use set_file_context to validate and update internal state with the resolved and verified paths
             self.set_file_context(relevant_paths, source="associative_matching")
-
+            
             # Return the validated paths stored internally
             return sorted(list(self._file_context))
 

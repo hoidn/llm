@@ -239,9 +239,11 @@ def test_execute_atomic_template_invalid_context_config(task_system_instance):
     # Assert
     assert result.status == "FAILED"
     assert result.notes and result.notes.get("error")
-    assert isinstance(result.notes["error"], TaskError)
-    assert result.notes["error"].reason == "input_validation_failure"
-    assert "Context validation failed" in result.notes["error"].message
+    error_note = result.notes["error"]
+    assert isinstance(error_note, dict) # CHANGED: Expect a dict
+    assert error_note.get("type") == "TASK_FAILURE" # Further validation of dict content
+    assert error_note.get("reason") == "input_validation_failure"
+    assert "Context validation failed" in error_note.get("message", "") # Use .get for message
 
 
 @patch.object(AtomicTaskExecutor, 'execute_body')
@@ -323,8 +325,10 @@ def test_execute_atomic_template_history_config_precedence(
         handler=mock_handler,
         history_config=default_history_settings # Expect default config due to invalid template
     )
-    mock_log_error.assert_any_call(ANY) # Check that some error was logged
-    assert "Invalid history_config in template 'invalid_history_task'" in mock_log_error.call_args[0][0]
+    assert mock_log_error.called  # CHANGED: Check if logger.error was called
+    # Optionally, add more specific checks on mock_log_error.call_args_list if needed
+    if mock_log_error.called: # Check call_args only if called
+        assert "Invalid history_config in template 'invalid_history_task'" in mock_log_error.call_args[0][0]
 
 
 

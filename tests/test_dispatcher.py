@@ -69,9 +69,13 @@ def mock_sexp_evaluator_instance():
 
 # --- Test Cases ---
 
-@patch('src.dispatcher.SexpEvaluator')
-@patch('src.dispatcher.SexpEnvironment')
-def test_dispatch_s_expression_routing(MockSexpEvaluatorClass, MockSexpEnvironmentClass, mock_handler, mock_task_system, mock_memory_system):
+@patch('src.dispatcher.SexpEnvironment') # Inner patch (applied first)
+@patch('src.dispatcher.SexpEvaluator')   # Outer patch (applied second)
+def test_dispatch_s_expression_routing(
+    MockSexpEvaluatorClass,    # Corresponds to outer @patch('src.dispatcher.SexpEvaluator')
+    MockSexpEnvironmentClass,  # Corresponds to inner @patch('src.dispatcher.SexpEnvironment')
+    mock_handler, mock_task_system, mock_memory_system
+):
     # Arrange
     sexp_str = "(list 1 2)"
     dispatch_params = {"x": 10, "y": 20}
@@ -96,7 +100,8 @@ def test_dispatch_s_expression_routing(MockSexpEvaluatorClass, MockSexpEnvironme
     # Assert
     MockSexpEvaluatorClass.assert_called_once_with(mock_task_system, mock_handler, mock_memory_system)
     MockSexpEnvironmentClass.assert_called_once_with(bindings=dispatch_params)
-    mock_sexp_eval_instance.evaluate_string.assert_called_once_with(sexp_str, initial_env=mock_env_instance)
+    # Pass the instance returned by the SexpEnvironment mock
+    mock_sexp_eval_instance.evaluate_string.assert_called_once_with(sexp_str, initial_env=MockSexpEnvironmentClass.return_value) 
     
     assert result['status'] == "COMPLETE"
     assert result['content'] == str(expected_sexp_eval_result)

@@ -57,13 +57,12 @@ def test_execute_body_success(executor, mock_handler):
     assert result.content == "Mock LLM Response"
     # Check that handler methods were called with substituted values
     mock_handler._build_system_prompt.assert_called_once_with(
-        template="System prompt for test_value", # Check substituted system template
-        file_context=None # Executor passes None for file_context
+        template_specific_instructions="System prompt for test_value" # CHANGED
     )
     mock_handler._execute_llm_call.assert_called_once_with(
         prompt="Do something with test_value.",
         system_prompt_override="Mocked System Prompt", # Ensure this matches what _build_system_prompt returns
-        tools_override=None,
+        task_tools_config=None, # From previous fix
         output_type_override=None,
         model_override=task_def.get("model"), # Will be None if not in task_def
         history_config=None 
@@ -187,12 +186,12 @@ def test_execute_body_no_instructions(executor, mock_handler):
     # Assert
     assert result.status == "COMPLETE"
     mock_handler._build_system_prompt.assert_called_once_with(
-        template="System prompt.", file_context=None
+        template_specific_instructions="System prompt." # CHANGED
     )
     mock_handler._execute_llm_call.assert_called_once_with(
         prompt="", # Check that prompt is empty string
         system_prompt_override="Mocked System Prompt",
-        tools_override=None,
+        task_tools_config=None, # From previous fix
         output_type_override=None,
         model_override=task_def.get("model"), # Will be None if not in task_def
         history_config=None 
@@ -409,7 +408,7 @@ def test_execute_body_with_history_config(executor, mock_handler):
     mock_handler._execute_llm_call.assert_called_once_with(
         prompt="Process with history config.",
         system_prompt_override="Mocked System Prompt",
-        tools_override=None,
+        task_tools_config=None, # CHANGED from tools_override
         output_type_override=None,
         model_override=None,
         history_config=custom_history_config # Check the custom config was passed
@@ -431,7 +430,7 @@ def test_execute_body_default_history_config_is_none(executor, mock_handler):
     mock_handler._execute_llm_call.assert_called_once_with(
         prompt="Process with default history.",
         system_prompt_override="Mocked System Prompt",
-        tools_override=None,
+        task_tools_config=None, # CHANGED from tools_override
         output_type_override=None,
         model_override=None,
         history_config=None # Expect None to be passed to handler

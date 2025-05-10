@@ -232,7 +232,7 @@ class AtomicTaskExecutor:
             # The 'substituted_system_prompt_template' is the content from the template's 'system' field,
             # after its own {{placeholders}} have been filled. This becomes the 'template_specific_instructions'.
             final_system_prompt = handler._build_system_prompt(
-                template_specific_instructions=substituted_system_prompt_template
+                template_specific_instructions=substituted_system_prompt_template # CHANGED PARAMETER NAME
             )
 
             # Main prompt for the LLM is the content from the template's 'instructions' field,
