@@ -114,6 +114,11 @@ def app_components(mocker, tmp_path):
         # and also passed to the constructor of the real SystemExecutorFunctions if it were used.
         mock_cmd_exec_module_for_sys_exec = MagicMock(name="MockCommandExecutorModulePassedToSysExec")
         mock_sys_exec_instance.command_executor = mock_cmd_exec_module_for_sys_exec
+        
+        # Ensure the mock SystemExecutorFunctions instance also has the handler_instance attribute
+        # that Application._register_system_tools will check.
+        # This should be the same mock_handler_instance that SystemExecutorFunctions would receive.
+        mock_sys_exec_instance.handler_instance = mock_handler_instance
 
 
         # --- Configure Class Mocks to return these instances when called ---
