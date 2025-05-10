@@ -116,7 +116,7 @@ class AtomicTaskExecutor:
         atomic_task_def: Dict[str, Any],
         params: Dict[str, Any],
         handler: Any, # Represents BaseHandler instance
-        history_config: Optional[HistoryConfigSettings] = None
+        history_config: Optional[HistoryConfigSettings] = None 
     ) -> Dict[str, Any]: # Returns TaskResult structure as dict
         """
         Executes the body of a pre-parsed atomic task template.
@@ -235,7 +235,7 @@ class AtomicTaskExecutor:
                 tools_override=None, # Or relevant tools
                 output_type_override=output_type_override,
                 model_override=atomic_task_def.get("model"), # Pass model if specified
-                history_config=history_config # PASS THE HISTORY_CONFIG OBJECT
+                history_config=history_config 
             )
 
             # --- 4. Process Handler Result ---

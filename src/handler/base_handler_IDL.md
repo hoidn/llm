@@ -136,19 +136,19 @@ module src.handler.base_handler {
         // - LLMInteractionManager's `initialize_agent` must have been called.
         // - prompt is the user's input string.
         // - Optional overrides for system prompt, tools, output type, and model can be provided.
+        // - `history_config` is an optional `HistoryConfigSettings` object. If not provided, default history behavior (use session history, include all turns, record current turn) is applied.
         // Postconditions:
         // - Returns the result from the LLM call, typically structured like a TaskResult.
-        // - Updates the internal conversation history if the call is successful.
+        // - Updates the internal conversation history based on `history_config.record_in_session_history` if the call is successful.
         // Behavior:
         // - Delegates the primary interaction logic to the LLMInteractionManager which manages the pydantic-ai agent.
-        // - This method now accepts an optional history_config (HistoryConfigSettings) parameter.
-        // - If history_config.use_session_history is false, an empty conversation history is prepared for the LLMInteractionManager.
-        // - If history_config.use_session_history is true, the handler's main conversation_history is used. If history_config.history_turns_to_include is specified, the history is sliced to include only that many recent turns.
-        // - After a successful LLM call, if history_config.record_in_session_history is true, the current turn (prompt and LLM response) is appended to the handler's main conversation_history. If false, it is not appended.
-        // - Passes the current conversation history (or modified history based on history_config) to the manager.
-        //   // Implementation Note: The internal conversation history (list of dicts) MUST be converted
-        //   // to a list of pydantic_ai.messages objects (e.g., ModelResponse(parts=[TextPart(...)])
-        //   // before being passed to the LLMInteractionManager. See librarydocs/pydanticai.md.
+        // - **History Management (based on `history_config`):**
+        //   - If `history_config.use_session_history` is `false`, an empty conversation history is prepared and passed to the `LLMInteractionManager`.
+        //   - If `history_config.use_session_history` is `true` (default):
+        //     - The handler's main `conversation_history` (a list of dicts) is used as the source.
+        //     - If `history_config.history_turns_to_include` is specified (e.g., `N`), the history is sliced to include only the last `N` user/assistant turn pairs (i.e., `2*N` items).
+        //     - The selected history (list of dicts) is converted into a list of `pydantic-ai` message objects (e.g., `ModelRequest`, `ModelResponse`) before being passed to the `LLMInteractionManager`.
+        //   - **Recording:** After a successful LLM call, if `history_config.record_in_session_history` is `true` (default), the current turn (user prompt and LLM response) is appended to the handler's main `conversation_history` (as dicts). If `false`, it is not appended.
         // - **Tool Passing Logic:**
         //   - If `tools_override` (list of callables/specs) is provided, it takes precedence and is passed to the LLMInteractionManager.
         //   - Otherwise, the list of tool *definitions* stored internally by `set_active_tool_definitions` (i.e., `self.active_tool_definitions`) is retrieved and passed to the LLMInteractionManager's `execute_call` via the `active_tools` parameter.
@@ -161,8 +161,8 @@ module src.handler.base_handler {
             optional string system_prompt_override,
             optional list<function> tools_override,
             optional type output_type_override,
-            optional string model_override, // ADDED PARAMETER
-            optional object history_config // ADDED: Arg represents HistoryConfigSettings
+            optional string model_override, 
+            optional object history_config 
         );
 
         // Builds the complete system prompt for an LLM call.

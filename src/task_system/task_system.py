@@ -235,12 +235,14 @@ class TaskSystem:
         else:
             # No config specified, use defaults
             final_history_settings = HistoryConfigSettings()
-            logging.debug(f"No specific history_config found for '{request.name}'. Using defaults.")
-
+            logging.debug(f"No specific history_config found for '{request.name}' or template config was invalid. Using defaults: {final_history_settings.model_dump_json()}")
+        
         # Ensure final_history_settings is always a HistoryConfigSettings object
-        if not isinstance(final_history_settings, HistoryConfigSettings):
+        # This check should ideally not be needed if logic above is correct
+        if not isinstance(final_history_settings, HistoryConfigSettings): # Should not happen
             logging.error(f"Internal error: final_history_settings is not a HistoryConfigSettings object. Type: {type(final_history_settings)}. Forcing default.")
             final_history_settings = HistoryConfigSettings()
+
 
         # 6. Execute Atomic Task Body
         try:
@@ -250,7 +252,7 @@ class TaskSystem:
                 atomic_task_def=template_def,
                 params=request.inputs,
                 handler=handler,
-                history_config=final_history_settings # PASS THE RESOLVED OBJECT
+                history_config=final_history_settings
                 # file_paths=file_paths, # Pass files if executor signature changes
                 # context_summary=context_summary # Pass context if executor signature changes
             )

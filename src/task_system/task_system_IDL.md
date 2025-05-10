@@ -67,8 +67,7 @@ module src.task_system.task_system {
         // - This method only executes templates of type "atomic".
         // - Finds the template by name using `find_template`.
         // - Validates and merges context management settings from the template and request.
-        // - It reads history_config settings from the task's template definition and from the incoming request (SubtaskRequest). 
-        //   These settings are merged, with the request.history_config taking precedence.
+        // - Reads `history_config` settings from the task's template definition (if present) and from the incoming `SubtaskRequest.history_config` (if present). These settings are merged, with the `SubtaskRequest.history_config` taking precedence if specified. If neither is present, default `HistoryConfigSettings` are used. The final merged `HistoryConfigSettings` object is passed to the `AtomicTaskExecutor`.
         // - If file_paths are specified in the request, uses those directly.
         // - Otherwise, resolves file paths based on the template and context settings using `resolve_file_paths`.
         // - If fresh context is enabled, retrieves relevant context from the MemorySystem.

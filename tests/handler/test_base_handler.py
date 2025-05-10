@@ -833,3 +833,101 @@ def test__execute_llm_call_passes_active_tools(base_handler_instance): # Renamed
     assert "tools_override" in call_kwargs
     assert isinstance(call_kwargs["tools_override"], list)
     assert set(call_kwargs["tools_override"]) == set(expected_executors) # Use set comparison
+
+
+# --- Tests for HistoryConfigSettings in _execute_llm_call ---
+
+@pytest.mark.parametrize("use_session, turns_to_include, record_turn, initial_hist_len, expected_hist_len_after_call, expected_recorded_turns", [
+    (True, None, True, 2, 4, 2),    # Use all, record
+    (True, 1, True, 4, 4, 2),       # Use 1 turn (2 items), record (hist becomes 2 from slice + 2 new)
+    (True, None, False, 2, 2, 0),   # Use all, don't record
+    (False, None, True, 2, 3, 1),   # Use none, record (hist becomes 1 new user + 1 new assistant, but only if initial was empty, else it's initial + 2) -> if initial was 2, and we don't use it, but record, it becomes 2 + 2 = 4. This needs care.
+                                    # If use_session_history=False, the call to LLM has empty history.
+                                    # If record_current_turn=True, the current turn (user+assistant) is added to self.conversation_history.
+                                    # So, if initial_hist_len=2, use_session=False, record=True -> final_hist_len = 2 + 2 = 4.
+                                    # The LLM call itself uses 0 turns from history.
+    (False, None, False, 2, 2, 0),  # Use none, don't record
+    (True, 0, True, 2, 4, 2),       # Use 0 turns (effectively all if PositiveInt is for >0), record. Let's assume 0 means all for PositiveInt.
+                                    # If history_turns_to_include is PositiveInt, 0 is invalid. If it's Optional[PositiveInt], None means all.
+                                    # The model is Optional[PositiveInt]. So 0 is not a valid value.
+                                    # Let's test with a large number to simulate "all" if PositiveInt is strict.
+    (True, 100, True, 2, 4, 2),   # Use 100 (more than available), record
+])
+def test_execute_llm_call_with_history_config(
+    base_handler_instance, mock_dependencies,
+    use_session, turns_to_include, record_turn,
+    initial_hist_len, expected_hist_len_after_call, expected_recorded_turns
+):
+    mock_llm_manager = base_handler_instance.llm_manager
+    mock_llm_manager.execute_call.return_value = {"success": True, "content": "Configured Response"}
+
+    # Setup initial history
+    base_handler_instance.conversation_history = []
+    for i in range(initial_hist_len // 2):
+        base_handler_instance.conversation_history.append({"role": "user", "content": f"User {i}"})
+        base_handler_instance.conversation_history.append({"role": "assistant", "content": f"Assistant {i}"})
+
+    history_config_obj = HistoryConfigSettings(
+        use_session_history=use_session,
+        history_turns_to_include=turns_to_include,
+        record_in_session_history=record_turn
+    )
+
+    prompt = "Test with history config"
+    base_handler_instance._execute_llm_call(prompt, history_config=history_config_obj)
+
+    # Assert call to LLM manager
+    mock_llm_manager.execute_call.assert_called_once()
+    call_kwargs = mock_llm_manager.execute_call.call_args.kwargs
+    passed_history_objects = call_kwargs.get("conversation_history", [])
+
+    if use_session:
+        if turns_to_include is not None and turns_to_include > 0 and initial_hist_len > (turns_to_include * 2) :
+            assert len(passed_history_objects) == turns_to_include * 2, "LLM call history length mismatch (sliced)"
+        else: # All turns used (None or turns_to_include >= actual turns)
+            assert len(passed_history_objects) == initial_hist_len, "LLM call history length mismatch (all)"
+    else:
+        assert len(passed_history_objects) == 0, "LLM call history should be empty"
+
+    # Assert final state of conversation_history
+    assert len(base_handler_instance.conversation_history) == expected_hist_len_after_call
+
+    if record_turn:
+        assert base_handler_instance.conversation_history[-2] == {"role": "user", "content": prompt}
+        assert base_handler_instance.conversation_history[-1] == {"role": "assistant", "content": "Configured Response"}
+    elif initial_hist_len > 0 : # Not recorded, and history was not empty
+        if use_session and initial_hist_len > 0: # Make sure we are not checking an empty initial history
+             # Last item should be the last item of the original history if not recorded
+            original_last_assistant_msg = base_handler_instance.conversation_history[initial_hist_len-1]
+            assert base_handler_instance.conversation_history[-1]['content'] == original_last_assistant_msg['content']
+
+
+def test_execute_llm_call_history_conversion_to_pydantic_objects(base_handler_instance, mock_dependencies):
+    """Verify that dictionary history is converted to pydantic-ai message objects."""
+    mock_llm_manager = base_handler_instance.llm_manager
+    mock_llm_manager.execute_call.return_value = {"success": True, "content": "Conversion Test Response"}
+
+    base_handler_instance.conversation_history = [
+        {"role": "user", "content": "Hello AI"},
+        {"role": "assistant", "content": "Hello User"},
+        {"role": "user", "content": "How are you?"}
+    ]
+    # Default history_config: use_session_history=True, record_in_session_history=True, history_turns_to_include=None
+
+    base_handler_instance._execute_llm_call("Test conversion")
+
+    mock_llm_manager.execute_call.assert_called_once()
+    passed_history_objects = mock_llm_manager.execute_call.call_args.kwargs.get("conversation_history", [])
+
+    assert len(passed_history_objects) == 3
+    assert isinstance(passed_history_objects[0], ModelRequest)
+    assert isinstance(passed_history_objects[0].parts[0], UserPromptPart)
+    assert passed_history_objects[0].parts[0].content == "Hello AI"
+
+    assert isinstance(passed_history_objects[1], ModelResponse)
+    assert isinstance(passed_history_objects[1].parts[0], TextPart)
+    assert passed_history_objects[1].parts[0].content == "Hello User"
+
+    assert isinstance(passed_history_objects[2], ModelRequest)
+    assert isinstance(passed_history_objects[2].parts[0], UserPromptPart)
+    assert passed_history_objects[2].parts[0].content == "How are you?"

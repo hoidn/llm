@@ -454,8 +454,8 @@ class BaseHandler:
         system_prompt_override: Optional[str] = None,
         tools_override: Optional[List[Callable]] = None, # Explicitly list of callables
         output_type_override: Optional[Type] = None,
-        model_override: Optional[str] = None, # ADDED PARAMETER
-        history_config: Optional[HistoryConfigSettings] = None # ADDED PARAMETER
+        model_override: Optional[str] = None, 
+        history_config: Optional[HistoryConfigSettings] = None 
     ) -> TaskResult:
         """
         Internal method to execute a call via the LLMInteractionManager and update history.
@@ -595,12 +595,12 @@ class BaseHandler:
         # Delegate the call to the manager
         call_kwargs = {
             "prompt": prompt,
-            "conversation_history": history_for_llm_call, # PASS PREPARED HISTORY
+            "conversation_history": history_for_llm_call, 
             "system_prompt_override": system_prompt_override,
-            "tools_override": executors_for_agent, # Pass resolved executors
+            "tools_override": executors_for_agent, 
             "output_type_override": output_type_override,
-            "active_tools": definitions_for_agent, # Pass resolved definitions
-            "model_override": model_override, # PASS THE OVERRIDE
+            "active_tools": definitions_for_agent, 
+            "model_override": model_override, 
         }
 
         # Add concise logging for key parameters

@@ -271,7 +271,7 @@ class SubtaskRequest(BaseModel):
     context_management: Optional[ContextManagement] = None # Use the ContextManagement model
     max_depth: Optional[PositiveInt] = None
     file_paths: Optional[List[str]] = None
-    history_config: Optional[HistoryConfigSettings] = None # <<< ENSURE THIS LINE IS PRESENT AND CORRECT
+    history_config: Optional[HistoryConfigSettings] = None 
 
 # --- Evaluation Result Definition ---
 class EvaluationResult(TaskResult):

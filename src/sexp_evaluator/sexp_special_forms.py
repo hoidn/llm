@@ -314,26 +314,29 @@ class SpecialFormProcessor:
                     inner_sexp_value: Any = pair[1] # This is an S-expression value from the pair
 
                     python_value: Any
-                    if isinstance(inner_sexp_value, str):      # Check for Python string first
+                    if isinstance(inner_sexp_value, str):
                         python_value = inner_sexp_value
-                    elif isinstance(inner_sexp_value, Symbol): # Then check for S-expression Symbols (true, false, nil)
+                    elif isinstance(inner_sexp_value, Symbol):
                         val_str = inner_sexp_value.value()
                         if val_str == 'true':
                             python_value = True
                         elif val_str == 'false':
                             python_value = False
-                        elif val_str == 'nil':
+                        elif val_str == 'nil': # Symbol 'nil' should map to Python None
                             python_value = None
-                        else:
+                        else: # Any other symbol in a value context is an error unless it's a string
                             raise SexpEvaluationError(
                                 f"Invalid symbol value '{val_str}' for key '{inner_key_symbol.value()}' in '{key_str}'. Expected 'true', 'false', or 'nil'. If a string is intended, it must be quoted in the S-expression (e.g., \"some-symbol-as-string\").",
                                 original_expr_str
                             )
-                    elif isinstance(inner_sexp_value, int):    # Then check for Python int
+                    elif isinstance(inner_sexp_value, int):
                         python_value = inner_sexp_value
-                    # Special case for 'history_turns_to_include' allowing Python None if S-exp value was 'nil' (already handled by Symbol 'nil' case)
-                    # elif inner_sexp_value is None and key_str == "history_config" and inner_key_symbol.value() == "history_turns_to_include":
-                    #     python_value = None # This is redundant if Symbol 'nil' maps to None
+                    elif inner_sexp_value is None and key_str == "history_config" and inner_key_symbol.value() == "history_turns_to_include":
+                        # This case specifically allows Python None for history_turns_to_include if the S-expression value was (quote nil)
+                        # which sexpdata parses to Python None if not wrapped in a Symbol object.
+                        # However, if (quote nil) is parsed as Symbol('nil'), the Symbol case above handles it.
+                        # This explicit check is for robustness if the parser yields Python None directly for (quote nil).
+                        python_value = None
                     else:
                         raise SexpEvaluationError(
                             f"Invalid value type for key '{inner_key_symbol.value()}' in '{key_str}'. Expected S-expression string (e.g., \"json\"), S-expression symbol (true/false/nil), or S-expression integer. Got {type(inner_sexp_value)}: {inner_sexp_value!r}",
@@ -358,7 +361,7 @@ class SpecialFormProcessor:
             template_dict["model"] = optional_args_map["model"]
         if "output_format" in optional_args_map:
             template_dict["output_format"] = optional_args_map["output_format"]
-        if "history_config" in optional_args_map: # This key is now correctly added by the modified parsing logic
+        if "history_config" in optional_args_map:
             template_dict["history_config"] = optional_args_map["history_config"]
 
 
