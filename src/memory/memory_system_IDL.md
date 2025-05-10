@@ -5,6 +5,8 @@ module src.memory.memory_system {
     # @depends_on(src.task_system.task_system.TaskSystem) // For executing matching tasks
     # @depends_on(src.handler.file_access.FileAccessManager) // For reading file content
     # @depends_on(src.memory.indexers.git_repository_indexer.GitRepositoryIndexer) // For indexing repos
+    # @depends_on_type(docs.system.contracts.types.AssociativeMatchResult) // Its definition changed
+    # @depends_on_type(docs.system.contracts.types.MatchItem)
 
     // Interface for the Memory System. Manages file metadata and context retrieval.
     interface MemorySystem {
@@ -63,27 +65,31 @@ module src.memory.memory_system {
         // Retrieves relevant context for a task, orchestrating content/metadata retrieval and LLM analysis.
         // This is the primary method for context retrieval.
         // Preconditions:
-        // - input_data is a valid ContextGenerationInput object (v5.0 or later).
+        // - input_data is a valid ContextGenerationInput object.
         // - TaskSystem and FileAccessManager dependencies must be available.
         // Postconditions:
-        // - Returns an AssociativeMatchResult object containing the context summary and a list of MatchTuple objects (path, relevance, score).
+        // - Returns an AssociativeMatchResult object containing the context summary and a list of `MatchItem` objects.
         // - Returns an error result if dependencies are unavailable, pre-filtering/reading fails, or the LLM task fails.
         // Behavior:
         // 1. Determines the matching strategy ('content' default, or 'metadata' from input_data.matching_strategy).
         // 2. Determines the query string from input_data.
         // 3. (Optional) Performs pre-filtering on stored file paths based on query to get candidate_paths.
-        // 4. For the 'content' strategy, inputs_for_llm["file_contents"] is a single string containing the contents of each candidate file wrapped in `<file path="...">...</file>` tags, separated by blank lines. Sets task name to "internal:associative_matching_content".
-        // 5. If strategy is 'metadata': Retrieves metadata for candidate_paths from internal index. Packages metadata into `inputs_for_llm = {"context_input":..., "metadata_snippet": ...}`. Sets task name to "internal:associative_matching_metadata".
-        // 6. Handles potential sharding of content/metadata if applicable (details TBD).
-        // 7. Creates a SubtaskRequest with the determined task name and inputs_for_llm. Sets context management to disable fresh context fetching within the LLM task.
+        // 4. For the 'content' strategy, inputs_for_llm["file_contents"] is a single string containing the contents of each candidate file (or relevant chunks)
+        //    formatted appropriately (e.g., wrapped in tags). Sets task name to "internal:associative_matching_content".
+        //    The result of this task should be parsable into `MatchItem`s (e.g., `item_type="file_content"` or `"text_chunk"`).
+        // 5. If strategy is 'metadata': Retrieves metadata for candidate_paths from internal index. Packages metadata into `inputs_for_llm`.
+        //    Sets task name to "internal:associative_matching_metadata".
+        //    The result of this task should be parsable into `MatchItem`s (e.g., `item_type="file_summary"` or similar).
+        // 6. Handles potential sharding of content/metadata if applicable.
+        // 7. Creates a SubtaskRequest with the determined task name and inputs_for_llm.
         // 8. Calls `task_system.execute_atomic_template(request)`.
-        // 9. Parses the AssociativeMatchResult from the returned TaskResult.
+        // 9. Parses the `AssociativeMatchResult` (expecting `MatchItem`s in its `matches` field) from the returned TaskResult's `parsedContent`.
         // 10. Returns the AssociativeMatchResult.
         // @raises_error(condition="TASK_FAILURE", reason="dependency_error", description="Handled internally, returns error result if TaskSystem or FileAccessManager is unavailable.")
         // @raises_error(condition="CONTEXT_RETRIEVAL_FAILURE", description="Handled internally, returns error result.")
-        // Expected JSON format for input_data: ContextGenerationInput v5.0 structure.
-        // Returns: AssociativeMatchResult object.
-        object get_relevant_context_for(object input_data); // Arg represents ContextGenerationInput v5.0
+        // Expected JSON format for input_data: ContextGenerationInput structure.
+        // Returns: AssociativeMatchResult object (containing list<MatchItem>).
+        object get_relevant_context_for(object input_data); // Arg represents ContextGenerationInput
 
         // Indexes a Git repository and updates the global index.
         // Preconditions:

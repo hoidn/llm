@@ -65,13 +65,46 @@ interface HistoryConfigSettings {
 }
 
 /**
- * Individual match result with relevance information
- * [Type:System:MatchTuple:1.0]
+ * Represents a contextual item retrieved through associative matching or context gathering.
+ * Designed to be more flexible than just file paths.
+ * [Type:System:MatchItem:1.0]
  */
-interface MatchTuple {
-    path: string;  // Path to the matched item (e.g., file path)
-    relevance: number;  // Relevance score (0.0 to 1.0)
-    excerpt?: string;  // Optional excerpt from the matched content
+interface MatchItem {
+    /** 
+     * A unique identifier for this item (e.g., absolute file path, URL + anchor, DB record ID).
+     * This helps in de-duplication and referencing.
+     */
+    id: string;
+
+    /** 
+     * The primary textual content of this item.
+     * Could be file content, a summary, an excerpt, or a serialized representation of structured data.
+     */
+    content: string;
+
+    /** 
+     * The relevance score of this item to the query (0.0 to 1.0).
+     */
+    relevance_score: number;
+
+    /** 
+     * Describes the nature of the 'content' and 'id'.
+     * Examples: "file_content", "file_summary", "web_excerpt", "database_record_summary", "code_chunk".
+     * This allows the BaseHandler to potentially format or prioritize items differently.
+     */
+    content_type: string;
+
+    /** 
+     * Optional: The original source path from which this item was derived if 'id' isn't sufficient
+     * or if 'content' is a processed version (e.g., if content is a summary, source_path might be the original file).
+     */
+    source_path?: string; 
+
+    /** 
+     * Optional: Additional metadata about this item (e.g., line numbers for an excerpt,
+     * last modified date for a file, language for a code_chunk).
+     */
+    metadata?: dict<string, Any>; 
 }
 
 /**
@@ -82,6 +115,19 @@ interface AssociativeMatchResult {
     context_summary: string;  // Summarized context information
     matches: MatchTuple[];  // List of matching items with relevance scores
     error?: string;  // Error message if the matching operation failed
+}
+
+/**
+ * Holds the result of associative matching and other context gathering, managed by the BaseHandler.
+ * Separate from conversational session history.
+ * [Type:System:DataContext:1.0] // NEW
+ */
+interface DataContext {
+    retrieved_at: string; // ISO datetime string
+    source_query?: string; // The query that led to this context
+    items: list<MatchItem>; // Uses the new MatchItem
+    overall_summary?: string; // An overall summary of the context
+    metadata?: dict<string, Any>; // Metadata about the context retrieval itself
 }
 
 ```
@@ -240,6 +286,31 @@ interface ContextGenerationInput {
      */
     matching_strategy?: 'content' | 'metadata';
 }
+
+/**
+ * Defines a single step in a Python-driven workflow, including input mappings.
+ * Used by PythonWorkflowManager.
+ * [Type:System:WorkflowStepDefinition:1.0] // NEW
+ */
+interface WorkflowStepDefinition {
+    task_name: string; // Name of the task/tool to execute (e.g., "user:generate-plan", "system:read_files")
+    
+    // Static input values provided directly for this task.
+    // { "param_template_name": "literal_value", ... }
+    static_inputs?: dict<string, Any>; 
+    
+    // Mappings for inputs that come from previous steps' outputs.
+    // { "param_template_name": "source_step_output_name.field.subfield", ... }
+    // "source_step_output_name" refers to the 'output_name' of a previous WorkflowStepDefinition.
+    // "field.subfield" is a path to extract from the TaskResult of the source step 
+    // (e.g., "parsedContent.plan_text", "content" if content is a simple string, "notes.file_path").
+    dynamic_input_mappings?: dict<string, string>;
+
+    // Name under which this step's TaskResult will be stored in the workflow context.
+    // Must be unique within the workflow.
+    output_name: string; 
+}
+
 ```
 
 ## Task Execution Types

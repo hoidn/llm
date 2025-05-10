@@ -6,6 +6,7 @@ module src.executors.system_executors {
     # @depends_on(src.memory.memory_system.MemorySystem) // For context retrieval
     # @depends_on(src.handler.file_access.FileAccessManager) // For reading/writing/listing files
     # @depends_on(src.handler.command_executor.CommandExecutorFunctions) // For executing shell commands
+    # @depends_on(src.handler.base_handler.BaseHandler) // For accessing handler's context methods
 
     // Interface aggregating system-level Direct Tool executor functions.
     // These functions are typically registered with a handler (e.g., PassthroughHandler)
@@ -155,6 +156,47 @@ module src.executors.system_executors {
         // Expected JSON format for params: { "command": "string", "cwd?": "string", "timeout?": "int" }
         // Expected JSON format for return value: TaskResult structure.
         dict<string, Any> execute_shell_command(dict<string, Any> params); // Dependency injected via constructor
+
+        // Executor logic for the 'system:clear_handler_data_context' Direct Tool.
+        // Clears the data context within the currently active BaseHandler instance.
+        // Preconditions:
+        // - `params` is an empty dictionary (no parameters required).
+        // - `handler_instance` (injected or available to the executor) is a valid BaseHandler.
+        // Postconditions:
+        // - Returns a TaskResult dictionary.
+        // - On success ('status'='COMPLETE'): 'content' indicates context cleared.
+        // - The BaseHandler's internal `data_context` is cleared.
+        // Behavior:
+        // - Calls `self.handler_instance.clear_data_context()`.
+        // - Formats a TaskResult indicating success.
+        // @raises_error(None) // Errors from handler call would be caught by Dispatcher
+        // Expected JSON format for params: {}
+        // Expected JSON format for return value: TaskResult structure.
+        dict<string, Any> execute_clear_handler_data_context(dict<string, Any> params);
+
+        // Executor logic for the 'system:prime_handler_data_context' Direct Tool.
+        // Primes the data context within the currently active BaseHandler instance.
+        // Preconditions:
+        // - `params` is a dictionary containing:
+        //   - 'query': string (optional) - The search query for associative matching.
+        //   - 'initial_files': list<string> (optional) - List of file paths to seed the context.
+        // - `handler_instance` (injected or available) is a valid BaseHandler.
+        // Postconditions:
+        // - Returns a TaskResult dictionary.
+        // - On success ('status'='COMPLETE'): 'content' indicates context primed, 'notes' may contain summary or count of items.
+        // - On failure ('status'='FAILED'): 'content' contains an error message.
+        // - The BaseHandler's internal `data_context` is populated.
+        // Behavior:
+        // - Extracts 'query' and 'initial_files' from `params`.
+        // - Calls `self.handler_instance.prime_data_context(query=query, initial_files=initial_files)`.
+        // - Formats a TaskResult based on the success/failure of the priming operation.
+        // @raises_error(condition="INPUT_VALIDATION_FAILURE", description="Returned via FAILED TaskResult if params are invalid.")
+        // Expected JSON format for params: { "query?": "string", "initial_files?": list<string> }
+        // Expected JSON format for return value: TaskResult structure.
+        dict<string, Any> execute_prime_handler_data_context(dict<string, Any> params);
+        // Note: execute_get_context's behavior description might need minor adjustment if its output
+        // (AssociativeMatchResult) now contains MatchItems instead of just file paths.
+        // The 'content' of its TaskResult would be a JSON string of list<MatchItem>.
     };
 };
 // == !! END IDL TEMPLATE !! ===

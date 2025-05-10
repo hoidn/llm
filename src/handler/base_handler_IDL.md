@@ -7,6 +7,10 @@ module src.handler.base_handler {
     # @depends_on(src.handler.command_executor.CommandExecutorFunctions) // For safe command execution
     # @depends_on(src.handler.llm_interaction_manager.LLMInteractionManager) // For managing pydantic-ai interactions
     # @depends_on(src.handler.file_context_manager.FileContextManager) // For managing file context operations
+    # @depends_on_type(docs.system.contracts.types.DataContext)
+    # @depends_on_type(docs.system.contracts.types.MatchItem)
+    # @depends_on_type(docs.system.contracts.types.AssociativeMatchResult)
+
     interface BaseHandler {
 
         // Constructor: Initializes the base handler.
@@ -23,6 +27,7 @@ module src.handler.base_handler {
         // - FileContextManager is instantiated with the memory_system.
         // - FileAccessManager is instantiated.
         // - Tool registries (registered_tools, tool_executors) are initialized as empty dictionaries.
+        // - Internal `data_context` is initialized to an empty state (e.g., None).
         // - Conversation history is initialized as an empty list.
         // - Base system prompt is set from config or default.
         // - Debug mode is initialized to false.
@@ -65,10 +70,11 @@ module src.handler.base_handler {
         // @raises_error(condition="CommandExecutionFailed", description="Handled internally, returns empty list.")
         list<string> execute_file_path_command(string command);
 
-        // Resets the internal conversation history.
+        // Resets the internal conversation history AND data context.
         // Preconditions: None.
         // Postconditions:
         // - The `conversation_history` list is cleared.
+        // - The internal `data_context` (holding `MatchItem`s) is reset to an empty state.
         // - May also reset state within the LLMInteractionManager if necessary.
         void reset_conversation();
 
@@ -88,6 +94,38 @@ module src.handler.base_handler {
         // - Configures debug mode on the LLMInteractionManager if applicable.
         void set_debug_mode(boolean enabled);
 
+        // Clears the currently stored data context.
+        // Preconditions: None.
+        // Postconditions:
+        // - The internal `data_context` (instance of `DataContext`) is reset to an empty or null state.
+        // - Subsequent calls requiring data context will need `prime_data_context` to be called again
+        //   or will operate with no specific data context.
+        void clear_data_context();
+
+        // Primes or updates the data context using associative matching or explicit initial files.
+        // Preconditions:
+        // - `query` is an optional string for associative matching via MemorySystem.
+        // - `initial_files` is an optional list of file paths to directly form the basis of the context.
+        //   (Note: if `initial_files` are provided, they will be transformed into `MatchItem`s of type "file_content").
+        // Postconditions:
+        // - The internal `data_context` (instance of `DataContext`) is populated.
+        //   Its `items` field will contain a list of `MatchItem` objects.
+        // - Returns true on success, false on failure to prime context (e.g., MemorySystem error, file reading error).
+        // Behavior:
+        // - If `query` is provided:
+        //   - Calls `self._get_relevant_files(query)` (which uses MemorySystem) to get an `AssociativeMatchResult`.
+        //   - Constructs a `DataContext` object, populating `items` with `MatchItem`s from the result,
+        //     `source_query` with the query, and `retrieved_at`.
+        //   - May generate an `overall_summary` for the `DataContext` (e.g., by concatenating excerpts or using a quick LLM call if complex).
+        // - If `initial_files` are provided (and no `query`, or to augment query results):
+        //   - For each file path in `initial_files`:
+        //     - Attempts to read the file content (e.g., via FileContextManager).
+        //     - Creates a `MatchItem` of `content_type="file_content"` with the path as `id` and file text as `content`.
+        //     - Adds this `MatchItem` to the `DataContext.items`.
+        //   - Sets `retrieved_at` and potentially a simple `overall_summary` (e.g., "Context primed with N files").
+        // - If both `query` and `initial_files` are provided, the behavior needs to be defined (e.g., merge results, prioritize query).
+        // - The populated `DataContext` object is stored internally (e.g., `self.data_context`).
+        boolean prime_data_context(optional string query, optional list<string> initial_files);
 
         // Retrieves the configured LLM provider/model identifier string.
         // Preconditions:
@@ -141,24 +179,14 @@ module src.handler.base_handler {
         // - Returns the result from the LLM call, typically structured like a TaskResult.
         // - Updates the internal conversation history based on `history_config.record_in_session_history` if the call is successful.
         // Behavior:
-        // - Delegates the primary interaction logic to the LLMInteractionManager which manages the pydantic-ai agent.
-        // - **History Management (based on `history_config`):**
-        //   - If `history_config.use_session_history` is `false`, an empty conversation history is prepared and passed to the `LLMInteractionManager`.
-        //   - If `history_config.use_session_history` is `true` (default):
-        //     - The handler's main `conversation_history` (a list of dicts) is used as the source.
-        //     - If `history_config.history_turns_to_include` is specified (e.g., `N`), the history is sliced to include only the last `N` user/assistant turn pairs (i.e., `2*N` items).
-        //     - The selected history (list of dicts) is converted into a list of `pydantic-ai` message objects (e.g., `ModelRequest`, `ModelResponse`) before being passed to the `LLMInteractionManager`.
-        //   - **Recording:** After a successful LLM call, if `history_config.record_in_session_history` is `true` (default), the current turn (user prompt and LLM response) is appended to the handler's main `conversation_history` (as dicts). If `false`, it is not appended.
-        // - **Tool Passing Logic:**
-        //   - If `tools_override` (list of callables/specs) is provided, it takes precedence and is passed to the LLMInteractionManager.
-        //   - Otherwise, the list of tool *definitions* stored internally by `set_active_tool_definitions` (i.e., `self.active_tool_definitions`) is retrieved and passed to the LLMInteractionManager's `execute_call` via the `active_tools` parameter.
-        //   - If neither is available, `None` is passed for tools.
+        // - Assembles the system prompt using `_build_system_prompt(system_prompt_override)`.
+        //   (The main system prompt construction logic now resides in `_build_system_prompt` and uses `self.data_context`).
         // - Passes the `model_override` parameter down to the LLMInteractionManager.
         // - Handles potential errors during the LLM call.
         // @raises_error(condition="LLMInteractionError", description="If the LLM call fails.")
         Any _execute_llm_call(
             string prompt,
-            optional string system_prompt_override,
+            optional string system_prompt_override, // This override is for the *base* part of the system prompt, not the data context part.
             optional list<function> tools_override,
             optional type output_type_override,
             optional string model_override, 
@@ -167,38 +195,47 @@ module src.handler.base_handler {
 
         // Builds the complete system prompt for an LLM call.
         // Preconditions:
-        // - template is an optional string containing template-specific instructions.
-        // - file_context is an optional string containing context from relevant files.
+        // - `self.data_context` may have been populated by `prime_data_context`.
+        // - `template_specific_instructions` is an optional string to be appended after the base system prompt
+        //   but before the data context.
         // Postconditions:
         // - Returns the final system prompt string.
         // Behavior:
         // - Starts with the base system prompt (`self.base_system_prompt`).
-        // - Appends template-specific instructions if provided.
-        // - Appends file context if provided.
+        // - Appends `template_specific_instructions` if provided.
+        // - If `self.data_context` is populated and `self.data_context.items` is not empty:
+        //   - Calls `self._create_data_context_string(self.data_context.items)` to get a textual representation.
+        //   - Appends this textual representation to the system prompt.
+        //   - May also append `self.data_context.overall_summary` if present.
         string _build_system_prompt(
-            optional string template,
-            optional string file_context
+           optional string template_specific_instructions
         );
 
-        // Gets relevant file paths based on a query.
+        // Gets relevant context items based on a query.
+        // This method is now primarily a helper for `prime_data_context`.
         // Preconditions:
         // - query is the string used for relevance matching.
         // Postconditions:
-        // - Returns a list of relevant file paths.
+        // - Returns an `AssociativeMatchResult` object (whose `matches` field contains `MatchItem` objects).
         // Behavior:
-        // - Delegates file path retrieval logic to the FileContextManager, which interacts with the MemorySystem.
+        // - Delegates to `FileContextManager.get_relevant_files` (which interacts with MemorySystem).
         // @raises_error(condition="ContextRetrievalError", description="If file relevance lookup fails.")
-        list<string> _get_relevant_files(string query);
+        object _get_relevant_files(string query); // Returns AssociativeMatchResult
 
-        // Creates a formatted context string from a list of file paths.
+        // Creates a formatted textual representation from a list of MatchItem objects.
         // Preconditions:
-        // - file_paths is a list of strings representing file paths.
+        // - items is a list of `MatchItem` objects.
         // Postconditions:
-        // - Returns a single string containing the formatted content of the specified files.
+        // - Returns a single string containing the formatted textual representation of the items.
         // Behavior:
-        // - Delegates file reading and formatting logic to the FileContextManager, which interacts with the FileAccessManager.
-        // @raises_error(condition="FileAccessError", description="If reading any of the files fails.")
-        string _create_file_context(list<string> file_paths);
+        // - Iterates through each `MatchItem` in `items`.
+        // - For each item, uses `item.content` as the primary text.
+        // - May use `item.content_type` and `item.id` (or `item.source_path`) to add formatting
+        //   (e.g., `<file path="${item.id}">\n${item.content}\n</file>`, or "Summary of ${item.id}:\n${item.content}").
+        // - Concatenates the formatted strings for all items.
+        // - This method is called by `_build_system_prompt` to prepare the data context part of the prompt.
+        // @raises_error(condition="FileAccessError", description="If reading any of the files fails (e.g., if an item has content_type='file_path_only' and content needs to be fetched).")
+        string _create_data_context_string(list<object> items); // Param is list<MatchItem>
 
         // Executes a registered tool directly by name.
         // Preconditions:
@@ -221,6 +258,7 @@ module src.handler.base_handler {
         // - `file_context_manager` holds a valid FileContextManager instance.
         // - `registered_tools`, `tool_executors` are dictionaries.
         // - `conversation_history` is a list.
+        // - `data_context` is either None or a valid `DataContext` instance.
     };
 };
 // == !! END IDL TEMPLATE !! ===

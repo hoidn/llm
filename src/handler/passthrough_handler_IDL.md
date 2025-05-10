@@ -34,21 +34,18 @@ module src.handler.passthrough_handler {
         // - query is a non-empty string representing the user's input.
         // Postconditions:
         // - Returns a TaskResult dictionary containing the status, assistant's content response, and metadata.
-        // - Metadata includes relevant files found and potentially template info if a match occurred.
-        // - The conversation history (internal state) is updated with the user query and the assistant response.
+        // - Metadata includes information about the data context used (e.g., from notes in TaskResult).
+        // - The conversation history and data context (in BaseHandler) are updated.
         // Behavior:
         // - Adds the user query to the internal conversation history.
-        // - Retrieves relevant files using `_get_relevant_files` (delegates to MemorySystem/TaskSystem).
+        // - Calls `self.prime_data_context(query=query)` to populate/update the `BaseHandler`'s `data_context`.
         // - Determines if the query matches an Aider command (internal logic).
         // - If no active subtask, creates a new one (`_create_new_subtask`):
         //   - Tries to find a matching template via TaskSystem.
-        //   - Creates file context string.
-        //   - Invokes the internal pydantic-ai agent (via BaseHandler's logic) with appropriate prompts, context, and tools.
-        // - If an active subtask exists, continues it (`_continue_subtask`):
-        //   - Tries to find a matching template.
-        //   - Creates file context string.
-        //   - Invokes the internal pydantic-ai agent (via BaseHandler's logic) with appropriate prompts, context, and tools.
-        // - The underlying BaseHandler logic uses the pydantic-ai agent to handle the LLM call, including system prompt construction, message history, tool preparation, tool execution, and response generation.
+        //   - Invokes `_execute_llm_call`. The necessary data context string will be constructed internally
+        //     by `_build_system_prompt` using the primed `data_context`.
+        // - If an active subtask exists, continues it (`_continue_subtask`), similarly using the primed `data_context`.
+        // - The underlying BaseHandler logic uses the pydantic-ai agent to handle the LLM call.
         // - Adds the assistant's response to the conversation history.
         // @raises_error(condition="TASK_FAILURE", reason="llm_error", description="If interaction via the pydantic-ai agent fails.")
         // @raises_error(condition="TASK_FAILURE", reason="tool_execution_error", description="If an LLM-invoked tool fails.")
@@ -67,7 +64,7 @@ module src.handler.passthrough_handler {
         // Resets the conversation state.
         // Preconditions: None.
         // Postconditions:
-        // - Calls `BaseHandler.reset_conversation()` to clear history and potentially reset the pydantic-ai agent state.
+        // - Calls `BaseHandler.reset_conversation()` (which now also clears `data_context`).
         // - Resets the internal `active_subtask_id` to None.
         void reset_conversation();
 
