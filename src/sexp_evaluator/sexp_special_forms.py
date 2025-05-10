@@ -263,62 +263,80 @@ class SpecialFormProcessor:
             #     )
             # The collection loop ensures opt_node is a list and opt_node[0] is a Symbol.
             # We still need to check len(opt_node) >= 2 for (key value) structure.
-            if not (len(opt_node) >= 2): # Ensure there's at least a key and a value part
-                 raise SexpEvaluationError(
-                    f"Invalid optional argument format for 'defatom' task '{task_name_str}'. Expected (key value_expression) with at least two elements, got: {opt_node}",
+            
+            key_node: Symbol = opt_node[0]
+            # Ensure there's a value part. opt_node[1] is the start of the value.
+            # For simple string optionals, opt_node[1] is the string.
+            # For structured, opt_node[1] is the list of pairs OR (quote list-of-pairs).
+            if len(opt_node) < 2:
+                raise SexpEvaluationError(
+                    f"Optional argument '{key_node.value()}' for 'defatom' task '{task_name_str}' is missing its value.",
                     original_expr_str
                 )
-            key_node: Symbol = opt_node[0]
-            value_node: Any = opt_node[1] # The value part can be a string or a list for structured options
+            
+            value_part_from_opt_node: Any = opt_node[1] # This is the S-expression value part
             key_str = key_node.value()
 
             if key_str in simple_string_optionals:
-                if not isinstance(value_node, str):
-                    raise SexpEvaluationError(f"Value for optional argument '{key_str}' must be a string, got {type(value_node)}: {value_node}", original_expr_str)
-                optional_args_map[key_str] = value_node
+                if not isinstance(value_part_from_opt_node, str): # Check the S-expression value directly
+                    raise SexpEvaluationError(f"Value for optional argument '{key_str}' must be a string, got {type(value_part_from_opt_node)}: {value_part_from_opt_node!r}", original_expr_str)
+                optional_args_map[key_str] = value_part_from_opt_node
             elif key_str in structured_optionals:
-                # For output_format or history_config, the value_node is the list of pairs itself, e.g., ((type "json") (schema "..."))
-                # We need to convert this list of pairs into a dictionary.
-                # The value_node itself (opt_node[1]) is the list of (key value) pairs.
-                if not isinstance(value_node, list):
+                actual_list_of_pairs = value_part_from_opt_node
+
+                # Check if the value_part_from_opt_node is a (quote <list_of_pairs>) S-expression
+                # The AST for (quote X) is [Symbol('quote'), X]
+                if isinstance(value_part_from_opt_node, list) and \
+                   len(value_part_from_opt_node) == 2 and \
+                   isinstance(value_part_from_opt_node[0], Symbol) and \
+                   value_part_from_opt_node[0].value() == 'quote':
+                    
+                    # It's quoted, get the actual list of pairs
+                    actual_list_of_pairs = value_part_from_opt_node[1]
+                    logger.debug(f"Unwrapped quoted value for '{key_str}': {actual_list_of_pairs!r}")
+                
+                # Now, actual_list_of_pairs should be the list like ((type "json") ...)
+                if not isinstance(actual_list_of_pairs, list):
                     raise SexpEvaluationError(
-                        f"Value for structured optional argument '{key_str}' must be a list of pairs, got {type(value_node)}: {value_node}",
+                        f"Value for structured optional argument '{key_str}' must resolve to a list of pairs. Got {type(actual_list_of_pairs)}: {actual_list_of_pairs!r}",
                         original_expr_str
                     )
-                
+
                 structured_dict: Dict[str, Any] = {}
-                for pair in value_node: # value_node is the (quote (...)) part's content
+                for pair_idx, pair in enumerate(actual_list_of_pairs): # Iterate over the (now correctly unwrapped) list of pairs
                     if not (isinstance(pair, list) and len(pair) == 2 and isinstance(pair[0], Symbol)):
                         raise SexpEvaluationError(
-                            f"Invalid pair format in '{key_str}'. Expected (key_symbol value), got: {pair}",
+                            f"Invalid pair format in '{key_str}' at index {pair_idx}. Expected (key_symbol value), got: {pair!r}",
                             original_expr_str
                         )
+                    
                     inner_key_symbol: Symbol = pair[0]
-                    inner_sexp_value: Any = pair[1] # This is an S-expression value
+                    inner_sexp_value: Any = pair[1] # This is an S-expression value from the pair
 
-                    # Convert S-expression value to Python value
                     python_value: Any
-                    if isinstance(inner_sexp_value, Symbol):
-                        if inner_sexp_value.value() == 'true':
+                    if isinstance(inner_sexp_value, str):      # Check for Python string first
+                        python_value = inner_sexp_value
+                    elif isinstance(inner_sexp_value, Symbol): # Then check for S-expression Symbols (true, false, nil)
+                        val_str = inner_sexp_value.value()
+                        if val_str == 'true':
                             python_value = True
-                        elif inner_sexp_value.value() == 'false':
+                        elif val_str == 'false':
                             python_value = False
-                        elif inner_sexp_value.value() == 'nil': # Handle nil for optional integers
+                        elif val_str == 'nil':
                             python_value = None
                         else:
                             raise SexpEvaluationError(
-                                f"Invalid symbol value '{inner_sexp_value.value()}' for key '{inner_key_symbol.value()}' in '{key_str}'. Expected 'true', 'false', or 'nil'.",
+                                f"Invalid symbol value '{val_str}' for key '{inner_key_symbol.value()}' in '{key_str}'. Expected 'true', 'false', or 'nil'. If a string is intended, it must be quoted in the S-expression (e.g., \"some-symbol-as-string\").",
                                 original_expr_str
                             )
-                    elif isinstance(inner_sexp_value, int):
+                    elif isinstance(inner_sexp_value, int):    # Then check for Python int
                         python_value = inner_sexp_value
-                    elif inner_sexp_value is None and key_str == "history_config" and inner_key_symbol.value() == "history_turns_to_include":
-                        # This case might not be hit if nil symbol is used above.
-                        python_value = None
+                    # Special case for 'history_turns_to_include' allowing Python None if S-exp value was 'nil' (already handled by Symbol 'nil' case)
+                    # elif inner_sexp_value is None and key_str == "history_config" and inner_key_symbol.value() == "history_turns_to_include":
+                    #     python_value = None # This is redundant if Symbol 'nil' maps to None
                     else:
-                        # Add more specific type checks if other S-expression types are expected for certain keys
                         raise SexpEvaluationError(
-                            f"Invalid value type for key '{inner_key_symbol.value()}' in '{key_str}'. Expected symbol (true/false/nil) or integer, got {type(inner_sexp_value)}: {inner_sexp_value}",
+                            f"Invalid value type for key '{inner_key_symbol.value()}' in '{key_str}'. Expected S-expression string (e.g., \"json\"), S-expression symbol (true/false/nil), or S-expression integer. Got {type(inner_sexp_value)}: {inner_sexp_value!r}",
                             original_expr_str
                         )
                     
