@@ -445,27 +445,18 @@ def test_build_system_prompt(base_handler_instance):
     """Test building the system prompt with different components."""
     base_prompt = base_handler_instance.base_system_prompt
     template_instr = "Use JSON format."
-    file_ctx = "path/to/file.py:\ncontent"
 
     # Base only
     prompt1 = base_handler_instance._build_system_prompt()
     assert prompt1 == base_prompt
 
-    # Base + Template
-    prompt2 = base_handler_instance._build_system_prompt(template=template_instr)
+    # Base + Template Specific Instructions
+    prompt2 = base_handler_instance._build_system_prompt(template_specific_instructions=template_instr)
     assert prompt2 == f"{base_prompt}\n\n{template_instr}"
 
-    # Base + File Context
-    prompt3 = base_handler_instance._build_system_prompt(file_context=file_ctx)
-    expected_prompt3 = f"{base_prompt}\n\nRelevant File Context:\n```\n{file_ctx}\n```"
-    assert prompt3 == expected_prompt3
-
-    # Base + Template + File Context
-    prompt4 = base_handler_instance._build_system_prompt(
-        template=template_instr, file_context=file_ctx
-    )
-    expected4 = f"{base_prompt}\n\n{template_instr}\n\nRelevant File Context:\n```\n{file_ctx}\n```"
-    assert prompt4 == expected4
+    # Note: Testing with data_context (formerly file_context) is now covered by new dedicated tests
+    # like test_build_system_prompt_with_data_context, as _build_system_prompt
+    # now sources context from self.data_context internally.
 
 
 def test_execute_tool_success_raw_result(base_handler_instance):
@@ -577,17 +568,13 @@ def test_get_relevant_files_delegation(base_handler_instance):
     mock_fcm.get_relevant_files.assert_called_once_with(query)
 
 
-def test_create_file_context_delegation(base_handler_instance):
-    """Verify _create_file_context delegates to FileContextManager."""
-    # Access the mocked file_context_manager via the handler instance
-    mock_fcm = base_handler_instance.file_context_manager
-    mock_fcm.create_file_context.return_value = "File Context String"
-    paths = ["file1.txt", "file2.py"]
+# test_get_relevant_files_delegation is now obsolete as BaseHandler._get_relevant_files
+# interacts with self.memory_system, not self.file_context_manager for this.
+# New tests (e.g., test_get_relevant_files_success) cover MemorySystem interaction.
 
-    result = base_handler_instance._create_file_context(paths)
-
-    assert result == "File Context String"
-    mock_fcm.create_file_context.assert_called_once_with(paths)
+# test_create_file_context_delegation is now obsolete as BaseHandler._create_file_context
+# has been replaced by _create_data_context_string, which has a different signature
+# and purpose (formats MatchItems). New tests cover _create_data_context_string.
 
 
 def test_get_provider_identifier_success(base_handler_instance):
@@ -838,19 +825,12 @@ def test__execute_llm_call_passes_active_tools(base_handler_instance): # Renamed
 
 @pytest.mark.parametrize("use_session, turns_to_include, record_turn, initial_hist_len, expected_hist_len_after_call, expected_recorded_turns", [
     (True, None, True, 2, 4, 2),    # Use all, record
-    (True, 1, True, 4, 4, 2),       # Use 1 turn (2 items), record (hist becomes 2 from slice + 2 new)
+    (True, 1, True, 4, 6, 2),       # Use 1 turn (2 items from history for LLM), record current turn (+2 to self.conversation_history). Initial 4 + 2 = 6.
     (True, None, False, 2, 2, 0),   # Use all, don't record
-    (False, None, True, 2, 3, 1),   # Use none, record (hist becomes 1 new user + 1 new assistant, but only if initial was empty, else it's initial + 2) -> if initial was 2, and we don't use it, but record, it becomes 2 + 2 = 4. This needs care.
-                                    # If use_session_history=False, the call to LLM has empty history.
-                                    # If record_current_turn=True, the current turn (user+assistant) is added to self.conversation_history.
-                                    # So, if initial_hist_len=2, use_session=False, record=True -> final_hist_len = 2 + 2 = 4.
-                                    # The LLM call itself uses 0 turns from history.
+    (False, None, True, 2, 4, 2),   # Use none for LLM call, record current turn (+2 to self.conversation_history). Initial 2 + 2 = 4.
     (False, None, False, 2, 2, 0),  # Use none, don't record
-    (True, 0, True, 2, 4, 2),       # Use 0 turns (effectively all if PositiveInt is for >0), record. Let's assume 0 means all for PositiveInt.
-                                    # If history_turns_to_include is PositiveInt, 0 is invalid. If it's Optional[PositiveInt], None means all.
-                                    # The model is Optional[PositiveInt]. So 0 is not a valid value.
-                                    # Let's test with a large number to simulate "all" if PositiveInt is strict.
-    (True, 100, True, 2, 4, 2),   # Use 100 (more than available), record
+    (True, None, True, 2, 4, 2),    # Changed turns_to_include from 0 to None (0 is invalid for PositiveInt). This is now same as first case.
+    (True, 100, True, 2, 4, 2),   # Use 100 (more than available, so all 2), record. Initial 2 + 2 = 4.
 ])
 def test_execute_llm_call_with_history_config(
     base_handler_instance, mock_dependencies,
