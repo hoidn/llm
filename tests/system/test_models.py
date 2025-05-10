@@ -158,14 +158,22 @@ def test_associative_match_result_empty_matches():
     assert result.matches == []
 
 def test_associative_match_result_invalid_match_item_in_list():
-    with pytest.raises(ValidationError):
+    # Case 1: List contains a dictionary that CANNOT be coerced to MatchItem
+    # (e.g., missing required 'content' field)
+    with pytest.raises(ValidationError, match="content\n  Field required"): # Check for specific error message part
         AssociativeMatchResult(context_summary="s", matches=[
-            {"id": "item1", "content": "c", "relevance_score": 0.5, "content_type": "text"} # This is a dict, not MatchItem instance
-        ]) 
-    # Test with a valid MatchItem and an invalid dict
+            {"id": "item1", "relevance_score": 0.5, "content_type": "text"} # Missing 'content'
+        ])
+
+    # Case 2: List contains a valid MatchItem and an invalid dictionary
+    # (e.g., one that is just an integer, or a dict with wrong field types)
     valid_item = MatchItem(id="item1", content="c", relevance_score=0.5, content_type="text")
+    with pytest.raises(ValidationError): # Pydantic will try to parse each item in list
+        AssociativeMatchResult(context_summary="s", matches=[valid_item, {"id": "item2", "content": 123, "relevance_score": "high", "content_type": True}])
+
+    # Case 3: List contains something completely not a MatchItem or dict
     with pytest.raises(ValidationError):
-         AssociativeMatchResult(context_summary="s", matches=[valid_item, {"id": "item2"}])
+        AssociativeMatchResult(context_summary="s", matches=[123]) # A number instead of a MatchItem or dict
 
 
 # --- Test DataContext ---

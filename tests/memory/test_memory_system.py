@@ -459,7 +459,10 @@ def test_get_relevant_context_for_task_system_returns_invalid_json_in_content(me
     assert isinstance(result, AssociativeMatchResult)
     assert result.matches == []
     assert result.error is not None
-    assert "JSONDecodeError parsing AssociativeMatchResult from task output" in result.error
+    # Updated assertion to match Pydantic's error for invalid JSON
+    assert "Invalid JSON" in result.error 
+    assert "PydanticValidationError" in result.error # More general check
+    assert "[type=json_invalid, input_value='This is not JSON'" in result.error # More specific
 
 def test_get_relevant_context_for_task_system_returns_valid_json_in_content(memory_system_instance, mock_task_system, mock_file_manager_ms):
     """Test when TaskSystem returns valid JSON string in content and parsedContent is None."""
