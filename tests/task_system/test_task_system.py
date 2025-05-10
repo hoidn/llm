@@ -16,7 +16,7 @@ from src.memory.memory_system import MemorySystem # For type hint/mocking
 from src.handler.base_handler import BaseHandler # For type hint/mocking
 from src.system.models import (
     SubtaskRequest, TaskResult, ContextManagement,
-    ContextGenerationInput, AssociativeMatchResult, MatchTuple, # Added MatchTuple, AssociativeMatchResult
+    ContextGenerationInput, AssociativeMatchResult, MatchItem, # Changed MatchTuple to MatchItem
     SUBTASK_CONTEXT_DEFAULTS, TaskError, TaskFailureError, HistoryConfigSettings, # Added TaskFailureError, HistoryConfigSettings
     # Import new models for integration tests
     DevelopmentPlan, FeedbackResult

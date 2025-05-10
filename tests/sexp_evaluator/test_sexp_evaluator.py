@@ -12,7 +12,7 @@ from src.sexp_evaluator.sexp_environment import SexpEnvironment
 from src.system.errors import SexpSyntaxError, SexpEvaluationError # Ensure error is imported
 from src.system.models import (
     TaskResult, SubtaskRequest, ContextGenerationInput, AssociativeMatchResult, # Ensure TaskResult is imported
-    MatchTuple, TaskFailureError, ContextManagement, TaskError
+    MatchItem, TaskFailureError, ContextManagement, TaskError # Changed MatchTuple to MatchItem
 )
 from pydantic import BaseModel # Add BaseModel import for new test
 # SexpParser import removed as it's not used by the updated _create_loop_ast at the top level
@@ -208,7 +208,7 @@ def test_eval_primitive_get_context(evaluator, mock_parser, mock_memory_system):
         inputs={"file": "/a.py"} 
     )
     mock_memory_system.get_relevant_context_for.return_value = AssociativeMatchResult(
-        context_summary="Mocked context", matches=[MatchTuple(path="/mock/file.py", relevance=1.0)]
+        context_summary="Mocked context", matches=[MatchItem(id="/mock/file.py", content="mock content", relevance_score=1.0, content_type="file_content")] # Use MatchItem
     )
 
     result = evaluator.evaluate_string(sexp_str)

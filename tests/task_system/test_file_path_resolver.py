@@ -7,7 +7,7 @@ from src.task_system.file_path_resolver import resolve_paths_from_template
 # Import necessary types/classes for mocking/data
 from src.memory.memory_system import MemorySystem
 from src.handler.base_handler import BaseHandler
-from src.system.models import ContextGenerationInput, MatchTuple, AssociativeMatchResult
+from src.system.models import ContextGenerationInput, MatchItem, AssociativeMatchResult # Changed MatchTuple to MatchItem
 
 # Add fixtures if needed (e.g., mock memory/handler)
 @pytest.fixture
@@ -60,7 +60,7 @@ def test_resolve_paths_description(mock_memory_system_fp):
         # Configure the return value on this new mock
         mock_method_on_instance.return_value = AssociativeMatchResult(
             context_summary="Desc match",
-            matches=[MatchTuple(path=expected_path, relevance=0.9)], # Use correct MatchTuple structure
+            matches=[MatchItem(id=expected_path, content="mock content", relevance_score=0.9, content_type="file_content")], # Use MatchItem
             error=None
         )
 
@@ -95,7 +95,7 @@ def test_resolve_paths_context_description(mock_memory_system_fp):
         # Configure the return value on this new mock
         mock_method_on_instance.return_value = AssociativeMatchResult(
             context_summary="Context match",
-            matches=[MatchTuple(path=expected_path, relevance=0.85)], # Use correct MatchTuple structure
+            matches=[MatchItem(id=expected_path, content="mock content", relevance_score=0.85, content_type="file_content")], # Use MatchItem
             error=None
         )
         

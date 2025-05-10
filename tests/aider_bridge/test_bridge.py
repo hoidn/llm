@@ -14,7 +14,7 @@ except ImportError:
 
 # Import system models used in results/mocks
 # Fix: Import TaskFailureDetails from models
-from src.system.models import TaskResult, AssociativeMatchResult, MatchTuple, TaskFailureError, TaskFailureReason, ContextGenerationInput, TaskFailureDetails
+from src.system.models import TaskResult, AssociativeMatchResult, MatchItem, TaskFailureError, TaskFailureReason, ContextGenerationInput, TaskFailureDetails
 
 # --- Import or Define REAL/DUMMY mcp.py types ---
 # If mcp.py IS installed, these imports should work directly.
@@ -537,7 +537,7 @@ class TestAiderBridge:
             mock_file_access_manager_bridge._resolve_path("foo.py"),
             mock_file_access_manager_bridge._resolve_path("bar.py")
         ]
-        mock_matches = [MatchTuple(path=p, relevance=0.9) for p in mock_paths_abs]
+        mock_matches = [MatchItem(id=p, content="mock content", relevance_score=0.9, content_type="file_content") for p in mock_paths_abs] # Use MatchItem
         mock_memory_result = AssociativeMatchResult(context_summary="Found foo", matches=mock_matches)
         mock_memory_system_bridge.get_relevant_context_for.return_value = mock_memory_result
 
