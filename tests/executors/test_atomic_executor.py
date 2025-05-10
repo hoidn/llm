@@ -4,9 +4,9 @@ Unit tests for the AtomicTaskExecutor.
 
 import pytest
 import logging # Add import
-from unittest.mock import MagicMock, call, patch # Use MagicMock for flexibility
+from unittest.mock import MagicMock, call, patch, ANY # Use MagicMock for flexibility, add ANY
 from src.executors.atomic_executor import AtomicTaskExecutor, ParameterMismatchError
-from src.system.models import TaskResult, TaskFailureError, ModelNotFoundError # Assuming TaskResult model
+from src.system.models import TaskResult, TaskFailureError, ModelNotFoundError, HistoryConfigSettings # Assuming TaskResult model, add HistoryConfigSettings
 from pydantic import BaseModel # For testing output_type_override
 
 # If BaseHandler is importable and stable, use spec for better mocking
@@ -66,7 +66,7 @@ def test_execute_body_success(executor, mock_handler):
         tools_override=None,
         output_type_override=None,
         model_override=task_def.get("model"), # Will be None if not in task_def
-        history_config=None # Default if not passed to execute_body
+        history_config=None 
     )
 
 def test_execute_body_missing_param(executor, mock_handler):
@@ -195,7 +195,7 @@ def test_execute_body_no_instructions(executor, mock_handler):
         tools_override=None,
         output_type_override=None,
         model_override=task_def.get("model"), # Will be None if not in task_def
-        history_config=None # Default if not passed to execute_body
+        history_config=None 
     )
 
 def test_substitute_large_dict_param(executor, mock_handler, caplog):
@@ -388,3 +388,51 @@ def test_execute_body_with_handler_failure(mock_resolve_model_class, executor, m
     assert "error" in result_dict["notes"]
     assert result_dict["notes"]["error"]["reason"] == "llm_error"
     assert "LLM call failed" in result_dict["notes"]["error"]["message"]
+
+def test_execute_body_with_history_config(executor, mock_handler):
+    """Verify history_config is passed to handler._execute_llm_call."""
+    task_def = {
+        "name": "test_history_task",
+        "instructions": "Process with history config.",
+    }
+    params = {}
+    custom_history_config = HistoryConfigSettings(
+        use_session_history=False,
+        history_turns_to_include=3,
+        record_in_session_history=False
+    )
+
+    # Act
+    executor.execute_body(task_def, params, mock_handler, history_config=custom_history_config)
+
+    # Assert
+    mock_handler._execute_llm_call.assert_called_once_with(
+        prompt="Process with history config.",
+        system_prompt_override="Mocked System Prompt",
+        tools_override=None,
+        output_type_override=None,
+        model_override=None,
+        history_config=custom_history_config # Check the custom config was passed
+    )
+
+def test_execute_body_default_history_config_is_none(executor, mock_handler):
+    """Verify default history_config passed to handler is None if not provided to execute_body."""
+    task_def = {
+        "name": "test_default_history_task",
+        "instructions": "Process with default history.",
+    }
+    params = {}
+
+    # Act
+    # Call execute_body without history_config argument
+    executor.execute_body(task_def, params, mock_handler)
+
+    # Assert
+    mock_handler._execute_llm_call.assert_called_once_with(
+        prompt="Process with default history.",
+        system_prompt_override="Mocked System Prompt",
+        tools_override=None,
+        output_type_override=None,
+        model_override=None,
+        history_config=None # Expect None to be passed to handler
+    )
