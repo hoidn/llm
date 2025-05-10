@@ -31,6 +31,8 @@ module src.handler.base_handler {
         // - Conversation history is initialized as an empty list.
         // - Base system prompt is set from config or default.
         // - Debug mode is initialized to false.
+        // - `memory_system` attribute is set.
+        // - `data_context` attribute is initialized to None.
         void __init__(
             object task_system, // Represents TaskSystem instance
             object memory_system, // Represents MemorySystem instance
@@ -106,25 +108,20 @@ module src.handler.base_handler {
         // Preconditions:
         // - `query` is an optional string for associative matching via MemorySystem.
         // - `initial_files` is an optional list of file paths to directly form the basis of the context.
-        //   (Note: if `initial_files` are provided, they will be transformed into `MatchItem`s of type "file_content").
         // Postconditions:
-        // - The internal `data_context` (instance of `DataContext`) is populated.
-        //   Its `items` field will contain a list of `MatchItem` objects.
-        // - Returns true on success, false on failure to prime context (e.g., MemorySystem error, file reading error).
+        // - The internal `data_context` (instance of `DataContext`) is populated with `MatchItem` objects.
+        // - Returns true if context was successfully primed (even if it results in no items but the process was valid),
+        //   false on failure to prime context (e.g., MemorySystem error, critical file reading error during initial_files processing).
         // Behavior:
         // - If `query` is provided:
-        //   - Calls `self._get_relevant_files(query)` (which uses MemorySystem) to get an `AssociativeMatchResult`.
-        //   - Constructs a `DataContext` object, populating `items` with `MatchItem`s from the result,
-        //     `source_query` with the query, and `retrieved_at`.
-        //   - May generate an `overall_summary` for the `DataContext` (e.g., by concatenating excerpts or using a quick LLM call if complex).
-        // - If `initial_files` are provided (and no `query`, or to augment query results):
-        //   - For each file path in `initial_files`:
-        //     - Attempts to read the file content (e.g., via FileContextManager).
-        //     - Creates a `MatchItem` of `content_type="file_content"` with the path as `id` and file text as `content`.
-        //     - Adds this `MatchItem` to the `DataContext.items`.
-        //   - Sets `retrieved_at` and potentially a simple `overall_summary` (e.g., "Context primed with N files").
-        // - If both `query` and `initial_files` are provided, the behavior needs to be defined (e.g., merge results, prioritize query).
-        // - The populated `DataContext` object is stored internally (e.g., `self.data_context`).
+        //   - Calls `self._get_relevant_files(query)` (which uses `self.memory_system`) to get an `AssociativeMatchResult`.
+        //   - If successful, `MatchItem`s from the result are hydrated (content fetched if needed via `FileContextManager.ensure_match_item_content`) and added to a temporary list.
+        // - If `initial_files` are provided:
+        //   - Calls `self.file_context_manager.get_match_items_for_paths(initial_files)` to get `MatchItem`s (these will have content).
+        //   - Adds these `MatchItem`s to the temporary list.
+        // - All collected `MatchItem`s are deduplicated.
+        // - If any items remain, a `DataContext` object is created and stored in `self.data_context`.
+        // - If no items are collected or an error occurs that prevents context formation, `self.data_context` is set to None.
         boolean prime_data_context(optional string query, optional list<string> initial_files);
 
         // Retrieves the configured LLM provider/model identifier string.
@@ -205,22 +202,23 @@ module src.handler.base_handler {
         // - Appends `template_specific_instructions` if provided.
         // - If `self.data_context` is populated and `self.data_context.items` is not empty:
         //   - Calls `self._create_data_context_string(self.data_context.items)` to get a textual representation.
-        //   - Appends this textual representation to the system prompt.
-        //   - May also append `self.data_context.overall_summary` if present.
+        //   - Appends this textual representation to the system prompt, potentially prefixed by `self.data_context.overall_summary`.
         string _build_system_prompt(
            optional string template_specific_instructions
         );
 
-        // Gets relevant context items based on a query.
-        // This method is now primarily a helper for `prime_data_context`.
+        // Gets relevant context items from MemorySystem based on a query.
         // Preconditions:
         // - query is the string used for relevance matching.
+        // - `self.memory_system` must be available.
         // Postconditions:
-        // - Returns an `AssociativeMatchResult` object (whose `matches` field contains `MatchItem` objects).
+        // - Returns an `AssociativeMatchResult` object if successful.
+        // - Returns `None` if MemorySystem interaction fails or returns an error.
         // Behavior:
-        // - Delegates to `FileContextManager.get_relevant_files` (which interacts with MemorySystem).
-        // @raises_error(condition="ContextRetrievalError", description="If file relevance lookup fails.")
-        object _get_relevant_files(string query); // Returns AssociativeMatchResult
+        // - Constructs a `ContextGenerationInput` from the query.
+        // - Calls `self.memory_system.get_relevant_context_for(input_data)`.
+        // - Handles potential errors from MemorySystem.
+        optional object _get_relevant_files(string query); // Returns AssociativeMatchResult or None
 
         // Creates a formatted textual representation from a list of MatchItem objects.
         // Preconditions:
@@ -229,12 +227,10 @@ module src.handler.base_handler {
         // - Returns a single string containing the formatted textual representation of the items.
         // Behavior:
         // - Iterates through each `MatchItem` in `items`.
-        // - For each item, uses `item.content` as the primary text.
-        // - May use `item.content_type` and `item.id` (or `item.source_path`) to add formatting
-        //   (e.g., `<file path="${item.id}">\n${item.content}\n</file>`, or "Summary of ${item.id}:\n${item.content}").
-        // - Concatenates the formatted strings for all items.
+        // - For each item, calls `self.file_context_manager.ensure_match_item_content(item)` to ensure `item.content` is populated.
+        // - If `item.content` is available, formats it using `item.id`, `item.source_path` (if different), and `item.content_type`.
+        // - Concatenates the formatted strings for all items that have content.
         // - This method is called by `_build_system_prompt` to prepare the data context part of the prompt.
-        // @raises_error(condition="FileAccessError", description="If reading any of the files fails (e.g., if an item has content_type='file_path_only' and content needs to be fetched).")
         string _create_data_context_string(list<object> items); // Param is list<MatchItem>
 
         // Executes a registered tool directly by name.

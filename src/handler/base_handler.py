@@ -3,6 +3,7 @@ import logging
 import os
 import shlex
 import warnings # Ensure imported
+from datetime import datetime # Added import
 from typing import Any, Callable, Dict, List, Optional, Type, Union
 
 # Import pydantic-ai directly
@@ -45,6 +46,10 @@ from src.system.models import (
     TaskError,
     TaskResult,
     HistoryConfigSettings, # Add import
+    DataContext, # Added import
+    MatchItem, # Added import
+    AssociativeMatchResult, # Added import
+    ContextGenerationInput, # Added import
 )  # Import TaskResult for type hints
 
 # Forward declarations for type hinting cycles
@@ -76,7 +81,7 @@ class BaseHandler:
             config: Optional dictionary for configuration settings (e.g., base_system_prompt, API keys).
         """
         self.task_system = task_system
-        self.memory_system = memory_system
+        self.memory_system = memory_system # Added assignment
         self.config = config or {}
         self.default_model_identifier = default_model_identifier
 
@@ -86,9 +91,11 @@ class BaseHandler:
             base_path=self.config.get("file_manager_base_path")
         )
         # Initialize FileContextManager
+        # It still receives memory_system, even if BaseHandler also uses it directly.
         self.file_context_manager = FileContextManager(
             memory_system=self.memory_system, file_manager=self.file_manager
         )
+        self.data_context: Optional[DataContext] = None # Added attribute
 
         # Initialize internal state
         self.tool_executors: Dict[str, Callable] = (
@@ -399,6 +406,69 @@ class BaseHandler:
         self.log_debug(f"Active tools set to: {self.active_tools}")
         return True
 
+    def clear_data_context(self) -> None:
+        """Clears the currently stored data context."""
+        self.data_context = None
+        self.log_debug("Data context cleared.")
+
+    def prime_data_context(self, query: Optional[str] = None, initial_files: Optional[List[str]] = None) -> bool:
+        """
+        Primes or updates the data context using associative matching or explicit initial files.
+        """
+        self.log_debug(f"Priming data context with query='{str(query)[:50]}...' and {len(initial_files) if initial_files else 0} initial files.")
+        all_match_items: List[MatchItem] = []
+        source_query_for_dc: Optional[str] = None
+        primed_successfully = False
+
+        if query:
+            source_query_for_dc = query
+            # _get_relevant_files now returns Optional[AssociativeMatchResult]
+            assoc_result = self._get_relevant_files(query)
+            if assoc_result and assoc_result.matches:
+                # Ensure content is hydrated for these items if necessary
+                for item in assoc_result.matches:
+                    self.file_context_manager.ensure_match_item_content(item)
+                all_match_items.extend(assoc_result.matches)
+                primed_successfully = True # Considered success if query ran, even if no matches
+            elif assoc_result is None: # Indicates an error during retrieval
+                logging.warning(f"Priming data context: Query-based retrieval failed for query: {query}")
+                # Do not set primed_successfully to True if retrieval itself failed
+
+        if initial_files:
+            # get_match_items_for_paths reads files and creates MatchItems with content
+            file_based_items = self.file_context_manager.get_match_items_for_paths(initial_files)
+            if file_based_items:
+                all_match_items.extend(file_based_items)
+                primed_successfully = True
+
+        if all_match_items:
+            # Deduplicate items based on id, preferring items from query if overlap
+            # Simple deduplication: keep first seen
+            seen_ids = set()
+            unique_items: List[MatchItem] = []
+            for item in all_match_items:
+                if item.id not in seen_ids:
+                    unique_items.append(item)
+                    seen_ids.add(item.id)
+            
+            self.data_context = DataContext(
+                retrieved_at=datetime.utcnow().isoformat(),
+                source_query=source_query_for_dc,
+                items=unique_items,
+                # overall_summary can be generated here if needed, e.g., from assoc_result.context_summary
+                overall_summary=getattr(assoc_result, 'context_summary', None) if query and 'assoc_result' in locals() else None
+            )
+            self.log_debug(f"Data context primed with {len(unique_items)} unique items. Source query: {source_query_for_dc}")
+            return True
+        else:
+            self.data_context = None
+            self.log_debug("Data context priming resulted in no items.")
+            # Return True if query/files were processed without error, even if no items found.
+            # Return False only if there was an issue with the priming process itself (e.g. query failed)
+            # The current logic implies primed_successfully reflects if any items were added or query ran.
+            return primed_successfully
+
+
     def get_provider_identifier(self) -> Optional[str]:
         """
         Returns the identifier of the current LLM provider.
@@ -416,11 +486,13 @@ class BaseHandler:
 
     def reset_conversation(self) -> None:
         """
-        Resets the internal conversation history.
+        Resets the internal conversation history and data context.
         """
+        self.log_debug("Resetting conversation and data context.")
         self.conversation_history = []
-        logging.info("Conversation history reset.")
+        self.clear_data_context() # This now also logs
         # LLMInteractionManager is stateless per call, no reset needed there.
+        logging.info("BaseHandler conversation history and data context reset.")
 
     def log_debug(self, message: str) -> None:
         """
@@ -721,27 +793,35 @@ class BaseHandler:
             )
 
     def _build_system_prompt(
-        self, template: Optional[str] = None, file_context: Optional[str] = None
+        self, template_specific_instructions: Optional[str] = None
     ) -> str:
         """
         Builds the complete system prompt for an LLM call.
 
         Args:
-            template: Optional string containing template-specific instructions.
-            file_context: Optional string containing context from relevant files.
+            template_specific_instructions: Optional string containing template-specific instructions.
 
         Returns:
             The final system prompt string.
         """
         final_prompt_parts = [self.base_system_prompt]
 
-        if template:
-            final_prompt_parts.append(template)
+        if template_specific_instructions:
+            final_prompt_parts.append(template_specific_instructions)
 
-        if file_context:
-            # **Fix 3: Append context block without leading newline**
+        data_context_string = ""
+        if self.data_context and self.data_context.items:
+            self.log_debug(f"Data context has {len(self.data_context.items)} items. Creating string representation.")
+            data_context_string = self._create_data_context_string(self.data_context.items)
+            if self.data_context.overall_summary: # Also include overall summary if available
+                summary_block = f"Overall Context Summary:\n{self.data_context.overall_summary}"
+                data_context_string = f"{summary_block}\n\n{data_context_string}"
+        else:
+            self.log_debug("No data context items to include in system prompt.")
+
+        if data_context_string:
             final_prompt_parts.append(
-                f"Relevant File Context:\n```\n{file_context}\n```"
+                f"Relevant File Context:\n```\n{data_context_string}\n```"
             )
 
         final_prompt = "\n\n".join(final_prompt_parts).strip()
@@ -750,15 +830,56 @@ class BaseHandler:
         )
         return final_prompt
 
-    def _get_relevant_files(self, query: str) -> List[str]:
-        """Gets relevant files based on query (Delegated to FileContextManager)."""
-        self.log_debug(f"Getting relevant files for query: '{query[:100]}...'")
-        return self.file_context_manager.get_relevant_files(query)
+    def _get_relevant_files(self, query: str) -> Optional[AssociativeMatchResult]:
+        """
+        Gets relevant context from MemorySystem based on a query.
+        Returns an AssociativeMatchResult or None if an error occurs.
+        """
+        self.log_debug(f"Getting relevant files from MemorySystem for query: '{query[:100]}...'")
+        input_data = ContextGenerationInput(query=query)
+        try:
+            # Assuming self.memory_system is type-hinted or known to have get_relevant_context_for
+            match_result: Optional[AssociativeMatchResult] = self.memory_system.get_relevant_context_for(input_data) # type: ignore
 
-    def _create_file_context(self, file_paths: List[str]) -> str:
-        """Creates context string from file paths (Delegated to FileContextManager)."""
-        self.log_debug(f"Creating file context for paths: {file_paths}")
-        return self.file_context_manager.create_file_context(file_paths)
+            if match_result and getattr(match_result, 'error', None):
+                self.log_debug(f"MemorySystem returned error for query '{query}': {match_result.error}")
+                return None
+            
+            if match_result and match_result.matches is not None: 
+                 self.log_debug(f"MemorySystem returned {len(match_result.matches)} matches for query '{query}'.")
+            elif match_result is None:
+                self.log_debug(f"MemorySystem returned no result for query '{query}'.")
+            else: 
+                self.log_debug(f"MemorySystem returned result with no matches attribute or None matches for query '{query}'.")
+            
+            return match_result
+        except Exception as e:
+            logging.error(f"Exception calling MemorySystem for query '{query}': {e}", exc_info=True)
+            return None
+
+    def _create_data_context_string(self, items: List[MatchItem]) -> str:
+        """
+        Creates a formatted textual representation from a list of MatchItem objects.
+        Ensures content is available for each item.
+        """
+        self.log_debug(f"Creating data context string for {len(items)} MatchItems.")
+        context_parts: List[str] = []
+        for item in items:
+            self.file_context_manager.ensure_match_item_content(item) # Hydrate content if needed
+            if item.content: # Only include items that have content
+                # Use item.id (which should be an absolute path or unique ID)
+                # and item.content_type for formatting.
+                header = f"--- Item ID: {item.id} (Type: {item.content_type}) ---"
+                if item.source_path and item.source_path != item.id: # Add source_path if different and present
+                    header = f"--- Item ID: {item.id} (Source: {item.source_path}, Type: {item.content_type}) ---"
+                
+                context_parts.append(f"{header}\n{item.content}\n--- End Item ID: {item.id} ---")
+            else:
+                self.log_debug(f"Skipping MatchItem {item.id} in context string as content is None after ensuring.")
+        
+        final_context_string = "\n\n".join(context_parts)
+        self.log_debug(f"Built data context string (length {len(final_context_string)}).")
+        return final_context_string
 
     def _execute_tool(self, tool_name: str, tool_input: Dict[str, Any]) -> TaskResult:
         """

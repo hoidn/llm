@@ -178,55 +178,52 @@ class Application:
             default_model = handler_config.get('default_model_identifier', "anthropic:claude-3-5-sonnet-latest")
             self.passthrough_handler = PassthroughHandler(
                 task_system=self.task_system, # Pass TaskSystem instance
-                memory_system=None, # Pass None initially, set below
+                memory_system=None, # Pass None initially, will be set after MemorySystem is created
                 config=handler_config,
                 default_model_identifier=default_model
             )
-            logger.info("PassthroughHandler initialized.")
-
-            # Get provider identifier for tool determination
-            provider_id = self.passthrough_handler.get_provider_identifier()
-            logger.info(f"Provider identifier: {provider_id}")
-
-            # Determine active tools based on provider (DEFERRED - done after registration)
-            # active_tools = self._determine_active_tools(provider_id)
-
-            # Set active tools on the handler (DEFERRED - done after registration)
-            # if active_tools:
-            #     self.passthrough_handler.set_active_tool_definitions(active_tools)
-            #     logger.info(f"Set {len(active_tools)} active tool definitions on handler")
+            logger.info("PassthroughHandler initialized (MemorySystem to be set).")
 
             # 3. Instantiate MemorySystem (needs Handler, TaskSystem, FileManager)
+            # The handler passed here is the one we just created.
             self.memory_system = MemorySystem(
-                handler=self.passthrough_handler, # Pass Handler instance
-                task_system=self.task_system, # Pass TaskSystem instance
-                file_access_manager=self.file_access_manager, # Pass FileManager instance
+                handler=self.passthrough_handler, 
+                task_system=self.task_system, 
+                file_access_manager=self.file_access_manager, 
                 config=self.config.get('memory_config')
             )
             logger.info("MemorySystem initialized.")
 
             # 4. Complete wiring dependencies
+            # Set the fully initialized MemorySystem on PassthroughHandler
+            # This completes the circular dependency wiring.
+            if hasattr(self.passthrough_handler, 'memory_system'):
+                self.passthrough_handler.memory_system = self.memory_system
+                logger.info("MemorySystem instance set on PassthroughHandler.")
+            else:
+                logger.warning("PassthroughHandler instance does not have a 'memory_system' attribute to set.")
+
             # Ensure TaskSystem has memory_system attribute or setter
             if hasattr(self.task_system, 'memory_system'):
-                self.task_system.memory_system = self.memory_system # Set memory_system on TaskSystem
+                self.task_system.memory_system = self.memory_system 
             else:
                 logger.warning("TaskSystem instance does not have a 'memory_system' attribute to set.")
+            
             # Ensure TaskSystem has set_handler method
             if hasattr(self.task_system, 'set_handler'):
-                 self.task_system.set_handler(self.passthrough_handler) # Set handler on TaskSystem
+                 self.task_system.set_handler(self.passthrough_handler) 
             else:
                  logger.error("TaskSystem does not have set_handler method! Cannot inject handler.")
                  raise AttributeError("TaskSystem missing set_handler method")
-            # Ensure PassthroughHandler has memory_system attribute or setter
-            if hasattr(self.passthrough_handler, 'memory_system'):
-                self.passthrough_handler.memory_system = self.memory_system # Set memory_system on Handler
-            else:
-                logger.warning("PassthroughHandler instance does not have a 'memory_system' attribute to set.")
             
             # Re-initialize FileContextManager in BaseHandler with the correct MemorySystem
+            # This is crucial because BaseHandler's __init__ creates a FileContextManager
+            # with the memory_system it receives at that point. If memory_system was None
+            # or a placeholder, FCM needs to be updated.
             if self.passthrough_handler and self.passthrough_handler.file_manager and self.memory_system:
+                # Accessing BaseHandler's file_context_manager directly to re-initialize
                 self.passthrough_handler.file_context_manager = FileContextManager(
-                    memory_system=self.memory_system,
+                    memory_system=self.memory_system, # Pass the now fully initialized MemorySystem
                     file_manager=self.passthrough_handler.file_manager
                 )
                 logger.info("Re-initialized FileContextManager in BaseHandler with correct MemorySystem.")
