@@ -830,32 +830,15 @@ class BaseHandler:
         )
         return final_prompt
 
-    def _get_relevant_files(self, query: str) -> Optional[AssociativeMatchResult]:
+    def _get_relevant_files(self, query: str) -> AssociativeMatchResult: # <<< CHANGE TYPE HINT
+        """Gets relevant context items based on a query.
+        This method is now primarily a helper for `prime_data_context`.
+        Delegates to `FileContextManager.get_relevant_files`.
         """
-        Gets relevant context from MemorySystem based on a query.
-        Returns an AssociativeMatchResult or None if an error occurs.
-        """
-        self.log_debug(f"Getting relevant files from MemorySystem for query: '{query[:100]}...'")
-        input_data = ContextGenerationInput(query=query)
-        try:
-            # Assuming self.memory_system is type-hinted or known to have get_relevant_context_for
-            match_result: Optional[AssociativeMatchResult] = self.memory_system.get_relevant_context_for(input_data) # type: ignore
-
-            if match_result and getattr(match_result, 'error', None):
-                self.log_debug(f"MemorySystem returned error for query '{query}': {match_result.error}")
-                return None
-            
-            if match_result and match_result.matches is not None: 
-                 self.log_debug(f"MemorySystem returned {len(match_result.matches)} matches for query '{query}'.")
-            elif match_result is None:
-                self.log_debug(f"MemorySystem returned no result for query '{query}'.")
-            else: 
-                self.log_debug(f"MemorySystem returned result with no matches attribute or None matches for query '{query}'.")
-            
-            return match_result
-        except Exception as e:
-            logging.error(f"Exception calling MemorySystem for query '{query}': {e}", exc_info=True)
-            return None
+        self.log_debug(f"Getting relevant files for query: '{query[:100]}...'")
+        # This method should directly return what file_context_manager.get_relevant_files returns.
+        # FileContextManager.get_relevant_files is expected to return AssociativeMatchResult.
+        return self.file_context_manager.get_relevant_files(query)
 
     def _create_data_context_string(self, items: List[MatchItem]) -> str:
         """

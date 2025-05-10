@@ -555,17 +555,33 @@ def test_execute_tool_execution_error(base_handler_instance):
     mock_executor.assert_called_once_with(tool_input)
 
 
+from src.system.models import AssociativeMatchResult, MatchItem # Add these imports
+
+# ...
+
 def test_get_relevant_files_delegation(base_handler_instance):
-    """Verify _get_relevant_files delegates to FileContextManager."""
-    # Access the mocked file_context_manager via the handler instance
+    """Verify _get_relevant_files delegates to FileContextManager and returns AssociativeMatchResult."""
     mock_fcm = base_handler_instance.file_context_manager
-    mock_fcm.get_relevant_files.return_value = ["file1.txt", "file2.py"]
+    
+    # Configure mock_fcm to return an AssociativeMatchResult object
+    # Use MatchItem as per src/system/models.py
+    mock_match_item1 = MatchItem(id="file1.txt", content="text from file1", relevance_score=0.9, content_type="file_content")
+    mock_match_item2 = MatchItem(id="file2.py", content="text from file2", relevance_score=0.8, content_type="file_content")
+    expected_amr = AssociativeMatchResult(
+        context_summary="Mocked summary",
+        matches=[mock_match_item1, mock_match_item2],
+        error=None # Explicitly set error to None for clarity
+    )
+    mock_fcm.get_relevant_files.return_value = expected_amr
+    
     query = "search query"
+    result = base_handler_instance._get_relevant_files(query) # Should now return AssociativeMatchResult
 
-    result = base_handler_instance._get_relevant_files(query)
-
-    assert result == ["file1.txt", "file2.py"]
     mock_fcm.get_relevant_files.assert_called_once_with(query)
+    assert isinstance(result, AssociativeMatchResult)
+    assert result == expected_amr # Compare the whole object
+    assert result.matches[0].id == "file1.txt"
+    assert result.matches[1].id == "file2.py"
 
 
 # test_get_relevant_files_delegation is now obsolete as BaseHandler._get_relevant_files

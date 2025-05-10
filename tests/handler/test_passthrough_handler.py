@@ -203,25 +203,60 @@ def test_handle_query_active_subtask_continues(passthrough_handler, mocker):
 
 
 def test_handle_query_notes_include_relevant_files_from_context(passthrough_handler, mocker):
+from src.system.models import TaskResult, DataContext, MatchItem # Add DataContext and MatchItem imports
+
+# ...
+
+def test_handle_query_notes_include_relevant_files_from_context(passthrough_handler, mocker): # mocker might not be needed here
     """Test that relevant_files_from_context note is populated."""
     query = "Query for notes test"
-    passthrough_handler.prime_data_context = MagicMock(return_value=True)
-    passthrough_handler._create_new_subtask = MagicMock(return_value=TaskResult(status="COMPLETE", content="notes test", notes={}))
 
-    # Setup mock data_context
-    mock_item1 = MagicMock()
-    mock_item1.id = "/file1.txt"
-    mock_item2 = MagicMock() # Item without id to test hasattr
-    mock_item3 = MagicMock()
-    mock_item3.id = "/file3.py"
-    
-    passthrough_handler.data_context = MagicMock()
-    passthrough_handler.data_context.items = [mock_item1, mock_item2, mock_item3]
+    # Mock prime_data_context to set handler.data_context correctly
+    # and return True for success.
+    # Initialize with a basic DataContext, items will be set by the side_effect
+    mock_data_context_instance = DataContext(retrieved_at="sometime", items=[])
 
-    result = passthrough_handler.handle_query(query)
+    # Use actual MatchItem Pydantic models for items with an ID
+    mock_item1 = MatchItem(id="/file1.txt", content="content1", relevance_score=1.0, content_type="file_content")
+    # For mock_item2, use a MagicMock instance without an 'id' attribute set.
+    # This ensures hasattr(mock_item2, 'id') is False, so it's filtered out.
+    mock_item2 = MagicMock()
+    # Ensure 'id' is not accidentally created on mock_item2 if it's accessed before hasattr check.
+    # One way to be very explicit is to configure it not to have 'id':
+    # del mock_item2.id # This would error if 'id' doesn't exist.
+    # Or, ensure it's a mock that won't create attributes on access if not spec'd:
+    # mock_item2 = MagicMock(spec=[]) # spec=[] means no attributes unless explicitly added.
+    # For this test, a simple MagicMock() should suffice if 'id' is not accessed on it
+    # before the production code's hasattr check.
 
-    assert "relevant_files_from_context" in result.notes
-    assert result.notes["relevant_files_from_context"] == ["/file1.txt", "/file3.py"]
+    mock_item3 = MatchItem(id="/file3.py", content="content3", relevance_score=0.8, content_type="file_content")
+
+    # This list will be set on handler.data_context.items by the side_effect
+    items_for_context = [mock_item1, mock_item2, mock_item3]
+    mock_data_context_instance.items = items_for_context
+
+
+    def prime_data_context_side_effect(query_param): # Renamed arg to avoid clash
+        # Set the data_context on the handler instance
+        passthrough_handler.data_context = DataContext(
+            retrieved_at="test_time",
+            source_query=query_param,
+            items=items_for_context # Use the list defined above
+        )
+        return True
+
+    # Patch prime_data_context on the instance
+    with patch.object(passthrough_handler, 'prime_data_context', side_effect=prime_data_context_side_effect) as mock_prime_dc, \
+         patch.object(passthrough_handler, '_create_new_subtask', return_value=TaskResult(status="COMPLETE", content="notes test", notes={})) as mock_create_subtask:
+
+        result = passthrough_handler.handle_query(query)
+
+        mock_prime_dc.assert_called_once_with(query=query)
+        mock_create_subtask.assert_called_once_with(query=query) # Assuming active_subtask_id is None
+
+        assert "relevant_files_from_context" in result.notes
+        # mock_item2 (MagicMock without 'id' set) should be filtered out by hasattr(item, 'id')
+        assert result.notes["relevant_files_from_context"] == ["/file1.txt", "/file3.py"]
 
 
 def test_handle_query_unexpected_exception(passthrough_handler, mocker):
