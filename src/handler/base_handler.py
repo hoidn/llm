@@ -544,7 +544,7 @@ class BaseHandler:
             payload_log = {
                 "prompt": prompt,
                 "system_prompt_override": system_prompt_override,
-                "tools_override": [t.__name__ if hasattr(t, '__name__') else str(t) for t in tools_override] if tools_override else None, # Log names
+                "tools_override": [t.__name__ if hasattr(t, '__name__') else str(t) for t in task_tools_config[0]] if task_tools_config and task_tools_config[0] else None, # Log names from task_tools_config
                 "output_type_override": str(output_type_override),
                 "conversation_history": self.conversation_history,
                 "active_tool_definitions": self.active_tool_definitions, # Log active defs
