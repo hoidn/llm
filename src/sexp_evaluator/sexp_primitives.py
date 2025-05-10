@@ -12,7 +12,7 @@ from sexpdata import Symbol
 
 from src.sexp_evaluator.sexp_environment import SexpEnvironment
 from src.system.errors import SexpEvaluationError
-from src.system.models import ContextGenerationInput, AssociativeMatchResult, MatchTuple # For get_context
+from src.system.models import ContextGenerationInput, AssociativeMatchResult, MatchItem # For get_context
 
 # SexpNode is an alias for Any, representing a parsed S-expression node.
 SexpNode = Any 
@@ -127,7 +127,10 @@ class PrimitiveProcessor:
             logging.error(f"  MemorySystem returned error for get_context: {match_result.error}")
             raise SexpEvaluationError("Context retrieval failed (MemorySystem error).", original_expr_str, error_details=match_result.error)
 
-        file_paths = [m.path for m in match_result.matches if isinstance(m, MatchTuple)]
+        # MatchItem.id is expected to hold the file path or unique identifier.
+        # MatchItem.source_path could also be a candidate if 'id' is not the path.
+        # Assuming 'id' is the correct field for the file path here.
+        file_paths = [m.id for m in match_result.matches if isinstance(m, MatchItem) and m.id]
         logging.debug(f"PrimitiveProcessor.apply_get_context_primitive END: -> {file_paths}")
         return file_paths
 
