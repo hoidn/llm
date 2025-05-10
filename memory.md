@@ -84,6 +84,17 @@
     - Updated `src/orchestration/coding_workflow_orchestrator_IDL.md`.
 - **Fix Tool Invocation Names in Orchestrator:** Changed tool invocation in `CodingWorkflowOrchestrator` from colon-separated (e.g., "aider:automatic") to underscore-separated (e.g., "aider_automatic") to match how tools are registered in `Application`. This resolves "Identifier not found" errors from the `Dispatcher`.
 - **Refine Orchestrator Success Reporting:** Modified `CodingWorkflowOrchestrator.run()` to construct a definitive "COMPLETE" `TaskResult` when the analysis phase verdict is "SUCCESS", rather than returning the potentially "FAILED" `aider_result`. This ensures the overall workflow status accurately reflects the analysis outcome.
+- **Phase 10c: Implement Granular History Control and Refine Workflow Context:**
+    - Defined `HistoryConfigSettings` Pydantic model in `src/system/models.py`.
+    - Added `history_config: Optional[HistoryConfigSettings]` to `SubtaskRequest` model.
+    - Enhanced `src/sexp_evaluator/sexp_special_forms.py::handle_defatom_form` to parse `(history_config (quote ((key val)...)))` clauses, converting S-expression booleans/nil to Python equivalents, and storing the resulting dictionary in `template_dict["history_config"]`.
+    - Modified `src/task_system/task_system.py::execute_atomic_template` to merge `history_config` from template and request (request overrides), and pass the resolved `HistoryConfigSettings` object to `AtomicTaskExecutor`.
+    - Updated `src/executors/atomic_executor.py::execute_body` signature to accept `history_config: Optional[HistoryConfigSettings]` and pass it to `handler._execute_llm_call`.
+    - Modified `src/handler/base_handler.py::_execute_llm_call` signature to accept `history_config`. Implemented logic to prepare LLM history based on `history_config.use_session_history` and `history_config.history_turns_to_include`, and to record the current turn in session history based on `history_config.record_in_session_history`. Ensured history passed to `LLMInteractionManager` consists of pydantic-ai message objects.
+    - Updated `DEFATOM_GENERATE_PLAN_S_EXPRESSION` and `DEFATOM_COMBINED_ANALYSIS_S_EXPRESSION` in `src/scripts/run_coding_workflow.py` to include `(history_config (quote ((use_session_history false) (record_in_session_history true))))`.
+    - Verified `src/orchestration/coding_workflow_orchestrator.py::_analyze_iteration` passes full `initial_task_context`.
+    - Updated relevant IDL files (`types.md`, `sexp_evaluator_IDL.md`, `task_system_IDL.md`, `atomic_executor_IDL.md`, `base_handler_IDL.md`).
+    - Fixed related test failures and flake8 issues.
 
 ## Next Steps
 
