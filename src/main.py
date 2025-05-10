@@ -342,7 +342,8 @@ Select the best matching paths *from the provided metadata* and output the JSON.
             self.system_executors = SystemExecutorFunctions(
                 memory_system=self.memory_system,
                 file_manager=self.file_access_manager,
-                command_executor_module=command_executor
+                command_executor_module=command_executor,
+                handler_instance=self.passthrough_handler # Add this argument
             )
             logger.info("SystemExecutorFunctions instance created in Application.")
 
@@ -625,6 +626,64 @@ Select the best matching paths *from the provided metadata* and output the JSON.
             except Exception as e:
                 logger.exception(f"Error registering system tool {tool['spec']['name']}: {e}")
         logger.info(f"Registered {registered_count}/{len(tools_to_register)} system tools.")
+
+        # Inside _register_system_tools method
+        # ... (after other tool registrations) ...
+
+        executors_ready_for_handler_tools = (
+            self.system_executors and 
+            hasattr(self.system_executors, 'handler_instance') and 
+            self.system_executors.handler_instance
+        )
+
+        if executors_ready_for_handler_tools:
+            # Tool: system_clear_handler_data_context
+            clear_context_tool_spec = {
+                "name": "system_clear_handler_data_context", # Use underscores for LLM compatibility
+                "description": "Clears the active data context in the handler.",
+                "input_schema": {"type": "object", "properties": {}} # No params
+            }
+            success_clear = self.passthrough_handler.register_tool(
+                clear_context_tool_spec,
+                self.system_executors.execute_clear_handler_data_context
+            )
+            if success_clear:
+                # registered_count += 1 # Uncomment if registered_count is used
+                logger.debug(f"Registered system tool: {clear_context_tool_spec['name']}")
+            else:
+                logger.warning(f"Failed to register system tool: {clear_context_tool_spec['name']}")
+
+            # Tool: system_prime_handler_data_context
+            prime_context_tool_spec = {
+                "name": "system_prime_handler_data_context", # Use underscores
+                "description": "Primes the data context in the handler using a query or initial files.",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": ["string", "null"], "description": "Optional query for associative matching."},
+                        "initial_files": {
+                            "type": ["array", "null"], 
+                            "items": {"type": "string"}, 
+                            "description": "Optional list of file paths to seed context."
+                        }
+                    }
+                    # No 'required' field; executor validates at least one key is present.
+                }
+            }
+            success_prime = self.passthrough_handler.register_tool(
+                prime_context_tool_spec,
+                self.system_executors.execute_prime_handler_data_context
+            )
+            if success_prime:
+                # registered_count += 1 # Uncomment if registered_count is used
+                logger.debug(f"Registered system tool: {prime_context_tool_spec['name']}")
+            else:
+                logger.warning(f"Failed to register system tool: {prime_context_tool_spec['name']}")
+        else:
+            logger.error(
+                "Skipping registration of system_clear_handler_data_context and system_prime_handler_data_context: "
+                "SystemExecutorFunctions not properly initialized with a handler instance."
+            )
 
 
     def _load_mcp_config(self, config_path: str = ".mcp.json"):

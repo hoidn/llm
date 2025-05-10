@@ -180,6 +180,7 @@ type TaskFailureReason =
     | 'connection_error' // Added for MCP/network issues
     | 'protocol_error' // Added for MCP protocol issues
     | 'configuration_error' // Added for config issues (e.g., MCP command)
+    | 'context_priming_failure'
     | 'unexpected_error';
 
 // Forward declaration for TaskError used within TaskFailureDetails

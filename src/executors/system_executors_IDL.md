@@ -7,6 +7,7 @@ module src.executors.system_executors {
     # @depends_on(src.handler.file_access.FileAccessManager) // For reading/writing/listing files
     # @depends_on(src.handler.command_executor.CommandExecutorFunctions) // For executing shell commands
     # @depends_on(src.handler.base_handler.BaseHandler) // For accessing handler's context methods
+    # @depends_on(src.handler.base_handler.BaseHandler) // For accessing handler's context methods
 
     // Interface aggregating system-level Direct Tool executor functions.
     // These functions are typically registered with a handler (e.g., PassthroughHandler)

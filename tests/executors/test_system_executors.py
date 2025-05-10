@@ -11,11 +11,13 @@ from inspect import signature # For signature check
 from src.executors.system_executors import SystemExecutorFunctions
 from src.system.models import (
     ContextGenerationInput, AssociativeMatchResult, MatchTuple,
-    TaskResult, TaskFailureError, TaskFailureReason
+    ContextGenerationInput, AssociativeMatchResult, MatchTuple,
+    TaskResult, TaskFailureError, TaskFailureReason, DataContext, MatchItem
 )
 # Import classes for spec parameter in MagicMock
 from src.memory.memory_system import MemorySystem
 from src.handler.file_access import FileAccessManager
+from src.handler.base_handler import BaseHandler
 
 @pytest.fixture
 def mock_memory_system():
@@ -59,12 +61,21 @@ def mock_command_executor():
     return command_executor
 
 @pytest.fixture
-def system_executor_instance(mock_memory_system, mock_file_manager, mock_command_executor):
+def mock_handler_for_executors() -> MagicMock:
+    """Provides a mock BaseHandler instance for executor tests."""
+    mock_handler = MagicMock(spec=BaseHandler)
+    # Pre-configure data_context attribute as it's accessed, can be reconfigured in tests
+    mock_handler.data_context = None 
+    return mock_handler
+
+@pytest.fixture
+def system_executor_instance(mock_memory_system, mock_file_manager, mock_command_executor, mock_handler_for_executors): # Added mock_handler_for_executors
     """Fixture providing an instance of SystemExecutorFunctions with mock dependencies."""
     return SystemExecutorFunctions(
         memory_system=mock_memory_system,
         file_manager=mock_file_manager,
-        command_executor_module=mock_command_executor
+        command_executor_module=mock_command_executor,
+        handler_instance=mock_handler_for_executors # Pass the new mock
     )
 
 # --- Basic Module/Class Tests ---
@@ -77,6 +88,8 @@ def test_module_structure(system_executor_instance):
     assert hasattr(system_executor_instance, "execute_list_directory")
     assert hasattr(system_executor_instance, "execute_write_file")
     assert hasattr(system_executor_instance, "execute_shell_command")
+    assert hasattr(system_executor_instance, "execute_clear_handler_data_context")
+    assert hasattr(system_executor_instance, "execute_prime_handler_data_context")
 
     # Check method signatures
     # Check execute_get_context signature
@@ -93,6 +106,18 @@ def test_module_structure(system_executor_instance):
 
     # Check execute_shell_command signature
     sig = signature(system_executor_instance.execute_shell_command)
+    params = list(sig.parameters.keys())
+    assert len(params) == 1
+    assert params[0] == "params"
+
+    # Check execute_clear_handler_data_context signature
+    sig = signature(system_executor_instance.execute_clear_handler_data_context)
+    params = list(sig.parameters.keys())
+    assert len(params) == 1
+    assert params[0] == "params"
+
+    # Check execute_prime_handler_data_context signature
+    sig = signature(system_executor_instance.execute_prime_handler_data_context)
     params = list(sig.parameters.keys())
     assert len(params) == 1
     assert params[0] == "params"
@@ -673,3 +698,197 @@ def test_execute_shell_command_failure_reporting(system_executor_instance):
         cwd=None,
         timeout=None
     )
+
+# --- Tests for execute_clear_handler_data_context ---
+
+def test_execute_clear_handler_data_context_success(system_executor_instance, mock_handler_for_executors): # Use the correct fixture name
+    """Test successful clearing of handler data context."""
+    executor = system_executor_instance
+    
+    result = executor.execute_clear_handler_data_context({})
+    
+    mock_handler_for_executors.clear_data_context.assert_called_once_with()
+    assert result["status"] == "COMPLETE"
+    assert result["content"] == "Handler data context cleared successfully."
+    # Check that notes is empty or None as per TaskResult default
+    assert "notes" not in result or result["notes"] == {} or result["notes"] is None
+
+def test_execute_clear_handler_data_context_handler_unavailable(system_executor_instance):
+    """Test clear_handler_data_context when handler_instance is None."""
+    executor = system_executor_instance
+    # Simulate handler_instance being None
+    original_handler = executor.handler_instance
+    executor.handler_instance = None
+    
+    result = executor.execute_clear_handler_data_context({})
+    
+    assert result["status"] == "FAILED"
+    assert "Handler instance not configured" in result["content"]
+    assert result["notes"]["error"]["reason"] == "dependency_error"
+    
+    # Restore handler_instance for other tests
+    executor.handler_instance = original_handler
+
+def test_execute_clear_handler_data_context_exception_in_handler(system_executor_instance, mock_handler_for_executors):
+    """Test clear_handler_data_context when handler.clear_data_context raises an exception."""
+    executor = system_executor_instance
+    mock_handler_for_executors.clear_data_context.side_effect = Exception("Handler internal error")
+    
+    result = executor.execute_clear_handler_data_context({})
+    
+    assert result["status"] == "FAILED"
+    assert "Error clearing handler data context: Handler internal error" in result["content"]
+    assert result["notes"]["error"]["reason"] == "tool_execution_error"
+
+# --- Tests for execute_prime_handler_data_context ---
+
+def test_execute_prime_handler_data_context_success_with_query(system_executor_instance, mock_handler_for_executors):
+    """Test successful priming with query only."""
+    executor = system_executor_instance
+    mock_handler = mock_handler_for_executors
+
+    mock_handler.prime_data_context.return_value = True
+    # Simulate DataContext structure after priming
+    mock_data_context_instance = MagicMock(spec=DataContext)
+    mock_data_context_instance.items = [MagicMock(spec=MatchItem)] * 2 # Simulate 2 items
+    mock_data_context_instance.overall_summary = None # No specific summary
+    mock_handler.data_context = mock_data_context_instance
+    
+    params = {"query": "test query"}
+    result = executor.execute_prime_handler_data_context(params)
+    
+    mock_handler.prime_data_context.assert_called_once_with(query="test query", initial_files=None)
+    assert result["status"] == "COMPLETE"
+    assert result["content"] == "Context primed with 2 item(s)."
+    assert result["notes"] == {"items_primed": 2}
+
+def test_execute_prime_handler_data_context_success_with_initial_files(system_executor_instance, mock_handler_for_executors):
+    """Test successful priming with initial_files only."""
+    executor = system_executor_instance
+    mock_handler = mock_handler_for_executors
+
+    mock_handler.prime_data_context.return_value = True
+    mock_data_context_instance = MagicMock(spec=DataContext)
+    mock_data_context_instance.items = [MagicMock(spec=MatchItem)] * 1
+    mock_data_context_instance.overall_summary = "Files processed."
+    mock_handler.data_context = mock_data_context_instance
+
+    params = {"initial_files": ["/file1.py"]}
+    result = executor.execute_prime_handler_data_context(params)
+    
+    mock_handler.prime_data_context.assert_called_once_with(query=None, initial_files=["/file1.py"])
+    assert result["status"] == "COMPLETE"
+    assert result["content"] == "Files processed."
+    assert result["notes"] == {"items_primed": 1}
+
+def test_execute_prime_handler_data_context_success_with_query_and_files(system_executor_instance, mock_handler_for_executors):
+    """Test successful priming with both query and initial_files."""
+    executor = system_executor_instance
+    mock_handler = mock_handler_for_executors
+
+    mock_handler.prime_data_context.return_value = True
+    mock_data_context_instance = MagicMock(spec=DataContext)
+    mock_data_context_instance.items = [MagicMock(spec=MatchItem)] * 5
+    mock_data_context_instance.overall_summary = "Query and files context."
+    mock_handler.data_context = mock_data_context_instance
+
+    params = {"query": "search this", "initial_files": ["/fileA.txt", "/fileB.txt"]}
+    result = executor.execute_prime_handler_data_context(params)
+    
+    mock_handler.prime_data_context.assert_called_once_with(query="search this", initial_files=["/fileA.txt", "/fileB.txt"])
+    assert result["status"] == "COMPLETE"
+    assert result["content"] == "Query and files context."
+    assert result["notes"] == {"items_primed": 5}
+
+def test_execute_prime_handler_data_context_success_no_items_found(system_executor_instance, mock_handler_for_executors):
+    """Test successful priming operation but no items are actually found/primed."""
+    executor = system_executor_instance
+    mock_handler = mock_handler_for_executors
+
+    mock_handler.prime_data_context.return_value = True # Operation itself succeeded
+    mock_handler.data_context = None # Simulate no context object created or items found
+    
+    params = {"query": "empty result query"}
+    result = executor.execute_prime_handler_data_context(params)
+    
+    mock_handler.prime_data_context.assert_called_once_with(query="empty result query", initial_files=None)
+    assert result["status"] == "COMPLETE"
+    assert "Context priming reported success, but no data_context object found on handler." in result["content"]
+    assert result["notes"] == {"items_primed": 0}
+
+def test_execute_prime_handler_data_context_failure_from_handler(system_executor_instance, mock_handler_for_executors):
+    """Test when handler.prime_data_context returns False."""
+    executor = system_executor_instance
+    mock_handler = mock_handler_for_executors
+
+    mock_handler.prime_data_context.return_value = False # Simulate failure
+    
+    params = {"query": "failing query"}
+    result = executor.execute_prime_handler_data_context(params)
+    
+    mock_handler.prime_data_context.assert_called_once_with(query="failing query", initial_files=None)
+    assert result["status"] == "FAILED"
+    assert "Failed to prime handler data context" in result["content"]
+    assert result["notes"]["error"]["reason"] == "context_priming_failure"
+
+def test_execute_prime_handler_data_context_validation_no_params(system_executor_instance):
+    """Test input validation when neither query nor initial_files is provided."""
+    executor = system_executor_instance
+    result = executor.execute_prime_handler_data_context({})
+    assert result["status"] == "FAILED"
+    assert "At least one of 'query' or 'initial_files' parameter keys must be provided" in result["content"]
+    assert result["notes"]["error"]["reason"] == "input_validation_failure"
+
+def test_execute_prime_handler_data_context_validation_invalid_query_type(system_executor_instance):
+    """Test input validation for invalid query type."""
+    executor = system_executor_instance
+    params = {"query": 123} # Query should be string or None
+    result = executor.execute_prime_handler_data_context(params)
+    assert result["status"] == "FAILED"
+    assert "Invalid type for 'query' parameter" in result["content"]
+    assert result["notes"]["error"]["reason"] == "input_validation_failure"
+
+def test_execute_prime_handler_data_context_validation_invalid_initial_files_type(system_executor_instance):
+    """Test input validation for invalid initial_files type."""
+    executor = system_executor_instance
+    params = {"initial_files": "not_a_list"} # initial_files should be list or None
+    result = executor.execute_prime_handler_data_context(params)
+    assert result["status"] == "FAILED"
+    assert "Invalid type for 'initial_files' parameter" in result["content"]
+    assert result["notes"]["error"]["reason"] == "input_validation_failure"
+
+def test_execute_prime_handler_data_context_validation_invalid_initial_files_item_type(system_executor_instance):
+    """Test input validation for invalid item type in initial_files list."""
+    executor = system_executor_instance
+    params = {"initial_files": ["/file1.py", 123]} # Items should be strings
+    result = executor.execute_prime_handler_data_context(params)
+    assert result["status"] == "FAILED"
+    assert "All items in 'initial_files' list must be strings" in result["content"]
+    assert result["notes"]["error"]["reason"] == "input_validation_failure"
+
+def test_execute_prime_handler_data_context_handler_unavailable(system_executor_instance):
+    """Test prime_handler_data_context when handler_instance is None."""
+    executor = system_executor_instance
+    original_handler = executor.handler_instance
+    executor.handler_instance = None
+    
+    params = {"query": "test"}
+    result = executor.execute_prime_handler_data_context(params)
+    
+    assert result["status"] == "FAILED"
+    assert "Handler instance not configured" in result["content"]
+    assert result["notes"]["error"]["reason"] == "dependency_error"
+    
+    executor.handler_instance = original_handler
+
+def test_execute_prime_handler_data_context_exception_in_handler(system_executor_instance, mock_handler_for_executors):
+    """Test prime_handler_data_context when handler.prime_data_context raises an exception."""
+    executor = system_executor_instance
+    mock_handler_for_executors.prime_data_context.side_effect = Exception("Handler priming error")
+    
+    params = {"query": "test"}
+    result = executor.execute_prime_handler_data_context(params)
+    
+    assert result["status"] == "FAILED"
+    assert "Error priming handler data context: Handler priming error" in result["content"]
+    assert result["notes"]["error"]["reason"] == "tool_execution_error"

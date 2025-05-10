@@ -18,6 +18,7 @@ from src.system.models import (
 )
 # Import dependencies for type hinting
 from src.handler.file_access import FileAccessManager
+from src.handler.base_handler import BaseHandler
 from src.memory.memory_system import MemorySystem
 from src.handler import command_executor
 
@@ -44,7 +45,7 @@ class SystemExecutorFunctions:
     Requires dependencies to be injected via constructor.
     """
     
-    def __init__(self, memory_system: MemorySystem, file_manager: FileAccessManager, command_executor_module: Any):
+    def __init__(self, memory_system: MemorySystem, file_manager: FileAccessManager, command_executor_module: Any, handler_instance: BaseHandler):
         """
         Initializes the SystemExecutorFunctions instance with dependencies.
         
@@ -52,6 +53,7 @@ class SystemExecutorFunctions:
             memory_system: MemorySystem instance for context retrieval
             file_manager: FileAccessManager instance for file operations
             command_executor_module: Module containing command execution functions
+            handler_instance: BaseHandler instance for context management tools
         """
         if not memory_system:
             raise ValueError("MemorySystem dependency is required.")
@@ -59,11 +61,14 @@ class SystemExecutorFunctions:
             raise ValueError("FileAccessManager dependency is required.")
         if not command_executor_module:
             raise ValueError("command_executor module dependency is required.")
+        if not handler_instance:
+            raise ValueError("BaseHandler dependency is required.")
             
         self.memory_system = memory_system
         self.file_manager = file_manager
         self.command_executor = command_executor_module
-        logger.info("SystemExecutorFunctions instance created with dependencies.")
+        self.handler_instance = handler_instance
+        logger.info("SystemExecutorFunctions instance created with dependencies (MemorySystem, FileAccessManager, CommandExecutor, BaseHandler).")
     
     def execute_get_context(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -494,3 +499,109 @@ class SystemExecutorFunctions:
             error_msg = f"Unexpected error executing write_file for '{file_path}': {type(e).__name__}: {e}"
             logger.exception(f"execute_write_file: {error_msg}")
             return _create_failed_result_dict("unexpected_error", error_msg)
+
+    def execute_clear_handler_data_context(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        logger.info("Executing system_clear_handler_data_context. Params: %s", params)
+        try:
+            if not self.handler_instance:
+                logger.error("Handler instance not available in SystemExecutorFunctions for clear_handler_data_context.")
+                return _create_failed_result_dict(
+                    reason="dependency_error",
+                    message="Handler instance not configured for system executors."
+                )
+            
+            self.handler_instance.clear_data_context() # BaseHandler.clear_data_context() should be robust
+            logger.info("Handler data context cleared successfully.")
+            return TaskResult(
+                status="COMPLETE",
+                content="Handler data context cleared successfully."
+            ).model_dump(exclude_none=True)
+        except Exception as e:
+            logger.exception("Error executing clear_handler_data_context: %s", e) # Use %s for exception logging
+            return _create_failed_result_dict(
+                reason="tool_execution_error",
+                message=f"Error clearing handler data context: {str(e)}"
+            )
+
+    def execute_prime_handler_data_context(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        logger.info("Executing system_prime_handler_data_context. Params: %s", params)
+        
+        query = params.get("query")
+        initial_files = params.get("initial_files")
+
+        # Validate that at least one key for priming is present
+        if "query" not in params and "initial_files" not in params:
+            error_msg = "At least one of 'query' or 'initial_files' parameter keys must be provided to prime context."
+            logger.error(f"execute_prime_handler_data_context: Input validation failed - {error_msg}")
+            return _create_failed_result_dict(
+                reason="input_validation_failure",
+                message=error_msg
+            )
+        
+        # Validate types if parameters are present (allowing None for optional params)
+        if "query" in params and not (query is None or isinstance(query, str)):
+            error_msg = "Invalid type for 'query' parameter, must be a string or null."
+            logger.error(f"execute_prime_handler_data_context: Input validation failed - {error_msg}")
+            return _create_failed_result_dict("input_validation_failure", error_msg)
+
+        if "initial_files" in params and not (initial_files is None or isinstance(initial_files, list)):
+            error_msg = "Invalid type for 'initial_files' parameter, must be a list of strings or null."
+            logger.error(f"execute_prime_handler_data_context: Input validation failed - {error_msg}")
+            return _create_failed_result_dict("input_validation_failure", error_msg)
+        
+        if isinstance(initial_files, list): # Check items only if it's a list
+            if not all(isinstance(item, str) for item in initial_files):
+                error_msg = "All items in 'initial_files' list must be strings."
+                logger.error(f"execute_prime_handler_data_context: Input validation failed - {error_msg}")
+                return _create_failed_result_dict("input_validation_failure", error_msg)
+
+        try:
+            if not self.handler_instance:
+                logger.error("Handler instance not available in SystemExecutorFunctions for prime_handler_data_context.")
+                return _create_failed_result_dict(
+                    reason="dependency_error",
+                    message="Handler instance not configured for system executors."
+                )
+
+            # BaseHandler.prime_data_context is expected to handle None/empty query/initial_files gracefully
+            success = self.handler_instance.prime_data_context(query=query, initial_files=initial_files)
+            
+            if success:
+                num_items = 0
+                dc_summary_str = "Context primed." 
+                dc_notes = {}
+
+                if self.handler_instance.data_context:
+                    if self.handler_instance.data_context.items is not None:
+                        num_items = len(self.handler_instance.data_context.items)
+                    
+                    if self.handler_instance.data_context.overall_summary:
+                        dc_summary_str = self.handler_instance.data_context.overall_summary
+                    else:
+                        dc_summary_str = f"Context primed with {num_items} item(s)."
+                    
+                    dc_notes["items_primed"] = num_items
+                else: 
+                    dc_summary_str = "Context priming reported success, but no data_context object found on handler."
+                    logger.warning(f"execute_prime_handler_data_context: {dc_summary_str}")
+                    dc_notes["items_primed"] = 0 # Reflect that no items could be confirmed
+
+                logger.info(f"Handler data context primed successfully. Summary: '{dc_summary_str}', Items: {num_items}")
+                return TaskResult(
+                    status="COMPLETE",
+                    content=dc_summary_str,
+                    notes=dc_notes
+                ).model_dump(exclude_none=True)
+            else:
+                error_msg = "Failed to prime handler data context. Underlying prime_data_context operation reported failure."
+                logger.warning(f"execute_prime_handler_data_context: {error_msg}")
+                return _create_failed_result_dict(
+                    reason="context_priming_failure", 
+                    message=error_msg
+                )
+        except Exception as e:
+            logger.exception("Error executing prime_handler_data_context: %s", e) # Use %s for exception
+            return _create_failed_result_dict(
+                reason="tool_execution_error",
+                message=f"Error priming handler data context: {str(e)}"
+            )

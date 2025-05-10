@@ -257,6 +257,16 @@ def test_application_init_wiring(app_components):
     # Assert wiring calls were made (using the instances returned by the mocks)
     app_components['mock_task_system_instance'].set_handler.assert_called_once_with(app.passthrough_handler)
 
+    # Assert SystemExecutorFunctions instantiation call
+    # Assuming app_components["MockSysExecCls"] is the patch object for SystemExecutorFunctions class
+    # And app_components['mock_handler_instance'] is the mock for PassthroughHandler
+    app_components["MockSysExecCls"].assert_called_once_with(
+        memory_system=app.memory_system, # Or ANY if comparing instance is tricky
+        file_manager=app.file_access_manager, # Or ANY
+        command_executor_module=ANY, # Or a specific mock for command_executor module
+        handler_instance=app_components['mock_handler_instance']
+    )
+
     # Verify attribute assignments
     assert app.passthrough_handler.memory_system == app_components['mock_memory_system_instance']
     assert app.task_system.memory_system == app_components['mock_memory_system_instance']
@@ -295,6 +305,21 @@ def test_application_init_wiring(app_components):
     assert callable(shell_command_call.args[1])
     # Assert the executor is the instance method from the real instance
     assert shell_command_call.args[1] == app.system_executors.execute_shell_command
+
+    # Check for new context management tools
+    mock_register_tool_calls = app_components['mock_handler_instance'].register_tool.call_args_list
+    
+    clear_context_tool_call = next((c for c in mock_register_tool_calls if c.args[0].get('name') == 'system_clear_handler_data_context'), None)
+    assert clear_context_tool_call is not None, "system_clear_handler_data_context tool was not registered"
+    assert clear_context_tool_call.args[0]["description"] == "Clears the active data context in the handler."
+    # Assuming app.system_executors is the real instance, its methods are directly passed
+    assert clear_context_tool_call.args[1] == app.system_executors.execute_clear_handler_data_context
+
+    prime_context_tool_call = next((c for c in mock_register_tool_calls if c.args[0].get('name') == 'system_prime_handler_data_context'), None)
+    assert prime_context_tool_call is not None, "system_prime_handler_data_context tool was not registered"
+    assert prime_context_tool_call.args[0]["description"] == "Primes the data context in the handler using a query or initial files."
+    assert prime_context_tool_call.args[0]["input_schema"]["properties"]["query"]["type"] == ["string", "null"]
+    assert prime_context_tool_call.args[1] == app.system_executors.execute_prime_handler_data_context
 
 
 def test_index_repository_success(app_components, tmp_path):
