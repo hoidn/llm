@@ -15,7 +15,7 @@ try:
         InvalidOutputError, ValidationError as ModelValidationError, XMLParseError, TaskError, # Alias ValidationError
         ContextManagement, SUBTASK_CONTEXT_DEFAULTS,
         ReturnStatus, TaskType, AtomicTaskSubtype,
-        HandlerConfig, TaskResult, ContextGenerationInput,
+        HandlerConfig, TaskResult, ContextGenerationInput, HistoryConfigSettings, # Added HistoryConfigSettings
         # Import new models
         DevelopmentPlan, FeedbackResult, StructuredAnalysisResult
     )
@@ -330,6 +330,49 @@ def test_context_generation_input_v5_invalid_strategy():
         ContextGenerationInput(query="test", matching_strategy='invalid')
     with pytest.raises(ValidationError):
         ContextGenerationInput(query="test", matching_strategy=123)
+
+# --- Test HistoryConfigSettings ---
+
+def test_history_config_settings_defaults():
+    """Test HistoryConfigSettings defaults."""
+    settings = HistoryConfigSettings()
+    assert settings.use_session_history is True
+    assert settings.history_turns_to_include is None
+    assert settings.record_in_session_history is True
+
+def test_history_config_settings_custom_values():
+    """Test HistoryConfigSettings with custom values."""
+    settings = HistoryConfigSettings(
+        use_session_history=False,
+        history_turns_to_include=5,
+        record_in_session_history=False
+    )
+    assert settings.use_session_history is False
+    assert settings.history_turns_to_include == 5
+    assert settings.record_in_session_history is False
+
+def test_history_config_settings_invalid_types():
+    """Test HistoryConfigSettings with invalid data types."""
+    with pytest.raises(ValidationError):
+        HistoryConfigSettings(use_session_history="not_a_bool")
+    with pytest.raises(ValidationError):
+        HistoryConfigSettings(history_turns_to_include="not_an_int")
+    with pytest.raises(ValidationError):
+        HistoryConfigSettings(history_turns_to_include=-1) # Must be PositiveInt
+    with pytest.raises(ValidationError):
+        HistoryConfigSettings(record_in_session_history="not_a_bool")
+
+def test_history_config_settings_partial_override():
+    """Test HistoryConfigSettings with partial overrides, ensuring defaults apply."""
+    settings = HistoryConfigSettings(use_session_history=False)
+    assert settings.use_session_history is False
+    assert settings.history_turns_to_include is None # Default
+    assert settings.record_in_session_history is True  # Default
+
+    settings2 = HistoryConfigSettings(history_turns_to_include=10)
+    assert settings2.use_session_history is True # Default
+    assert settings2.history_turns_to_include == 10
+    assert settings2.record_in_session_history is True # Default
 
 # --- Test Aider Loop Specific Models ---
 
