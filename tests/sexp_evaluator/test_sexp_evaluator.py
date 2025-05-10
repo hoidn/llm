@@ -62,7 +62,7 @@ def mock_memory_system(mocker):
     # Default: successful context retrieval
     mock.get_relevant_context_for.return_value = AssociativeMatchResult(
         context_summary="Mock context summary",
-        matches=[MatchTuple(path="/mock/file.py", relevance=0.9)], # Use correct model
+        matches=[MatchItem(id="/mock/file.py", content="mock content", relevance_score=0.9, content_type="file_content")], # Use MatchItem
         error=None
     )
     return mock
