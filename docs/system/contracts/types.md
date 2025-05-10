@@ -109,11 +109,11 @@ interface MatchItem {
 
 /**
  * Result of associative matching operations (Memory System output)
- * [Type:System:AssociativeMatchResult:1.0]
+ * [Type:System:AssociativeMatchResult:1.1] // Version incremented
  */
 interface AssociativeMatchResult {
     context_summary: string;  // Summarized context information
-    matches: MatchTuple[];  // List of matching items with relevance scores
+    matches: list<MatchItem>; // REVISED: Uses new MatchItem
     error?: string;  // Error message if the matching operation failed
 }
 
