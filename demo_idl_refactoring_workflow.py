@@ -295,7 +295,7 @@ async def main():
     workflow_manager.add_step(step3_def)
 
     logger.info("Running Steps 2 & 3: Prime context with IDLs and Generate Plan...")
-    pt2_context = await workflow_manager.run()
+    pt2_context = workflow_manager.run()
     logger.info(f"Steps 2 & 3 Result Context: {pt2_context}")
 
     generated_plan_task_result_dict = pt2_context.get("generated_plan_result")
@@ -358,7 +358,7 @@ async def main():
         workflow_manager.add_step(step6_def)
 
         logger.info(f"Running workflow for plan step {i+1} (Clear, Prime, Execute)...")
-        loop_iter_context = await workflow_manager.run()
+        loop_iter_context = workflow_manager.run()
         logger.info(f"Plan step {i+1} Result Context: {loop_iter_context}")
 
         step_execution_task_result_dict = loop_iter_context.get(f"step{i+1}_execution_result")

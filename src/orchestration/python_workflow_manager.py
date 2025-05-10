@@ -113,7 +113,7 @@ class PythonWorkflowManager:
             step_result_obj: Optional[TaskResult] = None
             try:
                 if hasattr(self.app_or_dispatcher, 'handle_task_command'):
-                    raw_result = await self.app_or_dispatcher.handle_task_command(
+                    raw_result = self.app_or_dispatcher.handle_task_command(
                         identifier=step_def.task_name,
                         params=current_step_inputs
                         # flags might be needed if your handle_task_command expects it
