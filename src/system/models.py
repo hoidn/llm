@@ -63,7 +63,7 @@ class MatchItem(BaseModel):
     Represents a contextual item retrieved through associative matching or context gathering.
     [Type:System:MatchItem:1.0]
     """
-    id: str = Field(description="A unique identifier for this item (e.g., absolute file path, URL + anchor, DB record ID). This helps in de-duplication and referencing.")
+    id: Optional[str] = Field(default=None, description="A unique identifier for this item (e.g., absolute file path, URL + anchor, DB record ID). This helps in de-duplication and referencing.")
     content: str = Field(description="The primary textual content of this item. Could be file content, a summary, an excerpt, or a serialized representation of structured data.")
     relevance_score: confloat(ge=0.0, le=1.0) = Field(description="The relevance score of this item to the query (0.0 to 1.0).")
     content_type: str = Field(description=f"Describes the nature of the 'content' and 'id'. Examples: {[e.value for e in MatchItemContentType]}.") # Or content_type: MatchItemContentType if using Enum directly

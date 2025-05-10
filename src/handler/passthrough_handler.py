@@ -229,8 +229,11 @@ class PassthroughHandler(BaseHandler):
 
             # Populate notes with relevant files from context
             if self.data_context and self.data_context.items:
-                # Ensure item.id exists before accessing
-                relevant_ids = [item.id for item in self.data_context.items if hasattr(item, 'id')]
+                # Ensure item.id exists and is not None before accessing
+                relevant_ids = [
+                    item.id for item in self.data_context.items 
+                    if hasattr(item, 'id') and item.id is not None # <<< MODIFIED CONDITION
+                ]
                 result.notes["relevant_files_from_context"] = relevant_ids
             else:
                 result.notes["relevant_files_from_context"] = []

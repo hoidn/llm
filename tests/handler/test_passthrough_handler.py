@@ -214,9 +214,11 @@ def test_handle_query_notes_include_relevant_files_from_context(passthrough_hand
 
     # Use actual MatchItem Pydantic models for items with an ID
     mock_item1 = MatchItem(id="/file1.txt", content="content1", relevance_score=1.0, content_type="file_content")
-    # For mock_item2, use a MagicMock instance without an 'id' attribute set.
-    # This ensures hasattr(mock_item2, 'id') is False, so it's filtered out.
-    mock_item2 = MagicMock()
+    
+    # mock_item2: Create as MatchItem. If 'id' is Optional in the Pydantic model,
+    # not providing it means item.id will be None.
+    # The production code's hasattr(item, 'id') will be True, but 'item.id is not None' will be False.
+    mock_item2 = MatchItem(content="content2_no_id", relevance_score=0.9, content_type="file_content")
     # Ensure 'id' is not accidentally created on mock_item2 if it's accessed before hasattr check.
     # One way to be very explicit is to configure it not to have 'id':
     # del mock_item2.id # This would error if 'id' doesn't exist.
