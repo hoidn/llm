@@ -161,7 +161,7 @@ def test_execute_code_success(mock_app):
     
     mock_app.handle_task_command.assert_called_once_with(
         "aider_automatic",
-        params={"prompt": "Implement function foo", "relative_editable_files": ["src/foo.py"]}
+        params={"prompt": "Implement function foo", "editable_files": ["src/foo.py"]}
     )
 
 def test_execute_code_aider_fails(mock_app):

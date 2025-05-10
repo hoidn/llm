@@ -64,7 +64,7 @@ class TestAiderExecutorFunctions:
         # Expected parameters for the MCP server's tool
         expected_mcp_params = {
             "ai_coding_prompt": "Refactor this code.",
-            "relative_editable_files": ["file1.py", "util/helper.py"], # Expect parsed list
+            "editable_files": ["file1.py", "util/helper.py"], # Expect parsed list
             # Add other defaults expected by the aider_ai_code tool if any
             "relative_readonly_files": [], # Changed from None to empty list
             "model": None # Assuming None if not provided
@@ -91,7 +91,7 @@ class TestAiderExecutorFunctions:
         mock_aider_bridge.call_aider_tool.return_value = mock_response_dict
         expected_mcp_params = {
             "ai_coding_prompt": "Explain this.",
-            "relative_editable_files": [], # Expect empty list if no context
+            "editable_files": [], # Expect empty list if no context
             "relative_readonly_files": [], # Changed from None to empty list
             "model": None
         }
@@ -174,7 +174,7 @@ class TestAiderExecutorFunctions:
         # Assuming interactive maps to aider_ai_code for now
         expected_mcp_params = {
             "ai_coding_prompt": "Start interactive refactor.",
-            "relative_editable_files": ["main.py"],
+            "editable_files": ["main.py"],
             "relative_readonly_files": [], # Changed from None to empty list
             "model": None
         }

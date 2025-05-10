@@ -60,7 +60,7 @@ The server registers and handles the following tools:
     *   **Description:** Runs Aider to perform AI coding tasks based on the provided prompt and files.
     *   **Input Parameters (`arguments` in `call_tool`):**
         *   `ai_coding_prompt` (string, **required**): The prompt/instructions for the AI coding task.
-        *   `relative_editable_files` (list[string], **required**): Relative paths (from the server's `working_dir`) of files Aider is allowed to edit.
+        *   `editable_files` (list[string], **required**): Relative paths (from the server's `working_dir`) of files Aider is allowed to edit.
         *   `relative_readonly_files` (list[string], optional): Relative paths of files Aider can read for context but not edit.
         *   `model` (string, optional): Specific AI model identifier for Aider to use (overrides the server's default `editor_model`).
     *   **Response Format:**

@@ -91,7 +91,7 @@ class CodingWorkflowOrchestrator:
 
         aider_params = {
             "prompt": self.current_plan.instructions,
-            "relative_editable_files": self.current_plan.files # This should be a list of strings
+            "editable_files": self.current_plan.files # This should be a list of strings
         }
         
         try:
