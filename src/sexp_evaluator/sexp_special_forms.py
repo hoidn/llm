@@ -330,6 +330,11 @@ class SpecialFormProcessor:
                             )
                     elif isinstance(inner_sexp_value, int):
                         python_value = inner_sexp_value
+                    elif isinstance(inner_sexp_value, list) and not inner_sexp_value and \
+                         key_str == "history_config" and inner_key_symbol.value() == "history_turns_to_include":
+                        # If SexpParser turned 'nil' into [], treat [] as None for history_turns_to_include
+                        logger.debug(f"Interpreting empty list [] as None for 'history_turns_to_include' in 'defatom {key_str}'.")
+                        python_value = None
                     elif inner_sexp_value is None and key_str == "history_config" and inner_key_symbol.value() == "history_turns_to_include":
                         # This case specifically allows Python None for history_turns_to_include if the S-expression value was (quote nil)
                         # which sexpdata parses to Python None if not wrapped in a Symbol object.
@@ -338,7 +343,10 @@ class SpecialFormProcessor:
                         python_value = None
                     else:
                         raise SexpEvaluationError(
-                            f"Invalid value type for key '{inner_key_symbol.value()}' in '{key_str}'. Expected S-expression string (e.g., \"json\"), S-expression symbol (true/false/nil), or S-expression integer. Got {type(inner_sexp_value)}: {inner_sexp_value!r}",
+                            f"Invalid value type for key '{inner_key_symbol.value()}' in '{key_str}'. "
+                            f"Expected S-expression string (e.g., \"json\"), S-expression symbol (true/false/nil), "
+                            f"S-expression integer, or an empty list [] for 'history_turns_to_include'. "
+                            f"Got {type(inner_sexp_value)}: {inner_sexp_value!r}",
                             original_expr_str
                         )
                     
