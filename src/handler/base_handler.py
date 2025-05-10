@@ -524,10 +524,10 @@ class BaseHandler:
         self,
         prompt: str,
         system_prompt_override: Optional[str] = None,
-        tools_override: Optional[List[Callable]] = None, # Explicitly list of callables
+        task_tools_config: Optional[Tuple[List[Callable], List[Dict[str, Any]]]] = None, # MODIFIED PARAMETER
         output_type_override: Optional[Type] = None,
-        model_override: Optional[str] = None, 
-        history_config: Optional[HistoryConfigSettings] = None 
+        model_override: Optional[str] = None,
+        history_config: Optional[HistoryConfigSettings] = None
     ) -> TaskResult:
         """
         Internal method to execute a call via the LLMInteractionManager and update history.
@@ -577,16 +577,13 @@ class BaseHandler:
         executors_for_agent: Optional[List[Callable]] = None
         definitions_for_agent: Optional[List[Dict[str, Any]]] = None
 
-        if tools_override is not None:
-            # Highest precedence: Explicit tools_override (must be callables)
-            self.log_debug("Using explicitly provided tools_override (executors) for LLM call")
-            executors_for_agent = tools_override
-            definitions_for_agent = None # Assume manager doesn't need specs if executors are passed
+        if task_tools_config is not None: # MODIFIED LOGIC BLOCK
+            executors_for_agent, definitions_for_agent = task_tools_config
+            self.log_debug(f"Using task-specified tools config. Executors: {len(executors_for_agent) if executors_for_agent else 0}, Definitions: {len(definitions_for_agent) if definitions_for_agent else 0}")
         elif self.active_tool_definitions:
-            # Second precedence: Use active_tool_definitions
-            self.log_debug(f"Using active tool definitions ({len(self.active_tool_definitions)}) for LLM call")
+            # Second precedence: Use handler's active_tool_definitions
+            self.log_debug(f"Using handler's active tool definitions ({len(self.active_tool_definitions)}) for LLM call")
             definitions_for_agent = self.active_tool_definitions
-            # Look up the corresponding executors
             executors_found: List[Callable] = []
             missing_executors = []
             for spec in definitions_for_agent:
@@ -600,19 +597,14 @@ class BaseHandler:
             if missing_executors:
                 logging.warning(
                     f"Executor(s) not found for active tool definition(s): {missing_executors}. "
-                    "These tools will not be passed to the agent."
+                    "These tools will not be passed to the agent if only definitions are used by manager."
                 )
-            executors_for_agent = executors_found # Pass only the executors found
+            executors_for_agent = executors_found
         else:
             # Lowest precedence: No tools active or specified
-            self.log_debug("No tools_override or active_tool_definitions provided. No tools passed to agent.")
-            executors_for_agent = None # Explicitly None
-            definitions_for_agent = None # Explicitly None
-
-        if executors_for_agent:
-            self.log_debug(f"Passing {len(executors_for_agent)} tool executors to LLM manager")
-        if definitions_for_agent:
-             self.log_debug(f"Passing {len(definitions_for_agent)} tool definitions to LLM manager")
+            self.log_debug("No task-specific or handler active tools. No tools passed to agent.")
+            executors_for_agent = None
+            definitions_for_agent = None
         # --- End Prepare tools ---
 
         # Store history *before* the call
@@ -669,10 +661,11 @@ class BaseHandler:
             "prompt": prompt,
             "conversation_history": history_for_llm_call, 
             "system_prompt_override": system_prompt_override,
-            "tools_override": executors_for_agent, 
+            "tools_override": executors_for_agent, # This is what LLMInteractionManager expects for executors
             "output_type_override": output_type_override,
-            "active_tools": definitions_for_agent, 
-            "model_override": model_override, 
+            "active_tools": definitions_for_agent, # This is what LLMInteractionManager expects for definitions
+            "model_override": model_override,
+            "history_config": history_config # Ensure this is passed through
         }
 
         # Add concise logging for key parameters

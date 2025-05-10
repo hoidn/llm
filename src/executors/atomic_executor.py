@@ -6,10 +6,11 @@ Executes the body of a pre-parsed atomic task template.
 import logging
 import re
 import json
-from typing import Any, Dict, Optional, Type # Added Type for output_type_override hint
+from typing import Any, Dict, Optional, Type, List, Callable, Tuple # Added Type, List, Callable, Tuple
 
 # Assuming BaseHandler and TaskResult types are available for hinting
 # from src.handler.base_handler import BaseHandler # Import actual when available
+from src.handler.base_handler import BaseHandler # Ensure BaseHandler is imported for type hinting
 from src.system.models import TaskResult, TaskFailureReason, TaskFailureError, resolve_model_class, ModelNotFoundError, HistoryConfigSettings
 from pydantic import ValidationError
 
@@ -113,10 +114,10 @@ class AtomicTaskExecutor:
 
     def execute_body(
         self,
-        atomic_task_def: Dict[str, Any],
+        atomic_task_def: Dict[str, Any], # Renamed from template to atomic_task_def for clarity
         params: Dict[str, Any],
-        handler: Any, # Represents BaseHandler instance
-        history_config: Optional[HistoryConfigSettings] = None 
+        handler: BaseHandler, # Use specific type hint
+        history_config: Optional[HistoryConfigSettings] = None
     ) -> Dict[str, Any]: # Returns TaskResult structure as dict
         """
         Executes the body of a pre-parsed atomic task template.
@@ -159,19 +160,19 @@ class AtomicTaskExecutor:
         # --- START REFINED EXCEPTION HANDLING ---
         substituted_instructions = None
         substituted_system_prompt_template = None
-        output_type_override: Optional[Type] = None
+        output_type_override: Optional[Type] = None # Renamed from output_type_model
         task_notes = {}
 
         try:
             # --- 1. Parameter Substitution (Isolate this step) ---
             logging.debug(f"Substituting parameters for task: {task_name} using params: {list(params.keys())}")
-            template_instructions = atomic_task_def.get("instructions")
+            template_instructions = atomic_task_def.get("instructions") # Use atomic_task_def
             substituted_instructions = self._substitute_params(template_instructions, params)
-            substituted_system_prompt_template = self._substitute_params(atomic_task_def.get("system"), params)
+            substituted_system_prompt_template = self._substitute_params(atomic_task_def.get("system"), params) # Use atomic_task_def
             logging.debug("Parameter substitution successful.")
 
             # --- 2. Determine Output Type Override (Isolate this step) ---
-            output_format = atomic_task_def.get("output_format", {})
+            output_format_config = atomic_task_def.get("output_format", {}) # Use atomic_task_def, rename var
             schema_name = output_format.get("schema")
             if schema_name:
                 try:
@@ -221,14 +222,17 @@ class AtomicTaskExecutor:
             logging.debug(f"Passing prompt to handler (type: {type(main_prompt)}, length: {len(main_prompt)}): '{main_prompt[:200]}...'")
             if output_type_override:
                 logging.debug(f"Using output_type_override: {output_type_override.__name__}")
-                
+            
+            # Pass the effective_history_config
+            effective_history_config = history_config # Use the one passed in if available
+
             handler_result = handler._execute_llm_call(
                 prompt=main_prompt,
                 system_prompt_override=final_system_prompt,
-                tools_override=None, # Or relevant tools
-                output_type_override=output_type_override,
+                task_tools_config=task_tools_config_override, # MODIFIED: Pass the tuple
+                output_type_override=output_type_override, # Use renamed variable
                 model_override=atomic_task_def.get("model"), # Pass model if specified
-                history_config=history_config 
+                history_config=effective_history_config # Pass history_config
             )
 
             # --- 4. Process Handler Result ---
@@ -249,7 +253,7 @@ class AtomicTaskExecutor:
             if "parsed_content" in task_result_dict and task_result_dict["status"] == "COMPLETE":
                 logging.debug(f"Using parsed_content from handler for task: {task_name}")
                 task_result_dict["parsedContent"] = task_result_dict.pop("parsed_content")
-            elif task_result_dict.get("status") == "COMPLETE" and output_format.get("type") == "json" and "parsedContent" not in task_result_dict:
+            elif task_result_dict.get("status") == "COMPLETE" and output_format_config.get("type") == "json" and "parsedContent" not in task_result_dict: # Use output_format_config
                 logging.debug(f"Attempting legacy JSON parsing for task: {task_name}")
                 content_to_parse = task_result_dict.get("content")
                 if isinstance(content_to_parse, str):
