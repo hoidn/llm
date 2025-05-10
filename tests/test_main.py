@@ -231,10 +231,13 @@ def test_application_init_wiring(app_components):
     # Assert component instances were created by the Mocks
     assert app.memory_system == app_components['mock_memory_system_instance']
     assert app.task_system == app_components['mock_task_system_instance']
-    assert app.passthrough_handler == app_components['mock_handler_instance']
+    # The app.passthrough_handler will be the return_value of the Patched PassthroughHandler class
+    assert app.passthrough_handler == app_components['MockHandler'].return_value
     assert app.file_access_manager == app_components['mock_fm_instance']
     # Note: system_executors is a real instance, not a mock
 
+    # Ensure the mock_handler_instance from the fixture is the one used by the app
+    assert app.passthrough_handler == app_components['mock_handler_instance']
     # Assert wiring calls were made (using the instances returned by the mocks)
     app_components['mock_task_system_instance'].set_handler.assert_called_once_with(app.passthrough_handler)
 
@@ -245,7 +248,7 @@ def test_application_init_wiring(app_components):
         memory_system=app.memory_system, # Or ANY if comparing instance is tricky
         file_manager=app.file_access_manager, # Or ANY
         command_executor_module=ANY, # Or a specific mock for command_executor module
-        handler_instance=app_components['mock_handler_instance']
+        handler_instance=app.passthrough_handler # Pass the actual handler instance from app
     )
 
     # Verify attribute assignments
@@ -503,21 +506,25 @@ def test_application_init_with_anthropic(app_components):
         app = Application()
 
     # Assert Anthropic tools were registered
-    registered_tools = app_components['registered_tools_storage']
+    # Tools are registered on the handler instance.
+    # Assuming app.passthrough_handler is the mock_handler_instance from app_components
+    mock_handler = app_components['mock_handler_instance']
+    registered_tools = mock_handler.registered_tools
+
     assert 'anthropic_view' in registered_tools
     assert 'anthropic_create' in registered_tools
     assert 'anthropic_str_replace' in registered_tools
     assert 'anthropic_insert' in registered_tools
 
     # Check specs and executors
-    assert registered_tools['anthropic_view']['spec'] == ANTHROPIC_VIEW_SPEC
-    assert callable(registered_tools['anthropic_view']['executor'])
-    assert registered_tools['anthropic_create']['spec'] == ANTHROPIC_CREATE_SPEC
-    assert callable(registered_tools['anthropic_create']['executor'])
-    assert registered_tools['anthropic_str_replace']['spec'] == ANTHROPIC_STR_REPLACE_SPEC
-    assert callable(registered_tools['anthropic_str_replace']['executor'])
-    assert registered_tools['anthropic_insert']['spec'] == ANTHROPIC_INSERT_SPEC
-    assert callable(registered_tools['anthropic_insert']['executor'])
+    assert registered_tools['anthropic_view'] == ANTHROPIC_VIEW_SPEC
+    assert callable(app_components['tool_executors_storage']['anthropic_view'])
+    assert registered_tools['anthropic_create'] == ANTHROPIC_CREATE_SPEC
+    assert callable(app_components['tool_executors_storage']['anthropic_create'])
+    assert registered_tools['anthropic_str_replace'] == ANTHROPIC_STR_REPLACE_SPEC
+    assert callable(app_components['tool_executors_storage']['anthropic_str_replace'])
+    assert registered_tools['anthropic_insert'] == ANTHROPIC_INSERT_SPEC
+    assert callable(app_components['tool_executors_storage']['anthropic_insert'])
     # Check that the executor wrapper correctly points to the mocked function
     # Similar to Aider, this requires calling the lambda. Rely on patching.
 
