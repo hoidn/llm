@@ -231,12 +231,12 @@ def test_handle_query_notes_include_relevant_files_from_context(passthrough_hand
     mock_data_context_instance.items = items_for_context
 
 
-    def prime_data_context_side_effect(query_param): # Renamed arg to avoid clash
+    def prime_data_context_side_effect(query: Optional[str] = None, initial_files: Optional[List[str]] = None): # Match signature
         # Set the data_context on the handler instance
         passthrough_handler.data_context = DataContext(
             retrieved_at="test_time",
-            source_query=query_param,
-            items=items_for_context # Use the list defined above
+            source_query=query, # Use the 'query' parameter passed to the side_effect
+            items=items_for_context
         )
         return True
 
