@@ -216,7 +216,7 @@ class MemorySystem:
             input_data: A valid ContextGenerationInput object (v5.0 or later).
 
         Returns:
-            An AssociativeMatchResult object containing the context summary and a list of MatchTuple objects.
+            An AssociativeMatchResult object containing the context summary and a list of MatchItem objects.
             Returns an error result if dependencies are unavailable, pre-filtering/reading fails, or the LLM task fails.
         """
         # Check TaskSystem dependency EARLY
