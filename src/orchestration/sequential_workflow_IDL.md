@@ -6,6 +6,7 @@ module src.orchestration.sequential_workflow {
     # @depends_on_type(docs.system.contracts.types.TaskResult) // For TaskResult type
     # @depends_on_type(docs.system.contracts.types.ContextManagement) // For context concepts
     # @depends_on_type(docs.system.contracts.types.HistoryConfigSettings) // For history concepts
+    # @depends_on_type(src.system.models.WorkflowOutcome) // For WorkflowOutcome type
 
     // Interface for a Python-fluent sequential workflow orchestrator.
     // Executes a sequence of pre-registered tasks, allowing outputs of one
@@ -62,17 +63,19 @@ module src.orchestration.sequential_workflow {
         // - static_inputs (optional) is a dictionary of literal values for the task's parameters.
         // - input_mappings (optional) is a dictionary where:
         //   - Keys: Target parameter names for the current task.
-        //   - Values: Strings like "source_output_name.path.to.value" or "initial.path.to.value".
+        //   - Values: Dot-separated strings like "source_output_name.path.to.value"
+        //     OR a list of strings representing path segments, e.g.,
+        //     ["source_output_name", "parsedContent", "key.with.dots"].
+        //     The list format is for keys/attributes containing special characters in their names.
         //     - "source_output_name" refers to an 'output_name' of a previously added task.
         //     - "initial" refers to keys in the 'initial_context' passed to 'run()'.
-        //       (To access, use a convention like "_initial_.your_key" in the path string,
+        //       (To access, use a convention like "_initial_.your_key" in the path string/list,
         //        assuming initial_context is stored under a special key like "_initial_"
         //        within the internal workflow_results_context).
-        //     - "path.to.value" is a dot-separated path to extract from the source TaskResult
-        //       (e.g., "parsedContent.field", "content", "notes.some_key"). Path traversal
-        //       should handle attribute access for objects and key access for dictionaries.
+        //     - "path.to.value" (or subsequent list elements) is a path to extract from the source TaskResult.
+        //       Path traversal should handle attribute access for objects and key access for dictionaries.
         //       If a path segment is None or a key/attribute is missing during resolution,
-        //       it should result in a WorkflowExecutionError.
+        //       it should result in a WorkflowExecutionError during the `run` phase.
         // - If a parameter name exists in both static_inputs and input_mappings, input_mappings takes precedence.
         // Postconditions:
         // - The task call definition is added to the internal sequence.
@@ -85,44 +88,53 @@ module src.orchestration.sequential_workflow {
             string task_name,
             string output_name,
             optional dict<string, Any> static_inputs,
-            optional dict<string, string> input_mappings
+            optional dict<string, union<string, list<string>>> input_mappings // Updated type
         );
 
-        // Executes the defined sequence of tasks.
-        // Preconditions:
-        // - At least one task must have been added via `add_task`.
-        // - initial_context (optional) is a dictionary providing initial values. Keys in this
-        //   dictionary can be referenced by input_mappings using a convention like "_initial_.key_name".
-        // Postconditions:
-        // - Returns a dictionary (the workflow context) where keys are the 'output_name's
-        //   provided in `add_task`, and values are the corresponding `TaskResult` objects.
-        // - If any task fails (returns a FAILED TaskResult or input mapping fails):
-        //   - The workflow stops execution at that point by raising a WorkflowExecutionError.
-        //   - The exception should contain details about the failing step and reason.
-        // Behavior:
-        // - Initializes an internal `workflow_results_context` dictionary. The `initial_context`
-        //   is made available, for example, by storing it under a special key like `workflow_results_context["_initial_"] = initial_context`.
-        // - Iterates through the stored task call configurations in order.
-        // - For each task:
-        //   1. Prepare `current_task_params`:
-        //      a. Start with `static_inputs`.
-        //      b. For each `target_param: "source_path_string"` in `input_mappings`:
-        //         i. Resolve `source_path_string` (e.g., "step_A_output.parsedContent.data" or "_initial_.user_data").
-        //         ii. Extract the `source_name` (e.g., "step_A_output" or "_initial_") and the `value_path` (e.g., "parsedContent.data").
-        //         iii. Retrieve the source `TaskResult` (or initial data dictionary) from `workflow_results_context` using `source_name`.
-        //         iv. If source not found, or if it's a FAILED TaskResult and its output is being accessed in a way that's problematic, raise WorkflowExecutionError.
-        //         v. Use an internal helper to safely extract the value from the source object/dictionary using `value_path`. This helper must handle attribute access for objects (like TaskResult properties) and key access for dictionaries (like TaskResult.notes or TaskResult.parsedContent if it's a dict). If path is invalid or value not found, raise WorkflowExecutionError.
-        //         vi. Assign the extracted value to `current_task_params[target_param]`.
-        //   2. Call `self.app_or_dispatcher_instance.execute_programmatic_task(task_name, current_task_params, flags={})`.
-        //      This can invoke any registered atomic LLM task or direct tool.
-        //   3. Store the returned `TaskResult` into `workflow_results_context[output_name]`.
-        //   4. If `TaskResult.status` is "FAILED", raise `WorkflowExecutionError` detailing the failing step and the FAILED TaskResult.
-        // - Returns the final `workflow_results_context` if all steps complete successfully.
-        // @raises_error(condition="WorkflowExecutionError", description="If a dynamic input cannot be resolved (e.g., invalid path, source step failed and output is unusable, underlying task execution error), or if a task returns a FAILED status.")
-        // @raises_error(condition="InvalidWorkflowDefinition", description="If the workflow is empty when `run()` is called.")
-        // Expected JSON format for initial_context: { "key": "Any", ... }
-        // Expected JSON format for return value (on success): { "step1_output_name": TaskResult_dict, "step2_output_name": TaskResult_dict, ... }
-        dict<string, Any> run(optional dict<string, Any> initial_context);
+            // Executes the defined sequence of tasks asynchronously.
+            // Preconditions:
+            // - At least one task must have been added via `add_task`.
+            // - initial_context (optional) is a dictionary providing initial values. Keys in this
+            //   dictionary can be referenced by input_mappings using a convention like "_initial_.key_name".
+            // Postconditions:
+            // - Returns a WorkflowOutcome object indicating overall success or failure.
+            // - If successful (WorkflowOutcome.success == true), WorkflowOutcome.results_context
+            //   contains a dictionary where keys are 'output_name's and values are the
+            //   corresponding TaskResult objects for all executed steps.
+            // - If failed (WorkflowOutcome.success == false), WorkflowOutcome contains
+            //   error_message, failing_step_name, and potentially further details.
+            // Behavior:
+            // - Performs cycle detection on the defined task sequence based on input_mappings.
+            //   Raises InvalidWorkflowDefinition if a cycle exists.
+            // - Checks if the task sequence is empty. Raises InvalidWorkflowDefinition if it is.
+            // - Initializes an internal `workflow_results_context` dictionary. A deep copy of
+            //   `initial_context` is made available (e.g., via `workflow_results_context["_initial_"]`).
+            // - Iterates through the stored task call configurations in order:
+            //   1. Prepare `current_task_params` (as previously defined, handling ValueResolutionError internally).
+            //      If input resolution fails for a step, the workflow terminates, returning a
+            //      WorkflowOutcome with success=false and error details.
+            //   2. Asynchronously calls `self.app_or_dispatcher_instance.execute_programmatic_task(...)`.
+            //      If this call raises an unhandled exception, the workflow terminates, returning
+            //      a WorkflowOutcome with success=false and error details.
+            //   3. Stores the returned `TaskResult` into `workflow_results_context[output_name]`.
+            //   4. If `TaskResult.status` is "FAILED", the workflow terminates, returning a
+            //      WorkflowOutcome with success=false, the failing_step_name, and the FAILED TaskResult in details.
+            // - If all steps complete successfully, returns a WorkflowOutcome with success=true
+            //   and the populated `results_context`.
+            // @raises_error(condition="InvalidWorkflowDefinition", description="If the workflow is empty or contains cyclic dependencies.")
+            // Note: Most operational failures during execution (e.g., step failure, input resolution error)
+            //       are reported via the returned WorkflowOutcome object (success=false), not by raising
+            //       WorkflowExecutionError directly from this method for those cases.
+            //       WorkflowExecutionError might still be raised for unexpected internal errors.
+            // Expected JSON format for return value (WorkflowOutcome object):
+            // {
+            //   "success": boolean,
+            //   "results_context": { "step1_output_name": /* TaskResult_object */, ... },
+            //   "error_message"?: string,
+            //   "failing_step_name"?: string,
+            //   "details"?: { "failed_task_result"?: /* TaskResult_object */, "resolution_error"?: string, ... }
+            // }
+            async object run(optional dict<string, Any> initial_context); // Returns WorkflowOutcome
 
         // Clears all defined tasks from the current workflow.
         // Preconditions: None.
@@ -142,25 +154,35 @@ sequenceDiagram
     participant AD as App/Dispatcher
     participant WRC as workflow_results_context (internal to SW)
 
-    C->>SW: run(initial_context)
-    SW->>WRC: Initialize (e.g., WRC["_initial_"] = initial_context)
+    C->>+SW: await run(initial_context)
+    SW->>SW: Detect Cycles in Task Sequence
+    alt Cycle Detected or Empty Workflow
+        SW-->>-C: raise InvalidWorkflowDefinition
+    end
+    SW->>WRC: Initialize with deepcopy(initial_context) (e.g., WRC["_initial_"] = ...)
     
     loop For each task_config in sequence
-        Note over SW: Resolve inputs for current task:\n1. static_inputs\n2. input_mappings (from WRC, incl. WRC["_initial_"])
-        alt Input Resolution Fails or Source Task FAILED
-            SW-->>C: raise WorkflowExecutionError
+        Note over SW: Resolve inputs for current task (static + dynamic from WRC)
+        alt Input Resolution Fails
+            SW-->>-C: return WorkflowOutcome(success=false, error_message="Input resolution failed for step X", failing_step_name="X")
             break
         end
-        SW->>AD: execute_programmatic_task(task_name, resolved_params)
-        AD-->>SW: task_result: TaskResult
+        SW->>+AD: await execute_programmatic_task(task_name, resolved_params)
+        AD-->>-SW: task_result: TaskResult
         SW->>WRC: Store task_result (by output_name)
         alt task_result.status == "FAILED"
-            SW-->>C: raise WorkflowExecutionError (with details)
+            SW-->>-C: return WorkflowOutcome(success=false, error_message="Step X failed", failing_step_name="X", details={"failed_task_result": task_result})
+            break
+        end
+        alt execute_programmatic_task raises Exception
+            SW-->>-C: return WorkflowOutcome(success=false, error_message="Dispatcher error for step X", failing_step_name="X", details={"exception": ...})
             break
         end
     end
     
-    SW-->>C: Return final WRC (if all successful)
+    alt All steps successful
+        SW-->>-C: return WorkflowOutcome(success=True, results_context=WRC)
+    end
 ```
 }
 // == !! END IDL TEMPLATE !! ===
