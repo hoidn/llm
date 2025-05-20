@@ -774,7 +774,7 @@ class SpecialFormProcessor:
         logger.debug(f"SpecialFormProcessor.handle_or_form END: All args falsey, returning last value -> {last_value!r}")
         return last_value # All arguments were falsey, return the value of the last one.
 
-    def handle_iterative_loop(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> Any:
+    async def handle_iterative_loop(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> Any:
         """
         Handles the 'iterative-loop' special form.
         (iterative-loop
