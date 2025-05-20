@@ -6,7 +6,7 @@ Focuses on logic implemented in Phase 1, Set B and Phase 2c.
 import pytest
 import logging
 import json
-from unittest.mock import patch, MagicMock, ANY
+from unittest.mock import patch, MagicMock, AsyncMock, ANY
 
 # Assuming TaskSystem is importable
 from src.task_system.task_system import TaskSystem, MATCH_THRESHOLD
@@ -76,7 +76,7 @@ def mock_handler():
     handler._build_system_prompt.side_effect = lambda template, file_context: f"BaseSysPrompt+{template or ''}+{file_context or ''}"
     # Mock _execute_llm_call to return a TaskResult-like dictionary
     # Ensure the mock returns a valid TaskResult object or dict that passes validation
-    handler._execute_llm_call.return_value = TaskResult(content="LLM Result", status="COMPLETE", notes={}) # Return TaskResult obj
+    handler._execute_llm_call = AsyncMock(return_value=TaskResult(content="LLM Result", status="COMPLETE", notes={})) # Return TaskResult obj
     return handler
 
 
@@ -142,10 +142,11 @@ def test_task_system_find_delegates(mock_find, task_system_instance):
 
 # --- Tests for execute_atomic_template (Phase 2c) ---
 
+@pytest.mark.asyncio
 @patch.object(TaskSystem, 'find_template')
 @patch.object(TaskSystem, 'resolve_file_paths') # Mock file path resolution
-@patch.object(AtomicTaskExecutor, 'execute_body')
-def test_execute_atomic_template_success_flow(
+@patch.object(AtomicTaskExecutor, 'execute_body', new_callable=AsyncMock)
+async def test_execute_atomic_template_success_flow(
     mock_execute_body, # Renamed from MockExecutorClass
     mock_resolve_files, mock_find_template, # Order might change based on decorator stack
     task_system_instance, mock_memory_system, mock_handler # Fixtures
@@ -174,7 +175,7 @@ def test_execute_atomic_template_success_flow(
     )
 
     # Act
-    final_result = task_system_instance.execute_atomic_template(request) # Returns TaskResult object
+    final_result = await task_system_instance.execute_atomic_template(request) # Returns TaskResult object
 
     # Assert
     mock_find_template.assert_called_once_with(template_name)
@@ -182,7 +183,7 @@ def test_execute_atomic_template_success_flow(
     mock_resolve_files.assert_called_once_with(mock_template_def, mock_memory_system, mock_handler)
 
     # Verify call signature matches the IDL
-    mock_execute_body.assert_called_once_with(
+    mock_execute_body.assert_awaited_once_with(
         atomic_task_def=mock_template_def,
         params=request.inputs,
         handler=mock_handler, 
@@ -202,15 +203,16 @@ def test_execute_atomic_template_success_flow(
     assert final_result.notes.get("file_count") == len(resolved_paths)
 
 
+@pytest.mark.asyncio
 @patch.object(TaskSystem, 'find_template')
-def test_execute_atomic_template_not_found(mock_find_template, task_system_instance):
+async def test_execute_atomic_template_not_found(mock_find_template, task_system_instance):
     """Test execute_atomic_template when template is not found."""
     # Arrange
     mock_find_template.return_value = None
     request = SubtaskRequest(task_id="not-found-1", type="atomic", name="not_a_task", description="", inputs={})
 
     # Act
-    result = task_system_instance.execute_atomic_template(request)
+    result = await task_system_instance.execute_atomic_template(request)
 
     # Assert
     assert result.status == "FAILED"
@@ -220,7 +222,8 @@ def test_execute_atomic_template_not_found(mock_find_template, task_system_insta
     assert "Template not found" in result.content
 
 
-def test_execute_atomic_template_invalid_context_config(task_system_instance):
+@pytest.mark.asyncio
+async def test_execute_atomic_template_invalid_context_config(task_system_instance):
     """Test execute_atomic_template with conflicting context settings."""
     # Arrange
     template_name = "conflict_task"
@@ -234,7 +237,7 @@ def test_execute_atomic_template_invalid_context_config(task_system_instance):
     request = SubtaskRequest(task_id="conflict-1", type="atomic", name=template_name, description="", inputs={})
 
     # Act
-    result = task_system_instance.execute_atomic_template(request)
+    result = await task_system_instance.execute_atomic_template(request)
 
     # Assert
     assert result.status == "FAILED"
