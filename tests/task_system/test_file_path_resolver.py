@@ -110,14 +110,15 @@ async def test_resolve_paths_context_description(mock_memory_system_fp):
     # Assert the structure and relevant content of the ContextGenerationInput argument
     assert len(call_args) == 1
     assert isinstance(call_args[0], ContextGenerationInput)
-        assert call_args[0].query == "Find Rust files about parsing" # Check the query used
+    assert call_args[0].query == "Find Rust files about parsing" # Check the query used
     
     # Assert results outside the 'with' block
     assert error is None
     assert paths == [expected_path]
 
 # Test resolving file paths using literal paths
-def test_resolve_paths_literal():
+@pytest.mark.asyncio
+async def test_resolve_paths_literal():
     """Test resolving file paths using literal paths."""
     # Arrange
     expected_paths = ["/literal/a.txt", "/literal/b.txt"]
@@ -139,7 +140,7 @@ def test_resolve_paths_literal():
         }
     }
     # Act
-    paths_in_source, error_in_source = resolve_paths_from_template(template_in_source, None, None)
+    paths_in_source, error_in_source = await resolve_paths_from_template(template_in_source, None, None)
 
     # Assert
     assert error_in_source is None
