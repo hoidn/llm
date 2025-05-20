@@ -35,7 +35,7 @@ def mock_memory_system():
 @pytest.fixture
 def mock_sexp_evaluator_instance():
     mock = MagicMock(spec=SexpEvaluator)
-    # Convert to AsyncMock
+    # Ensure evaluate_string is an AsyncMock
     mock.evaluate_string = AsyncMock(return_value="Sexp Result")
     return mock
 
@@ -214,11 +214,12 @@ async def test_dispatch_task_system_execution_error(MockSexpEvaluatorClass, mock
 
     assert result.status == "FAILED"
     assert result.content == "Subtask failed"
-    assert result.notes['error']['type'] == "TASK_FAILURE"
-    assert result.notes['error']['reason'] == fail_reason
-    assert result.notes['error']['message'] == "Subtask failed"
+    assert isinstance(result.notes['error'], TaskFailureError) # Check it's the object
+    assert result.notes['error'].type == "TASK_FAILURE"
+    assert result.notes['error'].reason == fail_reason
+    assert result.notes['error'].message == "Subtask failed"
     # FIX 3 & 4: Assert details are now present and match TaskFailureDetails structure
-    assert result.notes['error']['details']['script_exit_code'] == 123
+    assert result.notes['error'].details.script_exit_code == 123 # Access as attribute
     assert result.notes['original_note'] == "abc"
     assert result.notes['execution_path'] == "subtask_template"
 

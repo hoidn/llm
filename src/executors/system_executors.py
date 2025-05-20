@@ -70,7 +70,7 @@ class SystemExecutorFunctions:
         self.handler_instance = handler_instance
         logger.info("SystemExecutorFunctions instance created with dependencies (MemorySystem, FileAccessManager, CommandExecutor, BaseHandler).")
     
-    def execute_get_context(self, params: Dict[str, Any]) -> Dict[str, Any]:
+    async def execute_get_context(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """
         Executor logic for the 'system:get_context' Direct Tool.
         Retrieves relevant file paths from the MemorySystem.
@@ -135,7 +135,7 @@ class SystemExecutorFunctions:
         try:
             logging.debug(f"execute_get_context: Calling memory_system with query: '{query}'")
             # Assuming memory_system.get_relevant_context_for returns AssociativeMatchResult model
-            result: AssociativeMatchResult = self.memory_system.get_relevant_context_for(context_input)
+            result: AssociativeMatchResult = await self.memory_system.get_relevant_context_for(context_input)
 
             # 4. Extract file paths from the result
             file_paths = []

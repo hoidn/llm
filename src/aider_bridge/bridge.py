@@ -409,7 +409,7 @@ class AiderBridge:
             "context_source": self._context_source
         }
 
-    def get_context_for_query(self, query: str) -> List[str]:
+    async def get_context_for_query(self, query: str) -> List[str]:
         """
         Determines relevant file context for a query using the MemorySystem.
         Updates internal state if relevant files are found.
@@ -427,7 +427,7 @@ class AiderBridge:
 
         try:
             context_input = ContextGenerationInput(query=query)
-            memory_result: AssociativeMatchResult = self.memory_system.get_relevant_context_for(context_input)
+            memory_result: AssociativeMatchResult = await self.memory_system.get_relevant_context_for(context_input)
 
             if memory_result.error:
                 logger.error(f"MemorySystem returned error for query '{query}': {memory_result.error}")

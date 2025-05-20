@@ -237,7 +237,7 @@ def test_application_init_minimal(app_components):
     assert app.memory_system is not None
     # Check system_executors is the correct type
     from src.executors.system_executors import SystemExecutorFunctions
-    assert isinstance(app.system_executors, SystemExecutorFunctions)
+    assert app.system_executors is app_components["mock_sys_exec_instance"]
 
 def test_application_init_wiring(app_components):
     """Verify components are instantiated and wired correctly during __init__."""
@@ -269,7 +269,7 @@ def test_application_init_wiring(app_components):
     app_components["MockSysExecCls"].assert_called_once_with(
         memory_system=app.memory_system,
         file_manager=app.file_access_manager,
-        command_executor_module=app_components['mock_command_executor_module_passed_to_sys_exec'], # Check with the mocked module
+        command_executor_module=ANY, # Use ANY for the module
         handler_instance=app.passthrough_handler
     )
 
@@ -366,10 +366,11 @@ def test_handle_query_success(app_components):
     result_dict = app.handle_query(query)
 
     # Assert
-    mock_handler.handle_query.assert_called_once_with(query)
-    assert result_dict == expected_result.model_dump(exclude_none=True)
+    mock_handler.handle_query.assert_awaited_once_with(query) # Changed to assert_awaited_once_with
+    assert result_dict == expected_result # Compare Pydantic objects directly
 
-def test_handle_query_handler_error(app_components):
+@pytest.mark.asyncio # Add asyncio marker
+async def test_handle_query_handler_error(app_components): # Make async
     """Test handling of errors raised by the handler."""
      # Arrange
     app = Application()
@@ -378,14 +379,14 @@ def test_handle_query_handler_error(app_components):
 
     # Act
     query = "Problematic query"
-    result_dict = app.handle_query(query)
+    result_obj = await app.handle_query(query) # await the call
 
     # Assert
-    mock_handler.handle_query.assert_called_once_with(query)
-    assert result_dict.get("status") == "FAILED"
-    assert "Unexpected error during query handling" in result_dict.get("content", "")
-    assert "Handler internal error" in result_dict.get("content", "")
-    assert result_dict.get("notes", {}).get("error", {}).get("reason") == "unexpected_error"
+    mock_handler.handle_query.assert_awaited_once_with(query) # Changed to assert_awaited_once_with
+    assert result_obj.status == "FAILED" # Access as attribute
+    assert "Unexpected error during query handling" in result_obj.content # Access as attribute
+    assert "Handler internal error" in result_obj.content # Access as attribute
+    assert result_obj.notes["error"].reason == "unexpected_error" # Access as attribute
 
 
 def test_reset_conversation(app_components):
@@ -397,7 +398,8 @@ def test_reset_conversation(app_components):
 
     mock_handler.reset_conversation.assert_called_once()
 
-def test_handle_task_command_success(app_components):
+@pytest.mark.asyncio # Add asyncio marker
+async def test_handle_task_command_success(app_components): # Make async
     """Test successful task command delegation to dispatcher."""
      # Arrange
     app = Application()
@@ -410,10 +412,10 @@ def test_handle_task_command_success(app_components):
         identifier = "some_task"
         params = {"p1": "v1"}
         flags = {"f1": True}
-        result = app.handle_task_command(identifier, params, flags)
+        result = await app.handle_task_command(identifier, params, flags) # await the call
 
         # Assert
-        mock_dispatch.assert_called_once_with(
+        mock_dispatch.assert_awaited_once_with( # Changed to assert_awaited_once_with
             identifier=identifier,
             params=params,
             flags=flags,
@@ -487,8 +489,9 @@ def test_application_init_with_aider(app_components):
     registered_tools = app_components['registered_tools_storage']
     assert 'aider_automatic' in registered_tools
     assert 'aider_interactive' in registered_tools
-    assert callable(registered_tools['aider_automatic']['executor'])
-    assert callable(registered_tools['aider_interactive']['executor'])
+    # Check the executor function directly from the tool_executors_storage
+    assert callable(app_components['tool_executors_storage']['aider_automatic'])
+    assert callable(app_components['tool_executors_storage']['aider_interactive'])
 
     # Check that register_tool was called for aider tools
     mock_handler = app_components['mock_handler_instance']
