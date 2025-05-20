@@ -676,5 +676,5 @@ class LLMInteractionManager:
             except Exception as log_e: logger.error(f"Error writing LLM Interaction log file on agent execution error: {log_e}", exc_info=True)
 
             return final_error_result # Return the consistent error structure
-    finally:
-        pass # Event loop management removed
+        finally:
+            pass # Event loop management removed
