@@ -191,7 +191,7 @@ class TaskSystem:
             logging.debug(f"Using explicit file paths from request: {file_paths}")
         elif final_context_settings and final_context_settings.freshContext == "enabled":
             # Resolve paths based on template definition if fresh context is enabled
-            resolved_paths, resolve_error = self.resolve_file_paths(template_def, self.memory_system, handler)
+            resolved_paths, resolve_error = await self.resolve_file_paths(template_def, self.memory_system, handler)
             if resolve_error:
                 logging.warning(f"File path resolution failed for template '{request.name}': {resolve_error}")
                 # Decide if this is fatal. For now, continue without files.
@@ -357,7 +357,7 @@ class TaskSystem:
         """
         return self._registry.find(identifier)
 
-    def resolve_file_paths(
+    async def resolve_file_paths(
         self,
         template: Dict[str, Any],
         memory_system: Optional['MemorySystem'],
@@ -368,4 +368,4 @@ class TaskSystem:
         (Original detailed docstring is now in file_path_resolver.py)
         """
         # Delegate directly to the extracted utility function
-        return resolve_paths_from_template(template, memory_system, handler)
+        return await resolve_paths_from_template(template, memory_system, handler)
