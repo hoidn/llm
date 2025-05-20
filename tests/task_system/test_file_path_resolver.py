@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, AsyncMock
 
 # Import the function under test
 from src.task_system.file_path_resolver import resolve_paths_from_template
