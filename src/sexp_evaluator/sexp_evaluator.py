@@ -114,7 +114,7 @@ class SexpEvaluator:
         logging.debug(f"SexpEvaluator INITIALIZED. PRIMITIVE_APPLIERS keys: {list(self.PRIMITIVE_APPLIERS.keys())}")
         logging.info("SexpEvaluator initialized with helper processors.")
 
-    def evaluate_string(
+    async def evaluate_string(
         self,
         sexp_string: str,
         initial_env: Optional[SexpEnvironment] = None
@@ -132,7 +132,7 @@ class SexpEvaluator:
             logging.debug(f"Using environment: {env}")
             # --- REMOVED DEBUG LOGGING ---
 
-            result = self._eval(parsed_node, env)
+            result = await self._eval(parsed_node, env)
             logging.info(f"Finished evaluating S-expression. Result type: {type(result)}")
             return result
 
@@ -168,7 +168,7 @@ class SexpEvaluator:
             ) from e
 
 
-    def _eval(self, node: SexpNode, env: SexpEnvironment) -> Any:
+    async def _eval(self, node: SexpNode, env: SexpEnvironment) -> Any:
         """
         Internal recursive evaluation method for S-expression AST nodes.
         Handles base cases and dispatches list evaluation.
@@ -279,9 +279,9 @@ class SexpEvaluator:
             return Closure(lambda_params_ast, lambda_body_ast, env) 
 
         logger.debug(f"Eval Non-Empty List (not lambda): Delegating to _eval_list_form for: {node}")
-        return self._eval_list_form(node, env)
+        return await self._eval_list_form(node, env)
 
-    def _eval_list_form(self, expr_list: list, env: SexpEnvironment) -> Any:
+    async def _eval_list_form(self, expr_list: list, env: SexpEnvironment) -> Any:
         """
         Evaluates a non-empty list expression.
         Dispatches to special form handlers or standard operator application.
@@ -316,7 +316,7 @@ class SexpEvaluator:
                 # 3. If not a special form or known invokable name, THEN try to evaluate it as a variable (e.g., a lambda)
                 logger.debug(f"  _eval_list_form: Operator symbol '{op_name_str}' is not a special form or known invokable name. Evaluating (looking up) '{op_name_str}' as a variable...")
                 try:
-                    resolved_operator = self._eval(op_expr_node, env) # This does env.lookup()
+                    resolved_operator = await self._eval(op_expr_node, env) # This does env.lookup()
                 except NameError as ne: 
                     logger.error(f"  _eval_list_form: Operator symbol '{op_name_str}' is unbound during variable lookup.")
                     raise SexpEvaluationError(f"Unbound symbol or unrecognized operator: {op_name_str}", original_expr_str) from ne
@@ -328,7 +328,7 @@ class SexpEvaluator:
         elif isinstance(op_expr_node, list): 
             logger.debug(f"  _eval_list_form: Operator is a complex expression, evaluating it: {op_expr_node}")
             try:
-                resolved_operator = self._eval(op_expr_node, env)
+                resolved_operator = await self._eval(op_expr_node, env)
             except Exception as e_op_eval: 
                 logger.exception(f"  _eval_list_form: Error evaluating complex operator expression '{op_expr_node}': {e_op_eval}")
                 if isinstance(e_op_eval, SexpEvaluationError): raise 
@@ -342,9 +342,9 @@ class SexpEvaluator:
 
         logger.debug(f"  _eval_list_form: Resolved operator to: {resolved_operator} (Type: {type(resolved_operator)})")
         
-        return self._apply_operator(resolved_operator, arg_expr_nodes, env, original_expr_str)
+        return await self._apply_operator(resolved_operator, arg_expr_nodes, env, original_expr_str)
 
-    def _apply_operator(
+    async def _apply_operator(
         self,
         resolved_op: Any, 
         arg_expr_nodes: List[SexpNode],  
@@ -374,7 +374,7 @@ class SexpEvaluator:
             logger.debug(f"    Evaluating {num_provided_args} arguments in calling_env (id={id(calling_env)})...")
             for i, arg_node in enumerate(arg_expr_nodes):
                 try:
-                    eval_arg = self._eval(arg_node, calling_env)
+                    eval_arg = await self._eval(arg_node, calling_env)
                     evaluated_args.append(eval_arg)
                     logger.debug(f"      Evaluated arg {i+1} ('{arg_node}') to: {eval_arg}")
                 except Exception as e_arg_eval:
@@ -435,7 +435,7 @@ class SexpEvaluator:
             logger.debug(f"    Evaluating closure body with {len(closure_to_apply.body_ast)} expressions in call frame (id={id(call_frame_env)}) which has parent (definition_env) id={id(definition_env_for_closure)}")
             for i, body_node in enumerate(closure_to_apply.body_ast):
                 try:
-                    final_body_result = self._eval(body_node, call_frame_env) # Evaluate in call_frame_env
+                    final_body_result = await self._eval(body_node, call_frame_env) # Evaluate in call_frame_env
                     logger.debug(f"      Body expression {i+1} evaluated to: {final_body_result}")
                 except Exception as e_body_eval:
                     logger.exception(f"      Error evaluating closure body expression {i+1} '{body_node}': {e_body_eval}")
@@ -474,11 +474,11 @@ class SexpEvaluator:
             template_def = self.task_system.find_template(op_name_str)
             if template_def and template_def.get("type") == "atomic":
                 logger.debug(f"  _apply_operator: Dispatching to Task System Invoker for: {op_name_str}")
-                return self._invoke_task_system(op_name_str, template_def, arg_expr_nodes, calling_env, original_call_expr_str)
+                return await self._invoke_task_system(op_name_str, template_def, arg_expr_nodes, calling_env, original_call_expr_str)
 
             if op_name_str in self.handler.tool_executors:
                 logger.debug(f"  _apply_operator: Dispatching to Handler Tool Invoker for: {op_name_str}")
-                return self._invoke_handler_tool(op_name_str, arg_expr_nodes, calling_env, original_call_expr_str)
+                return await self._invoke_handler_tool(op_name_str, arg_expr_nodes, calling_env, original_call_expr_str)
             
             logger.error(f"  _apply_operator: Operator name '{op_name_str}' was resolved but is not a recognized primitive, task, or tool.")
             raise SexpEvaluationError(f"Operator '{op_name_str}' is not a callable primitive, task, or tool.", original_call_expr_str)
@@ -488,7 +488,7 @@ class SexpEvaluator:
             evaluated_args_list = []
             for i, arg_node in enumerate(arg_expr_nodes): 
                 try:
-                    evaluated_args_list.append(self._eval(arg_node, calling_env)) 
+                    evaluated_args_list.append(await self._eval(arg_node, calling_env)) 
                     logger.debug(f"    Evaluated arg {i+1} ('{arg_node}') to: {evaluated_args_list[-1]}")
                 except Exception as e_arg_eval:
                     logger.exception(f"  _apply_operator: Error evaluating argument {i+1} ('{arg_node}') for callable '{resolved_op}': {e_arg_eval}")
@@ -507,7 +507,7 @@ class SexpEvaluator:
             logger.error(f"  _apply_operator: Operator is not a name and not callable/closure: {resolved_op}")
             raise SexpEvaluationError(f"Cannot apply non-callable/non-closure operator: {resolved_op} (type: {type(resolved_op)})", original_call_expr_str)
 
-    def _call_phase_function(self, phase_name: str, func_to_call: Any, args_list: List[Any], env_for_eval: SexpEnvironment, original_loop_expr: str, iteration: int) -> Any:
+    async def _call_phase_function(self, phase_name: str, func_to_call: Any, args_list: List[Any], env_for_eval: SexpEnvironment, original_loop_expr: str, iteration: int) -> Any:
         """Helper to invoke a phase function (lambda/Closure) with error handling."""
         logger.debug(f"    Invoking {phase_name} (Iter {iteration}) with {len(args_list)} args in env_for_call={id(env_for_eval)}")
         logger.debug(f"    Args types: {[type(arg) for arg in args_list]}")
@@ -544,7 +544,7 @@ class SexpEvaluator:
                 # Evaluate the body expressions in the call frame
                 result = None
                 for body_expr in func_to_call.body_ast:
-                    result = self._eval(body_expr, call_frame_env)
+                    result = await self._eval(body_expr, call_frame_env)
                 return result
             else:
                 # For regular callables (Python functions), call directly
@@ -577,7 +577,7 @@ class SexpEvaluator:
 
     # --- Invocation Helpers (Remain in SexpEvaluator) ---
 
-    def _invoke_task_system(
+    async def _invoke_task_system(
         self,
         task_name: str,
         template_def: Dict[str, Any],
@@ -624,7 +624,7 @@ class SexpEvaluator:
                 logger.debug(f"  _invoke_task_system: Env Details: {bindings_info} | {parent_bindings_info}")
                 # <<< END LOGGING >>>
 
-                evaluated_value = self._eval(value_expr_node, calling_env) # Ensure calling_env is used
+                evaluated_value = await self._eval(value_expr_node, calling_env) # Ensure calling_env is used
                 logger.debug(f"  _invoke_task_system: Successfully evaluated value for key '{key_str}' to type: {type(evaluated_value)}")
             except SexpEvaluationError as e_val_eval:
                 raise SexpEvaluationError(
@@ -686,7 +686,7 @@ class SexpEvaluator:
             # <<< ADD LOGGING >>>
             logger.debug(f"*** _invoke_task_system: Using TaskSystem instance ID = {id(self.task_system)}")
             # <<< END LOGGING >>>
-            task_result_obj = self.task_system.execute_atomic_template(request)
+            task_result_obj = await self.task_system.execute_atomic_template(request)
             if not isinstance(task_result_obj, TaskResult):
                  logging.error(f"  Task executor for '{task_name}' did not return a TaskResult object (got {type(task_result_obj)}).")
                  return TaskResult(
@@ -710,7 +710,7 @@ class SexpEvaluator:
             if isinstance(e_exec, SexpEvaluationError): raise 
             raise SexpEvaluationError(f"Error executing task '{task_name}': {e_exec}", original_expr_str, error_details=str(e_exec)) from e_exec
 
-    def _invoke_handler_tool(
+    async def _invoke_handler_tool(
         self,
         tool_name: str,
         arg_exprs: List[SexpNode], 
@@ -747,7 +747,7 @@ class SexpEvaluator:
                 logger.debug(f"  _invoke_handler_tool: Env Details: {bindings_info} | {parent_bindings_info}")
                 # <<< END LOGGING >>>
 
-                evaluated_value = self._eval(value_expr_node, calling_env) # Ensure calling_env is used
+                evaluated_value = await self._eval(value_expr_node, calling_env) # Ensure calling_env is used
                 logger.debug(f"  _invoke_handler_tool: Successfully evaluated value for key '{key_str}' to type: {type(evaluated_value)}")
             except SexpEvaluationError as e_val_eval:
                 raise SexpEvaluationError(
@@ -780,7 +780,7 @@ class SexpEvaluator:
         
         logging.debug(f"  Invoking direct tool '{tool_name}' with named_params: {named_params}")
         try:
-            tool_result_obj = self.handler._execute_tool(tool_name, named_params)
+            tool_result_obj = await self.handler._execute_tool(tool_name, named_params)
             if not isinstance(tool_result_obj, TaskResult):
                  logging.error(f"  Tool executor '{tool_name}' did not return a TaskResult object (got {type(tool_result_obj)}).")
                  return TaskResult(

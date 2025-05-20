@@ -177,7 +177,7 @@ class MemorySystem:
         if self._config.get("sharding_enabled", False):
             self._recalculate_shards()
 
-    def get_relevant_context_with_description(
+    async def get_relevant_context_with_description(
         self, query: str, context_description: str
     ) -> Any:  # AssociativeMatchResult
         """
@@ -203,9 +203,9 @@ class MemorySystem:
         # Create ContextGenerationInput using context_description as the query
         input_data = ContextGenerationInput(query=context_description)
         # Call the main method
-        return self.get_relevant_context_for(input_data)
+        return await self.get_relevant_context_for(input_data)
 
-    def get_relevant_context_for(
+    async def get_relevant_context_for(
         self, input_data: ContextGenerationInput # Expect v5.0 model
     ) -> AssociativeMatchResult:
         """
@@ -318,7 +318,7 @@ class MemorySystem:
         # 8. Call TaskSystem
         try:
             logger.debug(f"Calling TaskSystem to execute: {llm_task_name} with request ID: {request.task_id}")
-            task_result: TaskResult = self.task_system.execute_atomic_template(request)
+            task_result: TaskResult = await self.task_system.execute_atomic_template(request)
             logger.debug(f"[MemorySystem] TaskSystem returned: status={task_result.status}, content_snippet={str(task_result.content)[:100]!r}")
 
             # 9. Parse Result
