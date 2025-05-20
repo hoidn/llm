@@ -300,7 +300,7 @@ class SexpEvaluator:
             if op_name_str in self.SPECIAL_FORM_HANDLERS: 
                 logger.debug(f"  _eval_list_form: Dispatching to Special Form Handler: {op_name_str}")
                 handler_method = self.SPECIAL_FORM_HANDLERS[op_name_str]
-                return handler_method(arg_expr_nodes, env, original_expr_str) 
+                return await handler_method(arg_expr_nodes, env, original_expr_str) 
             
             # 2. Check if it's a known primitive, atomic task, or handler tool name
             # These should be treated as direct call targets, not looked up as variables.
@@ -456,7 +456,8 @@ class SexpEvaluator:
                 
                 # Add specific try-except and logging for primitive calls
                 try:
-                    result = applier_method(arg_expr_nodes, calling_env, original_call_expr_str)
+                    # Primitives can now be async
+                    result = await applier_method(arg_expr_nodes, calling_env, original_call_expr_str)
                     logger.info(f"  _apply_operator: Primitive '{op_name_str}' applier returned: {result!r} (Type: {type(result).__name__})")
                     return result
                 except SexpEvaluationError as e_prim:
@@ -546,8 +547,11 @@ class SexpEvaluator:
                 for body_expr in func_to_call.body_ast:
                     result = await self._eval(body_expr, call_frame_env)
                 return result
+            elif asyncio.iscoroutinefunction(func_to_call):
+                # For async Python functions
+                result = await func_to_call(*args_list)
             else:
-                # For regular callables (Python functions), call directly
+                # For regular Python functions
                 result = func_to_call(*args_list)
             logger.debug(f"    {phase_name} (Iter {iteration}) returned: {str(result)[:200]}{'...' if len(str(result)) > 200 else ''}")
             return result

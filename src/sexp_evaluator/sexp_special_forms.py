@@ -39,7 +39,7 @@ class SpecialFormProcessor:
         self.evaluator = evaluator_instance
         logger.debug("SpecialFormProcessor initialized.")
 
-    def handle_if_form(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> Any:
+    async def handle_if_form(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> Any:
         """Handles the 'if' special form: (if condition then_branch else_branch)"""
         logger.debug(f"SpecialFormProcessor.handle_if_form START: original_expr_str='{original_expr_str}'")
         if len(arg_exprs) != 3:
@@ -48,7 +48,7 @@ class SpecialFormProcessor:
         cond_expr, then_expr, else_expr = arg_exprs
         
         try:
-            condition_result = self.evaluator._eval(cond_expr, env)
+            condition_result = await self.evaluator._eval(cond_expr, env)
             logger.debug(f"  'if' condition '{cond_expr}' evaluated to: {condition_result}")
         except Exception as e:
             logging.exception(f"  Error evaluating 'if' condition '{cond_expr}': {e}")
@@ -59,7 +59,7 @@ class SpecialFormProcessor:
         logging.debug(f"  'if' chose branch: {chosen_branch_expr}")
         
         try:
-            result = self.evaluator._eval(chosen_branch_expr, env)
+            result = await self.evaluator._eval(chosen_branch_expr, env)
             logging.debug(f"SpecialFormProcessor.handle_if_form END: -> {result}")
             return result
         except Exception as e:
@@ -67,7 +67,7 @@ class SpecialFormProcessor:
             if isinstance(e, SexpEvaluationError): raise
             raise SexpEvaluationError(f"Error evaluating chosen 'if' branch: {chosen_branch_expr}", original_expr_str, error_details=str(e)) from e
 
-    def handle_let_form(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> Any:
+    async def handle_let_form(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> Any:
         """Handles the 'let' special form: (let ((var expr)...) body...)"""
         logger.debug(f"SpecialFormProcessor.handle_let_form START: original_expr_str='{original_expr_str}'")
         if len(arg_exprs) < 1 or not isinstance(arg_exprs[0], list):
@@ -97,7 +97,7 @@ class SpecialFormProcessor:
             try:
                 # *** CRITICAL FIX: Evaluate value expression in the OUTER environment (env) ***
                 logger.debug(f"    Evaluating value for '{var_name_str}' using OUTER env (id={id(env)})")
-                evaluated_value = self.evaluator._eval(value_expr, env)
+                evaluated_value = await self.evaluator._eval(value_expr, env)
                 evaluated_bindings[var_name_str] = evaluated_value # Store evaluated value
                 logger.debug(f"    Evaluated value for '{var_name_str}': {evaluated_value}")
             except Exception as e:
@@ -114,7 +114,7 @@ class SpecialFormProcessor:
         final_result = [] # Default for empty body (though disallowed by check above)
         for i, body_item_expr in enumerate(body_exprs):
             try:
-                final_result = self.evaluator._eval(body_item_expr, let_env) # Use INNER env
+                final_result = await self.evaluator._eval(body_item_expr, let_env) # Use INNER env
                 logging.debug(f"  'let' body expression {i+1} evaluated to: {final_result}")
             except Exception as e:
                 logging.exception(f"  Error evaluating 'let' body expression {i+1} '{body_item_expr}': {e}")
@@ -124,7 +124,7 @@ class SpecialFormProcessor:
         logging.debug(f"SpecialFormProcessor.handle_let_form END: -> {final_result}")
         return final_result
 
-    def handle_bind_form(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> Any:
+    async def handle_bind_form(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> Any:
         """Handles the 'bind' special form: (bind variable_symbol expression)"""
         logger.debug(f"SpecialFormProcessor.handle_bind_form START: original_expr_str='{original_expr_str}'")
         if len(arg_exprs) != 2 or not isinstance(arg_exprs[0], Symbol):
@@ -136,7 +136,7 @@ class SpecialFormProcessor:
         
         logging.debug(f"  Eval 'bind' for variable '{var_name_str}'")
         try:
-            evaluated_value = self.evaluator._eval(value_expr, env) # Evaluate value expression in current env
+            evaluated_value = await self.evaluator._eval(value_expr, env) # Evaluate value expression in current env
             env.define(var_name_str, evaluated_value) # Define in *current* environment
             logging.debug(f"  SpecialFormProcessor.handle_bind_form END: defined '{var_name_str}' = {evaluated_value} in env {id(env)}")
             return evaluated_value # 'bind' returns the assigned value
@@ -145,14 +145,14 @@ class SpecialFormProcessor:
             if isinstance(e, SexpEvaluationError): raise
             raise SexpEvaluationError(f"Error evaluating value for 'bind' variable '{var_name_str}': {value_expr}", original_expr_str, error_details=str(e)) from e
 
-    def handle_progn_form(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> Any:
+    async def handle_progn_form(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> Any:
         """Handles the 'progn' special form: (progn expr...)"""
         logger.debug(f"SpecialFormProcessor.handle_progn_form START: original_expr_str='{original_expr_str}'")
         final_result = [] # Default result for empty 'progn' is nil/[]
         
         for i, expr in enumerate(arg_exprs):
             try:
-                final_result = self.evaluator._eval(expr, env) # Evaluate each expression sequentially
+                final_result = await self.evaluator._eval(expr, env) # Evaluate each expression sequentially
                 logging.debug(f"  'progn' expression {i+1} evaluated to: {final_result}")
             except Exception as e:
                 logging.exception(f"  Error evaluating 'progn' expression {i+1} '{expr}': {e}")
@@ -436,7 +436,7 @@ class SpecialFormProcessor:
 
         try:
             logger.debug(f"  Evaluating loop count expression: {count_expr}")
-            count_value = self.evaluator._eval(count_expr, env)
+            count_value = await self.evaluator._eval(count_expr, env)
             logger.debug(f"  Loop count expression evaluated to: {count_value} (Type: {type(count_value)})")
         except SexpEvaluationError as e_count: 
             logger.exception(f"Error evaluating loop count expression '{count_expr}': {e_count}")
@@ -465,7 +465,7 @@ class SpecialFormProcessor:
             iteration = i + 1
             logger.debug(f"  Loop iteration {iteration}/{n}. Evaluating body: {body_expr}")
             try:
-                last_result = self.evaluator._eval(body_expr, env)
+                last_result = await self.evaluator._eval(body_expr, env)
                 logger.debug(f"  Iteration {iteration}/{n} result: {last_result}")
             except SexpEvaluationError as e_body:
                 logger.exception(f"Error evaluating loop body during iteration {iteration}/{n} for '{body_expr}': {e_body}")
@@ -543,7 +543,7 @@ class SpecialFormProcessor:
 
         # 2. Evaluate Configuration Expressions (with validation)
         try:
-            max_iter_val = self.evaluator._eval(clauses["max-iterations"], env)
+            max_iter_val = await self.evaluator._eval(clauses["max-iterations"], env)
             # --- ADDED VALIDATION ---
             if not isinstance(max_iter_val, int) or max_iter_val < 0:
                 raise SexpEvaluationError(
@@ -556,7 +556,7 @@ class SpecialFormProcessor:
             raise SexpEvaluationError(f"director-evaluator-loop: Error evaluating 'max-iterations': {e}", original_expr_str, error_details=str(e)) from e
 
         try:
-            current_director_input_val = self.evaluator._eval(clauses["initial-director-input"], env)
+            current_director_input_val = await self.evaluator._eval(clauses["initial-director-input"], env)
         except SexpEvaluationError as e:
             raise SexpEvaluationError(f"director-evaluator-loop: Error evaluating 'initial-director-input': {e.args[0] if e.args else str(e)}", original_expr_str, error_details=e.error_details if hasattr(e, 'error_details') else str(e)) from e
         except Exception as e:
@@ -566,7 +566,7 @@ class SpecialFormProcessor:
         phase_functions: Dict[str, Any] = {}
         for phase_name in ["director", "executor", "evaluator", "controller"]:
             try:
-                resolved_fn = self.evaluator._eval(clauses[phase_name], env)
+                resolved_fn = await self.evaluator._eval(clauses[phase_name], env)
                 # --- ADDED VALIDATION ---
                 if not isinstance(resolved_fn, Closure) and not callable(resolved_fn):
                     raise SexpEvaluationError(
@@ -617,14 +617,14 @@ class SpecialFormProcessor:
 
             try:
                 # b. Director Phase - Pass ONLY required args per ADR
-                plan_val = self.evaluator._call_phase_function(
+                plan_val = await self.evaluator._call_phase_function(
                     "director", director_fn, [current_director_input_val, current_iteration],
                     phase_call_env, original_expr_str, current_iteration
                 )
                 logger.debug(f"    Director result: {str(plan_val)[:200]}...")
 
                 # c. Executor Phase - Pass ONLY required args per ADR
-                exec_result_val = self.evaluator._call_phase_function(
+                exec_result_val = await self.evaluator._call_phase_function(
                     "executor", executor_fn, [plan_val, current_iteration],
                     phase_call_env, original_expr_str, current_iteration
                 )
@@ -632,14 +632,14 @@ class SpecialFormProcessor:
                 last_exec_result_val = exec_result_val
 
                 # d. Evaluator Phase - Pass ONLY required args per ADR
-                eval_feedback_val = self.evaluator._call_phase_function(
+                eval_feedback_val = await self.evaluator._call_phase_function(
                     "evaluator", evaluator_fn, [exec_result_val, plan_val, current_iteration],
                     phase_call_env, original_expr_str, current_iteration
                 )
                 logger.debug(f"    Evaluator result: {str(eval_feedback_val)[:200]}...")
 
                 # e. Controller Phase - Pass ONLY required args per ADR
-                decision_val = self.evaluator._call_phase_function(
+                decision_val = await self.evaluator._call_phase_function(
                     "controller", controller_fn, [eval_feedback_val, plan_val, exec_result_val, current_iteration],
                     phase_call_env, original_expr_str, current_iteration
                 )
@@ -729,7 +729,7 @@ class SpecialFormProcessor:
                                 # More accurately, this will be overwritten by the first eval.
         for i, expr in enumerate(arg_exprs):
             try:
-                last_value = self.evaluator._eval(expr, env)
+                last_value = await self.evaluator._eval(expr, env)
                 logger.debug(f"  'and' evaluated argument {i+1} ('{expr}') to: {last_value!r}")
                 if not bool(last_value):  # Python's truthiness check
                     logger.debug(f"  'and' short-circuiting on falsey value: {last_value!r}")
@@ -760,7 +760,7 @@ class SpecialFormProcessor:
                                 # More accurately, this will be overwritten by the first eval.
         for i, expr in enumerate(arg_exprs):
             try:
-                last_value = self.evaluator._eval(expr, env)
+                last_value = await self.evaluator._eval(expr, env)
                 logger.debug(f"  'or' evaluated argument {i+1} ('{expr}') to: {last_value!r}")
                 if bool(last_value):  # Python's truthiness check
                     logger.debug(f"  'or' short-circuiting on truthy value: {last_value!r}")
@@ -818,7 +818,7 @@ class SpecialFormProcessor:
 
         # 2. Evaluate Configuration Expressions (with validation)
         try:
-            max_iter_val = self.evaluator._eval(clauses["max-iterations"], env)
+            max_iter_val = await self.evaluator._eval(clauses["max-iterations"], env)
             if not isinstance(max_iter_val, int) or max_iter_val < 0:
                 raise SexpEvaluationError(
                     f"'max-iterations' must evaluate to a non-negative integer, got {max_iter_val!r} (type: {type(max_iter_val)}).",
@@ -831,7 +831,7 @@ class SpecialFormProcessor:
             raise SexpEvaluationError(f"iterative-loop: Error evaluating 'max-iterations': {e}", original_expr_str, error_details=str(e)) from e
 
         try:
-            current_loop_input = self.evaluator._eval(clauses["initial-input"], env)
+            current_loop_input = await self.evaluator._eval(clauses["initial-input"], env)
             logger.debug(f"iterative-loop: Evaluated 'initial-input' to: {current_loop_input!r} (Type: {type(current_loop_input)})")
             
             # Handle Quoted objects by extracting their inner value
@@ -871,7 +871,7 @@ class SpecialFormProcessor:
             raise SexpEvaluationError(f"iterative-loop: Error evaluating 'initial-input': {e}", original_expr_str, error_details=str(e)) from e
 
         try:
-            test_cmd_string = self.evaluator._eval(clauses["test-command"], env)
+            test_cmd_string = await self.evaluator._eval(clauses["test-command"], env)
             if not isinstance(test_cmd_string, str):
                 raise SexpEvaluationError(
                     f"iterative-loop: 'test-command' must evaluate to a string, got {test_cmd_string!r} (type: {type(test_cmd_string)}).",
@@ -884,7 +884,7 @@ class SpecialFormProcessor:
         phase_functions: Dict[str, Any] = {}
         for phase_name in ["executor", "validator", "controller"]:
             try:
-                resolved_fn = self.evaluator._eval(clauses[phase_name], env)
+                resolved_fn = await self.evaluator._eval(clauses[phase_name], env)
                 # Using self.evaluator.Closure to access Closure type from SexpEvaluator instance
                 if not isinstance(resolved_fn, self.evaluator.Closure) and not callable(resolved_fn):
                     raise SexpEvaluationError(
@@ -914,7 +914,7 @@ class SpecialFormProcessor:
 
             try:
                 # --- Executor Phase ---
-                executor_result = self.evaluator._call_phase_function(
+                executor_result = await self.evaluator._call_phase_function(
                     "executor", executor_fn, [current_loop_input, current_iteration],
                     env, original_expr_str, current_iteration
                 )
@@ -923,13 +923,13 @@ class SpecialFormProcessor:
                 last_exec_result_val = executor_result # Store potentially final result
 
                 # --- Validator Phase ---
-                validation_result = self.evaluator._call_phase_function(
+                validation_result = await self.evaluator._call_phase_function(
                     "validator", validator_fn, [test_cmd_string, current_iteration],
                     env, original_expr_str, current_iteration
                 )
 
                 # --- Controller Phase ---
-                decision_val = self.evaluator._call_phase_function(
+                decision_val = await self.evaluator._call_phase_function(
                     "controller", controller_fn, [executor_result, validation_result, current_loop_input, current_iteration],
                     env, original_expr_str, current_iteration
                 )

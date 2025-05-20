@@ -40,13 +40,13 @@ class PrimitiveProcessor:
         self.evaluator = evaluator_instance
         logger.debug("PrimitiveProcessor initialized.")
 
-    def apply_list_primitive(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> List[Any]:
+    async def apply_list_primitive(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> List[Any]:
         """Applies the 'list' primitive: (list expr...)"""
         logger.debug(f"PrimitiveProcessor.apply_list_primitive START: arg_exprs={arg_exprs}, original_expr_str='{original_expr_str}'")
         evaluated_args = []
         for i, arg_node in enumerate(arg_exprs):
             try:
-                evaluated_args.append(self.evaluator._eval(arg_node, env))
+                evaluated_args.append(await self.evaluator._eval(arg_node, env))
                 logging.debug(f"  apply_list_primitive: Evaluated arg {i+1} ('{arg_node}') to: {evaluated_args[-1]}")
             except Exception as e_arg_eval:
                 logging.exception(f"  apply_list_primitive: Error evaluating argument {i+1} ('{arg_node}'): {e_arg_eval}")
@@ -56,7 +56,7 @@ class PrimitiveProcessor:
         logging.debug(f"PrimitiveProcessor.apply_list_primitive END: -> {evaluated_args}")
         return evaluated_args
 
-    def apply_get_context_primitive(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> List[str]:
+    async def apply_get_context_primitive(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> List[str]:
         """
         Applies the 'get_context' primitive.
         Parses (key value_expr) pairs from arg_exprs, evaluates each value_expr,
@@ -74,7 +74,7 @@ class PrimitiveProcessor:
             key_str = key_symbol.value()
 
             try:
-                evaluated_value = self.evaluator._eval(value_expr_node, env) 
+                evaluated_value = await self.evaluator._eval(value_expr_node, env) 
                 logging.debug(f"  apply_get_context_primitive: Evaluated value for key '{key_str}' ('{value_expr_node}'): {evaluated_value}")
             except SexpEvaluationError as e_val_eval:
                 raise SexpEvaluationError(
@@ -118,7 +118,7 @@ class PrimitiveProcessor:
 
         try:
             logging.debug(f"  Calling memory_system.get_relevant_context_for with: {context_input_obj}")
-            match_result: AssociativeMatchResult = self.evaluator.memory_system.get_relevant_context_for(context_input_obj)
+            match_result: AssociativeMatchResult = await self.evaluator.memory_system.get_relevant_context_for(context_input_obj)
         except Exception as e: 
             logging.exception(f"  MemorySystem.get_relevant_context_for failed: {e}")
             raise SexpEvaluationError("Context retrieval failed during MemorySystem call.", original_expr_str, error_details=str(e)) from e
@@ -134,7 +134,7 @@ class PrimitiveProcessor:
         logging.debug(f"PrimitiveProcessor.apply_get_context_primitive END: -> {file_paths}")
         return file_paths
 
-    def apply_get_field_primitive(self, args: List[Any], env: 'SexpEnvironment', original_expr_str: str) -> Any: # Match user's signature
+    async def apply_get_field_primitive(self, args: List[Any], env: 'SexpEnvironment', original_expr_str: str) -> Any: # Match user's signature
         logger.debug(f"PrimitiveProcessor.apply_get_field_primitive: {original_expr_str}") # Use original_expr_str
         if len(args) != 2: # Use args
             raise SexpEvaluationError(f"get-field: Expected 2 arguments, got {len(args)}", original_expr_str)
@@ -142,8 +142,8 @@ class PrimitiveProcessor:
         target_obj_expr = args[0]
         field_name_expr = args[1]
 
-        target_obj = self.evaluator._eval(target_obj_expr, env)
-        field_name_val_intermediate = self.evaluator._eval(field_name_expr, env)
+        target_obj = await self.evaluator._eval(target_obj_expr, env)
+        field_name_val_intermediate = await self.evaluator._eval(field_name_expr, env)
 
         field_name_str: str
         if isinstance(field_name_val_intermediate, Symbol):
@@ -187,14 +187,14 @@ class PrimitiveProcessor:
                 logger.warning(f"get-field: Attribute '{field_name_str}' not found on object of type {type(target_obj)}.")
                 return None
 
-    def apply_string_equal_primitive(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> bool:
+    async def apply_string_equal_primitive(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> bool:
         logger.debug(f"PrimitiveProcessor.apply_string_equal_primitive: {original_expr_str}")
         if len(arg_exprs) != 2:
             raise SexpEvaluationError("'string=?' requires exactly two string arguments.", original_expr_str)
 
         try:
-            str1 = self.evaluator._eval(arg_exprs[0], env)
-            str2 = self.evaluator._eval(arg_exprs[1], env)
+            str1 = await self.evaluator._eval(arg_exprs[0], env)
+            str2 = await self.evaluator._eval(arg_exprs[1], env)
         except Exception as e_eval:
             raise SexpEvaluationError(f"Error evaluating arguments for 'string=?': {e_eval}", original_expr_str, error_details=str(e_eval)) from e_eval
 
@@ -205,7 +205,7 @@ class PrimitiveProcessor:
         logger.debug(f"  'string=?': '{str1}' == '{str2}' -> {result}")
         return result
 
-    def apply_log_message_primitive(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> Any: 
+    async def apply_log_message_primitive(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> Any: 
         logger.debug(f"PrimitiveProcessor.apply_log_message_primitive: {original_expr_str}")
         if not arg_exprs:
             logger.info("SexpLog: (log-message) called with no arguments.") 
@@ -214,7 +214,7 @@ class PrimitiveProcessor:
         evaluated_args = []
         for arg_expr in arg_exprs:
             try:
-                evaluated_args.append(self.evaluator._eval(arg_expr, env))
+                evaluated_args.append(await self.evaluator._eval(arg_expr, env))
             except Exception as e_eval:
                 logger.error(f"SexpLog: Error evaluating arg for log-message: {arg_expr} -> {e_eval}")
                 evaluated_args.append(f"<Error evaluating: {arg_expr}>")
@@ -223,14 +223,14 @@ class PrimitiveProcessor:
         logger.info(f"SexpLog: {log_output}") 
         return log_output 
 
-    def apply_eq_primitive(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> bool:
+    async def apply_eq_primitive(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> bool:
         logger.debug(f"PrimitiveProcessor.apply_eq_primitive: {original_expr_str}")
         if len(arg_exprs) != 2:
             raise SexpEvaluationError("'eq?' requires exactly two arguments.", original_expr_str)
 
         try:
-            val1 = self.evaluator._eval(arg_exprs[0], env)
-            val2 = self.evaluator._eval(arg_exprs[1], env)
+            val1 = await self.evaluator._eval(arg_exprs[0], env)
+            val2 = await self.evaluator._eval(arg_exprs[1], env)
         except Exception as e_eval:
             raise SexpEvaluationError(f"Error evaluating arguments for 'eq?': {e_eval}", original_expr_str, error_details=str(e_eval)) from e_eval
 
@@ -243,13 +243,13 @@ class PrimitiveProcessor:
         logger.debug(f"  'eq?': {val1} == {val2} -> {result}")
         return result
 
-    def apply_null_primitive(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> bool:
+    async def apply_null_primitive(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> bool:
         logger.debug(f"PrimitiveProcessor.apply_null_primitive: {original_expr_str}")
         if len(arg_exprs) != 1:
             raise SexpEvaluationError("'null?' requires exactly one argument.", original_expr_str)
         
         try:
-            val = self.evaluator._eval(arg_exprs[0], env)
+            val = await self.evaluator._eval(arg_exprs[0], env)
         except Exception as e_eval:
             raise SexpEvaluationError(f"Error evaluating argument for 'null?': {e_eval}", original_expr_str, error_details=str(e_eval)) from e_eval
             
@@ -258,7 +258,7 @@ class PrimitiveProcessor:
         logger.debug(f"  'null?': {val} is None or [] -> {result}")
         return result
 
-    def apply_set_bang_primitive(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> Any:
+    async def apply_set_bang_primitive(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> Any:
         logger.debug(f"PrimitiveProcessor.apply_set_bang_primitive: {original_expr_str}")
         if len(arg_exprs) != 2:
             raise SexpEvaluationError("'set!' requires exactly two arguments: a symbol and a new value expression.", original_expr_str)
@@ -272,7 +272,7 @@ class PrimitiveProcessor:
         symbol_name = symbol_node.value()
         
         try:
-            new_value = self.evaluator._eval(new_value_expr, env)
+            new_value = await self.evaluator._eval(new_value_expr, env)
         except Exception as e_eval:
             raise SexpEvaluationError(f"Error evaluating new value for 'set! {symbol_name}': {e_eval}", original_expr_str, error_details=str(e_eval)) from e_eval
 
@@ -285,7 +285,7 @@ class PrimitiveProcessor:
         except Exception as e_set: # Catch other unexpected errors from set_value_in_scope
             raise SexpEvaluationError(f"Error during 'set! {symbol_name}': {e_set}", original_expr_str, error_details=str(e_set)) from e_set
 
-    def apply_add_primitive(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> Any: # Number (int or float)
+    async def apply_add_primitive(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> Any: # Number (int or float)
         logger.debug(f"PrimitiveProcessor.apply_add_primitive: {original_expr_str}")
         if not arg_exprs: # N-ary, but 0 args is allowed
             return 0 
@@ -294,7 +294,7 @@ class PrimitiveProcessor:
         is_float = False
         for i, arg_expr in enumerate(arg_exprs):
             try:
-                val = self.evaluator._eval(arg_expr, env)
+                val = await self.evaluator._eval(arg_expr, env)
             except Exception as e_eval:
                 raise SexpEvaluationError(f"Error evaluating argument {i+1} for '+': {e_eval}", original_expr_str, error_details=str(e_eval)) from e_eval
 
@@ -308,13 +308,13 @@ class PrimitiveProcessor:
         logger.debug(f"  '+': Result -> {result}")
         return result
 
-    def apply_subtract_primitive(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> Any: # Number
+    async def apply_subtract_primitive(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> Any: # Number
         logger.debug(f"PrimitiveProcessor.apply_subtract_primitive: {original_expr_str}")
         if not (1 <= len(arg_exprs) <= 2): # Arity check
             raise SexpEvaluationError("'-' requires one or two numeric arguments.", original_expr_str)
 
         try:
-            val1 = self.evaluator._eval(arg_exprs[0], env)
+            val1 = await self.evaluator._eval(arg_exprs[0], env)
         except Exception as e_eval:
             raise SexpEvaluationError(f"Error evaluating first argument for '-': {e_eval}", original_expr_str, error_details=str(e_eval)) from e_eval
         
@@ -328,7 +328,7 @@ class PrimitiveProcessor:
         
         # Binary subtraction
         try:
-            val2 = self.evaluator._eval(arg_exprs[1], env)
+            val2 = await self.evaluator._eval(arg_exprs[1], env)
         except Exception as e_eval:
             raise SexpEvaluationError(f"Error evaluating second argument for '-': {e_eval}", original_expr_str, error_details=str(e_eval)) from e_eval
 
@@ -343,14 +343,14 @@ class PrimitiveProcessor:
         logger.debug(f"  '-' (binary): {val1} - {val2} -> {result}")
         return result
         
-    def apply_less_than_primitive(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> bool:
+    async def apply_less_than_primitive(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> bool:
         logger.debug(f"PrimitiveProcessor.apply_less_than_primitive: {original_expr_str}")
         if len(arg_exprs) != 2:
             raise SexpEvaluationError("'<' requires exactly two numeric arguments.", original_expr_str)
 
         try:
-            val1 = self.evaluator._eval(arg_exprs[0], env)
-            val2 = self.evaluator._eval(arg_exprs[1], env)
+            val1 = await self.evaluator._eval(arg_exprs[0], env)
+            val2 = await self.evaluator._eval(arg_exprs[1], env)
         except Exception as e_eval:
             raise SexpEvaluationError(f"Error evaluating arguments for '<': {e_eval}", original_expr_str, error_details=str(e_eval)) from e_eval
 
@@ -361,7 +361,7 @@ class PrimitiveProcessor:
         logger.debug(f"  '<': {val1} < {val2} -> {result}")
         return result
         
-    def apply_string_append_primitive(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> str:
+    async def apply_string_append_primitive(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> str:
         """
         Applies the 'string-append' primitive: (string-append str1 str2 ...)
         Concatenates multiple string arguments into a single string.
@@ -374,7 +374,7 @@ class PrimitiveProcessor:
         evaluated_parts = []
         for i, arg_expr in enumerate(arg_exprs):
             try:
-                evaluated_value = self.evaluator._eval(arg_expr, env)
+                evaluated_value = await self.evaluator._eval(arg_expr, env)
                 logger.debug(f"  apply_string_append_primitive: Evaluated arg {i+1} ('{arg_expr}') to: {evaluated_value!r} (Type: {type(evaluated_value)})")
             except Exception as e_eval:
                 logging.exception(f"  apply_string_append_primitive: Error evaluating argument {i+1} ('{arg_expr}'): {e_eval}")
@@ -402,14 +402,14 @@ class PrimitiveProcessor:
         logger.debug(f"  'string-append': Result -> '{result}'")
         return result
 
-    def apply_not_primitive(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> bool:
+    async def apply_not_primitive(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> bool:
         """Applies the 'not' primitive: (not expr)"""
         logger.debug(f"PrimitiveProcessor.apply_not_primitive: {original_expr_str}")
         if len(arg_exprs) != 1:
             raise SexpEvaluationError("'not' requires exactly one argument.", original_expr_str)
 
         try:
-            value = self.evaluator._eval(arg_exprs[0], env)
+            value = await self.evaluator._eval(arg_exprs[0], env)
         except Exception as e_eval:
             raise SexpEvaluationError(f"Error evaluating argument for 'not': {e_eval}", original_expr_str, error_details=str(e_eval)) from e_eval
 

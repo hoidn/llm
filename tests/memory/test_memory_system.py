@@ -55,7 +55,7 @@ def mock_task_system():
     """Provides a mock TaskSystem with proper spec."""
     mock = MagicMock(name="MockTaskSystem", spec=TaskSystem)
     # Configure default behaviors
-    mock.execute_atomic_template.return_value = TaskResult(status="COMPLETE", content="Mock task success")
+    mock.execute_atomic_template = AsyncMock(return_value=TaskResult(status="COMPLETE", content="Mock task success"))
     return mock
 
 @pytest.fixture # Update memory_system_instance to use new fixture
@@ -310,7 +310,8 @@ def test_recalculate_shards_placeholder_clears_when_disabled(mock_log, memory_sy
 
 # ---- New Tests for get_relevant_context_for ----
 
-def test_get_relevant_context_for_default_strategy_is_content(memory_system_instance, mock_task_system, mock_file_manager_ms): # Corrected name
+@pytest.mark.asyncio
+async def test_get_relevant_context_for_default_strategy_is_content(memory_system_instance, mock_task_system, mock_file_manager_ms): # Corrected name
     """Verify default strategy is 'content'."""
     # Ensure candidate_paths is not empty
     memory_system_instance.global_index = {"/path/a.py": "meta a"}
@@ -321,15 +322,16 @@ def test_get_relevant_context_for_default_strategy_is_content(memory_system_inst
     mock_task_result = TaskResult(status="COMPLETE", parsedContent=mock_assoc_result_obj, content="")
     mock_task_system.execute_atomic_template.return_value = mock_task_result
 
-    memory_system_instance.get_relevant_context_for(input_data)
+    await memory_system_instance.get_relevant_context_for(input_data)
 
     mock_file_manager_ms.read_file.assert_called() # Content strategy reads files
-    mock_task_system.execute_atomic_template.assert_called_once()
+    mock_task_system.execute_atomic_template.assert_awaited_once()
     request_arg = mock_task_system.execute_atomic_template.call_args[0][0]
     assert isinstance(request_arg, SubtaskRequest)
     assert request_arg.name == "internal:associative_matching_content"
 
-def test_get_relevant_context_for_content_strategy_flow(memory_system_instance, mock_task_system, mock_file_manager_ms): # Corrected name
+@pytest.mark.asyncio
+async def test_get_relevant_context_for_content_strategy_flow(memory_system_instance, mock_task_system, mock_file_manager_ms): # Corrected name
     """Test the full flow for the 'content' strategy."""
     input_data = ContextGenerationInput(query="test content", matching_strategy='content')
     # Assume global index has paths
@@ -345,7 +347,7 @@ def test_get_relevant_context_for_content_strategy_flow(memory_system_instance, 
     mock_task_result = TaskResult(status="COMPLETE", parsedContent=mock_assoc_result_obj, content="")
     mock_task_system.execute_atomic_template.return_value = mock_task_result
 
-    result = memory_system_instance.get_relevant_context_for(input_data)
+    result = await memory_system_instance.get_relevant_context_for(input_data)
 
     # Assert file reads happened
     assert mock_file_manager_ms.read_file.call_count == 2
@@ -353,7 +355,7 @@ def test_get_relevant_context_for_content_strategy_flow(memory_system_instance, 
     mock_file_manager_ms.read_file.assert_any_call("/path/b.py", max_size=ANY)
 
     # Assert TaskSystem call
-    mock_task_system.execute_atomic_template.assert_called_once()
+    mock_task_system.execute_atomic_template.assert_awaited_once()
     request_arg = mock_task_system.execute_atomic_template.call_args[0][0]
     assert request_arg.name == "internal:associative_matching_content"
     assert "file_contents" in request_arg.inputs
@@ -367,7 +369,8 @@ def test_get_relevant_context_for_content_strategy_flow(memory_system_instance, 
     assert result.matches[0].id == expected_match_items[0].id # Example check for MatchItem fields
     assert result.error is None
 
-def test_get_relevant_context_for_metadata_strategy_flow(memory_system_instance, mock_task_system, mock_file_manager_ms): # Corrected name
+@pytest.mark.asyncio
+async def test_get_relevant_context_for_metadata_strategy_flow(memory_system_instance, mock_task_system, mock_file_manager_ms): # Corrected name
     """Test the full flow for the 'metadata' strategy."""
     input_data = ContextGenerationInput(query="test metadata", matching_strategy='metadata')
     # Assume global index has paths
@@ -381,13 +384,13 @@ def test_get_relevant_context_for_metadata_strategy_flow(memory_system_instance,
     mock_task_result = TaskResult(status="COMPLETE", parsedContent=mock_assoc_result_obj, content="")
     mock_task_system.execute_atomic_template.return_value = mock_task_result
 
-    result = memory_system_instance.get_relevant_context_for(input_data)
+    result = await memory_system_instance.get_relevant_context_for(input_data)
 
     # Assert file reads did NOT happen
     mock_file_manager_ms.read_file.assert_not_called()
 
     # Assert TaskSystem call
-    mock_task_system.execute_atomic_template.assert_called_once()
+    mock_task_system.execute_atomic_template.assert_awaited_once()
     request_arg = mock_task_system.execute_atomic_template.call_args[0][0]
     assert request_arg.name == "internal:associative_matching_metadata"
     assert "metadata_snippet" in request_arg.inputs
@@ -399,7 +402,8 @@ def test_get_relevant_context_for_metadata_strategy_flow(memory_system_instance,
     assert result.matches == expected_match_items
     assert result.error is None
 
-def test_get_relevant_context_for_content_strategy_read_error(memory_system_instance, mock_task_system, mock_file_manager_ms): # Corrected name
+@pytest.mark.asyncio
+async def test_get_relevant_context_for_content_strategy_read_error(memory_system_instance, mock_task_system, mock_file_manager_ms): # Corrected name
     """Test content strategy when some files cannot be read."""
     input_data = ContextGenerationInput(query="test partial read", matching_strategy='content')
     memory_system_instance.global_index = {"/path/a.py": "meta a", "/path/error.py": "meta err"}
@@ -414,12 +418,12 @@ def test_get_relevant_context_for_content_strategy_read_error(memory_system_inst
     mock_task_result = TaskResult(status="COMPLETE", parsedContent=mock_assoc_result_obj, content="")
     mock_task_system.execute_atomic_template.return_value = mock_task_result
 
-    result = memory_system_instance.get_relevant_context_for(input_data)
+    result = await memory_system_instance.get_relevant_context_for(input_data)
 
     # Assert reads attempted for both
     assert mock_file_manager_ms.read_file.call_count == 2
     # Assert TaskSystem called with only the successful read
-    mock_task_system.execute_atomic_template.assert_called_once()
+    mock_task_system.execute_atomic_template.assert_awaited_once()
     request_arg = mock_task_system.execute_atomic_template.call_args[0][0]
     contents = request_arg.inputs["file_contents"]
     assert '<file path="/path/a.py">Content of /path/a.py</file>' in contents
@@ -427,7 +431,8 @@ def test_get_relevant_context_for_content_strategy_read_error(memory_system_inst
     # Assert final result
     assert result.matches == expected_match_items
 
-def test_get_relevant_context_for_task_system_call_fails(memory_system_instance, mock_task_system, mock_file_manager_ms): # Corrected name
+@pytest.mark.asyncio
+async def test_get_relevant_context_for_task_system_call_fails(memory_system_instance, mock_task_system, mock_file_manager_ms): # Corrected name
     """Test when the TaskSystem call returns a FAILED status."""
     input_data = ContextGenerationInput(query="test failure", matching_strategy='content')
     memory_system_instance.global_index = {"/path/a.py": "meta a"}
@@ -437,7 +442,7 @@ def test_get_relevant_context_for_task_system_call_fails(memory_system_instance,
     mock_task_result = TaskResult(status="FAILED", content="LLM timed out", notes={"error": fail_error.model_dump()})
     mock_task_system.execute_atomic_template.return_value = mock_task_result
 
-    result = memory_system_instance.get_relevant_context_for(input_data)
+    result = await memory_system_instance.get_relevant_context_for(input_data)
 
     assert isinstance(result, AssociativeMatchResult)
     assert result.matches == []
@@ -446,7 +451,8 @@ def test_get_relevant_context_for_task_system_call_fails(memory_system_instance,
     assert "failed" in result.error
     assert "LLM timed out" in result.error # Check original error message is included
 
-def test_get_relevant_context_for_task_system_returns_invalid_json_in_content(memory_system_instance, mock_task_system, mock_file_manager_ms):
+@pytest.mark.asyncio
+async def test_get_relevant_context_for_task_system_returns_invalid_json_in_content(memory_system_instance, mock_task_system, mock_file_manager_ms):
     """Test when TaskSystem returns non-JSON string in content and parsedContent is None."""
     input_data = ContextGenerationInput(query="test bad json", matching_strategy='metadata')
     memory_system_instance.global_index = {"/path/a.py": "meta a"}
@@ -454,7 +460,7 @@ def test_get_relevant_context_for_task_system_returns_invalid_json_in_content(me
     mock_task_result = TaskResult(status="COMPLETE", content="This is not JSON", parsedContent=None, notes={})
     mock_task_system.execute_atomic_template.return_value = mock_task_result
 
-    result = memory_system_instance.get_relevant_context_for(input_data)
+    result = await memory_system_instance.get_relevant_context_for(input_data)
 
     assert isinstance(result, AssociativeMatchResult)
     assert result.matches == []
@@ -464,7 +470,8 @@ def test_get_relevant_context_for_task_system_returns_invalid_json_in_content(me
     assert "PydanticValidationError" in result.error # More general check
     assert "[type=json_invalid, input_value='This is not JSON'" in result.error # More specific
 
-def test_get_relevant_context_for_task_system_returns_valid_json_in_content(memory_system_instance, mock_task_system, mock_file_manager_ms):
+@pytest.mark.asyncio
+async def test_get_relevant_context_for_task_system_returns_valid_json_in_content(memory_system_instance, mock_task_system, mock_file_manager_ms):
     """Test when TaskSystem returns valid JSON string in content and parsedContent is None."""
     input_data = ContextGenerationInput(query="test good json content", matching_strategy='metadata')
     memory_system_instance.global_index = {"/path/a.py": "meta a"}
@@ -475,14 +482,15 @@ def test_get_relevant_context_for_task_system_returns_valid_json_in_content(memo
     mock_task_result = TaskResult(status="COMPLETE", content=valid_assoc_result.model_dump_json(), parsedContent=None, notes={})
     mock_task_system.execute_atomic_template.return_value = mock_task_result
 
-    result = memory_system_instance.get_relevant_context_for(input_data)
+    result = await memory_system_instance.get_relevant_context_for(input_data)
 
     assert isinstance(result, AssociativeMatchResult)
     assert result.matches == expected_match_items
     assert result.error is None
 
 
-def test_get_relevant_context_for_task_system_returns_valid_dict_in_parsed_content(memory_system_instance, mock_task_system, mock_file_manager_ms):
+@pytest.mark.asyncio
+async def test_get_relevant_context_for_task_system_returns_valid_dict_in_parsed_content(memory_system_instance, mock_task_system, mock_file_manager_ms):
     """Test when TaskSystem returns a valid dictionary in parsedContent."""
     input_data = ContextGenerationInput(query="test dict parsedContent", matching_strategy='metadata')
     memory_system_instance.global_index = {"/path/b.py": "meta b"}
@@ -493,13 +501,14 @@ def test_get_relevant_context_for_task_system_returns_valid_dict_in_parsed_conte
     mock_task_result = TaskResult(status="COMPLETE", content="", parsedContent=valid_assoc_result_dict, notes={})
     mock_task_system.execute_atomic_template.return_value = mock_task_result
 
-    result = memory_system_instance.get_relevant_context_for(input_data)
+    result = await memory_system_instance.get_relevant_context_for(input_data)
     assert isinstance(result, AssociativeMatchResult)
     assert result.matches == expected_match_items
     assert result.error is None
 
 
-def test_get_relevant_context_for_task_system_returns_invalid_dict_in_parsed_content(memory_system_instance, mock_task_system, mock_file_manager_ms):
+@pytest.mark.asyncio
+async def test_get_relevant_context_for_task_system_returns_invalid_dict_in_parsed_content(memory_system_instance, mock_task_system, mock_file_manager_ms):
     """Test when TaskSystem returns an invalid dictionary (missing fields for MatchItem) in parsedContent."""
     input_data = ContextGenerationInput(query="test invalid dict parsedContent", matching_strategy='metadata')
     memory_system_instance.global_index = {"/path/c.py": "meta c"}
@@ -510,14 +519,15 @@ def test_get_relevant_context_for_task_system_returns_invalid_dict_in_parsed_con
     mock_task_result = TaskResult(status="COMPLETE", content="", parsedContent=invalid_assoc_result_dict, notes={})
     mock_task_system.execute_atomic_template.return_value = mock_task_result
     
-    result = memory_system_instance.get_relevant_context_for(input_data)
+    result = await memory_system_instance.get_relevant_context_for(input_data)
     assert isinstance(result, AssociativeMatchResult)
     assert result.matches == []
     assert result.error is not None
     assert "PydanticValidationError validating parsedContent dict as AssociativeMatchResult" in result.error
 
 
-def test_get_relevant_context_for_task_system_returns_non_matchitem_in_parsed_content_matches(memory_system_instance, mock_task_system, mock_file_manager_ms):
+@pytest.mark.asyncio
+async def test_get_relevant_context_for_task_system_returns_non_matchitem_in_parsed_content_matches(memory_system_instance, mock_task_system, mock_file_manager_ms):
     """Test when parsedContent is AssociativeMatchResult but its 'matches' contains non-MatchItem objects."""
     input_data = ContextGenerationInput(query="test bad items in parsedContent", matching_strategy='content')
     memory_system_instance.global_index = {"/path/d.py": "meta d"}
@@ -534,19 +544,20 @@ def test_get_relevant_context_for_task_system_returns_non_matchitem_in_parsed_co
     mock_task_result = TaskResult(status="COMPLETE", parsedContent=malformed_assoc_result_obj, content="")
     mock_task_system.execute_atomic_template.return_value = mock_task_result
 
-    result = memory_system_instance.get_relevant_context_for(input_data)
+    result = await memory_system_instance.get_relevant_context_for(input_data)
     assert isinstance(result, AssociativeMatchResult)
     assert result.matches == []
     assert result.error is not None
     assert "Internal error: Parsed context items have incorrect type." in result.error
 
 
-def test_get_relevant_context_for_missing_task_system(memory_system_instance, mock_file_manager_ms): # Corrected name
+@pytest.mark.asyncio
+async def test_get_relevant_context_for_missing_task_system(memory_system_instance, mock_file_manager_ms): # Corrected name
     """Test when TaskSystem dependency is missing."""
     memory_system_instance.task_system = None # Remove dependency
     input_data = ContextGenerationInput(query="test no ts")
 
-    result = memory_system_instance.get_relevant_context_for(input_data)
+    result = await memory_system_instance.get_relevant_context_for(input_data)
 
     assert isinstance(result, AssociativeMatchResult)
     assert result.matches == []
