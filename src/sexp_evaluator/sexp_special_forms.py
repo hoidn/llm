@@ -1000,7 +1000,7 @@ class SpecialFormProcessor:
         logger.debug(f"SpecialFormProcessor.handle_iterative_loop END -> {loop_result}")
         return loop_result
 
-    def handle_and_form(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> Any:
+    async def handle_and_form(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> Any:
         """
         Handles the 'and' special form: (and expr...)
         Evaluates expressions from left to right. If any expression evaluates to a falsey value
@@ -1017,7 +1017,7 @@ class SpecialFormProcessor:
                                 # More accurately, this will be overwritten by the first eval.
         for i, expr in enumerate(arg_exprs):
             try:
-                last_value = self.evaluator._eval(expr, env)
+                last_value = await self.evaluator._eval(expr, env)
                 logger.debug(f"  'and' evaluated argument {i+1} ('{expr}') to: {last_value!r}")
                 if not bool(last_value):  # Python's truthiness check
                     logger.debug(f"  'and' short-circuiting on falsey value: {last_value!r}")
@@ -1031,7 +1031,7 @@ class SpecialFormProcessor:
         logger.debug(f"SpecialFormProcessor.handle_and_form END: All args truthy, returning last value -> {last_value!r}")
         return last_value # All arguments were truthy, return the value of the last one.
 
-    def handle_or_form(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> Any:
+    async def handle_or_form(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> Any:
         """
         Handles the 'or' special form: (or expr...)
         Evaluates expressions from left to right. If any expression evaluates to a truthy value,
@@ -1048,7 +1048,7 @@ class SpecialFormProcessor:
                                 # More accurately, this will be overwritten by the first eval.
         for i, expr in enumerate(arg_exprs):
             try:
-                last_value = self.evaluator._eval(expr, env)
+                last_value = await self.evaluator._eval(expr, env)
                 logger.debug(f"  'or' evaluated argument {i+1} ('{expr}') to: {last_value!r}")
                 if bool(last_value):  # Python's truthiness check
                     logger.debug(f"  'or' short-circuiting on truthy value: {last_value!r}")
