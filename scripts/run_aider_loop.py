@@ -44,10 +44,16 @@ except ImportError as e:
     print(f"Current sys.path: {sys.path}")
     print("Please ensure the project structure is correct, dependencies are installed,")
     print("and you are running this script from the project root directory.")
-    sys.exit(1)
+    if __name__ == "__main__":
+        sys.exit(1)
+    else:
+        raise
 except Exception as e:
     print(f"An unexpected error occurred during import: {e}")
-    sys.exit(1)
+    if __name__ == "__main__":
+        sys.exit(1)
+    else:
+        raise
 
 # --- Logging Setup ---
 # Logger defined here, configured in main() after parsing args

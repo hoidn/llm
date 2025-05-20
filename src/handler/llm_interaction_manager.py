@@ -420,261 +420,261 @@ class LLMInteractionManager:
         #         "error": "AgentNotInitializedError: LLM Agent not initialized.",
         #     }
 
+        try:
+            # Determine the system prompt to use for the call
+            current_system_prompt = (
+                system_prompt_override
+                if system_prompt_override is not None
+                else self.base_system_prompt
+            )
+
+            # Prepare keyword arguments separately
+            run_kwargs = {
+                "message_history": conversation_history,  # Pass history here
+                "system_prompt": current_system_prompt,
+            }
+
+            # Log the full prompt and context to a file for debugging
             try:
-                # Determine the system prompt to use for the call
-                current_system_prompt = (
-                    system_prompt_override
-                    if system_prompt_override is not None
-                    else self.base_system_prompt
-                )
-
-                # Prepare keyword arguments separately
-                run_kwargs = {
-                    "message_history": conversation_history,  # Pass history here
+                task_id = str(uuid.uuid4())
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+                log_filename_base = f"llm_full_prompt_{timestamp}_{task_id}"
+                
+                log_data = {
+                    "task_id": task_id,
+                    "timestamp": timestamp,
                     "system_prompt": current_system_prompt,
+                    "conversation_history": [msg.model_dump(exclude_none=True, round_trip=True) if hasattr(msg, 'model_dump') else str(msg) for msg in conversation_history],
+                    "prompt": prompt,
+                    "model_used": target_model_id_for_log, # Log which model was used
                 }
 
-                # Log the full prompt and context to a file for debugging
-                try:
-                    task_id = str(uuid.uuid4())
-                    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-                    log_filename_base = f"llm_full_prompt_{timestamp}_{task_id}"
-                    
-                    log_data = {
-                        "task_id": task_id,
-                        "timestamp": timestamp,
-                        "system_prompt": current_system_prompt,
-                        "conversation_history": [msg.model_dump(exclude_none=True, round_trip=True) if hasattr(msg, 'model_dump') else str(msg) for msg in conversation_history],
-                        "prompt": prompt,
-                        "model_used": target_model_id_for_log, # Log which model was used
-                    }
+                # Write to .log file (human-readable, might be same as JSON or different format if preferred)
+                log_file_path = f"{log_filename_base}.log"
+                with open(log_file_path, "w") as _f:
+                    _f.write(json.dumps(log_data, indent=2)) # Currently same as JSON
+                logger.info(f"LLM full prompt written to {log_file_path}")
 
-                    # Write to .log file (human-readable, might be same as JSON or different format if preferred)
-                    log_file_path = f"{log_filename_base}.log"
-                    with open(log_file_path, "w") as _f:
-                        _f.write(json.dumps(log_data, indent=2)) # Currently same as JSON
-                    logger.info(f"LLM full prompt written to {log_file_path}")
+                # Write to .json file (structured data)
+                json_file_path = f"{log_filename_base}.json"
+                with open(json_file_path, "w") as _f_json:
+                    json.dump(log_data, _f_json, indent=2)
+                logger.info(f"LLM full prompt JSON data written to {json_file_path}")
 
-                    # Write to .json file (structured data)
-                    json_file_path = f"{log_filename_base}.json"
-                    with open(json_file_path, "w") as _f_json:
-                        json.dump(log_data, _f_json, indent=2)
-                    logger.info(f"LLM full prompt JSON data written to {json_file_path}")
+            except Exception as _e:
+                logger.error(f"Failed to write full LLM prompt to file(s): {_e}")
 
-                except Exception as _e:
-                    logger.error(f"Failed to write full LLM prompt to file(s): {_e}")
-
-                # --- START: Populate log_data_entry with agent request details ---
-                log_data_entry["main_user_prompt_to_agent"] = prompt
-                log_data_entry["final_system_prompt_to_agent"] = run_kwargs.get("system_prompt")
-                
-                # Serialize conversation history
-                history_for_log = []
-                raw_history = run_kwargs.get("message_history", [])
-                for msg in raw_history:
-                    if hasattr(msg, 'model_dump'):
-                        history_for_log.append(msg.model_dump(exclude_none=True, round_trip=True))
-                    else:
-                        history_for_log.append(str(msg))
-                log_data_entry["history_to_agent"] = history_for_log
-                
-                # Determine tools for the agent call (will be added to run_kwargs later)
-                tools_for_agent_run = None
-                if tools_override: # Prioritize tools_override
-                    tools_for_agent_run = tools_override
-                elif active_tools: # Fallback to active_tools (definitions)
-                    tools_for_agent_run = active_tools
-                
-                # Serialize tools for logging
-                tools_arg_for_log = []
-                if tools_for_agent_run:
-                    for t_item in tools_for_agent_run:
-                        if PydanticTool is not None and isinstance(t_item, PydanticTool):
-                            tools_arg_for_log.append({
-                                "type": "PydanticTool", "name": t_item.name, 
-                                "description": t_item.description, 
-                                "schema": t_item.schema # schema is already a dict
-                            })
-                        elif callable(t_item):
-                            tools_arg_for_log.append({
-                                "type": "callable", "name": getattr(t_item, '__name__', str(t_item)),
-                                "docstring": getattr(t_item, '__doc__', None) # Using docstring for description
-                            })
-                        elif isinstance(t_item, dict): # Tool spec dictionary
-                            tools_arg_for_log.append({"type": "dict_spec", **t_item})
-                        else: # Fallback for other types
-                            tools_arg_for_log.append({"type": str(type(t_item)), "value_repr": repr(t_item)})
-                log_data_entry["tools_to_agent"] = tools_arg_for_log
-                
-                # Log output_type if provided
-                if output_type_override:
-                    log_data_entry["output_type_to_agent"] = f"{output_type_override.__module__}.{output_type_override.__name__}"
+            # --- START: Populate log_data_entry with agent request details ---
+            log_data_entry["main_user_prompt_to_agent"] = prompt
+            log_data_entry["final_system_prompt_to_agent"] = run_kwargs.get("system_prompt")
+            
+            # Serialize conversation history
+            history_for_log = []
+            raw_history = run_kwargs.get("message_history", [])
+            for msg in raw_history:
+                if hasattr(msg, 'model_dump'):
+                    history_for_log.append(msg.model_dump(exclude_none=True, round_trip=True))
                 else:
-                    log_data_entry["output_type_to_agent"] = None
-                # --- END: Populate log_data_entry with agent request details ---
+                    history_for_log.append(str(msg))
+            log_data_entry["history_to_agent"] = history_for_log
+            
+            # Determine tools for the agent call (will be added to run_kwargs later)
+            tools_for_agent_run = None
+            if tools_override: # Prioritize tools_override
+                tools_for_agent_run = tools_override
+            elif active_tools: # Fallback to active_tools (definitions)
+                tools_for_agent_run = active_tools
+            
+            # Serialize tools for logging
+            tools_arg_for_log = []
+            if tools_for_agent_run:
+                for t_item in tools_for_agent_run:
+                    if PydanticTool is not None and isinstance(t_item, PydanticTool):
+                        tools_arg_for_log.append({
+                            "type": "PydanticTool", "name": t_item.name, 
+                            "description": t_item.description, 
+                            "schema": t_item.schema # schema is already a dict
+                        })
+                    elif callable(t_item):
+                        tools_arg_for_log.append({
+                            "type": "callable", "name": getattr(t_item, '__name__', str(t_item)),
+                            "docstring": getattr(t_item, '__doc__', None) # Using docstring for description
+                        })
+                    elif isinstance(t_item, dict): # Tool spec dictionary
+                        tools_arg_for_log.append({"type": "dict_spec", **t_item})
+                    else: # Fallback for other types
+                        tools_arg_for_log.append({"type": str(type(t_item)), "value_repr": repr(t_item)})
+            log_data_entry["tools_to_agent"] = tools_arg_for_log
+            
+            # Log output_type if provided
+            if output_type_override:
+                log_data_entry["output_type_to_agent"] = f"{output_type_override.__module__}.{output_type_override.__name__}"
+            else:
+                log_data_entry["output_type_to_agent"] = None
+            # --- END: Populate log_data_entry with agent request details ---
 
-                # Handle tools_override and active_tools
-                # --- START FIX for tools precedence ---
-                if tools_override: # This was already correct, tools_for_agent_run is now set above
-                    run_kwargs["tools"] = tools_override # Prioritize tools_override
-                    logging.debug(f"Using tools_override ({len(tools_override)}) for agent.run_sync")
-                elif active_tools:
-                    run_kwargs["tools"] = active_tools # Fallback to active_tools (definitions)
-                    logging.debug(f"Using active_tools ({len(active_tools)}) for agent.run_sync")
-                # --- END FIX for tools precedence ---
+            # Handle tools_override and active_tools
+            # --- START FIX for tools precedence ---
+            if tools_override: # This was already correct, tools_for_agent_run is now set above
+                run_kwargs["tools"] = tools_override # Prioritize tools_override
+                logging.debug(f"Using tools_override ({len(tools_override)}) for agent.run_sync")
+            elif active_tools:
+                run_kwargs["tools"] = active_tools # Fallback to active_tools (definitions)
+                logging.debug(f"Using active_tools ({len(active_tools)}) for agent.run_sync")
+            # --- END FIX for tools precedence ---
 
-                if output_type_override:
-                    run_kwargs["output_type"] = output_type_override
-                    logging.debug(
-                        f"Executing agent call with output_type: {output_type_override.__name__}"
-                    )
+            if output_type_override:
+                run_kwargs["output_type"] = output_type_override
+                logging.debug(
+                    f"Executing agent call with output_type: {output_type_override.__name__}"
+                )
 
-                # Log the arguments being passed
+            # Log the arguments being passed
+            logger.debug(
+                f"LLMInteractionManager: Calling agent.run_sync (Model: '{target_model_id_for_log}') with prompt='{prompt[:100]}...' and kwargs={run_kwargs}"
+            )
+
+            # Add concise logging for key parameters
+            logger.debug(f"Calling run_sync for model: {target_model_id_for_log}")
+            logger.debug(f"Prompt type: {type(prompt)}, length: {len(prompt)}")
+            logger.debug(f"System prompt: {run_kwargs.get('system_prompt')[:100]}...")
+            
+            # Log tool and output type information without full dumps
+            if 'tools' in run_kwargs:
+                tool_info = run_kwargs.get('tools')
+                if isinstance(tool_info, list):
+                    tool_count = len(tool_info)
+                    tool_names = [getattr(t, '__name__', str(t)) for t in tool_info[:5]] if callable(tool_info[0]) else [t.get('name', 'unnamed') for t in tool_info[:5]]
+                    logger.debug(f"Using {tool_count} tools: {', '.join(tool_names)}{' and more...' if tool_count > 5 else ''}")
+            
+            if 'output_type' in run_kwargs:
+                output_type = run_kwargs.get('output_type')
+                logger.debug(f"Output type: {getattr(output_type, '__name__', str(output_type))}")
+
+            if self.debug_mode:
+                # Redundant logging now, keep or remove
                 logger.debug(
-                    f"LLMInteractionManager: Calling agent.run_sync (Model: '{target_model_id_for_log}') with prompt='{prompt[:100]}...' and kwargs={run_kwargs}"
+                    f"Calling agent.run_sync with prompt='{prompt[:100]}...' and kwargs={run_kwargs}"
                 )
 
-                # Add concise logging for key parameters
-                logger.debug(f"Calling run_sync for model: {target_model_id_for_log}")
-                logger.debug(f"Prompt type: {type(prompt)}, length: {len(prompt)}")
-                logger.debug(f"System prompt: {run_kwargs.get('system_prompt')[:100]}...")
-                
-                # Log tool and output type information without full dumps
-                if 'tools' in run_kwargs:
-                    tool_info = run_kwargs.get('tools')
-                    if isinstance(tool_info, list):
-                        tool_count = len(tool_info)
-                        tool_names = [getattr(t, '__name__', str(t)) for t in tool_info[:5]] if callable(tool_info[0]) else [t.get('name', 'unnamed') for t in tool_info[:5]]
-                        logger.debug(f"Using {tool_count} tools: {', '.join(tool_names)}{' and more...' if tool_count > 5 else ''}")
-                
-                if 'output_type' in run_kwargs:
-                    output_type = run_kwargs.get('output_type')
-                    logger.debug(f"Output type: {getattr(output_type, '__name__', str(output_type))}")
+            response = await target_agent.run(prompt, **run_kwargs)
 
-                if self.debug_mode:
-                    # Redundant logging now, keep or remove
-                    logger.debug(
-                        f"Calling agent.run_sync with prompt='{prompt[:100]}...' and kwargs={run_kwargs}"
-                    )
+            if self.debug_mode:
+                logging.debug(f"Agent response received: {response}")
 
-                response = await target_agent.run(prompt, **run_kwargs)
+            # --- START: Log pydantic_ai agent response and prepare manager result ---
+            log_data_entry["timestamp_response"] = datetime.now().isoformat()
+            
+            pydantic_ai_response_log_data = {}
+            # Serialize response.output for logging
+            raw_output_from_agent = getattr(response, "output", None)
+            if hasattr(raw_output_from_agent, "model_dump"):
+                pydantic_ai_response_log_data["output"] = raw_output_from_agent.model_dump(exclude_none=True, round_trip=True)
+            elif raw_output_from_agent is not None:
+                pydantic_ai_response_log_data["output"] = str(raw_output_from_agent)
+            else:
+                pydantic_ai_response_log_data["output"] = None
 
-                if self.debug_mode:
-                    logging.debug(f"Agent response received: {response}")
+            # Serialize response.tool_calls for logging
+            raw_tool_calls_from_agent = getattr(response, "tool_calls", [])
+            if raw_tool_calls_from_agent:
+                serialized_tool_calls_for_log = []
+                for tc in raw_tool_calls_from_agent:
+                    if hasattr(tc, 'model_dump'):
+                        serialized_tool_calls_for_log.append(tc.model_dump(exclude_none=True, round_trip=True))
+                    else:
+                        serialized_tool_calls_for_log.append(str(tc))
+                pydantic_ai_response_log_data["tool_calls"] = serialized_tool_calls_for_log
+            else:
+                pydantic_ai_response_log_data["tool_calls"] = []
 
-                # --- START: Log pydantic_ai agent response and prepare manager result ---
-                log_data_entry["timestamp_response"] = datetime.now().isoformat()
-                
-                pydantic_ai_response_log_data = {}
-                # Serialize response.output for logging
-                raw_output_from_agent = getattr(response, "output", None)
-                if hasattr(raw_output_from_agent, "model_dump"):
-                    pydantic_ai_response_log_data["output"] = raw_output_from_agent.model_dump(exclude_none=True, round_trip=True)
-                elif raw_output_from_agent is not None:
-                    pydantic_ai_response_log_data["output"] = str(raw_output_from_agent)
-                else:
-                    pydantic_ai_response_log_data["output"] = None
+            # Serialize response.usage for logging (reusing existing logic)
+            raw_usage_attr = getattr(response, "usage", None)
+            actual_usage_data_for_log: Optional[Dict[str, Any]] = None
+            if raw_usage_attr is not None:
+                if callable(raw_usage_attr):
+                    try: actual_usage_data_for_log = raw_usage_attr()
+                    except Exception as e_usage_call_log: actual_usage_data_for_log = {"raw_usage_representation": str(raw_usage_attr), "error_calling_usage": str(e_usage_call_log)}
+                elif isinstance(raw_usage_attr, dict): actual_usage_data_for_log = raw_usage_attr
+                elif hasattr(raw_usage_attr, "model_dump"): actual_usage_data_for_log = raw_usage_attr.model_dump(exclude_none=True, round_trip=True)
+                else: actual_usage_data_for_log = {"raw_usage_representation": str(raw_usage_attr)}
+            pydantic_ai_response_log_data["usage"] = actual_usage_data_for_log
+            
+            log_data_entry["pydantic_ai_agent_response"] = pydantic_ai_response_log_data
+            # --- END: Log pydantic_ai agent response ---
 
-                # Serialize response.tool_calls for logging
-                raw_tool_calls_from_agent = getattr(response, "tool_calls", [])
-                if raw_tool_calls_from_agent:
-                    serialized_tool_calls_for_log = []
-                    for tc in raw_tool_calls_from_agent:
-                        if hasattr(tc, 'model_dump'):
-                            serialized_tool_calls_for_log.append(tc.model_dump(exclude_none=True, round_trip=True))
-                        else:
-                            serialized_tool_calls_for_log.append(str(tc))
-                    pydantic_ai_response_log_data["tool_calls"] = serialized_tool_calls_for_log
-                else:
-                    pydantic_ai_response_log_data["tool_calls"] = []
+            # Process response for manager return value (using original logic)
+            content = getattr(response, "output", None)
+            tool_calls = getattr(response, "tool_calls", []) # These are Pydantic models from agent
+            
+            # Reuse the processed usage data for the manager's return value
+            usage = actual_usage_data_for_log 
 
-                # Serialize response.usage for logging (reusing existing logic)
-                raw_usage_attr = getattr(response, "usage", None)
-                actual_usage_data_for_log: Optional[Dict[str, Any]] = None
-                if raw_usage_attr is not None:
-                    if callable(raw_usage_attr):
-                        try: actual_usage_data_for_log = raw_usage_attr()
-                        except Exception as e_usage_call_log: actual_usage_data_for_log = {"raw_usage_representation": str(raw_usage_attr), "error_calling_usage": str(e_usage_call_log)}
-                    elif isinstance(raw_usage_attr, dict): actual_usage_data_for_log = raw_usage_attr
-                    elif hasattr(raw_usage_attr, "model_dump"): actual_usage_data_for_log = raw_usage_attr.model_dump(exclude_none=True, round_trip=True)
-                    else: actual_usage_data_for_log = {"raw_usage_representation": str(raw_usage_attr)}
-                pydantic_ai_response_log_data["usage"] = actual_usage_data_for_log
-                
-                log_data_entry["pydantic_ai_agent_response"] = pydantic_ai_response_log_data
-                # --- END: Log pydantic_ai agent response ---
+            parsed_content = None
+            if content is not None and hasattr(content, "model_dump"):
+                parsed_content = content # Store the Pydantic model
 
-                # Process response for manager return value (using original logic)
-                content = getattr(response, "output", None)
-                tool_calls = getattr(response, "tool_calls", []) # These are Pydantic models from agent
-                
-                # Reuse the processed usage data for the manager's return value
-                usage = actual_usage_data_for_log 
+            content_str = str(content) if content is None or isinstance(content, str) else \
+                          (content.model_dump_json() if hasattr(content, "model_dump_json") else 
+                           (str(content.model_dump()) if hasattr(content, "model_dump") else str(content)))
 
-                parsed_content = None
-                if content is not None and hasattr(content, "model_dump"):
-                    parsed_content = content # Store the Pydantic model
+            manager_result_dict = {
+                "success": True, "content": content_str, "parsed_content": parsed_content, 
+                "tool_calls": tool_calls, "usage": usage, "error": None,
+            }
 
-                content_str = str(content) if content is None or isinstance(content, str) else \
-                              (content.model_dump_json() if hasattr(content, "model_dump_json") else 
-                               (str(content.model_dump()) if hasattr(content, "model_dump") else str(content)))
+            # Prepare final_manager_result for logging (serialize Pydantic models within manager_result_dict)
+            logged_final_manager_result = {
+                "success": manager_result_dict["success"],
+                "content": manager_result_dict["content"], # Already string
+                "parsed_content": manager_result_dict["parsed_content"].model_dump(exclude_none=True, round_trip=True) if hasattr(manager_result_dict["parsed_content"], "model_dump") else manager_result_dict["parsed_content"],
+                "tool_calls": [tc.model_dump(exclude_none=True, round_trip=True) if hasattr(tc, "model_dump") else tc for tc in manager_result_dict["tool_calls"]] if manager_result_dict["tool_calls"] else [],
+                "usage": manager_result_dict["usage"], # Already processed dict or None
+                "error": manager_result_dict["error"],
+            }
+            log_data_entry["final_manager_result"] = logged_final_manager_result
+            
+            # Write the comprehensive interaction log file
+            try:
+                with open(f"{interaction_log_filename_base}.json", "w") as f_json:
+                    # Custom default handler for non-serializable objects
+                    def fallback_serializer(obj):
+                        if PydanticTool is not None and isinstance(obj, PydanticTool): # Must check before callable
+                            return {"type": "PydanticTool", "name": obj.name, "description": obj.description, "schema_repr": repr(obj.schema)}
+                        if callable(obj): 
+                            return f"<callable {getattr(obj, '__name__', 'unnamed')}>"
+                        if isinstance(obj, type): 
+                            return f"<type {obj.__module__}.{obj.__name__}>"
+                        # Fallback for other Pydantic models not caught by explicit model_dump elsewhere
+                        if hasattr(obj, 'model_dump'):
+                            try: return obj.model_dump(exclude_none=True, round_trip=True)
+                            except: pass # Fall through to repr
+                        return repr(obj) 
+                    json.dump(log_data_entry, f_json, indent=2, default=fallback_serializer)
+                logger.info(f"LLM Interaction details logged to {interaction_log_filename_base}.json")
+            except Exception as log_e:
+                logger.error(f"Error writing LLM Interaction log file: {log_e}", exc_info=True)
 
-                manager_result_dict = {
-                    "success": True, "content": content_str, "parsed_content": parsed_content, 
-                    "tool_calls": tool_calls, "usage": usage, "error": None,
-                }
+            return manager_result_dict # Return original manager_result_dict with Pydantic models intact
+        except Exception as e:
+            logging.error(
+                f"Error during pydantic-ai agent execution: {e}", exc_info=True
+            )
+            # Populate log_data_entry with error before writing
+            log_data_entry["error_during_agent_execution"] = str(e)
+            log_data_entry["timestamp_response"] = datetime.now().isoformat() # Add response timestamp even on error
+            
+            final_error_result = { # Ensure all keys are present
+                "success": False, "content": None, "parsed_content": None, "tool_calls": None, 
+                "usage": None, "error": f"Agent execution failed: {e}",
+            }
+            log_data_entry["final_manager_result"] = final_error_result # Already serializable
+            
+            try:
+                with open(f"{interaction_log_filename_base}_AGENT_EXEC_ERROR.json", "w") as f_json: json.dump(log_data_entry, f_json, indent=2, default=lambda o: repr(o))
+                logger.info(f"LLM Interaction details (AGENT_EXEC_ERROR) logged to {interaction_log_filename_base}_AGENT_EXEC_ERROR.json")
+            except Exception as log_e: logger.error(f"Error writing LLM Interaction log file on agent execution error: {log_e}", exc_info=True)
 
-                # Prepare final_manager_result for logging (serialize Pydantic models within manager_result_dict)
-                logged_final_manager_result = {
-                    "success": manager_result_dict["success"],
-                    "content": manager_result_dict["content"], # Already string
-                    "parsed_content": manager_result_dict["parsed_content"].model_dump(exclude_none=True, round_trip=True) if hasattr(manager_result_dict["parsed_content"], "model_dump") else manager_result_dict["parsed_content"],
-                    "tool_calls": [tc.model_dump(exclude_none=True, round_trip=True) if hasattr(tc, "model_dump") else tc for tc in manager_result_dict["tool_calls"]] if manager_result_dict["tool_calls"] else [],
-                    "usage": manager_result_dict["usage"], # Already processed dict or None
-                    "error": manager_result_dict["error"],
-                }
-                log_data_entry["final_manager_result"] = logged_final_manager_result
-                
-                # Write the comprehensive interaction log file
-                try:
-                    with open(f"{interaction_log_filename_base}.json", "w") as f_json:
-                        # Custom default handler for non-serializable objects
-                        def fallback_serializer(obj):
-                            if PydanticTool is not None and isinstance(obj, PydanticTool): # Must check before callable
-                                return {"type": "PydanticTool", "name": obj.name, "description": obj.description, "schema_repr": repr(obj.schema)}
-                            if callable(obj): 
-                                return f"<callable {getattr(obj, '__name__', 'unnamed')}>"
-                            if isinstance(obj, type): 
-                                return f"<type {obj.__module__}.{obj.__name__}>"
-                            # Fallback for other Pydantic models not caught by explicit model_dump elsewhere
-                            if hasattr(obj, 'model_dump'):
-                                try: return obj.model_dump(exclude_none=True, round_trip=True)
-                                except: pass # Fall through to repr
-                            return repr(obj) 
-                        json.dump(log_data_entry, f_json, indent=2, default=fallback_serializer)
-                    logger.info(f"LLM Interaction details logged to {interaction_log_filename_base}.json")
-                except Exception as log_e:
-                    logger.error(f"Error writing LLM Interaction log file: {log_e}", exc_info=True)
-
-                return manager_result_dict # Return original manager_result_dict with Pydantic models intact
-            except Exception as e:
-                logging.error(
-                    f"Error during pydantic-ai agent execution: {e}", exc_info=True
-                )
-                # Populate log_data_entry with error before writing
-                log_data_entry["error_during_agent_execution"] = str(e)
-                log_data_entry["timestamp_response"] = datetime.now().isoformat() # Add response timestamp even on error
-                
-                final_error_result = { # Ensure all keys are present
-                    "success": False, "content": None, "parsed_content": None, "tool_calls": None, 
-                    "usage": None, "error": f"Agent execution failed: {e}",
-                }
-                log_data_entry["final_manager_result"] = final_error_result # Already serializable
-                
-                try:
-                    with open(f"{interaction_log_filename_base}_AGENT_EXEC_ERROR.json", "w") as f_json: json.dump(log_data_entry, f_json, indent=2, default=lambda o: repr(o))
-                    logger.info(f"LLM Interaction details (AGENT_EXEC_ERROR) logged to {interaction_log_filename_base}_AGENT_EXEC_ERROR.json")
-                except Exception as log_e: logger.error(f"Error writing LLM Interaction log file on agent execution error: {log_e}", exc_info=True)
-
-                return final_error_result # Return the consistent error structure
-        finally:
-            pass # Event loop management removed
+            return final_error_result # Return the consistent error structure
+    finally:
+        pass # Event loop management removed
