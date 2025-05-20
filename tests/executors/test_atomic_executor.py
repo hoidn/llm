@@ -4,7 +4,7 @@ Unit tests for the AtomicTaskExecutor.
 
 import pytest
 import logging # Add import
-from unittest.mock import MagicMock, call, patch, ANY # Use MagicMock for flexibility, add ANY
+from unittest.mock import MagicMock, call, patch, ANY, AsyncMock # Use MagicMock for flexibility, add ANY, AsyncMock
 from src.executors.atomic_executor import AtomicTaskExecutor, ParameterMismatchError
 from src.system.models import TaskResult, TaskFailureError, ModelNotFoundError, HistoryConfigSettings # Assuming TaskResult model, add HistoryConfigSettings
 from pydantic import BaseModel # For testing output_type_override
@@ -25,7 +25,8 @@ def mock_handler(mocker):
     # Configure mock methods used by the executor
     mock._build_system_prompt.return_value = "Mocked System Prompt"
     # Configure _execute_llm_call to return a TaskResult object by default
-    mock._execute_llm_call.return_value = TaskResult(status="COMPLETE", content="Mock LLM Response", notes={})
+    # Change to AsyncMock for _execute_llm_call
+    mock._execute_llm_call = AsyncMock(return_value=TaskResult(status="COMPLETE", content="Mock LLM Response", notes={}))
     return mock
 
 @pytest.fixture
@@ -35,7 +36,8 @@ def executor():
 
 # --- Test Cases ---
 
-def test_execute_body_success(executor, mock_handler):
+@pytest.mark.asyncio
+async def test_execute_body_success(executor, mock_handler):
     """Verify successful execution with parameter substitution."""
     task_def = {
         "name": "test_task",
@@ -49,7 +51,7 @@ def test_execute_body_success(executor, mock_handler):
     params = {"input_val": "test_value"} # These are the runtime values
 
     # Act
-    result_dict = executor.execute_body(task_def, params, mock_handler)
+    result_dict = await executor.execute_body(task_def, params, mock_handler)
     result = TaskResult.model_validate(result_dict) # Validate dict against model
 
     # Assert
@@ -59,16 +61,17 @@ def test_execute_body_success(executor, mock_handler):
     mock_handler._build_system_prompt.assert_called_once_with(
         template_specific_instructions="System prompt for test_value" # CHANGED
     )
-    mock_handler._execute_llm_call.assert_called_once_with(
+    mock_handler._execute_llm_call.assert_awaited_once_with(
         prompt="Do something with test_value.",
         system_prompt_override="Mocked System Prompt", # Ensure this matches what _build_system_prompt returns
         task_tools_config=None, # From previous fix
         output_type_override=None,
         model_override=task_def.get("model"), # Will be None if not in task_def
-        history_config=None 
+        history_config=None
     )
 
-def test_execute_body_missing_param(executor, mock_handler):
+@pytest.mark.asyncio
+async def test_execute_body_missing_param(executor, mock_handler):
     """Verify failure when a required parameter is missing during substitution."""
     task_def = {
         "name": "test_task_fail",
@@ -79,7 +82,7 @@ def test_execute_body_missing_param(executor, mock_handler):
     params = {"input_val": "value"} # Does not contain 'missing_param'
 
     # Act
-    result_dict = executor.execute_body(task_def, params, mock_handler)
+    result_dict = await executor.execute_body(task_def, params, mock_handler)
     result = TaskResult.model_validate(result_dict) # Validate dict against model
 
     # Assert
@@ -96,13 +99,14 @@ def test_execute_body_missing_param(executor, mock_handler):
     assert error_details.message == expected_error_content
     # Ensure handler was NOT called
     mock_handler._build_system_prompt.assert_not_called()
-    mock_handler._execute_llm_call.assert_not_called()
+    mock_handler._execute_llm_call.assert_not_awaited()
 
-def test_execute_body_handler_fails(executor, mock_handler):
+@pytest.mark.asyncio
+async def test_execute_body_handler_fails(executor, mock_handler):
     """Verify failure propagation when the handler's LLM call fails."""
     # Configure mock handler to return a FAILED TaskResult object
     failed_error_details = TaskFailureError(type="TASK_FAILURE", reason="llm_error", message="LLM API Error")
-    mock_handler._execute_llm_call.return_value = TaskResult(
+    mock_handler._execute_llm_call.return_value = TaskResult( # AsyncMock return_value is fine as TaskResult
         status="FAILED",
         content="LLM API Error",
         notes={"error": failed_error_details.model_dump(exclude_none=True)}
@@ -112,7 +116,7 @@ def test_execute_body_handler_fails(executor, mock_handler):
     params = {}
 
     # Act
-    result_dict = executor.execute_body(task_def, params, mock_handler)
+    result_dict = await executor.execute_body(task_def, params, mock_handler)
     result = TaskResult.model_validate(result_dict) # Validate dict
 
     # Assert
@@ -123,7 +127,8 @@ def test_execute_body_handler_fails(executor, mock_handler):
     error_details = TaskFailureError.model_validate(result.notes["error"])
     assert error_details.reason == "llm_error" # Propagated error
 
-def test_execute_body_json_parsing_success(executor, mock_handler):
+@pytest.mark.asyncio
+async def test_execute_body_json_parsing_success(executor, mock_handler):
     """Verify successful JSON parsing when specified and output is valid JSON."""
     # Configure handler to return valid JSON string content
     mock_handler._execute_llm_call.return_value = TaskResult(
@@ -137,7 +142,7 @@ def test_execute_body_json_parsing_success(executor, mock_handler):
     params = {}
 
     # Act
-    result_dict = executor.execute_body(task_def, params, mock_handler)
+    result_dict = await executor.execute_body(task_def, params, mock_handler)
     result = TaskResult.model_validate(result_dict) # Validate dict
 
     # Assert
@@ -146,7 +151,8 @@ def test_execute_body_json_parsing_success(executor, mock_handler):
     assert result.parsedContent == {"key": "value", "num": 123} # Parsed content added
     assert "parseError" not in result.notes
 
-def test_execute_body_json_parsing_failure(executor, mock_handler):
+@pytest.mark.asyncio
+async def test_execute_body_json_parsing_failure(executor, mock_handler):
     """Verify parseError note when JSON parsing fails due to invalid content."""
     # Configure handler to return non-JSON string content
     mock_handler._execute_llm_call.return_value = TaskResult(
@@ -160,7 +166,7 @@ def test_execute_body_json_parsing_failure(executor, mock_handler):
     params = {}
 
     # Act
-    result_dict = executor.execute_body(task_def, params, mock_handler)
+    result_dict = await executor.execute_body(task_def, params, mock_handler)
     result = TaskResult.model_validate(result_dict) # Validate dict
 
     # Assert
@@ -170,7 +176,8 @@ def test_execute_body_json_parsing_failure(executor, mock_handler):
     assert "parseError" in result.notes
     assert "JSONDecodeError" in result.notes["parseError"]
 
-def test_execute_body_no_instructions(executor, mock_handler):
+@pytest.mark.asyncio
+async def test_execute_body_no_instructions(executor, mock_handler):
     """Verify execution proceeds with empty prompt if instructions are missing/empty."""
     task_def = {
         "name": "test_no_instructions",
@@ -180,7 +187,7 @@ def test_execute_body_no_instructions(executor, mock_handler):
     params = {}
 
     # Act
-    result_dict = executor.execute_body(task_def, params, mock_handler)
+    result_dict = await executor.execute_body(task_def, params, mock_handler)
     result = TaskResult.model_validate(result_dict)
 
     # Assert
@@ -188,42 +195,44 @@ def test_execute_body_no_instructions(executor, mock_handler):
     mock_handler._build_system_prompt.assert_called_once_with(
         template_specific_instructions="System prompt." # CHANGED
     )
-    mock_handler._execute_llm_call.assert_called_once_with(
+    mock_handler._execute_llm_call.assert_awaited_once_with(
         prompt="", # Check that prompt is empty string
         system_prompt_override="Mocked System Prompt",
         task_tools_config=None, # From previous fix
         output_type_override=None,
         model_override=task_def.get("model"), # Will be None if not in task_def
-        history_config=None 
+        history_config=None
     )
 
-def test_substitute_large_dict_param(executor, mock_handler, caplog):
+@pytest.mark.asyncio
+async def test_substitute_large_dict_param(executor, mock_handler, caplog):
     """Test substitution with a dictionary parameter, check logging."""
     task_def = {"instructions": "Data: {{big_dict}}"}
     large_dict = {f"key_{i}": f"value_{i}" for i in range(5)}
     params = {"big_dict": large_dict}
 
     with caplog.at_level(logging.DEBUG):
-        executor.execute_body(task_def, params, mock_handler)
+        await executor.execute_body(task_def, params, mock_handler)
 
     # Assert substitution happened (handler called with stringified dict)
-    mock_handler._execute_llm_call.assert_called_once()
+    mock_handler._execute_llm_call.assert_awaited_once()
     call_args, call_kwargs = mock_handler._execute_llm_call.call_args
     assert str(large_dict) in call_kwargs['prompt']
     # Assert log message was generated
     assert f"Substituting 'big_dict': Type=<class 'dict'>, Size/Len={len(large_dict)}" in caplog.text
 
-def test_substitute_large_string_param(executor, mock_handler, caplog):
+@pytest.mark.asyncio
+async def test_substitute_large_string_param(executor, mock_handler, caplog):
     """Test substitution with a long string parameter, check logging."""
     task_def = {"instructions": "Metadata: {{long_meta}}"}
     long_string = "metadata " * 100
     params = {"long_meta": long_string}
 
     with caplog.at_level(logging.DEBUG):
-        executor.execute_body(task_def, params, mock_handler)
+        await executor.execute_body(task_def, params, mock_handler)
 
     # Assert substitution happened
-    mock_handler._execute_llm_call.assert_called_once()
+    mock_handler._execute_llm_call.assert_awaited_once()
     call_args, call_kwargs = mock_handler._execute_llm_call.call_args
     assert long_string in call_kwargs['prompt']
     # Assert log message was generated
@@ -231,8 +240,9 @@ def test_substitute_large_string_param(executor, mock_handler, caplog):
 
 # ----- New Tests for Pydantic Schema Output -----
 
+@pytest.mark.asyncio
 @patch('src.executors.atomic_executor.resolve_model_class')
-def test_execute_body_without_output_format_schema(mock_resolve_model_class, executor, mock_handler):
+async def test_execute_body_without_output_format_schema(mock_resolve_model_class, executor, mock_handler):
     """Test execute_body with template that has no output_format.schema."""
     # Arrange
     task_def = {
@@ -243,18 +253,19 @@ def test_execute_body_without_output_format_schema(mock_resolve_model_class, exe
     params = {}
 
     # Act
-    executor.execute_body(task_def, params, mock_handler)
+    await executor.execute_body(task_def, params, mock_handler)
 
     # Assert
     # Verify resolve_model_class was NOT called (no schema to resolve)
     mock_resolve_model_class.assert_not_called()
     # Verify handler was called with output_type_override=None
-    mock_handler._execute_llm_call.assert_called_once()
+    mock_handler._execute_llm_call.assert_awaited_once()
     _, kwargs = mock_handler._execute_llm_call.call_args
     assert kwargs.get('output_type_override') is None
 
+@pytest.mark.asyncio
 @patch('src.executors.atomic_executor.resolve_model_class')
-def test_execute_body_with_valid_output_format_schema(mock_resolve_model_class, executor, mock_handler):
+async def test_execute_body_with_valid_output_format_schema(mock_resolve_model_class, executor, mock_handler):
     """Test execute_body with template that has a valid output_format.schema."""
     # Arrange
     task_def = {
@@ -268,18 +279,19 @@ def test_execute_body_with_valid_output_format_schema(mock_resolve_model_class, 
     mock_resolve_model_class.return_value = _SampleOutputModel # Use renamed model
 
     # Act
-    executor.execute_body(task_def, params, mock_handler)
+    await executor.execute_body(task_def, params, mock_handler)
 
     # Assert
     # Verify resolve_model_class was called with correct schema name
     mock_resolve_model_class.assert_called_once_with("_SampleOutputModel") # Use renamed model
     # Verify handler was called with output_type_override=_SampleOutputModel
-    mock_handler._execute_llm_call.assert_called_once()
+    mock_handler._execute_llm_call.assert_awaited_once()
     _, kwargs = mock_handler._execute_llm_call.call_args
     assert kwargs.get('output_type_override') == _SampleOutputModel # Use renamed model
 
+@pytest.mark.asyncio
 @patch('src.executors.atomic_executor.resolve_model_class')
-def test_execute_body_with_handler_returning_parsed_content(mock_resolve_model_class, executor, mock_handler):
+async def test_execute_body_with_handler_returning_parsed_content(mock_resolve_model_class, executor, mock_handler):
     """Test execute_body when handler returns parsed_content from pydantic-ai."""
     # Arrange
     task_def = {
@@ -298,7 +310,8 @@ def test_execute_body_with_handler_returning_parsed_content(mock_resolve_model_c
     # Configure mock handler to return both raw content and parsed_content
     # Note: The mock handler's _execute_llm_call needs to return a dict, not a TaskResult object directly
     # because the executor expects a dict from the handler call.
-    mock_handler._execute_llm_call.return_value = {
+    # The return_value of AsyncMock should be the direct return, not a coroutine.
+    mock_handler._execute_llm_call.return_value = { # This is the dict that TaskResult.model_validate will take
         "success": True,
         "status": "COMPLETE",
         "content": '{"name": "test", "value": 42}',
@@ -307,7 +320,7 @@ def test_execute_body_with_handler_returning_parsed_content(mock_resolve_model_c
     }
 
     # Act
-    result_dict = executor.execute_body(task_def, params, mock_handler)
+    result_dict = await executor.execute_body(task_def, params, mock_handler)
 
     # Assert
     # Verify the parsed_content was moved to parsedContent in the result
@@ -316,8 +329,9 @@ def test_execute_body_with_handler_returning_parsed_content(mock_resolve_model_c
     # Verify parsed_content is removed from the result
     assert "parsed_content" not in result_dict
 
+@pytest.mark.asyncio
 @patch('src.executors.atomic_executor.resolve_model_class')
-def test_execute_body_with_model_not_found_error(mock_resolve_model_class, executor, mock_handler):
+async def test_execute_body_with_model_not_found_error(mock_resolve_model_class, executor, mock_handler):
     """Test execute_body when resolve_model_class raises ModelNotFoundError."""
     # Arrange
     task_def = {
@@ -332,7 +346,7 @@ def test_execute_body_with_model_not_found_error(mock_resolve_model_class, execu
     mock_resolve_model_class.side_effect = ModelNotFoundError(error_msg)
 
     # Configure mock handler to return a basic success response (as a dict)
-    mock_handler._execute_llm_call.return_value = {
+    mock_handler._execute_llm_call.return_value = { # This is the dict that TaskResult.model_validate will take
         "success": True,
         "status": "COMPLETE",
         "content": "Some content",
@@ -340,11 +354,11 @@ def test_execute_body_with_model_not_found_error(mock_resolve_model_class, execu
     }
 
     # Act
-    result_dict = executor.execute_body(task_def, params, mock_handler)
+    result_dict = await executor.execute_body(task_def, params, mock_handler)
 
     # Assert
     # Verify handler was still called with output_type_override=None
-    mock_handler._execute_llm_call.assert_called_once()
+    mock_handler._execute_llm_call.assert_awaited_once()
     _, kwargs = mock_handler._execute_llm_call.call_args
     assert kwargs.get('output_type_override') is None
 
@@ -354,8 +368,9 @@ def test_execute_body_with_model_not_found_error(mock_resolve_model_class, execu
     assert "schema_warning" in result_dict["notes"]
     assert error_msg in result_dict["notes"]["schema_warning"]
 
+@pytest.mark.asyncio
 @patch('src.executors.atomic_executor.resolve_model_class')
-def test_execute_body_with_handler_failure(mock_resolve_model_class, executor, mock_handler):
+async def test_execute_body_with_handler_failure(mock_resolve_model_class, executor, mock_handler):
     """Test execute_body when handler returns a failure response."""
     # Arrange
     task_def = {
@@ -370,7 +385,7 @@ def test_execute_body_with_handler_failure(mock_resolve_model_class, executor, m
 
     # Configure mock handler to return a failure response (as a dict)
     error_details = TaskFailureError(type="TASK_FAILURE", reason="llm_error", message="LLM call failed")
-    mock_handler._execute_llm_call.return_value = {
+    mock_handler._execute_llm_call.return_value = { # This is the dict that TaskResult.model_validate will take
         "success": False, # Indicate failure
         "status": "FAILED",
         "content": "Error: LLM call failed",
@@ -378,7 +393,7 @@ def test_execute_body_with_handler_failure(mock_resolve_model_class, executor, m
     }
 
     # Act
-    result_dict = executor.execute_body(task_def, params, mock_handler)
+    result_dict = await executor.execute_body(task_def, params, mock_handler)
 
     # Assert
     # Verify result has FAILED status
@@ -388,7 +403,8 @@ def test_execute_body_with_handler_failure(mock_resolve_model_class, executor, m
     assert result_dict["notes"]["error"]["reason"] == "llm_error"
     assert "LLM call failed" in result_dict["notes"]["error"]["message"]
 
-def test_execute_body_with_history_config(executor, mock_handler):
+@pytest.mark.asyncio
+async def test_execute_body_with_history_config(executor, mock_handler):
     """Verify history_config is passed to handler._execute_llm_call."""
     task_def = {
         "name": "test_history_task",
@@ -402,10 +418,10 @@ def test_execute_body_with_history_config(executor, mock_handler):
     )
 
     # Act
-    executor.execute_body(task_def, params, mock_handler, history_config=custom_history_config)
+    await executor.execute_body(task_def, params, mock_handler, history_config=custom_history_config)
 
     # Assert
-    mock_handler._execute_llm_call.assert_called_once_with(
+    mock_handler._execute_llm_call.assert_awaited_once_with(
         prompt="Process with history config.",
         system_prompt_override="Mocked System Prompt",
         task_tools_config=None, # CHANGED from tools_override
@@ -414,7 +430,8 @@ def test_execute_body_with_history_config(executor, mock_handler):
         history_config=custom_history_config # Check the custom config was passed
     )
 
-def test_execute_body_default_history_config_is_none(executor, mock_handler):
+@pytest.mark.asyncio
+async def test_execute_body_default_history_config_is_none(executor, mock_handler):
     """Verify default history_config passed to handler is None if not provided to execute_body."""
     task_def = {
         "name": "test_default_history_task",
@@ -424,61 +441,13 @@ def test_execute_body_default_history_config_is_none(executor, mock_handler):
 
     # Act
     # Call execute_body without history_config argument
-    executor.execute_body(task_def, params, mock_handler)
+    await executor.execute_body(task_def, params, mock_handler)
 
     # Assert
-    mock_handler._execute_llm_call.assert_called_once_with(
+    mock_handler._execute_llm_call.assert_awaited_once_with(
         prompt="Process with default history.",
         system_prompt_override="Mocked System Prompt",
         task_tools_config=None, # CHANGED from tools_override
-        output_type_override=None,
-        model_override=None,
-        history_config=None # Expect None to be passed to handler
-    )
-
-def test_execute_body_with_history_config(executor, mock_handler):
-    """Verify history_config is passed to handler._execute_llm_call."""
-    task_def = {
-        "name": "test_history_task",
-        "instructions": "Process with history config.",
-    }
-    params = {}
-    custom_history_config = HistoryConfigSettings(
-        use_session_history=False,
-        history_turns_to_include=3,
-        record_in_session_history=False
-    )
-
-    # Act
-    executor.execute_body(task_def, params, mock_handler, history_config=custom_history_config)
-
-    # Assert
-    mock_handler._execute_llm_call.assert_called_once_with(
-        prompt="Process with history config.",
-        system_prompt_override="Mocked System Prompt",
-        tools_override=None,
-        output_type_override=None,
-        model_override=None,
-        history_config=custom_history_config # Check the custom config was passed
-    )
-
-def test_execute_body_default_history_config_is_none(executor, mock_handler):
-    """Verify default history_config passed to handler is None if not provided to execute_body."""
-    task_def = {
-        "name": "test_default_history_task",
-        "instructions": "Process with default history.",
-    }
-    params = {}
-
-    # Act
-    # Call execute_body without history_config argument
-    executor.execute_body(task_def, params, mock_handler)
-
-    # Assert
-    mock_handler._execute_llm_call.assert_called_once_with(
-        prompt="Process with default history.",
-        system_prompt_override="Mocked System Prompt",
-        tools_override=None,
         output_type_override=None,
         model_override=None,
         history_config=None # Expect None to be passed to handler

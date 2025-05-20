@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch, call, AsyncMock
 
 import pytest
 
@@ -30,7 +30,8 @@ def mock_agent_instance():
     mock_response.output = "Default agent response"
     mock_response.tool_calls = []
     mock_response.usage = {"prompt_tokens": 10, "completion_tokens": 20}
-    agent.run_sync.return_value = mock_response
+    # agent.run_sync.return_value = mock_response # run_sync is no longer used
+    agent.run = AsyncMock(return_value=mock_response) # run is now async
     return agent
 
 
@@ -89,7 +90,8 @@ def initialized_llm_manager(llm_manager_no_agent_init):
         mock_response.output = "Initialized Agent Response"
         mock_response.tool_calls = []
         mock_response.usage = {"prompt":5, "completion":5}
-        mock_agent_instance_for_init.run_sync.return_value = mock_response
+        # mock_agent_instance_for_init.run_sync.return_value = mock_response # run_sync is no longer used
+        mock_agent_instance_for_init.run = AsyncMock(return_value=mock_response) # run is now async
         # Set the return value for the Agent class mock
         MockAgentClass.return_value = mock_agent_instance_for_init
 
@@ -179,7 +181,8 @@ def test_llm_manager_set_debug_mode(initialized_llm_manager): # Use new fixture
 
 
 # Use the new fixture that provides an initialized agent
-def test_manager_execute_call_success(initialized_llm_manager): # Use new fixture
+@pytest.mark.asyncio
+async def test_manager_execute_call_success(initialized_llm_manager): # Use new fixture
     """Test a successful agent call via execute_call."""
     # Arrange
     prompt = "User query"
@@ -189,7 +192,7 @@ def test_manager_execute_call_success(initialized_llm_manager): # Use new fixtur
     mock_agent_instance = initialized_llm_manager._mock_agent_instance
 
     # Act
-    result = initialized_llm_manager.execute_call(prompt, history)
+    result = await initialized_llm_manager.execute_call(prompt, history)
 
     # Assert
     assert result["success"] is True
@@ -199,8 +202,8 @@ def test_manager_execute_call_success(initialized_llm_manager): # Use new fixtur
     assert result["error"] is None
 
     # Verify agent call arguments
-    mock_agent_instance.run_sync.assert_called_once()
-    call_args, call_kwargs = mock_agent_instance.run_sync.call_args
+    mock_agent_instance.run.assert_awaited_once()
+    call_args, call_kwargs = mock_agent_instance.run.call_args
     assert call_args[0] == prompt  # Check positional arg
     assert call_kwargs.get("message_history") == history  # Check kwarg
     assert (
@@ -212,7 +215,8 @@ def test_manager_execute_call_success(initialized_llm_manager): # Use new fixtur
 
 
 # Use the new fixture
-def test_manager_execute_call_with_overrides(initialized_llm_manager): # Use new fixture
+@pytest.mark.asyncio
+async def test_manager_execute_call_with_overrides(initialized_llm_manager): # Use new fixture
     """Test execute_call with system prompt, tools, and output type overrides."""
     # Arrange
     prompt = "Query with overrides"
@@ -232,10 +236,11 @@ def test_manager_execute_call_with_overrides(initialized_llm_manager): # Use new
     mock_response.output = "Override response"
     mock_response.tool_calls = [{"name": "tool1"}]
     mock_response.usage = {}
-    mock_agent_instance.run_sync.return_value = mock_response
+    # mock_agent_instance.run_sync.return_value = mock_response # run_sync is no longer used
+    mock_agent_instance.run.return_value = mock_response # run is now async
 
     # Act
-    result = initialized_llm_manager.execute_call(
+    result = await initialized_llm_manager.execute_call(
         prompt,
         history,
         system_prompt_override=system_override,
@@ -249,8 +254,8 @@ def test_manager_execute_call_with_overrides(initialized_llm_manager): # Use new
     assert result["tool_calls"] == [{"name": "tool1"}]
 
     # Verify agent call arguments
-    mock_agent_instance.run_sync.assert_called_once()
-    call_args, call_kwargs = mock_agent_instance.run_sync.call_args
+    mock_agent_instance.run.assert_awaited_once()
+    call_args, call_kwargs = mock_agent_instance.run.call_args
     assert call_args[0] == prompt  # Check positional arg
     assert call_kwargs.get("message_history") == history
     assert call_kwargs.get("system_prompt") == system_override  # Override used
@@ -259,8 +264,9 @@ def test_manager_execute_call_with_overrides(initialized_llm_manager): # Use new
 
 
 # Use the new fixture
-def test_manager_execute_call_agent_failure(initialized_llm_manager): # Use new fixture
-    """Test execute_call when the agent's run_sync raises an exception."""
+@pytest.mark.asyncio
+async def test_manager_execute_call_agent_failure(initialized_llm_manager): # Use new fixture
+    """Test execute_call when the agent's run raises an exception."""
     # Arrange
     prompt = "This will fail"
     history = []
@@ -268,10 +274,11 @@ def test_manager_execute_call_agent_failure(initialized_llm_manager): # Use new 
     # Access the mock agent instance created within the fixture
     mock_agent_instance = initialized_llm_manager._mock_agent_instance
     # Configure the mock agent instance to raise an error
-    mock_agent_instance.run_sync.side_effect = test_exception
+    # mock_agent_instance.run_sync.side_effect = test_exception # run_sync is no longer used
+    mock_agent_instance.run.side_effect = test_exception # run is now async
 
     # Act
-    result = initialized_llm_manager.execute_call(prompt, history)
+    result = await initialized_llm_manager.execute_call(prompt, history)
 
     # Assert
     assert result["success"] is False
@@ -280,16 +287,17 @@ def test_manager_execute_call_agent_failure(initialized_llm_manager): # Use new 
     assert result["usage"] is None
     assert "Agent execution failed" in result["error"]
     assert str(test_exception) in result["error"]
-    mock_agent_instance.run_sync.assert_called_once()
+    mock_agent_instance.run.assert_awaited_once()
 
 
 # Use the fixture that provides an UNINITIALIZED agent
-def test_manager_execute_call_no_agent(llm_manager_no_agent_init): # Use correct fixture
+@pytest.mark.asyncio
+async def test_manager_execute_call_no_agent(llm_manager_no_agent_init): # Use correct fixture
     """Test execute_call when the agent is not initialized."""
     # Arrange: llm_manager_no_agent_init provides a manager with agent=None
 
     # Act
-    result = llm_manager_no_agent_init.execute_call("Test", [])
+    result = await llm_manager_no_agent_init.execute_call("Test", [])
 
     # Assert
     assert result["success"] is False
@@ -297,7 +305,8 @@ def test_manager_execute_call_no_agent(llm_manager_no_agent_init): # Use correct
 
 
 # Use the new fixture
-def test_manager_execute_call_structured_output_stringification(
+@pytest.mark.asyncio
+async def test_manager_execute_call_structured_output_stringification(
     initialized_llm_manager, # Use new fixture
 ):
     """Test that structured output (like Pydantic models) is stringified."""
@@ -320,23 +329,25 @@ def test_manager_execute_call_structured_output_stringification(
     mock_response.output = structured_output  # Agent returns the model instance
     mock_response.tool_calls = []
     mock_response.usage = {}
-    mock_agent_instance.run_sync.return_value = mock_response
+    # mock_agent_instance.run_sync.return_value = mock_response # run_sync is no longer used
+    mock_agent_instance.run.return_value = mock_response # run is now async
 
     # Act
-    result = initialized_llm_manager.execute_call("Get structured data", [])
+    result = await initialized_llm_manager.execute_call("Get structured data", [])
 
     # Assert
     assert result["success"] is True
     # Verify content is the JSON string representation
     assert result["content"] == '{"value": "structured data"}'
-    mock_agent_instance.run_sync.assert_called_once()
+    mock_agent_instance.run.assert_awaited_once()
 
 
 # Use the new fixture
-def test_execute_call_with_output_type_override(
+@pytest.mark.asyncio
+async def test_execute_call_with_output_type_override(
     initialized_llm_manager, # Use new fixture
 ):
-    """Test that output_type_override is correctly passed to the agent.run_sync call."""
+    """Test that output_type_override is correctly passed to the agent.run call."""
     # Arrange
     prompt = "Get structured data"
     history = []
@@ -344,20 +355,21 @@ def test_execute_call_with_output_type_override(
     mock_agent_instance = initialized_llm_manager._mock_agent_instance
 
     # Act
-    result = initialized_llm_manager.execute_call(
+    result = await initialized_llm_manager.execute_call(
         prompt, history, output_type_override=_SampleOutputModel # Use renamed model
     )
 
     # Assert
     assert result["success"] is True
-    # Verify that agent.run_sync was called with output_type=_SampleOutputModel
-    mock_agent_instance.run_sync.assert_called_once()
-    _, kwargs = mock_agent_instance.run_sync.call_args
+    # Verify that agent.run was called with output_type=_SampleOutputModel
+    mock_agent_instance.run.assert_awaited_once()
+    _, kwargs = mock_agent_instance.run.call_args
     assert kwargs.get("output_type") == _SampleOutputModel # Use renamed model
 
 
 # Use the new fixture
-def test_execute_call_with_pydantic_model_result(
+@pytest.mark.asyncio
+async def test_execute_call_with_pydantic_model_result(
     initialized_llm_manager, # Use new fixture
 ):
     """Test that Pydantic model in agent response is included in parsed_content."""
@@ -371,10 +383,11 @@ def test_execute_call_with_pydantic_model_result(
     mock_response = MagicMock()
     mock_response.output = model_instance  # This is what pydantic-ai would return
     mock_response.tool_calls = []
-    mock_agent_instance.run_sync.return_value = mock_response
+    # mock_agent_instance.run_sync.return_value = mock_response # run_sync is no longer used
+    mock_agent_instance.run.return_value = mock_response # run is now async
 
     # Act
-    result = initialized_llm_manager.execute_call("Get structured data", [])
+    result = await initialized_llm_manager.execute_call("Get structured data", [])
 
     # Assert
     assert result["success"] is True
@@ -386,16 +399,18 @@ def test_execute_call_with_pydantic_model_result(
 
 
 # Use the new fixture
-def test_execute_call_with_validation_error(initialized_llm_manager): # Use new fixture
-    """Test error handling when agent.run_sync raises a validation error."""
+@pytest.mark.asyncio
+async def test_execute_call_with_validation_error(initialized_llm_manager): # Use new fixture
+    """Test error handling when agent.run raises a validation error."""
     # Arrange
     validation_error = ValueError("Validation failed for field 'score': expected float")
     # Access the mock agent instance created within the fixture
     mock_agent_instance = initialized_llm_manager._mock_agent_instance
-    mock_agent_instance.run_sync.side_effect = validation_error
+    # mock_agent_instance.run_sync.side_effect = validation_error # run_sync is no longer used
+    mock_agent_instance.run.side_effect = validation_error # run is now async
 
     # Act
-    result = initialized_llm_manager.execute_call("Get structured data", [])
+    result = await initialized_llm_manager.execute_call("Get structured data", [])
 
     # Assert
     assert result["success"] is False
@@ -438,31 +453,34 @@ def test_get_provider_identifier_returns_none_when_no_agent(llm_manager_no_agent
 
 # --- Tests for Phase 9.3: Model Override ---
 
+@pytest.mark.asyncio
 @patch('src.handler.llm_interaction_manager.Agent')
-def test_execute_call_uses_default_agent_no_override(mock_agent_constructor, initialized_llm_manager):
+async def test_execute_call_uses_default_agent_no_override(mock_agent_constructor, initialized_llm_manager):
     """Test execute_call uses the default agent when no override is provided."""
     # Arrange
     manager = initialized_llm_manager
     mock_default_agent = manager.agent # Get the default agent set by the fixture
     assert mock_default_agent is not None, "Fixture should provide initialized default agent"
-    mock_default_agent.run_sync.return_value = MagicMock(output="Default response") # Configure default agent mock
+    # mock_default_agent.run_sync.return_value = MagicMock(output="Default response") # run_sync is no longer used
+    mock_default_agent.run.return_value = MagicMock(output="Default response") # run is now async
 
     prompt = "Test prompt"
     history = []
 
     # Act
-    result = manager.execute_call(prompt, history, model_override=None) # No override
+    result = await manager.execute_call(prompt, history, model_override=None) # No override
 
     # Assert
     assert result["success"] is True
     assert result["content"] == "Default response"
     # Verify default agent was called
-    mock_default_agent.run_sync.assert_called_once()
+    mock_default_agent.run.assert_awaited_once()
     # Verify constructor was NOT called again
     mock_agent_constructor.assert_not_called()
 
+@pytest.mark.asyncio
 @patch('src.handler.llm_interaction_manager.Agent')
-def test_execute_call_with_model_override_success(mock_agent_constructor, initialized_llm_manager):
+async def test_execute_call_with_model_override_success(mock_agent_constructor, initialized_llm_manager):
     """Test execute_call successfully uses a temporary agent for a valid override."""
     # Arrange
     manager = initialized_llm_manager
@@ -474,7 +492,8 @@ def test_execute_call_with_model_override_success(mock_agent_constructor, initia
 
     # Configure the mock constructor to return a new mock agent for the override
     mock_temp_agent = MagicMock()
-    mock_temp_agent.run_sync.return_value = MagicMock(output="Override response")
+    # mock_temp_agent.run_sync.return_value = MagicMock(output="Override response") # run_sync is no longer used
+    mock_temp_agent.run = AsyncMock(return_value=MagicMock(output="Override response")) # run is now async
     mock_agent_constructor.return_value = mock_temp_agent
 
     prompt = "Test override prompt"
@@ -483,20 +502,21 @@ def test_execute_call_with_model_override_success(mock_agent_constructor, initia
     expected_tools = mock_default_agent.tools if hasattr(mock_default_agent, 'tools') else None
 
     # Act
-    result = manager.execute_call(prompt, history, model_override=override_model_id)
+    result = await manager.execute_call(prompt, history, model_override=override_model_id)
 
     # Assert
     assert result["success"] is True
     assert result["content"] == "Override response"
     # Verify constructor was called ONCE with override details
     mock_agent_constructor.assert_called_once()
-    # Verify temporary agent's run_sync was called
-    mock_temp_agent.run_sync.assert_called_once()
-    # Verify default agent's run_sync was NOT called
-    mock_default_agent.run_sync.assert_not_called()
+    # Verify temporary agent's run was called
+    mock_temp_agent.run.assert_awaited_once()
+    # Verify default agent's run was NOT called
+    mock_default_agent.run.assert_not_awaited()
 
+@pytest.mark.asyncio
 @patch('src.handler.llm_interaction_manager.Agent')
-def test_execute_call_override_config_lookup_fail(mock_agent_constructor, initialized_llm_manager):
+async def test_execute_call_override_config_lookup_fail(mock_agent_constructor, initialized_llm_manager):
     """Test execute_call fails gracefully if config for override model is missing."""
     # Arrange
     manager = initialized_llm_manager
@@ -509,7 +529,7 @@ def test_execute_call_override_config_lookup_fail(mock_agent_constructor, initia
     history = []
 
     # Act
-    result = manager.execute_call(prompt, history, model_override=override_model_id)
+    result = await manager.execute_call(prompt, history, model_override=override_model_id)
 
     # Assert
     assert result["success"] is False
@@ -518,14 +538,15 @@ def test_execute_call_override_config_lookup_fail(mock_agent_constructor, initia
     # Verify constructor was NOT called
     mock_agent_constructor.assert_not_called()
     # Verify default agent was NOT called
-    mock_default_agent.run_sync.assert_not_called()
+    mock_default_agent.run.assert_not_awaited()
     # Check error structure in notes
     assert "error" in result["notes"]
     assert result["notes"]["error"]["type"] == "TASK_FAILURE"
     assert result["notes"]["error"]["reason"] == "configuration_error"
 
+@pytest.mark.asyncio
 @patch('src.handler.llm_interaction_manager.Agent')
-def test_execute_call_override_agent_creation_fail(mock_agent_constructor, initialized_llm_manager):
+async def test_execute_call_override_agent_creation_fail(mock_agent_constructor, initialized_llm_manager):
     """Test execute_call fails gracefully if temporary agent creation fails."""
     # Arrange
     manager = initialized_llm_manager
@@ -541,7 +562,7 @@ def test_execute_call_override_agent_creation_fail(mock_agent_constructor, initi
     history = []
 
     # Act
-    result = manager.execute_call(prompt, history, model_override=override_model_id)
+    result = await manager.execute_call(prompt, history, model_override=override_model_id)
 
     # Assert
     assert result["success"] is False
@@ -549,16 +570,17 @@ def test_execute_call_override_agent_creation_fail(mock_agent_constructor, initi
     assert "Failed to initialize agent" in result["error"]
     # Verify constructor was called
     mock_agent_constructor.assert_called_once()
-    # Verify run_sync was NOT called on default agent
-    mock_default_agent.run_sync.assert_not_called()
+    # Verify run was NOT called on default agent
+    mock_default_agent.run.assert_not_awaited()
     # Check error structure in notes
     assert "error" in result["notes"]
     assert result["notes"]["error"]["type"] == "TASK_FAILURE"
     assert result["notes"]["error"]["reason"] == "llm_error"
 
 # --- Test to ensure tools_override still works with model_override ---
+@pytest.mark.asyncio
 @patch('src.handler.llm_interaction_manager.Agent')
-def test_execute_call_with_model_and_tool_overrides(mock_agent_constructor, initialized_llm_manager):
+async def test_execute_call_with_model_and_tool_overrides(mock_agent_constructor, initialized_llm_manager):
     """Test execute_call uses temporary agent AND tool_override when both are provided."""
     # Arrange
     manager = initialized_llm_manager
@@ -569,7 +591,8 @@ def test_execute_call_with_model_and_tool_overrides(mock_agent_constructor, init
 
     # Mock temporary agent creation
     mock_temp_agent = MagicMock()
-    mock_temp_agent.run_sync.return_value = MagicMock(output="Override model+tools response")
+    # mock_temp_agent.run_sync.return_value = MagicMock(output="Override model+tools response") # run_sync is no longer used
+    mock_temp_agent.run = AsyncMock(return_value=MagicMock(output="Override model+tools response")) # run is now async
     mock_agent_constructor.return_value = mock_temp_agent
 
     prompt = "Test combined overrides"
@@ -578,7 +601,7 @@ def test_execute_call_with_model_and_tool_overrides(mock_agent_constructor, init
     tool_override_list = [lambda x: f"tool_override_called_{x}"]
 
     # Act
-    result = manager.execute_call(
+    result = await manager.execute_call(
         prompt,
         history,
         model_override=override_model_id,
@@ -590,10 +613,10 @@ def test_execute_call_with_model_and_tool_overrides(mock_agent_constructor, init
     assert result["content"] == "Override model+tools response"
     # Verify constructor was called ONCE with override details
     mock_agent_constructor.assert_called_once()
-    # Verify temporary agent's run_sync was called with the TOOL OVERRIDE list
-    mock_temp_agent.run_sync.assert_called_once()
-    call_args, call_kwargs = mock_temp_agent.run_sync.call_args
+    # Verify temporary agent's run was called with the TOOL OVERRIDE list
+    mock_temp_agent.run.assert_awaited_once()
+    call_args, call_kwargs = mock_temp_agent.run.call_args
     assert call_args[0] == prompt
     assert call_kwargs.get("tools") == tool_override_list
-    # Verify default agent's run_sync was NOT called
-    mock_default_agent.run_sync.assert_not_called()
+    # Verify default agent's run was NOT called
+    mock_default_agent.run.assert_not_awaited()
