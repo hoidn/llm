@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from src.handler.base_handler import BaseHandler
 
 
-def resolve_paths_from_template(
+async def resolve_paths_from_template(
     template: Dict[str, Any],
     memory_system: Optional['MemorySystem'],
     handler: Optional['BaseHandler'],
@@ -82,7 +82,7 @@ def resolve_paths_from_template(
         try:
             # Use the primary context retrieval method with description as query
             context_input = ContextGenerationInput(query=description)
-            result: AssociativeMatchResult = memory_system.get_relevant_context_for(context_input) # type: ignore
+            result: AssociativeMatchResult = await memory_system.get_relevant_context_for(context_input) # type: ignore
             if result.error:
                 return [], f"Error getting context by description: {result.error}"
             # Ensure matches are MatchItem instances and extract path
@@ -110,7 +110,7 @@ def resolve_paths_from_template(
          try:
              # Use the primary context retrieval method
              context_input = ContextGenerationInput(query=context_query)
-             result: AssociativeMatchResult = memory_system.get_relevant_context_for(context_input) # type: ignore
+             result: AssociativeMatchResult = await memory_system.get_relevant_context_for(context_input) # type: ignore
              if result.error:
                  return [], f"Error getting context by context_query: {result.error}"
              # Ensure matches are MatchItem instances and extract path

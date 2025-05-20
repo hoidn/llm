@@ -144,7 +144,7 @@ def test_task_system_find_delegates(mock_find, task_system_instance):
 
 @pytest.mark.asyncio
 @patch.object(TaskSystem, 'find_template')
-@patch.object(TaskSystem, 'resolve_file_paths') # Mock file path resolution
+@patch.object(TaskSystem, 'resolve_file_paths', new_callable=AsyncMock) # Mock file path resolution as async
 @patch.object(AtomicTaskExecutor, 'execute_body', new_callable=AsyncMock)
 async def test_execute_atomic_template_success_flow(
     mock_execute_body, # Renamed from MockExecutorClass
@@ -164,7 +164,7 @@ async def test_execute_atomic_template_success_flow(
     ).model_dump() # Executor returns dict
 
     resolved_paths = ["/resolved/path.txt"]
-    mock_resolve_files.return_value = (resolved_paths, None) # Simulate file path resolution
+    mock_resolve_files.return_value = (resolved_paths, None) # Simulate file path resolution, it's now async
 
     request = SubtaskRequest(
         task_id="exec-success-1",
@@ -180,7 +180,7 @@ async def test_execute_atomic_template_success_flow(
     # Assert
     mock_find_template.assert_called_once_with(template_name)
     # Check if resolve_file_paths was called because request.file_paths is None and template has freshContext enabled
-    mock_resolve_files.assert_called_once_with(mock_template_def, mock_memory_system, mock_handler)
+    mock_resolve_files.assert_awaited_once_with(mock_template_def, mock_memory_system, mock_handler)
 
     # Verify call signature matches the IDL
     mock_execute_body.assert_awaited_once_with(
@@ -249,8 +249,9 @@ async def test_execute_atomic_template_invalid_context_config(task_system_instan
     assert "Context validation failed" in error_note.get("message", "") # Use .get for message
 
 
-@patch.object(AtomicTaskExecutor, 'execute_body')
-def test_execute_atomic_template_history_config_precedence(
+@pytest.mark.asyncio
+@patch.object(AtomicTaskExecutor, 'execute_body', new_callable=AsyncMock)
+async def test_execute_atomic_template_history_config_precedence(
     mock_execute_body, task_system_instance, mock_handler
 ):
     """Test history_config merging: request overrides template, template overrides default."""
@@ -272,8 +273,8 @@ def test_execute_atomic_template_history_config_precedence(
         task_id="hist-req-1", type="atomic", name=template_name, inputs={},
         history_config=request_history_settings
     )
-    task_system_instance.execute_atomic_template(request1)
-    mock_execute_body.assert_called_with(
+    await task_system_instance.execute_atomic_template(request1)
+    mock_execute_body.assert_awaited_with(
         atomic_task_def=mock_template_def,
         params=request1.inputs,
         handler=mock_handler,
@@ -283,9 +284,9 @@ def test_execute_atomic_template_history_config_precedence(
 
     # Case 2: Request does NOT provide history_config, template's should be used
     request2 = SubtaskRequest(task_id="hist-tpl-1", type="atomic", name=template_name, inputs={})
-    task_system_instance.execute_atomic_template(request2)
+    await task_system_instance.execute_atomic_template(request2)
     expected_template_history_obj = HistoryConfigSettings.model_validate(template_history_conf_dict)
-    mock_execute_body.assert_called_with(
+    mock_execute_body.assert_awaited_with(
         atomic_task_def=mock_template_def,
         params=request2.inputs,
         handler=mock_handler,
@@ -300,9 +301,9 @@ def test_execute_atomic_template_history_config_precedence(
     }
     task_system_instance.register_template(template_no_history_conf)
     request3 = SubtaskRequest(task_id="hist-def-1", type="atomic", name="no_history_task", inputs={})
-    task_system_instance.execute_atomic_template(request3)
+    await task_system_instance.execute_atomic_template(request3)
     default_history_settings = HistoryConfigSettings() # Default Pydantic model
-    mock_execute_body.assert_called_with(
+    mock_execute_body.assert_awaited_with(
         atomic_task_def=template_no_history_conf,
         params=request3.inputs,
         handler=mock_handler,
@@ -320,9 +321,9 @@ def test_execute_atomic_template_history_config_precedence(
     request4 = SubtaskRequest(task_id="hist-inv-1", type="atomic", name="invalid_history_task", inputs={})
     
     with patch.object(logging.getLogger('src.task_system.task_system'), 'error') as mock_log_error: # Changed to error
-        task_system_instance.execute_atomic_template(request4)
+        await task_system_instance.execute_atomic_template(request4)
     
-    mock_execute_body.assert_called_with(
+    mock_execute_body.assert_awaited_with(
         atomic_task_def=template_invalid_history_conf,
         params=request4.inputs,
         handler=mock_handler,
@@ -419,11 +420,12 @@ def test_execute_atomic_template_history_config_precedence(
 
 
 
+@pytest.mark.asyncio
 @patch.object(TaskSystem, 'find_template')
 # @patch.object(MemorySystem, 'get_relevant_context_for') # No longer needed
-@patch.object(TaskSystem, 'resolve_file_paths')
-@patch.object(AtomicTaskExecutor, 'execute_body')
-def test_execute_atomic_template_executor_fails(
+@patch.object(TaskSystem, 'resolve_file_paths', new_callable=AsyncMock)
+@patch.object(AtomicTaskExecutor, 'execute_body', new_callable=AsyncMock)
+async def test_execute_atomic_template_executor_fails(
     mock_execute_body, # Renamed from MockExecutorClass
     mock_resolve_files, mock_find_template, # Order might change
     task_system_instance, mock_memory_system, mock_handler
@@ -443,7 +445,7 @@ def test_execute_atomic_template_executor_fails(
     request = SubtaskRequest(task_id="exec-fail-1", type="atomic", name=template_name, description="", inputs={"input1": "dummy_value"}) # Add dummy input
 
     # Act
-    result = task_system_instance.execute_atomic_template(request)
+    result = await task_system_instance.execute_atomic_template(request)
 
     # Assert
     assert result.status == "FAILED"
@@ -455,11 +457,12 @@ def test_execute_atomic_template_executor_fails(
     assert "Execution failed: Executor boom!" in result.content
 
 
-@patch('src.task_system.task_system.AtomicTaskExecutor', new_callable=MagicMock)
+@pytest.mark.asyncio
+@patch('src.task_system.task_system.AtomicTaskExecutor', new_callable=MagicMock) # Keep MagicMock for class, instance method will be AsyncMock
 @patch.object(TaskSystem, 'find_template')
 # @patch.object(MemorySystem, 'get_relevant_context_for') # No longer needed
-@patch.object(TaskSystem, 'resolve_file_paths')
-def test_execute_atomic_template_executor_param_mismatch(
+@patch.object(TaskSystem, 'resolve_file_paths', new_callable=AsyncMock)
+async def test_execute_atomic_template_executor_param_mismatch(
     mock_resolve_files, mock_find_template, MockExecutorClass,
     task_system_instance, mock_memory_system, mock_handler
 ):
@@ -471,9 +474,11 @@ def test_execute_atomic_template_executor_param_mismatch(
     mock_find_template.return_value = mock_template_def
 
     mock_executor_instance = MockExecutorClass.return_value
+    # Make the execute_body method of the instance an AsyncMock
+    mock_executor_instance.execute_body = AsyncMock()
     # Simulate executor raising ParameterMismatchError
     mismatch_error_msg = "Missing parameter for substitution: input1"
-    # Set the side effect on the *instance*
+    # Set the side effect on the *instance's async method*
     mock_executor_instance.execute_body.side_effect = ParameterMismatchError(mismatch_error_msg)
 
     mock_resolve_files.return_value = ([], None)
@@ -482,7 +487,7 @@ def test_execute_atomic_template_executor_param_mismatch(
     request = SubtaskRequest(task_id="param-mismatch-1", type="atomic", name=template_name, description="", inputs={})
 
     # Act
-    result = task_system_instance.execute_atomic_template(request)
+    result = await task_system_instance.execute_atomic_template(request)
 
     # Assert
     assert result.status == "FAILED"
@@ -498,16 +503,17 @@ def test_execute_atomic_template_executor_param_mismatch(
 
 # --- Tests for resolve_file_paths (Phase 2c) ---
 
-@patch('src.task_system.task_system.resolve_paths_from_template')
-def test_task_system_resolve_file_paths_delegates(mock_resolve_utility, task_system_instance, mock_memory_system, mock_handler):
+@pytest.mark.asyncio
+@patch('src.task_system.task_system.resolve_paths_from_template', new_callable=AsyncMock)
+async def test_task_system_resolve_file_paths_delegates(mock_resolve_utility, task_system_instance, mock_memory_system, mock_handler):
     """Verify TaskSystem.resolve_file_paths delegates to the utility function."""
     template = {"name": "test_delegate"}
     expected_result = (["/delegated/path"], None)
     mock_resolve_utility.return_value = expected_result
 
-    result = task_system_instance.resolve_file_paths(template, mock_memory_system, mock_handler)
+    result = await task_system_instance.resolve_file_paths(template, mock_memory_system, mock_handler)
 
-    mock_resolve_utility.assert_called_once_with(template, mock_memory_system, mock_handler)
+    mock_resolve_utility.assert_awaited_once_with(template, mock_memory_system, mock_handler)
     assert result == expected_result
 
 
@@ -566,9 +572,10 @@ def test_find_matching_tasks_sorting(task_system_instance):
 
 # --- Integration Tests for New Atomic Tasks ---
 
+@pytest.mark.asyncio
 @patch.object(TaskSystem, 'find_template')
-@patch.object(AtomicTaskExecutor, 'execute_body')
-def test_execute_generate_plan_task(mock_execute_body, mock_find_template, task_system_instance, mock_handler):
+@patch.object(AtomicTaskExecutor, 'execute_body', new_callable=AsyncMock)
+async def test_execute_generate_plan_task(mock_execute_body, mock_find_template, task_system_instance, mock_handler):
     """Integration test for executing user:generate-plan task."""
     # Arrange
     # Mock find_template to return the template directly instead of relying on registration
@@ -600,11 +607,11 @@ def test_execute_generate_plan_task(mock_execute_body, mock_find_template, task_
     )
 
     # Act
-    result = task_system_instance.execute_atomic_template(request)
+    result = await task_system_instance.execute_atomic_template(request)
 
     # Assert
     mock_find_template.assert_called_once_with("user:generate-plan")
-    mock_execute_body.assert_called_once()
+    mock_execute_body.assert_awaited_once()
     # Access kwargs instead of positional args
     call_kwargs = mock_execute_body.call_args.kwargs
     assert call_kwargs['atomic_task_def']['name'] == "user:generate-plan" # Check template passed
@@ -623,9 +630,10 @@ def test_execute_generate_plan_task(mock_execute_body, mock_find_template, task_
         assert False, f"parsedContent failed DevelopmentPlan validation: {e}"
     assert result.notes.get("template_used") == "user:generate-plan"
 
+@pytest.mark.asyncio
 @patch.object(TaskSystem, 'find_template')
-@patch.object(AtomicTaskExecutor, 'execute_body')
-def test_execute_analyze_aider_result_task(mock_execute_body, mock_find_template, task_system_instance, mock_handler):
+@patch.object(AtomicTaskExecutor, 'execute_body', new_callable=AsyncMock)
+async def test_execute_analyze_aider_result_task(mock_execute_body, mock_find_template, task_system_instance, mock_handler):
     """Integration test for executing user:analyze-aider-result task."""
     # Arrange
     # Mock find_template to return the template directly instead of relying on registration
@@ -657,11 +665,11 @@ def test_execute_analyze_aider_result_task(mock_execute_body, mock_find_template
     )
 
     # Act
-    result = task_system_instance.execute_atomic_template(request)
+    result = await task_system_instance.execute_atomic_template(request)
 
     # Assert
     mock_find_template.assert_called_once_with("user:analyze-aider-result")
-    mock_execute_body.assert_called_once()
+    mock_execute_body.assert_awaited_once()
     # Access kwargs instead of positional args
     call_kwargs = mock_execute_body.call_args.kwargs
     assert call_kwargs['atomic_task_def']['name'] == "user:analyze-aider-result" # Check template passed
@@ -680,8 +688,9 @@ def test_execute_analyze_aider_result_task(mock_execute_body, mock_find_template
         assert False, f"parsedContent failed FeedbackResult validation: {e}"
     assert result.notes.get("template_used") == "user:analyze-aider-result"
 
-@patch.object(AtomicTaskExecutor, 'execute_body')
-def test_execute_task_llm_fails(mock_execute_body, task_system_instance, mock_handler):
+@pytest.mark.asyncio
+@patch.object(AtomicTaskExecutor, 'execute_body', new_callable=AsyncMock)
+async def test_execute_task_llm_fails(mock_execute_body, task_system_instance, mock_handler):
     """Test task execution when the underlying LLM call (mocked via executor) fails."""
     # Arrange
     task_system_instance.register_template(GENERATE_PLAN_TEMPLATE)
@@ -704,10 +713,10 @@ def test_execute_task_llm_fails(mock_execute_body, task_system_instance, mock_ha
     )
 
     # Act
-    result = task_system_instance.execute_atomic_template(request)
+    result = await task_system_instance.execute_atomic_template(request)
 
     # Assert
-    mock_execute_body.assert_called_once()
+    mock_execute_body.assert_awaited_once()
     assert result.status == "FAILED"
     assert result.content == fail_message
     assert result.notes.get("template_used") == "user:generate-plan"
@@ -717,8 +726,9 @@ def test_execute_task_llm_fails(mock_execute_body, task_system_instance, mock_ha
     assert result.notes["error"]["reason"] == fail_reason
     assert result.notes["error"]["message"] == fail_message
 
-@patch.object(AtomicTaskExecutor, 'execute_body')
-def test_execute_task_invalid_json_output(mock_execute_body, task_system_instance, mock_handler):
+@pytest.mark.asyncio
+@patch.object(AtomicTaskExecutor, 'execute_body', new_callable=AsyncMock)
+async def test_execute_task_invalid_json_output(mock_execute_body, task_system_instance, mock_handler):
     """Test task execution when LLM returns invalid JSON for a structured output task."""
     # Arrange
     task_system_instance.register_template(GENERATE_PLAN_TEMPLATE) # Expects DevelopmentPlan JSON
@@ -740,14 +750,14 @@ def test_execute_task_invalid_json_output(mock_execute_body, task_system_instanc
     )
 
     # Act
-    result = task_system_instance.execute_atomic_template(request)
+    result = await task_system_instance.execute_atomic_template(request)
 
     # Assert
     # TaskSystem currently passes through the result from the executor.
     # If the executor indicates parsing failed, the TaskResult reflects that.
     # Depending on desired behavior, TaskSystem *could* change status to FAILED here.
     # Current assertion reflects pass-through behavior:
-    mock_execute_body.assert_called_once()
+    mock_execute_body.assert_awaited_once()
     assert result.status == "COMPLETE" # Status from executor is passed through
     assert result.content == invalid_json_content
     assert result.parsedContent is None
