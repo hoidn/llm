@@ -124,7 +124,7 @@ class TaskSystem:
             return None, error_obj
 
 
-    def execute_atomic_template(self, request: SubtaskRequest) -> TaskResult:
+    async def execute_atomic_template(self, request: SubtaskRequest) -> TaskResult:
         logging.info(f"Executing atomic template request: {request.name} (Task ID: {request.task_id})")
 
         # <<< ADD LOGGING >>>
@@ -248,7 +248,7 @@ class TaskSystem:
         try:
             # Execute using the instantiated executor
             # This call now returns a dictionary directly
-            result_dict = self._atomic_executor.execute_body(
+            result_dict = await self._atomic_executor.execute_body(
                 atomic_task_def=template_def,
                 params=request.inputs,
                 handler=handler,
