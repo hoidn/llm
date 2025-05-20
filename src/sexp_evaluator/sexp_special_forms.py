@@ -425,7 +425,7 @@ class SpecialFormProcessor:
         logging.info(f"Successfully registered and lexically bound dynamic task '{task_name_str}'.")
         return task_name_node
 
-    def handle_loop_form(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> Any:
+    async def handle_loop_form(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> Any:
         """Handles the 'loop' special form: (loop count_expr body_expr)"""
         logger.debug(f"SpecialFormProcessor.handle_loop_form START: original_expr_str='{original_expr_str}'")
 
@@ -712,7 +712,7 @@ class SpecialFormProcessor:
         logger.debug(f"SpecialFormProcessor.handle_director_evaluator_loop END -> {str(loop_result)[:200]}...")
         return loop_result # Return the final determined result
 
-    def handle_and_form(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> Any:
+    async def handle_and_form(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> Any:
         """
         Handles the 'and' special form: (and expr...)
         Evaluates expressions from left to right. If any expression evaluates to a falsey value
@@ -743,7 +743,7 @@ class SpecialFormProcessor:
         logger.debug(f"SpecialFormProcessor.handle_and_form END: All args truthy, returning last value -> {last_value!r}")
         return last_value # All arguments were truthy, return the value of the last one.
 
-    def handle_or_form(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> Any:
+    async def handle_or_form(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> Any:
         """
         Handles the 'or' special form: (or expr...)
         Evaluates expressions from left to right. If any expression evaluates to a truthy value,
