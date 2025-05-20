@@ -228,7 +228,7 @@ class LLMInteractionManager:
         return self.default_model_identifier
 
 
-    def execute_call(
+    async def execute_call(
         self,
         prompt: str,
         conversation_history: List[Any],  # Updated to accept ModelMessage objects
@@ -237,6 +237,7 @@ class LLMInteractionManager:
         output_type_override: Optional[Type] = None,
         active_tools: Optional[List[Dict[str, Any]]] = None,  # Tool definitions
         model_override: Optional[str] = None, # ADDED PARAMETER
+        history_config: Optional[Any] = None, # Add history_config parameter
     ) -> Dict[str, Any]:
         """
         Executes a call to the configured pydantic-ai agent, potentially using an override model.
@@ -419,17 +420,6 @@ class LLMInteractionManager:
         #         "error": "AgentNotInitializedError: LLM Agent not initialized.",
         #     }
 
-        # Cache the previously-active loop (if any) *once* so we can restore it later
-        _prev_loop: Optional[asyncio.AbstractEventLoop] = None
-        try:
-            try:
-                _prev_loop = asyncio.get_event_loop()
-            except RuntimeError:
-                _prev_loop = None  # No running loop in this thread – that’s fine
-
-            # Make our dedicated loop the current one for the upcoming run_sync
-            asyncio.set_event_loop(self._event_loop)
-
             try:
                 # Determine the system prompt to use for the call
                 current_system_prompt = (
@@ -567,16 +557,7 @@ class LLMInteractionManager:
                         f"Calling agent.run_sync with prompt='{prompt[:100]}...' and kwargs={run_kwargs}"
                     )
 
-                try:
-                    # Normal path – we are NOT inside a loop
-                    response = target_agent.run_sync(prompt, **run_kwargs)
-                except RuntimeError as exc:
-                    if "event loop is already running" not in str(exc):
-                        raise
-                    # We *are* inside a loop → schedule coroutine on that loop
-                    loop = asyncio.get_running_loop()
-                    coro = target_agent.run(prompt, **run_kwargs)
-                    response = loop.run_until_complete(asyncio.ensure_future(coro))
+                response = await target_agent.run(prompt, **run_kwargs)
 
                 if self.debug_mode:
                     logging.debug(f"Agent response received: {response}")
@@ -696,5 +677,4 @@ class LLMInteractionManager:
 
                 return final_error_result # Return the consistent error structure
         finally:
-            # Always restore whatever loop was active before we hijacked it.
-            asyncio.set_event_loop(_prev_loop)
+            pass # Event loop management removed
