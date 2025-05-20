@@ -74,7 +74,7 @@ async def test_resolve_paths_description(mock_memory_system_fp):
     call_args, call_kwargs = mock_memory_system_fp.get_relevant_context_for.call_args
     assert len(call_args) == 1
     assert isinstance(call_args[0], ContextGenerationInput)
-        assert call_args[0].query == "Relevant Go source files" # Check the query used
+    assert call_args[0].query == "Relevant Go source files" # Check the query used
     
     # Assert results outside the 'with' block
     assert error is None
