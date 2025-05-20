@@ -2,7 +2,7 @@ import os
 from unittest.mock import MagicMock, patch, call, ANY, AsyncMock # Keep ANY, Add AsyncMock
 import warnings # Add import
 import pytest
-from typing import Callable, List, Dict, Any # Add necessary types
+from typing import Callable, List, Dict, Any, Tuple # Add necessary types
 
 # Import the class under test
 from src.handler.base_handler import BaseHandler
