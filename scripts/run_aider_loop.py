@@ -30,11 +30,7 @@ if PROJECT_ROOT not in sys.path:
 
 # --- Import Application & Models ---
 try:
-    # Using a placeholder name that might exist during development
-    try:
-        from src.scripts.main_implementation import Application # Try implementation first
-    except ImportError:
-        from src.main import Application # Fallback to standard main
+    from src.main import Application # Fallback to standard main
     from src.system.models import TaskResult, DevelopmentPlan, FeedbackResult
     print("[Setup] Successfully imported Application and models.")
 except ImportError as e:
@@ -498,7 +494,11 @@ Based on all the above, was the overall task goal successfully achieved, conside
 
 
 # --- Main Execution Block ---
-if __name__ == "__main__":
+def main():
+    """Main function to parse arguments, set up logging, and run the loop."""
     cli_args = parse_arguments()
     setup_logging(cli_args.log_level)
     run_orchestration_loop(cli_args)
+
+if __name__ == "__main__":
+    main()
