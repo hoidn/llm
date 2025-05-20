@@ -1,5 +1,5 @@
 import os
-from unittest.mock import MagicMock, patch, call, ANY # Keep ANY
+from unittest.mock import MagicMock, patch, call, ANY, AsyncMock # Keep ANY, Add AsyncMock
 import warnings # Add import
 import pytest
 from typing import Callable, List, Dict, Any # Add necessary types
@@ -41,8 +41,17 @@ def mock_dependencies():
     }
     # Configure file manager base path if needed by tests
     mocks["file_manager"].base_path = "/test/base"
-    # Add the 'agent' attribute to the llm_manager mock if needed by tests
-    # mocks["llm_manager"].agent = MagicMock(name="MockAgentInstance")
+
+    # Configure methods of the llm_manager mock
+    # execute_call is async, others are sync
+    mocks["llm_manager"].execute_call = AsyncMock(
+        return_value={ # This dict is processed by BaseHandler._execute_llm_call
+            "success": True, "content": "Default Mock LLM Response", 
+            "usage": {}, "tool_calls": None, "parsed_content": None
+        }
+    )
+    mocks["llm_manager"].get_provider_identifier = MagicMock(return_value="mock_provider:default")
+    mocks["llm_manager"].set_debug_mode = MagicMock()
     return mocks
 
 
@@ -65,8 +74,7 @@ def base_handler_instance(mock_dependencies):
         # Configure the mock instances returned by the class mocks
         MockFM.return_value = mock_dependencies["file_manager"]
         MockFCM.return_value = mock_dependencies["file_context_manager"]
-        # Return the pre-configured mock LLM manager
-        MockLLM.return_value = mock_dependencies["llm_manager"]
+        MockLLM.return_value = mock_dependencies["llm_manager"] # This instance already has execute_call as AsyncMock
 
         handler = BaseHandler(
             task_system=mock_dependencies["task_system"],
@@ -318,11 +326,13 @@ def test_log_debug(base_handler_instance):
 # --- Tests for Phase 2b Implementation ---
 
 
-def test_base_handler_execute_llm_call_success(base_handler_instance):
+@pytest.mark.asyncio
+async def test_base_handler_execute_llm_call_success(base_handler_instance):
     """Test successful LLM call delegation and history update."""
     # Arrange
     # Access the mocked llm_manager via the handler instance
     mock_llm_manager = base_handler_instance.llm_manager
+    # Configure the AsyncMock for this specific test case
     mock_llm_manager.execute_call.return_value = {
         "success": True,
         "content": "Assistant response",
@@ -345,7 +355,7 @@ def test_base_handler_execute_llm_call_success(base_handler_instance):
     initial_history_len = len(base_handler_instance.conversation_history)
 
     # Act
-    result = base_handler_instance._execute_llm_call(user_prompt)
+    result = await base_handler_instance._execute_llm_call(user_prompt)
 
     # Assert
     assert isinstance(result, TaskResult)
@@ -355,7 +365,7 @@ def test_base_handler_execute_llm_call_success(base_handler_instance):
 
     # Verify manager call with the *expected pydantic-ai message objects*
     # We might need to use mock.ANY for timestamps or compare relevant attributes.
-    mock_llm_manager.execute_call.assert_called_once()
+    mock_llm_manager.execute_call.assert_awaited_once()
     call_args, call_kwargs = mock_llm_manager.execute_call.call_args
     assert call_kwargs.get("prompt") == user_prompt
     # Compare relevant parts of the history objects
@@ -379,11 +389,13 @@ def test_base_handler_execute_llm_call_success(base_handler_instance):
     assert base_handler_instance.conversation_history[-1] == {"role": "assistant", "content": "Assistant response"}
 
 
-def test_base_handler_execute_llm_call_failure(base_handler_instance):
+@pytest.mark.asyncio
+async def test_base_handler_execute_llm_call_failure(base_handler_instance):
     """Test failed LLM call delegation."""
     # Arrange
     # Access the mocked llm_manager via the handler instance
     mock_llm_manager = base_handler_instance.llm_manager
+    # Configure the AsyncMock for this specific test case
     mock_llm_manager.execute_call.return_value = {
         "success": False,
         "error": "LLM API error",
@@ -397,7 +409,7 @@ def test_base_handler_execute_llm_call_failure(base_handler_instance):
     initial_history = list(base_handler_instance.conversation_history)  # Copy
 
     # Act
-    result = base_handler_instance._execute_llm_call(user_prompt)
+    result = await base_handler_instance._execute_llm_call(user_prompt)
 
     # Assert
     assert isinstance(result, TaskResult)
@@ -413,7 +425,7 @@ def test_base_handler_execute_llm_call_failure(base_handler_instance):
 
     # Verify manager call
     # Fix: Check active_tools is None when none are expected
-    mock_llm_manager.execute_call.assert_called_once()
+    mock_llm_manager.execute_call.assert_awaited_once()
     call_kwargs = mock_llm_manager.execute_call.call_args.kwargs
     assert call_kwargs.get("prompt") == user_prompt
     assert call_kwargs.get("system_prompt_override") is None
@@ -426,10 +438,11 @@ def test_base_handler_execute_llm_call_failure(base_handler_instance):
     assert base_handler_instance.conversation_history == initial_history
 
 
-def test_base_handler_execute_llm_call_no_manager(base_handler_instance):
+@pytest.mark.asyncio
+async def test_base_handler_execute_llm_call_no_manager(base_handler_instance):
     """Test LLM call when manager is not available."""
     base_handler_instance.llm_manager = None  # Manually remove manager after setup
-    result = base_handler_instance._execute_llm_call("Test")
+    result = await base_handler_instance._execute_llm_call("Test")
 
     assert isinstance(result, TaskResult)
     assert result.status == "FAILED"
@@ -459,14 +472,16 @@ def test_build_system_prompt(base_handler_instance):
     # now sources context from self.data_context internally.
 
 
-def test_execute_tool_success_raw_result(base_handler_instance):
+@pytest.mark.asyncio
+async def test_execute_tool_success_raw_result(base_handler_instance):
     """Test executing a tool that returns a raw value."""
     tool_name = "simple_tool"
     tool_input = {"value": 5}
+    # Assuming the executor itself is synchronous. BaseHandler._execute_tool will handle calling it.
     mock_executor = MagicMock(return_value="Tool Result: 5")
     base_handler_instance.tool_executors[tool_name] = mock_executor
 
-    result = base_handler_instance._execute_tool(tool_name, tool_input)
+    result = await base_handler_instance._execute_tool(tool_name, tool_input)
 
     assert isinstance(result, TaskResult)
     assert result.status == "COMPLETE"
@@ -475,7 +490,8 @@ def test_execute_tool_success_raw_result(base_handler_instance):
     mock_executor.assert_called_once_with(tool_input)
 
 
-def test_execute_tool_success_taskresult_object(base_handler_instance):
+@pytest.mark.asyncio
+async def test_execute_tool_success_taskresult_object(base_handler_instance):
     """Test executing a tool that returns a TaskResult object."""
     tool_name = "taskresult_tool"
     tool_input = {}
@@ -485,13 +501,14 @@ def test_execute_tool_success_taskresult_object(base_handler_instance):
     mock_executor = MagicMock(return_value=expected_result)
     base_handler_instance.tool_executors[tool_name] = mock_executor
 
-    result = base_handler_instance._execute_tool(tool_name, tool_input)
+    result = await base_handler_instance._execute_tool(tool_name, tool_input)
 
     assert result == expected_result  # Should return the object directly
     mock_executor.assert_called_once_with(tool_input)
 
 
-def test_execute_tool_success_taskresult_dict(base_handler_instance):
+@pytest.mark.asyncio
+async def test_execute_tool_success_taskresult_dict(base_handler_instance):
     """Test executing a tool that returns a dict resembling TaskResult."""
     tool_name = "taskresult_dict_tool"
     tool_input = {}
@@ -504,7 +521,7 @@ def test_execute_tool_success_taskresult_dict(base_handler_instance):
     mock_executor = MagicMock(return_value=tool_return_dict)
     base_handler_instance.tool_executors[tool_name] = mock_executor
 
-    result = base_handler_instance._execute_tool(tool_name, tool_input)
+    result = await base_handler_instance._execute_tool(tool_name, tool_input)
 
     # Verify it's reconstructed into a TaskResult object
     assert isinstance(result, TaskResult)
@@ -514,12 +531,13 @@ def test_execute_tool_success_taskresult_dict(base_handler_instance):
     mock_executor.assert_called_once_with(tool_input)
 
 
-def test_execute_tool_not_found(base_handler_instance):
+@pytest.mark.asyncio
+async def test_execute_tool_not_found(base_handler_instance):
     """Test executing a tool that is not registered."""
     tool_name = "unknown_tool"
     tool_input = {}
 
-    result = base_handler_instance._execute_tool(tool_name, tool_input)
+    result = await base_handler_instance._execute_tool(tool_name, tool_input)
 
     assert isinstance(result, TaskResult)
     assert result.status == "FAILED"
@@ -532,7 +550,8 @@ def test_execute_tool_not_found(base_handler_instance):
     assert error_note.get("reason") == "template_not_found"
 
 
-def test_execute_tool_execution_error(base_handler_instance):
+@pytest.mark.asyncio
+async def test_execute_tool_execution_error(base_handler_instance):
     """Test executing a tool that raises an exception."""
     tool_name = "error_tool"
     tool_input = {}
@@ -540,7 +559,7 @@ def test_execute_tool_execution_error(base_handler_instance):
     mock_executor = MagicMock(side_effect=test_exception)
     base_handler_instance.tool_executors[tool_name] = mock_executor
 
-    result = base_handler_instance._execute_tool(tool_name, tool_input)
+    result = await base_handler_instance._execute_tool(tool_name, tool_input)
 
     assert isinstance(result, TaskResult)
     assert result.status == "FAILED"
@@ -658,10 +677,11 @@ def test_set_active_tool_definitions_empty_list(base_handler_instance): # Rename
 
 # --- Tests for tools precedence logic in _execute_llm_call ---
 
-def test_execute_llm_call_tools_override_precedence(base_handler_instance): # Renamed to reflect task_tools_config
+@pytest.mark.asyncio
+async def test_execute_llm_call_tools_override_precedence(base_handler_instance): # Renamed to reflect task_tools_config
     """Test that explicit task_tools_config takes precedence."""
     mock_llm_manager = base_handler_instance.llm_manager
-    mock_llm_manager.execute_call.return_value = {"success": True, "content": "Response"}
+    mock_llm_manager.execute_call.return_value = {"success": True, "content": "Response"} # AsyncMock will use this
 
     active_spec = create_dummy_spec("active_tool")
     active_exec = create_dummy_executor("active_tool")
@@ -672,20 +692,21 @@ def test_execute_llm_call_tools_override_precedence(base_handler_instance): # Re
     override_definitions = [create_dummy_spec("override_tool_def")] # Example definition
     task_config_tuple: Tuple[List[Callable], List[Dict[str, Any]]] = ([override_exec], override_definitions) # CHANGED
 
-    base_handler_instance._execute_llm_call(
+    await base_handler_instance._execute_llm_call(
         "Test prompt", task_tools_config=task_config_tuple # CHANGED
     )
 
-    mock_llm_manager.execute_call.assert_called_once()
+    mock_llm_manager.execute_call.assert_awaited_once()
     call_kwargs = mock_llm_manager.execute_call.call_args.kwargs
 
     assert call_kwargs.get("tools_override") == [override_exec]
     assert call_kwargs.get("active_tools") == override_definitions
 
-def test_execute_llm_call_active_definitions_used(base_handler_instance): # Renamed test
+@pytest.mark.asyncio
+async def test_execute_llm_call_active_definitions_used(base_handler_instance): # Renamed test
     """Test that active_tool_definitions result in executors passed when no tools_override."""
     mock_llm_manager = base_handler_instance.llm_manager
-    mock_llm_manager.execute_call.return_value = {"success": True, "content": "Response"}
+    mock_llm_manager.execute_call.return_value = {"success": True, "content": "Response"} # AsyncMock will use this
 
     # Register tools and set active definitions
     tool_spec1 = create_dummy_spec("active_tool1")
@@ -698,10 +719,10 @@ def test_execute_llm_call_active_definitions_used(base_handler_instance): # Rena
     base_handler_instance.set_active_tool_definitions(active_definitions)
 
     # Call without tools_override
-    base_handler_instance._execute_llm_call("Test prompt")
+    await base_handler_instance._execute_llm_call("Test prompt")
 
     # Assert that llm_manager was called with the executors and definitions
-    mock_llm_manager.execute_call.assert_called_once()
+    mock_llm_manager.execute_call.assert_awaited_once()
     call_kwargs = mock_llm_manager.execute_call.call_args.kwargs
 
     # Fix: Assert tools_override contains the EXECUTORS
@@ -715,19 +736,20 @@ def test_execute_llm_call_active_definitions_used(base_handler_instance): # Rena
     assert call_kwargs["active_tools"] == active_definitions
 
 
-def test_execute_llm_call_no_tools(base_handler_instance):
+@pytest.mark.asyncio
+async def test_execute_llm_call_no_tools(base_handler_instance):
     """Test that no tools are passed when neither tools_override nor active_definitions are set."""
     mock_llm_manager = base_handler_instance.llm_manager
-    mock_llm_manager.execute_call.return_value = {"success": True, "content": "Response"}
+    mock_llm_manager.execute_call.return_value = {"success": True, "content": "Response"} # AsyncMock will use this
 
     # Ensure no active definitions are set
     base_handler_instance.active_tool_definitions = []
 
     # Call without tools_override
-    base_handler_instance._execute_llm_call("Test prompt")
+    await base_handler_instance._execute_llm_call("Test prompt")
 
     # Assert that llm_manager was called with None for both tool args
-    mock_llm_manager.execute_call.assert_called_once()
+    mock_llm_manager.execute_call.assert_awaited_once()
     call_kwargs = mock_llm_manager.execute_call.call_args.kwargs
 
     # Fix: Assert both are None
@@ -736,7 +758,8 @@ def test_execute_llm_call_no_tools(base_handler_instance):
     assert call_kwargs.get("model_override") is None
 
 
-def test_execute_llm_call_missing_executor_in_active_definitions(base_handler_instance):
+@pytest.mark.asyncio
+async def test_execute_llm_call_missing_executor_in_active_definitions(base_handler_instance):
     """Test handling when an active tool definition has no corresponding executor."""
     # Register one tool
     real_spec = create_dummy_spec("real_tool")
@@ -752,10 +775,10 @@ def test_execute_llm_call_missing_executor_in_active_definitions(base_handler_in
         base_handler_instance.active_tool_definitions = [real_spec, missing_spec]
 
         # Call without tools_override
-        base_handler_instance._execute_llm_call("Test prompt")
+        await base_handler_instance._execute_llm_call("Test prompt")
 
         # Assert that llm_manager was called with only the valid tool executor
-        mock_llm_manager.execute_call.assert_called_once()
+        mock_llm_manager.execute_call.assert_awaited_once()
         call_kwargs = mock_llm_manager.execute_call.call_args.kwargs
 
         # Fix: Assert tools_override contains only the valid executor
@@ -775,7 +798,8 @@ def test_execute_llm_call_missing_executor_in_active_definitions(base_handler_in
 
 # --- Tests for set_active_tool_definitions and passing active tool definitions ---
 
-def test__execute_llm_call_passes_active_tools(base_handler_instance): # Renamed slightly for clarity
+@pytest.mark.asyncio
+async def test__execute_llm_call_passes_active_tools(base_handler_instance): # Renamed slightly for clarity
     """Test that active tool definitions and executors are correctly passed to LLMInteractionManager.execute_call."""
     # Register two tools
     tool_spec1 = create_dummy_spec("tool1")
@@ -791,13 +815,13 @@ def test__execute_llm_call_passes_active_tools(base_handler_instance): # Renamed
 
     # Configure mock LLMInteractionManager
     mock_llm_manager = base_handler_instance.llm_manager
-    mock_llm_manager.execute_call.return_value = {"success": True, "content": "Response"}
+    mock_llm_manager.execute_call.return_value = {"success": True, "content": "Response"} # AsyncMock will use this
 
     # Call _execute_llm_call without tools_override
-    base_handler_instance._execute_llm_call("Test prompt")
+    await base_handler_instance._execute_llm_call("Test prompt")
 
     # Assert LLMInteractionManager.execute_call was called correctly
-    mock_llm_manager.execute_call.assert_called_once()
+    mock_llm_manager.execute_call.assert_awaited_once()
     call_kwargs = mock_llm_manager.execute_call.call_args.kwargs
 
     # Fix: Verify active_tools parameter contains BOTH tool definitions
@@ -822,13 +846,14 @@ def test__execute_llm_call_passes_active_tools(base_handler_instance): # Renamed
     (True, None, True, 2, 4, 2),    # Changed turns_to_include from 0 to None (0 is invalid for PositiveInt). This is now same as first case.
     (True, 100, True, 2, 4, 2),   # Use 100 (more than available, so all 2), record. Initial 2 + 2 = 4.
 ])
-def test_execute_llm_call_with_history_config(
+@pytest.mark.asyncio
+async def test_execute_llm_call_with_history_config(
     base_handler_instance, mock_dependencies,
     use_session, turns_to_include, record_turn,
     initial_hist_len, expected_hist_len_after_call, expected_recorded_turns
 ):
     mock_llm_manager = base_handler_instance.llm_manager
-    mock_llm_manager.execute_call.return_value = {"success": True, "content": "Configured Response"}
+    mock_llm_manager.execute_call.return_value = {"success": True, "content": "Configured Response"} # AsyncMock will use this
 
     # Setup initial history
     base_handler_instance.conversation_history = []
@@ -843,10 +868,10 @@ def test_execute_llm_call_with_history_config(
     )
 
     prompt = "Test with history config"
-    base_handler_instance._execute_llm_call(prompt, history_config=history_config_obj)
+    await base_handler_instance._execute_llm_call(prompt, history_config=history_config_obj)
 
     # Assert call to LLM manager
-    mock_llm_manager.execute_call.assert_called_once()
+    mock_llm_manager.execute_call.assert_awaited_once()
     call_kwargs = mock_llm_manager.execute_call.call_args.kwargs
     passed_history_objects = call_kwargs.get("conversation_history", [])
 
@@ -871,10 +896,11 @@ def test_execute_llm_call_with_history_config(
             assert base_handler_instance.conversation_history[-1]['content'] == original_last_assistant_msg['content']
 
 
-def test_execute_llm_call_history_conversion_to_pydantic_objects(base_handler_instance, mock_dependencies):
+@pytest.mark.asyncio
+async def test_execute_llm_call_history_conversion_to_pydantic_objects(base_handler_instance, mock_dependencies):
     """Verify that dictionary history is converted to pydantic-ai message objects."""
     mock_llm_manager = base_handler_instance.llm_manager
-    mock_llm_manager.execute_call.return_value = {"success": True, "content": "Conversion Test Response"}
+    mock_llm_manager.execute_call.return_value = {"success": True, "content": "Conversion Test Response"} # AsyncMock
 
     base_handler_instance.conversation_history = [
         {"role": "user", "content": "Hello AI"},
@@ -883,9 +909,9 @@ def test_execute_llm_call_history_conversion_to_pydantic_objects(base_handler_in
     ]
     # Default history_config: use_session_history=True, record_in_session_history=True, history_turns_to_include=None
 
-    base_handler_instance._execute_llm_call("Test conversion")
+    await base_handler_instance._execute_llm_call("Test conversion")
 
-    mock_llm_manager.execute_call.assert_called_once()
+    mock_llm_manager.execute_call.assert_awaited_once()
     passed_history_objects = mock_llm_manager.execute_call.call_args.kwargs.get("conversation_history", [])
 
     assert len(passed_history_objects) == 3
