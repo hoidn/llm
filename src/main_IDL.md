@@ -64,13 +64,13 @@ module src.main {
         // - `__init__` must have completed successfully (including agent initialization).
         // - query is a non-empty string from the user.
         // Postconditions:
-        // - Returns a TaskResult dictionary containing the response from the PassthroughHandler.
+        // - Returns a `TaskResult` Pydantic model instance containing the response from the PassthroughHandler.
         // - Returns an error dictionary if the handler fails unexpectedly.
         // Behavior:
         // - Delegates the query directly to `passthrough_handler.handle_query`.
         // - Catches potential exceptions during handling.
-        // Expected JSON format for return value: TaskResult structure or error dict { "content": "error string", "metadata": { "error": "string" } }
-        dict<string, Any> handle_query(string query);
+        // Expected JSON format for return value: TaskResult Pydantic model instance (or error dict if handler fails unexpectedly).
+        object handle_query(string query);
 
         // Resets the conversation state within the PassthroughHandler.
         // Preconditions: None.

@@ -112,7 +112,7 @@ class AtomicTaskExecutor:
             raise e  # Re-raise the original exception to get the full traceback
 
 
-    def execute_body(
+    async def execute_body(
         self,
         atomic_task_def: Dict[str, Any], # Renamed from template to atomic_task_def for clarity
         params: Dict[str, Any],
@@ -254,7 +254,7 @@ class AtomicTaskExecutor:
             # Pass the effective_history_config
             effective_history_config = history_config # Use the one passed in if available
 
-            handler_result = handler._execute_llm_call(
+            handler_result = await handler._execute_llm_call(
                 prompt=main_prompt,
                 system_prompt_override=final_system_prompt,
                 task_tools_config=task_tools_config_override, # MODIFIED: Pass the tuple

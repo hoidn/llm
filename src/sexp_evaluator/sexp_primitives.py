@@ -56,18 +56,84 @@ class PrimitiveProcessor:
         logging.debug(f"PrimitiveProcessor.apply_list_primitive END: -> {evaluated_args}")
         return evaluated_args
 
-    async def apply_get_context_primitive(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> List[str]:
+    async def apply_get_context_primitive(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> Dict[str, Any]:
         """
         Applies the 'get_context' primitive.
         Parses (key value_expr) pairs from arg_exprs, evaluates each value_expr,
-        constructs ContextGenerationInput, calls memory_system, and returns file paths.
+        constructs ContextGenerationInput, calls memory_system, and returns structured context result.
         """
         logger.debug(f"PrimitiveProcessor.apply_get_context_primitive START: arg_exprs={arg_exprs}, original_expr_str='{original_expr_str}'")
         
+        # Check if we have at least one arg - required for the query
+        if not arg_exprs:
+            raise SexpEvaluationError("'get-context' requires at least a query argument.", original_expr_str)
+            
+        # Special handling for the simple case: (get-context "query string")
+        if len(arg_exprs) == 1 and not isinstance(arg_exprs[0], list):
+            # It's a direct query string, not a (key value) pair
+            try:
+                query_value = await self.evaluator._eval(arg_exprs[0], env)
+                if not isinstance(query_value, str):
+                    raise SexpEvaluationError(f"'get-context' query must be a string, got: {type(query_value)}", original_expr_str)
+                
+                # Default to 'content' strategy
+                context_strategy = "content"
+                query = query_value
+                
+                # Simple case: directly call memory_system with these values
+                match_result = await self.evaluator.memory_system.get_relevant_context_for(
+                    ContextGenerationInput(query=query, matching_strategy=context_strategy)
+                )
+                
+                # Convert to the expected dict format
+                result_dict = {
+                    "summary": match_result.context_summary or "",  # Ensure we have a string, not None
+                    "matches": [
+                        {
+                            "id": item.id,
+                            "content": item.content,
+                            "relevance_score": item.relevance_score,
+                            "content_type": item.content_type
+                        }
+                        for item in match_result.matches
+                    ]
+                }
+                
+                # Include any error message if present
+                if match_result.error:
+                    result_dict["error"] = match_result.error
+                    
+                # Return the structured result
+                return result_dict
+                
+            except SexpEvaluationError:
+                raise  # Re-raise SexpEvaluationError directly
+            except Exception as e:
+                logging.exception(f"Error in simple 'get-context' call: {e}")
+                raise SexpEvaluationError(f"Error in 'get-context': {e}", original_expr_str, error_details=str(e)) from e
+                
+        # Handle the full case with (key value) pairs
         context_params: Dict[str, Any] = {}
+        context_strategy = Symbol("content-only") if Symbol != str else "content-only"  # Default
+
         for i, arg_expr_pair in enumerate(arg_exprs): 
+            # Handle special case: first arg might be a direct query string without a key
+            if i == 0 and not isinstance(arg_expr_pair, list):
+                try:
+                    query_value = await self.evaluator._eval(arg_expr_pair, env)
+                    if not isinstance(query_value, str):
+                        raise SexpEvaluationError(f"'get-context' query must be a string, got: {type(query_value)}", original_expr_str)
+                    context_params["query"] = query_value
+                    continue
+                except SexpEvaluationError:
+                    raise
+                except Exception as e:
+                    logging.exception(f"Error evaluating direct query argument: {e}")
+                    raise SexpEvaluationError(f"Error evaluating query: {arg_expr_pair}", original_expr_str, error_details=str(e)) from e
+            
+            # Handle (key value) pairs
             if not (isinstance(arg_expr_pair, list) and len(arg_expr_pair) == 2 and isinstance(arg_expr_pair[0], Symbol)):
-                raise SexpEvaluationError(f"Invalid argument format for 'get_context'. Expected (key_symbol value_expression), got: {arg_expr_pair}", original_expr_str)
+                raise SexpEvaluationError(f"Invalid argument format for 'get-context'. Expected (key_symbol value_expression), got: {arg_expr_pair}", original_expr_str)
             
             key_symbol = arg_expr_pair[0]
             value_expr_node = arg_expr_pair[1] 
@@ -78,24 +144,36 @@ class PrimitiveProcessor:
                 logging.debug(f"  apply_get_context_primitive: Evaluated value for key '{key_str}' ('{value_expr_node}'): {evaluated_value}")
             except SexpEvaluationError as e_val_eval:
                 raise SexpEvaluationError(
-                    f"Error evaluating value for '{key_str}' in 'get_context': {e_val_eval.args[0] if e_val_eval.args else str(e_val_eval)}",
+                    f"Error evaluating value for '{key_str}' in 'get-context': {e_val_eval.args[0] if e_val_eval.args else str(e_val_eval)}",
                     expression=original_expr_str, 
                     error_details=f"Failed on value_expr='{e_val_eval.expression if hasattr(e_val_eval, 'expression') else value_expr_node}'. Original detail: {e_val_eval.error_details if hasattr(e_val_eval, 'error_details') else str(e_val_eval)}"
                 ) from e_val_eval
             except Exception as e_val_eval:
                 logging.exception(f"  apply_get_context_primitive: Error evaluating value for key '{key_str}' ('{value_expr_node}'): {e_val_eval}")
-                raise SexpEvaluationError(f"Error evaluating value for '{key_str}' in 'get_context': {value_expr_node}", original_expr_str, error_details=str(e_val_eval)) from e_val_eval
+                raise SexpEvaluationError(f"Error evaluating value for '{key_str}' in 'get-context': {value_expr_node}", original_expr_str, error_details=str(e_val_eval)) from e_val_eval
             
+            # Handle special case for context-strategy
+            if key_str == "context-strategy":
+                if not isinstance(evaluated_value, Symbol) and not isinstance(evaluated_value, str):
+                    raise SexpEvaluationError(f"Context strategy must be a symbol: content-only or metadata-only, got {type(evaluated_value)}", original_expr_str)
+                
+                context_strategy = evaluated_value
+                # Don't add to context_params, we'll handle it separately
+                continue
+                
+            # Handle normal key-value pairs
             if key_str == "matching_strategy":
                 allowed_strategies = {'content', 'metadata'}
                 if not isinstance(evaluated_value, str) or evaluated_value not in allowed_strategies: 
                     raise SexpEvaluationError(f"Invalid value for 'matching_strategy'. Expected 'content' or 'metadata', got: {evaluated_value!r}", original_expr_str)
             
-            context_params[key_str] = evaluated_value 
+            context_params[key_str] = evaluated_value
 
-        if not context_params: 
-            raise SexpEvaluationError("'get_context' requires at least one parameter like (query ...).", original_expr_str)
+        # Ensure we have a query
+        if "query" not in context_params: 
+            raise SexpEvaluationError("'get-context' requires a query parameter.", original_expr_str)
 
+        # Process inputs conversion if needed
         try:
             if "inputs" in context_params and isinstance(context_params["inputs"], list):
                 inputs_list_of_pairs = context_params["inputs"] 
@@ -111,10 +189,23 @@ class PrimitiveProcessor:
                 context_params["inputs"] = inputs_dict
                 logging.debug(f"  apply_get_context_primitive: Converted 'inputs' list (post-eval) to dict: {context_params['inputs']}")
             
+            # Create ContextGenerationInput
             context_input_obj = ContextGenerationInput(**context_params)
         except Exception as e: 
             logging.exception(f"  Error creating ContextGenerationInput from params {context_params}: {e}")
-            raise SexpEvaluationError(f"Failed creating ContextGenerationInput for 'get_context': {e}", original_expr_str, error_details=str(e)) from e
+            raise SexpEvaluationError(f"Failed creating ContextGenerationInput for 'get-context': {e}", original_expr_str, error_details=str(e)) from e
+
+        # Map context_strategy symbols to context strategies
+        context_strategy_str = context_strategy.value() if isinstance(context_strategy, Symbol) else context_strategy
+        if context_strategy_str == "content-only":
+            strategy = "content"
+        elif context_strategy_str == "metadata-only":
+            strategy = "metadata"
+        else:
+            raise SexpEvaluationError(f"Invalid context strategy: {context_strategy_str}. Must be content-only or metadata-only.", original_expr_str)
+            
+        # Override the matching_strategy in the input object
+        context_input_obj.matching_strategy = strategy
 
         try:
             logging.debug(f"  Calling memory_system.get_relevant_context_for with: {context_input_obj}")
@@ -123,16 +214,26 @@ class PrimitiveProcessor:
             logging.exception(f"  MemorySystem.get_relevant_context_for failed: {e}")
             raise SexpEvaluationError("Context retrieval failed during MemorySystem call.", original_expr_str, error_details=str(e)) from e
 
+        # Convert result to a dictionary format
+        result_dict = {
+            "summary": match_result.context_summary or "",  # Ensure we have a string, not None
+            "matches": [
+                {
+                    "id": item.id,
+                    "content": item.content,
+                    "relevance_score": item.relevance_score,
+                    "content_type": item.content_type
+                }
+                for item in match_result.matches
+            ]
+        }
+        
+        # Include any error message if present
         if match_result.error:
-            logging.error(f"  MemorySystem returned error for get_context: {match_result.error}")
-            raise SexpEvaluationError("Context retrieval failed (MemorySystem error).", original_expr_str, error_details=match_result.error)
-
-        # MatchItem.id is expected to hold the file path or unique identifier.
-        # MatchItem.source_path could also be a candidate if 'id' is not the path.
-        # Assuming 'id' is the correct field for the file path here.
-        file_paths = [m.id for m in match_result.matches if isinstance(m, MatchItem) and m.id]
-        logging.debug(f"PrimitiveProcessor.apply_get_context_primitive END: -> {file_paths}")
-        return file_paths
+            result_dict["error"] = match_result.error
+            
+        logging.debug(f"PrimitiveProcessor.apply_get_context_primitive END: returning dictionary with {len(result_dict['matches'])} matches")
+        return result_dict
 
     async def apply_get_field_primitive(self, args: List[Any], env: 'SexpEnvironment', original_expr_str: str) -> Any: # Match user's signature
         logger.debug(f"PrimitiveProcessor.apply_get_field_primitive: {original_expr_str}") # Use original_expr_str
@@ -382,8 +483,8 @@ class PrimitiveProcessor:
                 raise SexpEvaluationError(f"Error evaluating argument {i+1} for 'string-append': {arg_expr}", original_expr_str, error_details=str(e_eval)) from e_eval
             
             if evaluated_value is None:
-                logger.debug(f"  apply_string_append_primitive: Arg {i+1} was None, converting to empty string.")
-                evaluated_parts.append("")
+                logger.debug(f"  apply_string_append_primitive: Arg {i+1} was None, converting to string 'None'.")
+                evaluated_parts.append("None")
             elif isinstance(evaluated_value, str):
                 evaluated_parts.append(evaluated_value)
             elif isinstance(evaluated_value, Symbol):

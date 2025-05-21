@@ -66,7 +66,7 @@ DEFATOM_GENERATE_PLAN_S_EXPRESSION = """
     After completing your analysis, draft an implementation plan for the user's goal.
     The plan must include ONLY:
     1. 'instructions': Detailed steps for an AI coder (Aider), derived from the user's goal.
-    2. 'files': A list of ALL file paths that need to be created or modified to implement the plan. **Carefully review the '{{goal}}' for any explicitly mentioned file paths (e.g., under sections like 'File to Modify' or paths mentioned in test names like 'tests/some_module/test_file.py') and ensure these are accurately extracted and included in this 'files' list.** This list should include both source code modules and their associated test files if they are mentioned or clearly implied as needing changes by the goal.
+    2. 'files': A list of ALL file paths that need to be created or modified to implement the plan. **Carefully review the '{{goal}}' for any explicitly mentioned file paths (e.g., under sections like 'File to Modify' or paths mentioned in test names like 'tests/some_module/test_file.py') and ensure these are accurately extracted and included in this 'files' list, in addition to any relevant files identified during your analysis phase.** This list should include both source code modules and their associated test files if they are mentioned or clearly implied as needing changes by the goal.
     Do NOT generate a 'test_command'.
     Output ONLY a single JSON object conforming to the DevelopmentPlan schema (which has 'instructions' and 'files' as required, 'test_command' is optional). No other text."
   )

@@ -102,7 +102,10 @@ except ImportError:
 def mock_memory_system_bridge(): # Renamed fixture
     """Provides a MagicMock for MemorySystem for bridge tests."""
     # Use spec=MemorySystem if MemorySystem is importable and stable
-    return MagicMock(spec=MemorySystem)
+    mock_memory = MagicMock(spec=MemorySystem)
+    # Ensure get_relevant_context_for is AsyncMock
+    mock_memory.get_relevant_context_for = AsyncMock()
+    return mock_memory
 
 @pytest.fixture # Ensure decorator is present
 def mock_file_access_manager_bridge(): # Ensure name matches exactly
@@ -527,7 +530,8 @@ class TestAiderBridge:
     # PATCH BOTH isfile and exists
     @patch('src.aider_bridge.bridge.os.path.exists')
     @patch('src.aider_bridge.bridge.os.path.isfile')
-    def test_get_context_for_query_success(self, mock_os_isfile, mock_os_exists, aider_bridge_instance, mock_memory_system_bridge, mock_file_access_manager_bridge):
+    @pytest.mark.asyncio
+    async def test_get_context_for_query_success(self, mock_os_isfile, mock_os_exists, aider_bridge_instance, mock_memory_system_bridge, mock_file_access_manager_bridge):
         """Verify get_context_for_query calls memory_system and updates state."""
         # Arrange
         # FAM mocks configured in fixture
@@ -546,10 +550,10 @@ class TestAiderBridge:
         mock_os_isfile.side_effect = lambda p: p in mock_paths_abs
 
         # Act
-        result_paths = aider_bridge_instance.get_context_for_query(query)
+        result_paths = await aider_bridge_instance.get_context_for_query(query)
 
         # Assert
-        mock_memory_system_bridge.get_relevant_context_for.assert_called_once()
+        mock_memory_system_bridge.get_relevant_context_for.assert_awaited_once()
         # Check the input argument passed to the mock
         call_args, call_kwargs = mock_memory_system_bridge.get_relevant_context_for.call_args
         assert len(call_args) == 1
@@ -566,7 +570,8 @@ class TestAiderBridge:
         assert mock_os_exists.call_count == len(mock_paths_abs)
         assert mock_os_isfile.call_count == len(mock_paths_abs) # Called because exists returned True
 
-    def test_get_context_for_query_failure(self, aider_bridge_instance, mock_memory_system_bridge):
+    @pytest.mark.asyncio
+    async def test_get_context_for_query_failure(self, aider_bridge_instance, mock_memory_system_bridge):
         """Verify get_context_for_query handles memory system errors."""
         # Arrange
         query = "find function foo"
@@ -576,9 +581,9 @@ class TestAiderBridge:
         initial_context = aider_bridge_instance._file_context.copy() # Store initial state
 
         # Act
-        result_paths = aider_bridge_instance.get_context_for_query(query)
+        result_paths = await aider_bridge_instance.get_context_for_query(query)
 
         # Assert
-        mock_memory_system_bridge.get_relevant_context_for.assert_called_once()
+        mock_memory_system_bridge.get_relevant_context_for.assert_awaited_once()
         assert result_paths == [] # Should return empty list on error
         assert aider_bridge_instance._file_context == initial_context # Internal state should not change

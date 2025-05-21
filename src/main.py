@@ -143,12 +143,13 @@ USER_PASSTHROUGH_QUERY_TEMPLATE = {
 
 
 # Helper function to create a standard FAILED TaskResult dictionary
-def _create_failed_result_dict(reason: TaskFailureReason, message: str, details: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    """Creates a dictionary representing a FAILED TaskResult."""
-    error_obj = TaskFailureError(type="TASK_FAILURE", reason=reason, message=message, details=details or {})
-    task_result = TaskResult(status="FAILED", content=message, notes={"error": error_obj})
-    # Use exclude_none=True to avoid sending null fields if not set
-    return task_result.model_dump(exclude_none=True)
+def _create_failed_result_dict(reason: TaskFailureReason, message: str, details: Optional[Dict[str, Any]] = None) -> TaskResult:
+    """Creates a FAILED TaskResult Pydantic model instance."""
+    # Ensure details is a dict for TaskFailureError model
+    error_details_for_model = details if isinstance(details, dict) else {}
+    error_obj = TaskFailureError(type="TASK_FAILURE", reason=reason, message=message, details=error_details_for_model)
+    # TaskResult.notes expects a Dict[str, Any]. So, error_obj needs to be dumped.
+    return TaskResult(status="FAILED", content=message, notes={"error": error_obj.model_dump(exclude_none=True)})
 
 
 class Application:
@@ -930,7 +931,7 @@ Select the best matching paths *from the provided metadata* and output the JSON.
             logger.exception(f"Unexpected error during repository indexing for {repo_path}: {e}")
             return False
 
-    def handle_query(self, query: str) -> Dict[str, Any]:
+    def handle_query(self, query: str) -> TaskResult:
         """
         Handles a natural language query using the PassthroughHandler.
 
@@ -938,7 +939,7 @@ Select the best matching paths *from the provided metadata* and output the JSON.
             query: The user's query string.
 
         Returns:
-            A dictionary representing the TaskResult.
+            A TaskResult Pydantic model instance.
         """
         if not self.passthrough_handler:
             logger.error("Cannot handle query: PassthroughHandler not initialized.")
@@ -947,9 +948,8 @@ Select the best matching paths *from the provided metadata* and output the JSON.
         logger.debug(f"Handling query: '{query[:100]}...'") # Log truncated query
         try:
             task_result_obj = self.passthrough_handler.handle_query(query)
-            result_dict = task_result_obj.model_dump(exclude_none=True)
-            logger.debug(f"Query result status: {result_dict.get('status')}")
-            return result_dict
+            logger.debug(f"Query result status: {task_result_obj.status}")
+            return task_result_obj
         except Exception as e:
             logger.exception(f"Error handling query: {e}")
             return _create_failed_result_dict("unexpected_error", f"Unexpected error during query handling: {e}")
@@ -972,7 +972,7 @@ Select the best matching paths *from the provided metadata* and output the JSON.
         identifier: str,
         params: Optional[Dict[str, Any]] = None,
         flags: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
+    ) -> TaskResult:
         """
         Handles a programmatic task command via the Dispatcher.
 
@@ -982,7 +982,7 @@ Select the best matching paths *from the provided metadata* and output the JSON.
             flags: Dictionary of flags for the task/tool.
 
         Returns:
-            A dictionary representing the TaskResult.
+            A TaskResult Pydantic model instance.
         """
         if not self.passthrough_handler or not self.task_system or not self.memory_system:
              logger.error("Cannot handle task command: Core components not initialized.")
@@ -1000,8 +1000,8 @@ Select the best matching paths *from the provided metadata* and output the JSON.
                 memory_system=self.memory_system # Pass memory_system here
                 # optional_history_str=self.passthrough_handler.get_history_string() # If needed
             )
-            logger.debug(f"Task command result status: {result_dict.get('status')}")
-            return result_dict
+            logger.debug(f"Task command result status: {result_dict.status}") # Change .get('status') to .status
+            return result_dict # This will now correctly return the TaskResult object
         except Exception as e:
             logger.exception(f"Error handling task command '{identifier}': {e}")
             return _create_failed_result_dict("unexpected_error", f"Unexpected error during task command execution: {e}")

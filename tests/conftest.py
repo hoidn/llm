@@ -1,12 +1,14 @@
 import pytest
 import os
+import asyncio
 import subprocess # For git_repo fixture
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, AsyncMock, patch
 
 import pytest
 import os
+import asyncio
 import subprocess # For git_repo fixture
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, AsyncMock, patch
 
 # Import Pydantic models for fixtures
 from src.system.models import (
@@ -29,20 +31,22 @@ def mock_memory_system():
     """Provides a mock MemorySystem instance."""
     ms = MagicMock(name="MockMemorySystem")
     # Adjust MatchItem mock to match Pydantic model
-    ms.get_relevant_context_for.return_value = AssociativeMatchResult(
+    # Update to AsyncMock
+    ms.get_relevant_context_for = AsyncMock(return_value=AssociativeMatchResult(
         context_summary="Mocked context summary",
         matches=[
             MatchItem(id="/mock/file1.py", content="mock content", relevance_score=0.9, content_type="file_content", metadata={"excerpt": "mock excerpt 1"})
         ],
         error=None
-    )
-    ms.get_relevant_context_with_description.return_value = AssociativeMatchResult(
+    ))
+    # Update to AsyncMock
+    ms.get_relevant_context_with_description = AsyncMock(return_value=AssociativeMatchResult(
         context_summary="Mocked context summary via desc",
         matches=[
             MatchItem(id="/mock/file_desc.py", content="desc content", relevance_score=0.8, content_type="file_content", metadata={"excerpt": "desc excerpt"})
         ],
         error=None
-    )
+    ))
     ms.global_index = { "/mock/file1.py": "mock metadata" }
     # Attach a mock handler if needed by components using this fixture
     # Note: Creates a dependency between fixtures. Consider alternatives if issues arise.
@@ -54,14 +58,16 @@ def mock_task_system():
     """Provides a mock TaskSystem instance."""
     ts = MagicMock(name="MockTaskSystem")
     ts.find_template.return_value = {"name": "mock_template", "type": "atomic", "params": {}}
-    ts.execute_atomic_template.return_value = TaskResult(status="COMPLETE", content="Mock task success")
+    # Update to AsyncMock
+    ts.execute_atomic_template = AsyncMock(return_value=TaskResult(status="COMPLETE", content="Mock task success"))
     # Adjust MatchItem mock
     ts.generate_context_for_memory_system.return_value = AssociativeMatchResult(
         context_summary="Mock generated context",
         matches=[MatchItem(id="/mock/gen_file.py", content="gen content", relevance_score=0.7, content_type="file_content", metadata={"excerpt": "gen excerpt"})],
         error=None
     )
-    ts.resolve_file_paths.return_value = (["/mock/resolved.py"], None)
+    # Update to AsyncMock
+    ts.resolve_file_paths = AsyncMock(return_value=(["/mock/resolved.py"], None))
     ts.find_matching_tasks.return_value = [{"task": {"name": "matched_task"}, "score": 0.9}]
     return ts
 
@@ -73,30 +79,35 @@ def mock_base_handler():
     handler.file_manager.base_path = "/mock/handler/base"
     handler.file_manager.read_file.return_value = "Mock file content"
     handler.execute_file_path_command.return_value = ["/mock/cmd_file.py"]
-    # Mock internal LLM call method result
-    handler._execute_llm_call.return_value = TaskResult(status=ReturnStatus.COMPLETE, content="Mock LLM response")
+    # Mock internal LLM call method result - update to AsyncMock
+    handler._execute_llm_call = AsyncMock(return_value=TaskResult(status=ReturnStatus.COMPLETE, content="Mock LLM response"))
     # Mock helper methods
     handler._create_file_context.return_value = "Mock created context string"
     handler._get_relevant_files.return_value = ["/mock/relevant_file.py"]
     handler._build_system_prompt.return_value = "Mock system prompt"
-    handler._execute_tool.return_value = TaskResult(status=ReturnStatus.COMPLETE, content="Mock tool result")
+    # Update to AsyncMock
+    handler._execute_tool = AsyncMock(return_value=TaskResult(status=ReturnStatus.COMPLETE, content="Mock tool result"))
     # Mock the agent instance if needed directly
     handler.agent = MagicMock(name="MockPydanticAgent")
     handler.agent.run_sync.return_value = MagicMock(output="Mock agent output")
     # Mock LLMInteractionManager if BaseHandler uses it
     handler.llm_manager = MagicMock(name="MockLLMInteractionManager")
-    handler.llm_manager.execute_call.return_value = ("Mock LLM response", []) # Assuming (content, history) tuple
+    # Update to AsyncMock
+    handler.llm_manager.execute_call = AsyncMock(return_value=("Mock LLM response", [])) # Assuming (content, history) tuple
+    # Update prime_data_context to async
+    handler.prime_data_context = AsyncMock(return_value=True)
     return handler
 
 @pytest.fixture
 def mock_atomic_task_executor():
     """Provides a mock AtomicTaskExecutor instance."""
     executor = MagicMock(name="MockAtomicTaskExecutor")
-    executor.execute_body.return_value = TaskResult(
+    # Update to AsyncMock
+    executor.execute_body = AsyncMock(return_value=TaskResult(
         status=ReturnStatus.COMPLETE,
         content="Mock executor success",
         notes={"executor_note": "mock_value"}
-    )
+    ))
     return executor
 
 
@@ -176,7 +187,8 @@ def mock_aider_session(mock_aider_coder):
 def mock_aider_automatic_handler():
     """Provides a mock Aider Automatic Handler instance."""
     handler = MagicMock(name="MockAiderAutomaticHandler")
-    handler.execute_task.return_value = TaskResult(status=ReturnStatus.COMPLETE, content="Mock Aider auto result")
+    # Update to AsyncMock
+    handler.execute_task = AsyncMock(return_value=TaskResult(status=ReturnStatus.COMPLETE, content="Mock Aider auto result"))
     return handler
 
 # --- Integration Test Fixtures ---

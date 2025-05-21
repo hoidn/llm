@@ -95,6 +95,7 @@ class SexpEvaluator:
         self.PRIMITIVE_APPLIERS: Dict[str, Callable] = {
             "list": self.primitive_processor.apply_list_primitive,
             "get_context": self.primitive_processor.apply_get_context_primitive,
+            "get-context": self.primitive_processor.apply_get_context_primitive, # Add with hyphen for test compatibility
             "get-field": self.primitive_processor.apply_get_field_primitive,
             "string=?": self.primitive_processor.apply_string_equal_primitive,
             "log-message": self.primitive_processor.apply_log_message_primitive,
@@ -296,53 +297,99 @@ class SexpEvaluator:
 
         if isinstance(op_expr_node, Symbol):
             op_name_str = op_expr_node.value()
+            
             # 1. Check for Special Forms first
             if op_name_str in self.SPECIAL_FORM_HANDLERS: 
                 logger.debug(f"  _eval_list_form: Dispatching to Special Form Handler: {op_name_str}")
                 handler_method = self.SPECIAL_FORM_HANDLERS[op_name_str]
-                return await handler_method(arg_expr_nodes, env, original_expr_str) 
+                return await handler_method(arg_expr_nodes, env, original_expr_str)
             
-            # 2. Check if it's a known primitive, atomic task, or handler tool name
-            # These should be treated as direct call targets, not looked up as variables.
-            is_primitive = op_name_str in self.PRIMITIVE_APPLIERS
+            # 2. Check if it's a Primitive directly
+            if op_name_str in self.PRIMITIVE_APPLIERS:
+                logger.debug(f"  _eval_list_form: Operator '{op_name_str}' is a primitive. Will be passed to _apply_operator.")
+                resolved_operator = op_name_str
+                return await self._apply_operator(resolved_operator, arg_expr_nodes, env, original_expr_str)
+                
+            # 3. Check for special task/tool invocation operators
+            if op_name_str == "atomic-task":
+                logger.debug(f"  _eval_list_form: Operator '{op_name_str}' is the atomic-task invocation operator.")
+                if len(arg_expr_nodes) < 1:
+                    raise SexpEvaluationError(f"'atomic-task' operator requires at least a task name argument.", original_expr_str)
+                
+                # First argument should be the task name
+                task_name_node = arg_expr_nodes[0]
+                task_name = await self._eval(task_name_node, env) if not isinstance(task_name_node, str) else task_name_node
+                remaining_args = arg_expr_nodes[1:]
+                
+                logger.debug(f"  _eval_list_form: Will invoke atomic task '{task_name}' with {len(remaining_args)} args.")
+                # Ensure we await the result - _invoke_task_system is already async
+                return await self._invoke_task_system(task_name, None, remaining_args, env, original_expr_str)
+                
+            elif op_name_str == "direct-tool":
+                logger.debug(f"  _eval_list_form: Operator '{op_name_str}' is the direct-tool invocation operator.")
+                if len(arg_expr_nodes) < 1:
+                    raise SexpEvaluationError(f"'direct-tool' operator requires at least a tool name argument.", original_expr_str)
+                
+                # First argument should be the tool name
+                tool_name_node = arg_expr_nodes[0]
+                tool_name = await self._eval(tool_name_node, env) if not isinstance(tool_name_node, str) else tool_name_node
+                remaining_args = arg_expr_nodes[1:]
+                
+                logger.debug(f"  _eval_list_form: Will invoke direct tool '{tool_name}' with {len(remaining_args)} args.")
+                # Ensure we await the result - _invoke_handler_tool is already async
+                return await self._invoke_handler_tool(tool_name, remaining_args, env, original_expr_str)
+            
+            # 4. Check if it's an Atomic Task
             template_def = self.task_system.find_template(op_name_str)
-            is_atomic_task = template_def is not None # find_template returns None if not found or not atomic
-            is_handler_tool = op_name_str in self.handler.tool_executors
-
-            if is_primitive or is_atomic_task or is_handler_tool:
-                resolved_operator = op_name_str 
-                logger.debug(f"  _eval_list_form: Operator '{op_name_str}' identified as known primitive/task/tool name. Will be passed to _apply_operator.")
-            else:
-                # 3. If not a special form or known invokable name, THEN try to evaluate it as a variable (e.g., a lambda)
-                logger.debug(f"  _eval_list_form: Operator symbol '{op_name_str}' is not a special form or known invokable name. Evaluating (looking up) '{op_name_str}' as a variable...")
-                try:
-                    resolved_operator = await self._eval(op_expr_node, env) # This does env.lookup()
-                except NameError as ne: 
-                    logger.error(f"  _eval_list_form: Operator symbol '{op_name_str}' is unbound during variable lookup.")
-                    raise SexpEvaluationError(f"Unbound symbol or unrecognized operator: {op_name_str}", original_expr_str) from ne
-                except SexpEvaluationError as se: 
-                    raise se # Propagate if _eval itself raised SexpEvaluationError
-                except Exception as e: 
-                    logger.exception(f"  _eval_list_form: Unexpected error evaluating operator symbol '{op_name_str}' as variable: {e}")
-                    raise SexpEvaluationError(f"Error evaluating operator symbol '{op_name_str}' as variable: {e}", original_expr_str, error_details=str(e)) from e
+            if template_def is not None:  # find_template returns None if not found
+                logger.debug(f"  _eval_list_form: Operator '{op_name_str}' is a registered atomic task. Will be passed to _apply_operator.")
+                resolved_operator = op_name_str
+                return await self._apply_operator(resolved_operator, arg_expr_nodes, env, original_expr_str)
+                
+            # 5. Check if it's a Handler Tool
+            if op_name_str in self.handler.tool_executors:
+                logger.debug(f"  _eval_list_form: Operator '{op_name_str}' is a registered handler tool. Will be passed to _apply_operator.")
+                resolved_operator = op_name_str
+                return await self._apply_operator(resolved_operator, arg_expr_nodes, env, original_expr_str)
+                
+            # 6. If not a special form, primitive, task, or tool, THEN try to evaluate it as a variable
+            logger.debug(f"  _eval_list_form: Operator symbol '{op_name_str}' is not recognized. Evaluating as a variable...")
+            try:
+                resolved_operator = await self._eval(op_expr_node, env)  # This does env.lookup()
+                return await self._apply_operator(resolved_operator, arg_expr_nodes, env, original_expr_str)
+            except NameError as ne: 
+                # Improved error message - explicitly list what was searched for
+                error_msg = (
+                    f"Unbound symbol or unrecognized operator: '{op_name_str}'. "
+                    f"Not found as special form, primitive, atomic task, or handler tool, "
+                    f"and not defined as a variable in the current environment."
+                )
+                logger.error(f"  _eval_list_form: {error_msg}")
+                raise SexpEvaluationError(error_msg, original_expr_str) from ne
+            except SexpEvaluationError as se: 
+                raise se  # Propagate if _eval itself raised SexpEvaluationError
+            except Exception as e: 
+                logger.exception(f"  _eval_list_form: Unexpected error evaluating operator symbol '{op_name_str}' as variable: {e}")
+                raise SexpEvaluationError(f"Error evaluating operator symbol '{op_name_str}' as variable: {e}", original_expr_str, error_details=str(e)) from e
+                
         elif isinstance(op_expr_node, list): 
             logger.debug(f"  _eval_list_form: Operator is a complex expression, evaluating it: {op_expr_node}")
             try:
                 resolved_operator = await self._eval(op_expr_node, env)
+                return await self._apply_operator(resolved_operator, arg_expr_nodes, env, original_expr_str)
             except Exception as e_op_eval: 
                 logger.exception(f"  _eval_list_form: Error evaluating complex operator expression '{op_expr_node}': {e_op_eval}")
                 if isinstance(e_op_eval, SexpEvaluationError): raise 
                 raise SexpEvaluationError(f"Error evaluating operator expression: {op_expr_node}", original_expr_str, error_details=str(e_op_eval)) from e_op_eval
+                
         elif isinstance(op_expr_node, self.Closure) or callable(op_expr_node):
             # If op_expr_node is already a Closure or another Python callable (e.g., passed via environment)
             logger.debug(f"  _eval_list_form: Operator is already a resolved callable (type: {type(op_expr_node)}).")
             resolved_operator = op_expr_node
+            return await self._apply_operator(resolved_operator, arg_expr_nodes, env, original_expr_str)
+            
         else: 
             raise SexpEvaluationError(f"Operator in list form must be a symbol or another list, got {type(op_expr_node)}: {op_expr_node}", original_expr_str)
-
-        logger.debug(f"  _eval_list_form: Resolved operator to: {resolved_operator} (Type: {type(resolved_operator)})")
-        
-        return await self._apply_operator(resolved_operator, arg_expr_nodes, env, original_expr_str)
 
     async def _apply_operator(
         self,
@@ -475,10 +522,12 @@ class SexpEvaluator:
             template_def = self.task_system.find_template(op_name_str)
             if template_def and template_def.get("type") == "atomic":
                 logger.debug(f"  _apply_operator: Dispatching to Task System Invoker for: {op_name_str}")
+                # Ensure we await the async result from _invoke_task_system
                 return await self._invoke_task_system(op_name_str, template_def, arg_expr_nodes, calling_env, original_call_expr_str)
 
             if op_name_str in self.handler.tool_executors:
                 logger.debug(f"  _apply_operator: Dispatching to Handler Tool Invoker for: {op_name_str}")
+                # Ensure we await the async result from _invoke_handler_tool
                 return await self._invoke_handler_tool(op_name_str, arg_expr_nodes, calling_env, original_call_expr_str)
             
             logger.error(f"  _apply_operator: Operator name '{op_name_str}' was resolved but is not a recognized primitive, task, or tool.")
@@ -497,7 +546,14 @@ class SexpEvaluator:
                     raise SexpEvaluationError(f"Error evaluating argument {i+1} for callable '{resolved_op}': {arg_node}", original_call_expr_str, error_details=str(e_arg_eval)) from e_arg_eval
             
             try:
-                result = resolved_op(*evaluated_args_list) 
+                # Check if the callable is an async coroutine function that needs to be awaited
+                import asyncio
+                if asyncio.iscoroutinefunction(resolved_op):
+                    logger.debug(f"  _apply_operator: Callable {resolved_op} is async, awaiting it")
+                    result = await resolved_op(*evaluated_args_list)
+                else:
+                    result = resolved_op(*evaluated_args_list)
+                    
                 logger.debug(f"  _apply_operator: Callable {resolved_op} returned: {result}")
                 return result
             except Exception as e:

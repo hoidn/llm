@@ -1,41 +1,60 @@
-**Project Plan: `SequentialWorkflow` Implementation (Version 2 - Revised)**
+**Project Plan: `SequentialWorkflow` Implementation (Version 3.1 - Corrected Phase 0 & Integrated Test Updates)**
 
-**Overall Goal:** Implement the `SequentialWorkflow` component, enabling Python-fluent orchestration of pre-registered tasks with explicit input/output mapping. The component will be designed with robustness, clarity, and future async compatibility in mind, and will be supported by comprehensive testing and documentation, including a practical demo script.
+**Overall Goal:** Implement the `SequentialWorkflow` component as defined in `src/orchestration/sequential_workflow_IDL.md`, enabling Python-fluent orchestration of pre-registered tasks with explicit input/output mapping. The component will be designed with robustness, clarity, and future async compatibility in mind, and will be supported by comprehensive testing and documentation, including a practical demo script.
 
-**Key Design Decisions Incorporated:**
-
-1.  **TaskResult Type:** `Dispatcher.execute_programmatic_task` (and its callers/implementers) MUST return a Pydantic `TaskResult` model instance. `SequentialWorkflow` will consume these instances.
-2.  **Path Syntax for `input_mappings`:** Primarily dot-separated strings (e.g., `"source.parsedContent.field"`). A list of strings (e.g., `["source", "parsedContent", "field.with.dots"]`) will be supported as an alternative for keys containing special characters.
-3.  **`initial_context` Immutability:** `SequentialWorkflow.run` will use `copy.deepcopy()` on the provided `initial_context`.
-4.  **Async Design:** `SequentialWorkflow.run` will be designed as `async def run(...)`. This presumes that `Dispatcher.execute_programmatic_task` (or `Application.handle_task_command`) will also be `async` or can be called appropriately from an async context (e.g., via `asyncio.to_thread` if it's blocking I/O, though a native async dispatcher is preferred).
-5.  **Logging:** Contextual information (step index, task name, output name) will be included in log messages.
-6.  **Cycle Detection:** Cycle detection for task dependencies defined in `input_mappings` will be performed at the beginning of the `run()` method.
-7.  **Return Type of `run()`:** Will return a `WorkflowOutcome` Pydantic model/dataclass containing success status, the results context, and error information if applicable.
-8.  **Error Handling:** Fail-fast policy; `WorkflowExecutionError` will be raised on the first significant error during `run()`.
+**Key Design Decisions Incorporated (Recap):**
+*   `TaskResult` is a Pydantic model instance.
+*   `input_mappings` supports dot-separated strings and list-of-strings paths.
+*   `initial_context` is deep-copied.
+*   `SequentialWorkflow.run` is `async def`. `Dispatcher.execute_programmatic_task` (and its chain) is also `async`.
+*   Contextual logging.
+*   Cycle detection at the start of `run()`.
+*   `run()` returns a `WorkflowOutcome` Pydantic model.
+*   Fail-fast error handling where `run()` returns a `WorkflowOutcome` with `success=false` for operational errors (like step failures or input resolution issues), while `InvalidWorkflowDefinition` is raised for setup errors.
 
 ---
 
-**Phase 0: Prerequisites & Foundational Adjustments**
+**Phase 0: Prerequisites & Foundational Adjustments (System-Wide)**
 
-*   **Tasks:**
+*   **Goal:** Standardize `TaskResult` to Pydantic model, make core execution path `async`.
+*   **Implementation Tasks (Phase 0 - System-Wide):**
     1.  **Standardize `TaskResult` Return Type:**
-        *   Ensure `TaskResult` is defined as a Pydantic model in `src/system/models.py`.
+        *   Ensure `TaskResult` is robustly defined as a Pydantic model in `src/system/models.py`.
         *   Modify `DispatcherFunctions_IDL.md` and `Application_IDL.md`:
             *   Change return type of `execute_programmatic_task` / `handle_task_command` from `dict<string, Any>` to `object` (representing the `TaskResult` Pydantic model).
             *   Update postconditions to state "Returns a `TaskResult` Pydantic model instance...".
-        *   **Crucial:** Update the implementations of `Dispatcher.execute_programmatic_task`, `Application.handle_task_command`, and any underlying task execution logic (e.g., `TaskSystem.execute_atomic_template`, `BaseHandler._execute_tool`) to ensure they construct and return an actual `TaskResult` Pydantic model instance. This might involve refactoring how results are created in those components.
-    2.  **Async Task Execution Path (Decision & Potential Refactor):**
-        *   **Analyze:** Determine if `Dispatcher.execute_programmatic_task` (and its dependencies like `TaskSystem.execute_atomic_template`, `BaseHandler._execute_llm_call`, `BaseHandler._execute_tool`) can be made `async`.
-        *   **If Yes (Preferred):** Refactor these methods to be `async def`. This is a significant undertaking affecting multiple components.
-        *   **If No (Fallback):** Document that `SequentialWorkflow.run` will need to use `await asyncio.to_thread(self.app_or_dispatcher_instance.execute_programmatic_task, ...)` if the dispatcher call is blocking. This is less ideal but allows `SequentialWorkflow` to be async.
-        *   This decision heavily influences the implementation details of `SequentialWorkflow.run`.
-*   **Testing (Phase 0):**
-    *   Update existing tests for `Dispatcher` and `Application` to assert that they return `TaskResult` Pydantic model instances.
-    *   If refactoring to async, ensure all affected components' tests are updated and pass.
-*   **Deliverables:**
-    *   Consistently used `TaskResult` Pydantic model.
-    *   Updated IDLs for `Dispatcher` and `Application`.
-    *   Decision and potential refactoring for async task execution path completed.
+        *   **Crucial:** Update the implementations of `Dispatcher.execute_programmatic_task`, `Application.handle_task_command`, and any underlying task execution logic (e.g., `TaskSystem.execute_atomic_template`, `AtomicTaskExecutor.execute_body` if it directly creates the final `TaskResult`, `BaseHandler._execute_tool`) to ensure they construct and return an actual `TaskResult` Pydantic model instance. This might involve refactoring how results are created in those components.
+    2.  **Async Task Execution Path (Decision & Refactor):**
+        *   **Analyze & Implement:** Refactor `Dispatcher.execute_programmatic_task` and its primary downstream dependencies (`TaskSystem.execute_atomic_template`, `AtomicTaskExecutor.execute_body`'s call to handler, `BaseHandler._execute_llm_call`, `BaseHandler._execute_tool`, `LLMInteractionManager.execute_call`, `MemorySystem.get_relevant_context_for`, relevant SexpEvaluator methods, and AiderExecutor functions) to be `async def` and use `await` appropriately.
+        *   This is a significant undertaking. If full async refactor of all dependencies is too large *immediately*, the call from `SequentialWorkflow._execute_task_internal` to `app_or_dispatcher_instance.execute_programmatic_task` will use `await asyncio.to_thread(...)` as a bridge, but the target is to make the core path async.
+    3.  **Update Relevant IDLs (System-Wide):**
+        *   For all methods changed to `async def` in step 2, update their respective IDL files. Add a comment (e.g., `// Asynchronous method`) to denote this, as our IDL syntax doesn't have a native `async` keyword.
+        *   Ensure return types in IDLs reflect Pydantic `TaskResult` objects where applicable.
+
+*   **Test Update Tasks (Phase 0 - System-Wide):**
+    1.  **All Affected Test Files:**
+        *   Add `@pytest.mark.asyncio` to test functions calling newly async methods.
+        *   Change test function signatures to `async def`.
+        *   Use `await` for all calls to newly async production methods.
+        *   Update assertions to expect Pydantic `TaskResult` objects (attribute access like `result.status`) instead of dictionaries.
+        *   For mocked async methods, use `unittest.mock.AsyncMock` and assert with `assert_awaited_once()` or `assert_awaited_once_with()`.
+    2.  **Specific Files Requiring Major Test Updates (as detailed in previous response):**
+        *   `tests/test_dispatcher.py`
+        *   `tests/test_main.py` (incl. fixing `isinstance` and `KeyError` issues noted in previous review)
+        *   `tests/task_system/test_task_system.py`
+        *   `tests/executors/test_atomic_executor.py`
+        *   `tests/handler/test_base_handler.py`
+        *   `tests/handler/test_llm_interaction_manager.py` (Note: `initialize_agent` remains sync).
+        *   `tests/handler/test_passthrough_handler.py`
+        *   `tests/memory/test_memory_system.py` (Fix `AttributeError: 'coroutine' object has no attribute 'status'` by ensuring `get_relevant_context_for` awaits its async call to `TaskSystem`).
+        *   `tests/aider_bridge/test_bridge.py` (If `get_context_for_query` becomes async).
+        *   `tests/executors/test_aider_executors.py`
+        *   `tests/sexp_evaluator/test_sexp_evaluator.py`
+*   **Deliverables (Phase 0):**
+    *   Consistently used `TaskResult` Pydantic model across the system.
+    *   Core execution path refactored to `async/await` (or bridged with `asyncio.to_thread` where full refactor is deferred).
+    *   Updated IDLs for affected components.
+    *   All existing tests in affected files updated for async and `TaskResult` objects, and all passing.
     *   `docs/memory.md` updated.
 
 ---
@@ -68,14 +87,21 @@
     5.  **Implement `add_task` Method:**
         *   Signature: `add_task(self, task_name: str, output_name: str, static_inputs: Optional[dict] = None, input_mappings: Optional[dict] = None) -> 'SequentialWorkflow':`
         *   Validate `output_name` uniqueness (raise `DuplicateOutputNameError`).
-        *   Store task configuration (dict or internal dataclass) in `self._task_sequence`.
+        *   Store task configuration.
         *   Return `self`.
-*   **Testing (Phase 1):**
-    *   Create `tests/orchestration/test_sequential_workflow.py`.
-    *   Unit tests for `__init__`, `clear`, and `add_task` (as detailed in previous plan).
+*   **Test Tasks (Phase 1 - For `SequentialWorkflow`):**
+    1.  Create `tests/orchestration/test_sequential_workflow.py`.
+    2.  **Unit Tests for `__init__` and `clear`:** (Synchronous tests)
+        *   Test successful instantiation (pass a mock `app_or_dispatcher_instance`).
+        *   Test `clear()` resets internal state.
+    3.  **Unit Tests for `add_task`:** (Synchronous tests)
+        *   Test adding single/multiple tasks, correct storage of config.
+        *   Test `static_inputs` and `input_mappings` (as `None`, empty, or populated with string or list-of-string paths) are stored.
+        *   Test `DuplicateOutputNameError`.
+        *   Test fluent chaining.
 *   **Deliverables:**
     *   `src/orchestration/sequential_workflow.py` with `__init__`, `add_task`, `clear`, custom exceptions, `WorkflowOutcome`.
-    *   Passing unit tests for Phase 1.
+    *   Passing unit tests for Phase 1 functionality.
     *   `docs/memory.md` updated.
 
 ---
@@ -91,7 +117,7 @@
 *   **Testing (Phase 2):**
     *   Unit tests for `_get_value_from_source` (as detailed in previous plan), including tests for list-of-strings path.
 *   **Deliverables:**
-    *   Implemented and tested `_get_value_from_source`.
+    *   Implemented and tested `_get_value_from_source` helper.
     *   `docs/memory.md` updated.
 
 ---
@@ -121,29 +147,38 @@
             *   Catch `WorkflowExecutionError` from current step: log, populate `WorkflowOutcome` with error details, and return it.
             *   Catch other unexpected exceptions: log, wrap in `WorkflowExecutionError`, populate `WorkflowOutcome`, and return.
         *   If loop completes, return `WorkflowOutcome(success=True, results_context=workflow_results_context)`.
-    3.  **Implement `async def _execute_task_internal(self, task_name, params)`:**
-        *   This private helper will contain the logic for calling `self.app_or_dispatcher_instance.execute_programmatic_task`.
-        *   If `execute_programmatic_task` is async: `return await self.app_or_dispatcher_instance.execute_programmatic_task(...)`.
-        *   If `execute_programmatic_task` is sync: `return await asyncio.to_thread(self.app_or_dispatcher_instance.execute_programmatic_task, ...)`.
-*   **Testing (Phase 3):**
-    *   Unit tests for `_build_dependency_graph_and_detect_cycles` (valid graphs, graphs with cycles).
-    *   Integration tests for `run` (mocking `app_or_dispatcher_instance.execute_programmatic_task`, as detailed in previous plan), ensuring `WorkflowOutcome` is returned.
-    *   Test `InvalidWorkflowDefinition` for empty sequence and for cyclic dependencies.
-    *   Test additional edge cases suggested (no-param steps, input key collision precedence).
+    3.  Implement `async def _execute_task_internal(self, task_name, params)` helper.
+*   **Test Tasks (Phase 3 - For `SequentialWorkflow`):**
+    1.  **Unit tests for `_build_dependency_graph_and_detect_cycles`**.
+    2.  **Integration Tests for `run()` (mocking `app_or_dispatcher_instance.execute_programmatic_task`):**
+        *   All these tests: `async def`, `@pytest.mark.asyncio`.
+        *   Mock `app_or_dispatcher_instance.execute_programmatic_task` as an `AsyncMock`.
+        *   Test successful simple workflows (static inputs, various `input_mappings`). Verify `WorkflowOutcome.success == True` and correct `results_context` (containing `TaskResult` objects).
+        *   Test `input_mappings` precedence.
+        *   Test `InvalidWorkflowDefinition` for empty sequence and cyclic dependencies (raised before async loop).
+        *   Test workflow with a step that takes no parameters.
 *   **Deliverables:**
-    *   Implemented `run()` method with cycle detection and async execution.
-    *   Passing integration tests for `run()` (mocked dispatcher).
+    *   Implemented `run()` method.
+    *   Passing unit and integration tests for `run()` (mocked dispatcher).
     *   `docs/memory.md` updated.
 
 ---
 
-**Phase 4: Error Handling Refinements & Full Integration Tests**
+**Phase 4: Error Handling Refinements in `run()`**
 
-*   **Tasks:**
-    1.  **Finalize `WorkflowExecutionError`:** Ensure it stores `failing_step_name`, `original_exception`, and `details` (like the FAILED `TaskResult` or resolution error info) effectively.
-    2.  Thoroughly review all error raising and catching paths in `run()` for consistency and detail.
-*   **Testing (Phase 4):**
-    *   Integration tests for `run` (mocked dispatcher, focus on errors, as detailed in previous plan). Ensure `WorkflowOutcome` correctly reflects failures.
+*   **Implementation Tasks:**
+    1.  Ensure `WorkflowExecutionError` (if still used for unexpected internal errors) and `WorkflowOutcome` (for operational errors) capture comprehensive diagnostic information.
+    2.  Review all error paths in `run()` for consistent `WorkflowOutcome` generation.
+*   **Test Tasks (Phase 4 - For `SequentialWorkflow`):**
+    1.  **Integration Tests for `run()` (mocked dispatcher, focus on errors):**
+        *   All these tests: `async def`, `@pytest.mark.asyncio`.
+        *   Test `WorkflowOutcome` (with `success=False`) for:
+            *   `input_mappings` referring to non-existent `output_name`.
+            *   `input_mappings` path invalid within a `TaskResult` (`_get_value_from_source` failure).
+            *   Source task for `input_mappings` having `status="FAILED"`.
+            *   `execute_programmatic_task` (mocked) raising an unhandled exception.
+            *   `execute_programmatic_task` (mocked) returning a `TaskResult` with `status="FAILED"`.
+        *   Verify relevant error fields in `WorkflowOutcome` are populated.
 *   **Deliverables:**
     *   Robust error handling in `run()` returning detailed `WorkflowOutcome`.
     *   Comprehensive integration tests for failure scenarios.
@@ -153,21 +188,20 @@
 
 **Phase 5: Documentation, Demo Script, and Final Review**
 
-*   **Tasks:**
-    1.  **Python Docstrings:** Finalize all docstrings in `sequential_workflow.py`.
-    2.  **IDL Review:** Update `src/orchestration/sequential_workflow_IDL.md` to reflect the `async run` signature, the `WorkflowOutcome` return type, cycle detection, list-of-strings path support, and any other refinements. Ensure sequence diagram is accurate.
-    3.  **Non-Interactive Demo Script:** Create `src/scripts/sequential_workflow_demo.py` (as detailed in previous plan).
-        *   Ensure it can run with an `async` main function if `SequentialWorkflow.run` is async.
-        *   Demonstrate path syntax alternatives if applicable.
-    4.  **Update Orchestration Guide:**
-        *   Edit/Create `docs/examples/python_orchestration_guide.md`.
-        *   Include example from demo script.
-        *   Add YAML/JSON conceptual depiction of a workflow.
-        *   Add a troubleshooting table (common exceptions -> cause -> fix).
+*   **Implementation Tasks:**
+    1.  Finalize Python Docstrings in `sequential_workflow.py`.
+    2.  **Non-Interactive Demo Script:** Create `src/scripts/sequential_workflow_demo.py`.
+        *   Use `async def main()` and `asyncio.run(main())`.
+        *   Mock tasks and dispatcher (as `AsyncMock`).
+        *   Demonstrate all key features and path syntax alternatives.
+        *   Show handling of `WorkflowOutcome`.
+*   **Documentation Update Tasks (Phase 5):**
+    1.  **IDL Finalization:** Update `src/orchestration/sequential_workflow_IDL.md` to precisely match final `async run` signature, `WorkflowOutcome` return, cycle detection, list-of-strings path support, and refined error reporting via `WorkflowOutcome`. Update sequence diagram.
+    2.  **Update Orchestration Guide:** Update `docs/examples/python_orchestration_guide.md` with the `async` example, `WorkflowOutcome` handling, YAML/JSON conceptual workflow, and troubleshooting table.
 *   **Testing (Phase 5):**
     *   Manually run and verify `sequential_workflow_demo.py`.
     *   Review all documentation.
-    *   Full `pytest` suite run.
+    *   Full `pytest` suite run to ensure no regressions anywhere in the system.
 *   **Deliverables:**
     *   Fully implemented and tested `SequentialWorkflow` component.
     *   Completed `src/scripts/sequential_workflow_demo.py`.

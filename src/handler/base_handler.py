@@ -411,7 +411,7 @@ class BaseHandler:
         self.data_context = None
         self.log_debug("Data context cleared.")
 
-    def prime_data_context(self, query: Optional[str] = None, initial_files: Optional[List[str]] = None) -> bool:
+    async def prime_data_context(self, query: Optional[str] = None, initial_files: Optional[List[str]] = None) -> bool:
         """
         Primes or updates the data context using associative matching or explicit initial files.
         """
@@ -423,7 +423,7 @@ class BaseHandler:
         if query:
             source_query_for_dc = query
             # _get_relevant_files now returns Optional[AssociativeMatchResult]
-            assoc_result = self._get_relevant_files(query)
+            assoc_result = await self._get_relevant_files(query)
             if assoc_result and assoc_result.matches:
                 # Ensure content is hydrated for these items if necessary
                 for item in assoc_result.matches:
@@ -520,7 +520,7 @@ class BaseHandler:
         if self.llm_manager:
             self.llm_manager.set_debug_mode(enabled)
 
-    def _execute_llm_call(
+    async def _execute_llm_call(
         self,
         prompt: str,
         system_prompt_override: Optional[str] = None,
@@ -685,7 +685,7 @@ class BaseHandler:
             output_type = call_kwargs.get('output_type_override')
             logging.debug(f"Output type: {getattr(output_type, '__name__', str(output_type))}")
 
-        manager_result = self.llm_manager.execute_call(**call_kwargs)
+        manager_result = await self.llm_manager.execute_call(**call_kwargs)
 
         # Process the result from the manager
         logging.debug(f"LLM Manager Raw Result: {manager_result}")
@@ -823,7 +823,7 @@ class BaseHandler:
         )
         return final_prompt
 
-    def _get_relevant_files(self, query: str) -> Optional[AssociativeMatchResult]:
+    async def _get_relevant_files(self, query: str) -> Optional[AssociativeMatchResult]:
         """
         Gets relevant context items from MemorySystem based on a query.
         This method is a helper for `prime_data_context`.
@@ -841,7 +841,7 @@ class BaseHandler:
             # For now, directly return, assuming it aligns with Optional[AssociativeMatchResult].
             # If MemorySystem returns a result with an error field, this might need adjustment
             # to return None on error.
-            result = self.memory_system.get_relevant_context_for(input_data)
+            result = await self.memory_system.get_relevant_context_for(input_data)
             if isinstance(result, AssociativeMatchResult):
                 return result
             else:
@@ -876,7 +876,7 @@ class BaseHandler:
         self.log_debug(f"Built data context string (length {len(final_context_string)}).")
         return final_context_string
 
-    def _execute_tool(self, tool_name: str, tool_input: Dict[str, Any]) -> TaskResult:
+    async def _execute_tool(self, tool_name: str, tool_input: Dict[str, Any]) -> TaskResult:
         """
         Executes a registered tool directly by name.
 
@@ -904,7 +904,15 @@ class BaseHandler:
 
         try:
             # Execute the tool function
-            result = executor_func(tool_input)
+            # Check if the executor function is a coroutine function (async)
+            import inspect
+            if inspect.iscoroutinefunction(executor_func):
+                # If it's async, await it
+                result = await executor_func(tool_input)
+            else:
+                # If it's not async, call it normally
+                result = executor_func(tool_input)
+                
             self.log_debug(
                 f"Tool '{tool_name}' executed successfully. Result: {result}"
             )

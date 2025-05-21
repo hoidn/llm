@@ -30,18 +30,17 @@ def _create_failed_result_dict(
     reason: TaskFailureReason,
     message: str,
     details_obj: Optional[TaskFailureDetails] = None
-) -> Dict[str, Any]:
+) -> TaskResult:
     """
-    Creates a dictionary representing a FAILED TaskResult.
+    Creates a FAILED TaskResult Pydantic model instance.
     """
     # Pass the details_obj directly to TaskFailureError
     error_obj = TaskFailureError(type="TASK_FAILURE", reason=reason, message=message, details=details_obj)
-    # Use .model_dump() for Pydantic v2 compatibility
     # Error details are now nested within the error_obj
-    return TaskResult(status="FAILED", content=message, notes={"error": error_obj.model_dump(exclude_none=True)}).model_dump(exclude_none=True)
+    return TaskResult(status="FAILED", content=message, notes={"error": error_obj.model_dump(exclude_none=True)})
 
 
-def execute_programmatic_task(
+async def execute_programmatic_task(
     identifier: str,
     params: Dict[str, Any],
     flags: Dict[str, bool], # Corrected type hint
@@ -49,7 +48,7 @@ def execute_programmatic_task(
     task_system_instance: 'TaskSystem',
     memory_system: 'MemorySystem', # Ensure this is passed in
     optional_history_str: Optional[str] = None # Added optional history
-) -> Dict[str, Any]:
+) -> TaskResult:
     """
     Executes a programmatic task based on the identifier and parameters.
 
@@ -101,7 +100,7 @@ def execute_programmatic_task(
             # ... (logic using initial_bindings_from_flags) ...
 
             # Pass the potentially created SexpEnvironment object (or None) to evaluate_string
-            raw_result = sexp_evaluator.evaluate_string(identifier, initial_env=env_to_pass)
+            raw_result = await sexp_evaluator.evaluate_string(identifier, initial_env=env_to_pass)
             # --- END MODIFICATION ---
 
             # Convert raw result to TaskResult object/dict
@@ -118,27 +117,27 @@ def execute_programmatic_task(
             
             if task_result_obj.notes is None: task_result_obj.notes = {} # Ensure notes dict exists
             task_result_obj.notes.update(notes) # Merge dispatcher notes
-            task_result_dict = task_result_obj.model_dump(exclude_none=True)
+            return task_result_obj
 
         except SexpSyntaxError as e:
             logging.warning(f"S-expression syntax error for '{identifier[:50]}...': {e}")
             details_obj = TaskFailureDetails(failing_expression=e.sexp_string, notes={"raw_error_details": e.error_details})
-            task_result_dict = _create_failed_result_dict("input_validation_failure", f"S-expression Syntax Error: {e.args[0]}", details_obj)
-            if 'notes' not in task_result_dict: task_result_dict['notes'] = {}
-            task_result_dict['notes'].update(notes)
+            # _create_failed_result_dict now returns TaskResult object
+            failed_task_result = _create_failed_result_dict("input_validation_failure", f"S-expression Syntax Error: {e.args[0]}", details_obj)
+            failed_task_result.notes.update(notes) # notes is guaranteed by Pydantic default_factory
+            return failed_task_result
 
         except SexpEvaluationError as e:
             logging.warning(f"S-expression evaluation error for '{identifier[:50]}...': {e}")
             details_obj = TaskFailureDetails(failing_expression=e.expression, notes={"raw_error_details": e.error_details})
-            task_result_dict = _create_failed_result_dict("subtask_failure", f"S-expression Evaluation Error: {e.args[0]}", details_obj)
-            if 'notes' not in task_result_dict: task_result_dict['notes'] = {}
-            task_result_dict['notes'].update(notes)
+            failed_task_result = _create_failed_result_dict("subtask_failure", f"S-expression Evaluation Error: {e.args[0]}", details_obj)
+            failed_task_result.notes.update(notes) # notes is guaranteed by Pydantic default_factory
+            return failed_task_result
         except Exception as e:
             logging.exception(f"Unexpected error during S-expression evaluation: {e}")
-            task_result_dict = _create_failed_result_dict("unexpected_error", f"Unexpected S-expression evaluation error: {e}")
-            if 'notes' not in task_result_dict: task_result_dict['notes'] = {}
-            task_result_dict['notes'].update(notes)
-        return task_result_dict # RETURN HERE for S-expressions
+            failed_task_result = _create_failed_result_dict("unexpected_error", f"Unexpected S-expression evaluation error: {e}")
+            failed_task_result.notes.update(notes) # notes is guaranteed by Pydantic default_factory
+            return failed_task_result
 
     # --- Named Target Handling (Task or Tool) ---
     resolved_files: Optional[List[str]] = None
@@ -150,32 +149,28 @@ def execute_programmatic_task(
             if all(isinstance(item, str) for item in fc): resolved_files = fc
             else:
                 # Use CORRECTED helper signature
-                task_result_dict = _create_failed_result_dict("input_validation_failure", "Invalid 'file_context': list must contain only strings.")
-                if 'notes' not in task_result_dict: task_result_dict['notes'] = {}
-                task_result_dict['notes'].update(notes) # Add context notes even on failure
-                return task_result_dict
+                failed_task_result = _create_failed_result_dict("input_validation_failure", "Invalid 'file_context': list must contain only strings.")
+                failed_task_result.notes.update(notes) # Add context notes even on failure
+                return failed_task_result
         elif isinstance(fc, str):
             try:
                 parsed_fc = json.loads(fc)
                 if isinstance(parsed_fc, list) and all(isinstance(item, str) for item in parsed_fc): resolved_files = parsed_fc
                 else:
                     # Use CORRECTED helper signature
-                    task_result_dict = _create_failed_result_dict("input_validation_failure", "Invalid 'file_context': JSON string did not decode to a list of strings.")
-                    if 'notes' not in task_result_dict: task_result_dict['notes'] = {}
-                    task_result_dict['notes'].update(notes)
-                    return task_result_dict
+                    failed_task_result = _create_failed_result_dict("input_validation_failure", "Invalid 'file_context': JSON string did not decode to a list of strings.")
+                    failed_task_result.notes.update(notes)
+                    return failed_task_result
             except json.JSONDecodeError as e:
                 # Use CORRECTED helper signature
-                task_result_dict = _create_failed_result_dict("input_validation_failure", f"Invalid 'file_context': Failed to parse JSON string - {e}")
-                if 'notes' not in task_result_dict: task_result_dict['notes'] = {}
-                task_result_dict['notes'].update(notes)
-                return task_result_dict
+                failed_task_result = _create_failed_result_dict("input_validation_failure", f"Invalid 'file_context': Failed to parse JSON string - {e}")
+                failed_task_result.notes.update(notes)
+                return failed_task_result
         else:
             # Use CORRECTED helper signature
-            task_result_dict = _create_failed_result_dict("input_validation_failure", "Invalid 'file_context': Must be a list of strings or a JSON string array.")
-            if 'notes' not in task_result_dict: task_result_dict['notes'] = {}
-            task_result_dict['notes'].update(notes)
-            return task_result_dict
+            failed_task_result = _create_failed_result_dict("input_validation_failure", "Invalid 'file_context': Must be a list of strings or a JSON string array.")
+            failed_task_result.notes.update(notes)
+            return failed_task_result
 
         if resolved_files is not None:
             notes['context_source'] = "explicit_request"
@@ -191,10 +186,9 @@ def execute_programmatic_task(
     except Exception as e:
         logging.exception(f"Error finding template '{identifier}': {e}")
         # Use CORRECTED helper signature
-        task_result_dict = _create_failed_result_dict("unexpected_error", f"Error looking up task/tool '{identifier}': {e}")
-        if 'notes' not in task_result_dict: task_result_dict['notes'] = {}
-        task_result_dict['notes'].update(notes)
-        return task_result_dict
+        failed_task_result = _create_failed_result_dict("unexpected_error", f"Error looking up task/tool '{identifier}': {e}")
+        failed_task_result.notes.update(notes)
+        return failed_task_result
 
     if template and template.get("type") == "atomic":
         logging.info(f"Identifier '{identifier}' found as atomic task. Executing...")
@@ -211,15 +205,13 @@ def execute_programmatic_task(
                 file_paths=resolved_files
                 # context_management=... # Use defaults from TaskSystem
             )
-            task_result_obj = task_system_instance.execute_atomic_template(request)
+            task_result_obj = await task_system_instance.execute_atomic_template(request)
             # Merge dispatcher notes into the result notes (reversed order)
-            # --- START MODIFICATION ---
             final_notes = notes.copy() # Start with dispatcher notes
-            if task_result_obj.notes:
-                final_notes.update(task_result_obj.notes) # Update with task notes (task notes overwrite dispatcher notes on conflict)
+            if task_result_obj.notes: # notes is Dict, so check if it has content or just use it
+                final_notes.update(task_result_obj.notes) # Update with task notes
             task_result_obj.notes = final_notes # Assign merged notes back
-            task_result_dict = task_result_obj.model_dump(exclude_none=True)
-            # --- END MODIFICATION ---
+            return task_result_obj
 
         except TaskError as e: # Should be less common if TaskSystem returns TaskResult on failure
              logging.warning(f"TaskSystem execution failed for '{identifier}': {e}")
@@ -229,19 +221,17 @@ def execute_programmatic_task(
              fail_msg = e.message if hasattr(e, 'message') else str(e)
              fail_details_obj = e.details if hasattr(e, 'details') else None
              # Use CORRECTED helper signature
-             task_result_dict = _create_failed_result_dict(fail_reason, f"Task Execution Error: {fail_msg}", fail_details_obj)
+             failed_task_result = _create_failed_result_dict(fail_reason, f"Task Execution Error: {fail_msg}", fail_details_obj)
              # Merge notes
-             if 'notes' not in task_result_dict: task_result_dict['notes'] = {}
-             task_result_dict['notes'].update(notes)
+             failed_task_result.notes.update(notes)
+             return failed_task_result
 
         except Exception as e:
             logging.exception(f"Unexpected error during TaskSystem execution for '{identifier}': {e}")
             # Use CORRECTED helper signature
-            task_result_dict = _create_failed_result_dict("unexpected_error", f"Task execution failed: {e}")
-            if 'notes' not in task_result_dict: task_result_dict['notes'] = {}
-            task_result_dict['notes'].update(notes)
-
-        return task_result_dict
+            failed_task_result = _create_failed_result_dict("unexpected_error", f"Task execution failed: {e}")
+            failed_task_result.notes.update(notes)
+            return failed_task_result
 
     # Check Handler Tools
     logging.debug(f"Checking Handler tools for identifier: '{identifier}'")
@@ -250,88 +240,86 @@ def execute_programmatic_task(
         notes['execution_path'] = "direct_tool"
         try:
             # Pass original params (including file_context if tool needs it)
-            tool_result_obj: TaskResult = handler_instance._execute_tool(identifier, params) # Ensure type hint
+            tool_result_obj: TaskResult = await handler_instance._execute_tool(identifier, params) # Ensure type hint
 
             # --- START MODIFICATION ---
             if tool_result_obj.status == "FAILED":
                 logging.warning(f"Handler tool '{identifier}' returned FAILED status.")
-                # Extract original error details if present
-                error_obj_or_dict = tool_result_obj.notes.get("error") # Could be object or dict
+                error_obj_or_dict = tool_result_obj.notes.get("error")
 
-                # --- START REVISED EXTRACTION ---
-                fail_reason: TaskFailureReason = "tool_execution_error" # Default reason
-                fail_msg = tool_result_obj.content # Use content as message fallback
-                fail_details_obj: Optional[TaskFailureDetails] = None # Initialize details as None
+                fail_reason: TaskFailureReason = "tool_execution_error"
+                fail_msg = tool_result_obj.content 
+                fail_details_obj: Optional[TaskFailureDetails] = None
 
                 if isinstance(error_obj_or_dict, TaskFailureError):
-                    # If it's the actual error object, extract attributes directly
                     logging.debug("Extracting details from TaskFailureError object.")
                     fail_reason = error_obj_or_dict.reason
                     fail_msg = error_obj_or_dict.message
-                    fail_details_obj = error_obj_or_dict.details # Get the details object
-
+                    fail_details_obj = error_obj_or_dict.details
                 elif isinstance(error_obj_or_dict, dict):
-                    # If it's a dictionary (fallback or different serialization)
                     logging.debug("Attempting to extract details from error dictionary.")
                     fail_reason = error_obj_or_dict.get("reason", fail_reason)
                     fail_msg = error_obj_or_dict.get("message", fail_msg)
                     details_dict = error_obj_or_dict.get("details")
                     if isinstance(details_dict, dict):
-                        # Try to validate the details dict into the TaskFailureDetails model
                         try:
                             fail_details_obj = TaskFailureDetails.model_validate(details_dict)
                         except Exception as parse_err:
                             logging.warning(f"Could not parse 'details' dict from tool error notes: {parse_err}")
-                    elif isinstance(details_dict, TaskFailureDetails): # Handle if details is already object
+                    elif isinstance(details_dict, TaskFailureDetails):
                          fail_details_obj = details_dict
-
-
-                # Use the helper to create the error structure with the ORIGINAL message and extracted details
-                error_structure = _create_failed_result_dict(
+                
+                # Get the standardized error structure from the helper
+                structured_error_notes = _create_failed_result_dict(
                     reason=fail_reason,
-                    message=fail_msg, # Pass the ORIGINAL fail_msg here
-                    details_obj=fail_details_obj # Pass the extracted details object
+                    message=fail_msg, 
+                    details_obj=fail_details_obj
+                ).notes
+
+                # Create the final TaskResult for this FAILED tool execution
+                final_tool_failed_result = TaskResult(
+                    status="FAILED",
+                    content=f"Tool Execution Error: {fail_msg}", # Use the extracted/original fail_msg
+                    notes=notes.copy() # Start with dispatcher-level notes
                 )
-
-                # Create the final TaskResult dictionary
-                task_result_dict = {
-                    "status": "FAILED",
-                    # Set the top-level content with the PREFIXED message
-                    "content": f"Tool Execution Error: {fail_msg}",
-                    # Notes merging logic
-                    "notes": notes.copy() # Start with dispatcher notes
-                }
-
+                
                 # Merge original notes from the tool result (excluding the 'error' key itself)
-                original_notes_without_error = {k: v for k, v in tool_result_obj.notes.items() if k != 'error'}
-                task_result_dict['notes'].update(original_notes_without_error)
-
-                # Add the correctly formatted error structure (from the helper) into notes
-                task_result_dict['notes']['error'] = error_structure['notes']['error'] # Extract the error dict from helper result
-                # --- END REVISED EXTRACTION ---
+                original_tool_notes_without_error = {k: v for k, v in tool_result_obj.notes.items() if k != 'error'}
+                final_tool_failed_result.notes.update(original_tool_notes_without_error)
+                
+                # Add the structured error from the helper
+                if 'error' in structured_error_notes: # Should always be true
+                    final_tool_failed_result.notes['error'] = structured_error_notes['error']
+                
+                return final_tool_failed_result
 
 
             elif tool_result_obj.status == "CONTINUATION":
                 logging.error(f"Direct tool call '{identifier}' returned CONTINUATION status, which is not allowed.")
-                task_result_dict = _create_failed_result_dict("tool_execution_error", "Direct tool calls cannot return CONTINUATION status.")
+                failed_task_result = _create_failed_result_dict("tool_execution_error", "Direct tool calls cannot return CONTINUATION status.")
                 # Merge notes
-                final_notes = notes.copy() # Start with dispatcher notes
                 # If tool result had other notes, merge them (excluding error)
-                original_notes_without_error = {k: v for k, v in tool_result_obj.notes.items() if k != 'error'}
-                final_notes.update(original_notes_without_error)
-                task_result_dict['notes'] = final_notes
-                # Add the error structure back
-                task_result_dict['notes']['error'] = _create_failed_result_dict("tool_execution_error", "Direct tool calls cannot return CONTINUATION status.")['notes']['error']
+                original_tool_notes_without_error = {k: v for k, v in tool_result_obj.notes.items() if k != 'error'}
+                
+                # Update dispatcher notes and tool notes into the result
+                dispatcher_notes = notes.copy()
+                dispatcher_notes.update(original_tool_notes_without_error)
+                
+                # Now merge these notes into the failed_task_result without overwriting the error key
+                for k, v in dispatcher_notes.items():
+                    if k != 'error':  # Don't overwrite the error object
+                        failed_task_result.notes[k] = v
+                
+                return failed_task_result
 
 
             else: # COMPLETE status
                 # Merge dispatcher notes into the result notes (reversed order)
                 final_notes = notes.copy() # Start with dispatcher notes
                 if tool_result_obj.notes:
-                    final_notes.update(tool_result_obj.notes) # Update with tool notes (tool notes overwrite dispatcher notes on conflict)
+                    final_notes.update(tool_result_obj.notes) # Update with tool notes
                 tool_result_obj.notes = final_notes # Assign merged notes back
-                task_result_dict = tool_result_obj.model_dump(exclude_none=True)
-            # --- END MODIFICATION ---
+                return tool_result_obj
 
         except TaskError as e: # Should be less common if Handler returns TaskResult on failure
              logging.warning(f"Handler tool execution failed for '{identifier}': {e}")
@@ -341,24 +329,22 @@ def execute_programmatic_task(
              fail_msg = e.message if hasattr(e, 'message') else str(e)
              fail_details_obj = e.details if hasattr(e, 'details') else None
              # Use CORRECTED helper signature
-             task_result_dict = _create_failed_result_dict(fail_reason, f"Tool Execution Error: {fail_msg}", fail_details_obj)
+             failed_task_result = _create_failed_result_dict(fail_reason, f"Tool Execution Error: {fail_msg}", fail_details_obj)
              # Merge notes
-             if 'notes' not in task_result_dict: task_result_dict['notes'] = {}
-             task_result_dict['notes'].update(notes)
+             failed_task_result.notes.update(notes)
+             return failed_task_result
 
         except Exception as e:
             logging.exception(f"Unexpected error during Handler tool execution for '{identifier}': {e}")
             # Use CORRECTED helper signature
-            task_result_dict = _create_failed_result_dict("unexpected_error", f"Tool execution failed: {e}")
-            if 'notes' not in task_result_dict: task_result_dict['notes'] = {}
-            task_result_dict['notes'].update(notes)
+            failed_task_result = _create_failed_result_dict("unexpected_error", f"Tool execution failed: {e}")
+            failed_task_result.notes.update(notes)
+            return failed_task_result
 
-        return task_result_dict
 
     # Identifier Not Found
     logging.warning(f"Identifier '{identifier}' not found as atomic task or direct tool.")
     # Use CORRECTED helper signature
-    task_result_dict = _create_failed_result_dict("template_not_found", f"Identifier not found: {identifier}")
-    if 'notes' not in task_result_dict: task_result_dict['notes'] = {}
-    task_result_dict['notes'].update(notes)
-    return task_result_dict
+    failed_task_result = _create_failed_result_dict("template_not_found", f"Identifier not found: {identifier}")
+    failed_task_result.notes.update(notes)
+    return failed_task_result

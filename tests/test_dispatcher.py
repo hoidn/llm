@@ -54,11 +54,11 @@ async def test_dispatch_s_expression_routing(
     dispatch_params = {"x": 10, "y": 20}
     flags = {}
     
-    # Setup mocks
+    # Setup mocks - ensure evaluate_string is AsyncMock
     mock_sexp_eval_instance = MockSexpEvaluatorClass.return_value
+    mock_sexp_eval_instance.evaluate_string = AsyncMock(return_value=[1, 2])
     mock_env_instance = MockSexpEnvironmentClass.return_value
     expected_sexp_eval_result = [1, 2]
-    mock_sexp_eval_instance.evaluate_string.return_value = expected_sexp_eval_result
     
     # Act
     result = await execute_programmatic_task(
@@ -74,7 +74,7 @@ async def test_dispatch_s_expression_routing(
     MockSexpEvaluatorClass.assert_called_once_with(mock_task_system, mock_handler, mock_memory_system)
     MockSexpEnvironmentClass.assert_called_once_with(bindings=dispatch_params)
     # Pass the instance returned by the SexpEnvironment mock
-    mock_sexp_eval_instance.evaluate_string.assert_awaited_once_with(sexp_str, initial_env=MockSexpEnvironmentClass.return_value) 
+    mock_sexp_eval_instance.evaluate_string.assert_awaited_once_with(sexp_str, initial_env=MockSexpEnvironmentClass.return_value)
     
     assert result.status == "COMPLETE"
     assert result.content == str(expected_sexp_eval_result)
@@ -265,8 +265,18 @@ async def test_dispatch_direct_tool_continuation_is_failure(MockSexpEvaluatorCla
     result = await execute_programmatic_task(identifier, params, flags, mock_handler, mock_task_system, mock_memory_system)
     assert result.status == "FAILED"
     assert "cannot return continuation status" in result.content.lower()
-    assert result.notes['error']['type'] == "TASK_FAILURE"
-    assert result.notes['error']['reason'] == "tool_execution_error"
+    
+    # Check for the error object itself
+    assert 'error' in result.notes
+    error_obj = result.notes['error']
+    
+    # Check error properties - handle both object and dict formats
+    if isinstance(error_obj, dict):
+        assert error_obj['type'] == "TASK_FAILURE"
+        assert error_obj['reason'] == "tool_execution_error"
+    else:
+        assert error_obj.type == "TASK_FAILURE"
+        assert error_obj.reason == "tool_execution_error"
 
 @pytest.mark.asyncio
 @patch('src.dispatcher.SexpEvaluator')

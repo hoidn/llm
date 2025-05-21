@@ -82,7 +82,7 @@ class FileContextManager:
             logging.warning(f"[FileContextManager] Failed to fetch content for MatchItem {item.id} from {path_to_read}. Error/Status: {content}")
             item.content = None # Ensure it's None if fetch failed
 
-    def get_relevant_files(self, query: str) -> List[str]:
+    async def get_relevant_files(self, query: str) -> List[str]:
         """
         Gets relevant file paths based on a query using the MemorySystem.
         DEPRECATED: BaseHandler now calls MemorySystem directly.
@@ -106,7 +106,7 @@ class FileContextManager:
         try:
             # build proper ContextGenerationInput
             input_model = ContextGenerationInput(query=query)
-            result = self.memory_system.get_relevant_context_for(input_model)
+            result = await self.memory_system.get_relevant_context_for(input_model)
 
             if not result or not hasattr(result, "matches"):
                 logging.warning(f"[FileContextManager] No matches found for DEPRECATED call with query '{query}'.")

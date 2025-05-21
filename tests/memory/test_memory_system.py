@@ -4,17 +4,11 @@ Focuses on logic implemented in Phase 1, Set B.
 """
 
 import pytest
-from unittest.mock import MagicMock, patch, call, ANY
-import os
-import logging # Ensure logging is imported
-from unittest.mock import patch # Added
-
-import pytest
-from unittest.mock import MagicMock, patch, call, ANY
+import asyncio
+from unittest.mock import MagicMock, patch, call, ANY, AsyncMock
 import os
 import logging # Ensure logging is imported
 import json # Ensure json is imported
-from unittest.mock import patch # Added
 
 # Assuming MemorySystem is importable
 from src.memory.memory_system import MemorySystem, DEFAULT_SHARDING_CONFIG
@@ -75,7 +69,8 @@ def memory_system_instance(mock_dependencies, mock_file_manager_ms, mock_task_sy
 # --- Test __init__ ---
 
 
-def test_init_defaults(mock_dependencies): # mock_dependencies now includes file_manager
+@pytest.mark.asyncio
+async def test_init_defaults(mock_dependencies): # mock_dependencies now includes file_manager
     """Test initialization when no config is passed, uses defaults."""
     handler_mock, task_system_mock, file_manager_mock = mock_dependencies
     # Need to pass all required args now
@@ -97,7 +92,8 @@ def test_init_defaults(mock_dependencies): # mock_dependencies now includes file
     )
 
 
-def test_init_with_config(mock_dependencies): # mock_dependencies now includes file_manager
+@pytest.mark.asyncio
+async def test_init_with_config(mock_dependencies): # mock_dependencies now includes file_manager
     """Test initialization with custom config overrides defaults."""
     handler_mock, task_system_mock, file_manager_mock = mock_dependencies
     custom_config = {
@@ -130,12 +126,14 @@ def test_init_with_config(mock_dependencies): # mock_dependencies now includes f
 # --- Test get_global_index ---
 
 
-def test_get_global_index_empty(memory_system_instance):
+@pytest.mark.asyncio
+async def test_get_global_index_empty(memory_system_instance):
     """Test getting index when it's empty."""
     assert memory_system_instance.get_global_index() == {}
 
 
-def test_get_global_index_populated(memory_system_instance):
+@pytest.mark.asyncio
+async def test_get_global_index_populated(memory_system_instance):
     """Test getting index after updates."""
     # Use real absolute paths for realism if possible, or mocked ones
     abs_path1 = os.path.abspath("file1.py")
@@ -152,8 +150,9 @@ def test_get_global_index_populated(memory_system_instance):
 # --- Test update_global_index ---
 
 
+@pytest.mark.asyncio
 @patch("os.path.isabs")
-def test_update_global_index_success(mock_isabs, memory_system_instance):
+async def test_update_global_index_success(mock_isabs, memory_system_instance):
     """Test updating index with valid absolute paths."""
     mock_isabs.return_value = True  # Assume all paths are absolute
     abs_path1 = os.path.abspath("/path/to/file1.py") # Use abspath for consistency
@@ -174,8 +173,9 @@ def test_update_global_index_success(mock_isabs, memory_system_instance):
     # assert mock_isabs.call_count == len(update_data) # Removed: Less critical than result check and potentially brittle
 
 
+@pytest.mark.asyncio
 @patch("os.path.isabs")
-def test_update_global_index_invalid_path(mock_isabs, memory_system_instance):
+async def test_update_global_index_invalid_path(mock_isabs, memory_system_instance):
     """Test updating index with a non-absolute path raises ValueError."""
     abs_path = "/path/to/file1.py"
     rel_path = "relative/file.txt"
@@ -191,9 +191,10 @@ def test_update_global_index_invalid_path(mock_isabs, memory_system_instance):
     assert mock_isabs.call_count == len(update_data) # This assertion should be valid now
 
 
+@pytest.mark.asyncio
 @patch("src.memory.memory_system.MemorySystem._recalculate_shards")
 @patch("os.path.isabs", return_value=True)  # Assume paths are valid
-def test_update_global_index_recalculates_shards_if_enabled(
+async def test_update_global_index_recalculates_shards_if_enabled(
     mock_isabs, mock_recalc, memory_system_instance
 ):
     """Test that shards are recalculated on update if sharding is enabled."""
@@ -204,9 +205,10 @@ def test_update_global_index_recalculates_shards_if_enabled(
     mock_recalc.assert_called_once()
 
 
+@pytest.mark.asyncio
 @patch("src.memory.memory_system.MemorySystem._recalculate_shards")
 @patch("os.path.isabs", return_value=True)  # Assume paths are valid
-def test_update_global_index_does_not_recalculate_if_disabled(
+async def test_update_global_index_does_not_recalculate_if_disabled(
     mock_isabs, mock_recalc, memory_system_instance
 ):
     """Test that shards are not recalculated on update if sharding is disabled."""
@@ -220,8 +222,9 @@ def test_update_global_index_does_not_recalculate_if_disabled(
 # --- Test enable_sharding ---
 
 
+@pytest.mark.asyncio
 @patch("src.memory.memory_system.MemorySystem._recalculate_shards")
-def test_enable_sharding_enables_and_recalculates(mock_recalc, memory_system_instance):
+async def test_enable_sharding_enables_and_recalculates(mock_recalc, memory_system_instance):
     """Test enabling sharding sets flag and triggers recalculation."""
     memory_system_instance._config["sharding_enabled"] = False  # Start disabled
     memory_system_instance.enable_sharding(True)
@@ -229,8 +232,9 @@ def test_enable_sharding_enables_and_recalculates(mock_recalc, memory_system_ins
     mock_recalc.assert_called_once()
 
 
+@pytest.mark.asyncio
 @patch("src.memory.memory_system.MemorySystem._recalculate_shards")
-def test_enable_sharding_disables_and_clears(mock_recalc, memory_system_instance):
+async def test_enable_sharding_disables_and_clears(mock_recalc, memory_system_instance):
     """Test disabling sharding sets flag and clears shards list."""
     memory_system_instance._config["sharding_enabled"] = True  # Start enabled
     memory_system_instance._sharded_index = [{"/some/path": "meta"}]  # Add dummy shard data
@@ -243,8 +247,9 @@ def test_enable_sharding_disables_and_clears(mock_recalc, memory_system_instance
 # --- Test configure_sharding ---
 
 
+@pytest.mark.asyncio
 @patch("src.memory.memory_system.MemorySystem._recalculate_shards")
-def test_configure_sharding_updates_config_and_recalculates_if_enabled(
+async def test_configure_sharding_updates_config_and_recalculates_if_enabled(
     mock_recalc, memory_system_instance
 ):
     """Test configuring updates config and recalculates if sharding enabled."""
@@ -262,8 +267,9 @@ def test_configure_sharding_updates_config_and_recalculates_if_enabled(
     mock_recalc.assert_called_once()
 
 
+@pytest.mark.asyncio
 @patch("src.memory.memory_system.MemorySystem._recalculate_shards")
-def test_configure_sharding_updates_config_no_recalculate_if_disabled(
+async def test_configure_sharding_updates_config_no_recalculate_if_disabled(
     mock_recalc, memory_system_instance
 ):
     """Test configuring updates config but doesn't recalculate if sharding disabled."""
@@ -278,8 +284,9 @@ def test_configure_sharding_updates_config_no_recalculate_if_disabled(
 # Test for index_git_repository is added below
 
 # --- Test _recalculate_shards (Placeholder) ---
+@pytest.mark.asyncio
 @patch("src.memory.memory_system.logger.debug")
-def test_recalculate_shards_placeholder_logs_and_clears_when_enabled(
+async def test_recalculate_shards_placeholder_logs_and_clears_when_enabled(
     mock_log, memory_system_instance
 ):
     """Test the placeholder recalculate method logs and clears shards when enabled."""
@@ -293,8 +300,9 @@ def test_recalculate_shards_placeholder_logs_and_clears_when_enabled(
     assert any("Shards recalculated. Count:" in msg for msg in calls), "Expected log message 'Shards recalculated. Count:' not found"
 
 
+@pytest.mark.asyncio
 @patch("src.memory.memory_system.logger.debug")
-def test_recalculate_shards_placeholder_clears_when_disabled(mock_log, memory_system_instance):
+async def test_recalculate_shards_placeholder_clears_when_disabled(mock_log, memory_system_instance):
     """Test the placeholder recalculate method clears shards when disabled."""
     memory_system_instance._config["sharding_enabled"] = False
     memory_system_instance._sharded_index = [{"a": "b"}]  # Add dummy data
@@ -577,9 +585,10 @@ try:
 except ImportError:
     GitRepositoryIndexer = MagicMock() # Define dummy if import fails in test env
 
+@pytest.mark.asyncio
 @patch('src.memory.memory_system.GitRepositoryIndexer', new_callable=MagicMock) # Patch the class where it's imported/used in memory_system.py
 @patch('os.path.isdir', return_value=True) # Mock isdir to return True for these tests
-def test_index_git_repository_success(mock_isdir, MockGitIndexer, memory_system_instance): # Add mock_isdir arg
+async def test_index_git_repository_success(mock_isdir, MockGitIndexer, memory_system_instance): # Add mock_isdir arg
     """Test successful call to index_git_repository delegates correctly."""
     repo_path = "/path/to/valid/repo"
     options = {"max_file_size": 50000, "include_patterns": ["*.js"]}
@@ -607,9 +616,10 @@ def test_index_git_repository_success(mock_isdir, MockGitIndexer, memory_system_
     # 3. index_repository was called with the memory_system instance
     mock_indexer_instance.index_repository.assert_called_once_with(memory_system=memory_system_instance)
 
+@pytest.mark.asyncio
 @patch('src.memory.memory_system.GitRepositoryIndexer', new_callable=MagicMock)
 @patch('os.path.isdir', return_value=True) # Mock isdir to return True
-def test_index_git_repository_no_options(mock_isdir, MockGitIndexer, memory_system_instance): # Add mock_isdir arg
+async def test_index_git_repository_no_options(mock_isdir, MockGitIndexer, memory_system_instance): # Add mock_isdir arg
     """Test call without options uses indexer defaults."""
     repo_path = "/path/to/another/repo"
     mock_indexer_instance = MockGitIndexer.return_value
@@ -634,9 +644,10 @@ def test_index_git_repository_no_options(mock_isdir, MockGitIndexer, memory_syst
 
     mock_indexer_instance.index_repository.assert_called_once_with(memory_system=memory_system_instance)
 
+@pytest.mark.asyncio
 @patch('src.memory.memory_system.GitRepositoryIndexer', new_callable=MagicMock)
 @patch('os.path.isdir', return_value=True) # Mock isdir to return True
-def test_index_git_repository_indexer_error(mock_isdir, MockGitIndexer, memory_system_instance, caplog): # Add mock_isdir arg
+async def test_index_git_repository_indexer_error(mock_isdir, MockGitIndexer, memory_system_instance, caplog): # Add mock_isdir arg
     """Test handling of errors during the indexer's execution."""
     repo_path = "/path/to/error/repo"
     mock_indexer_instance = MockGitIndexer.return_value
@@ -656,9 +667,10 @@ def test_index_git_repository_indexer_error(mock_isdir, MockGitIndexer, memory_s
     assert repo_path in caplog.text # Check repo path is in the log
     assert "Git command failed" in caplog.text
 
+@pytest.mark.asyncio
 @patch('src.memory.memory_system.GitRepositoryIndexer', new_callable=MagicMock)
 @patch('os.path.isdir', return_value=False) # Mock isdir to return False for this test
-def test_index_git_repository_invalid_path(mock_isdir, MockGitIndexer, memory_system_instance, caplog):
+async def test_index_git_repository_invalid_path(mock_isdir, MockGitIndexer, memory_system_instance, caplog):
     """Test handling when the provided repo_path is invalid."""
     repo_path = "/invalid/path/does/not/exist"
 

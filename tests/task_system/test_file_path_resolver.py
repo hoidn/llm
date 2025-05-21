@@ -26,7 +26,8 @@ def mock_handler_fp(): # Use different name
     return handler
 
 # Test resolving file paths using a command
-def test_resolve_paths_command(mock_handler_fp):
+@pytest.mark.asyncio
+async def test_resolve_paths_command(mock_handler_fp):
     """Test resolving file paths using a command."""
     # Arrange
     expected_paths = ["/path/from/command.py"]
@@ -38,7 +39,7 @@ def test_resolve_paths_command(mock_handler_fp):
         }
     }
     # Act
-    paths, error = resolve_paths_from_template(template, None, mock_handler_fp) # Memory not needed here
+    paths, error = await resolve_paths_from_template(template, None, mock_handler_fp) # Memory not needed here
 
     # Assert
     assert error is None

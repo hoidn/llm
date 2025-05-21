@@ -1,11 +1,14 @@
 """
 Unit tests for the SystemExecutorFunctions class.
 Tests the execute_get_context and execute_read_files methods.
+
+These tests have been updated to work with the async methods in SystemExecutorFunctions.
 """
 
 import json
 import pytest
-from unittest.mock import MagicMock, patch
+import asyncio
+from unittest.mock import MagicMock, patch, AsyncMock
 from inspect import signature # For signature check
 
 from src.executors.system_executors import SystemExecutorFunctions
@@ -31,7 +34,8 @@ def mock_memory_system():
             MatchItem(id="/path/file2.py", content="mock content for file2.py", relevance_score=0.8, content_type="file_content", source_path="/path/file2.py")
         ]
     )
-    memory_system.get_relevant_context_for.return_value = mock_result
+    # Use AsyncMock for async methods
+    memory_system.get_relevant_context_for = AsyncMock(return_value=mock_result)
     return memory_system
 
 @pytest.fixture
@@ -44,6 +48,10 @@ def mock_file_manager():
     file_manager.read_file.side_effect = lambda path, max_size=None: (
         f"Content of {path}" if "nonexistent" not in path and "error" not in path else None
     )
+    # Make write_file method an AsyncMock if it's been converted to async
+    file_manager.write_file = AsyncMock(return_value=True)
+    # Make list_directory method an AsyncMock if it's been converted to async
+    file_manager.list_directory = AsyncMock(return_value=["file1.txt", "file2.txt"])
     return file_manager
 
 @pytest.fixture
@@ -65,6 +73,10 @@ def mock_handler_for_executors() -> MagicMock:
     mock_handler = MagicMock(spec=BaseHandler)
     # Pre-configure data_context attribute as it's accessed, can be reconfigured in tests
     mock_handler.data_context = None 
+    # Configure methods that need to be AsyncMock
+    mock_handler.prime_data_context = AsyncMock(return_value=True)
+    mock_handler._execute_llm_call = AsyncMock(return_value=TaskResult(status="COMPLETE", content="LLM Call Result"))
+    mock_handler.clear_data_context = AsyncMock(return_value=None)
     return mock_handler
 
 @pytest.fixture
@@ -79,7 +91,8 @@ def system_executor_instance(mock_memory_system, mock_file_manager, mock_command
 
 # --- Basic Module/Class Tests ---
 
-def test_module_structure(system_executor_instance):
+@pytest.mark.asyncio
+async def test_module_structure(system_executor_instance):
     """Verify the SystemExecutorFunctions class has the required methods."""
     # Check that all required methods exist
     assert hasattr(system_executor_instance, "execute_get_context")
@@ -120,16 +133,26 @@ def test_module_structure(system_executor_instance):
     params = list(sig.parameters.keys())
     assert len(params) == 1
     assert params[0] == "params"
+    
+    # Verify that methods are coroutine functions
+    assert asyncio.iscoroutinefunction(system_executor_instance.execute_get_context)
+    assert asyncio.iscoroutinefunction(system_executor_instance.execute_read_files)
+    assert asyncio.iscoroutinefunction(system_executor_instance.execute_list_directory)
+    assert asyncio.iscoroutinefunction(system_executor_instance.execute_write_file)
+    assert asyncio.iscoroutinefunction(system_executor_instance.execute_shell_command)
+    assert asyncio.iscoroutinefunction(system_executor_instance.execute_clear_handler_data_context)
+    assert asyncio.iscoroutinefunction(system_executor_instance.execute_prime_handler_data_context)
 
 # --- Tests for execute_get_context ---
 
-def test_execute_get_context_success(system_executor_instance):
+@pytest.mark.asyncio
+async def test_execute_get_context_success(system_executor_instance):
     """Test successful context retrieval with valid query."""
     # Setup
     params = {"query": "search term"}
 
     # Act
-    result = system_executor_instance.execute_get_context(params)
+    result = await system_executor_instance.execute_get_context(params)
 
     # Assert
     assert isinstance(result, dict) # Should return a dict (TaskResult structure)
@@ -148,17 +171,18 @@ def test_execute_get_context_success(system_executor_instance):
     assert result["notes"]["context_summary"] == "Test context summary"
 
     # Verify memory_system was called with correct parameters
-    system_executor_instance.memory_system.get_relevant_context_for.assert_called_once()
+    system_executor_instance.memory_system.get_relevant_context_for.assert_awaited_once()
     # Get the call arguments
     call_args = system_executor_instance.memory_system.get_relevant_context_for.call_args[0][0]
     assert isinstance(call_args, ContextGenerationInput)
     assert call_args.query == "search term"
-    # FIX: Check inheritedContext instead of history
+    # Check inheritedContext instead of history
     assert call_args.inheritedContext is None
-    # FIX: Check inputs instead of target_files directly
+    # Check inputs instead of target_files directly
     assert call_args.inputs is None
 
-def test_execute_get_context_with_history(system_executor_instance):
+@pytest.mark.asyncio
+async def test_execute_get_context_with_history(system_executor_instance):
     """Test context retrieval with history parameter."""
     # Setup
     params = {
@@ -167,21 +191,22 @@ def test_execute_get_context_with_history(system_executor_instance):
     }
 
     # Act
-    result = system_executor_instance.execute_get_context(params)
+    result = await system_executor_instance.execute_get_context(params)
 
     # Assert
     assert result["status"] == "COMPLETE"
 
     # Verify memory_system was called with history included
-    system_executor_instance.memory_system.get_relevant_context_for.assert_called_once()
+    system_executor_instance.memory_system.get_relevant_context_for.assert_awaited_once()
     call_args = system_executor_instance.memory_system.get_relevant_context_for.call_args[0][0]
     assert isinstance(call_args, ContextGenerationInput)
     assert call_args.query == "search term"
-    # FIX: Check inheritedContext instead of history
+    # Check inheritedContext instead of history
     assert call_args.inheritedContext == "Previous conversation context"
     assert call_args.inputs is None # Check inputs is None when only history is passed
 
-def test_execute_get_context_with_target_files(system_executor_instance):
+@pytest.mark.asyncio
+async def test_execute_get_context_with_target_files(system_executor_instance):
     """Test context retrieval with target_files parameter."""
     # Setup
     target_list = ["/target/file1.py", "/target/file2.py"]
@@ -191,30 +216,31 @@ def test_execute_get_context_with_target_files(system_executor_instance):
     }
 
     # Act
-    result = system_executor_instance.execute_get_context(params)
+    result = await system_executor_instance.execute_get_context(params)
 
     # Assert
     assert result["status"] == "COMPLETE"
 
     # Verify memory_system was called with target_files included
-    system_executor_instance.memory_system.get_relevant_context_for.assert_called_once()
+    system_executor_instance.memory_system.get_relevant_context_for.assert_awaited_once()
     call_args = system_executor_instance.memory_system.get_relevant_context_for.call_args[0][0]
     assert isinstance(call_args, ContextGenerationInput)
     assert call_args.query == "search term"
-    # FIX: Check inheritedContext instead of history
+    # Check inheritedContext instead of history
     assert call_args.inheritedContext is None
-    # FIX: Check inputs['target_files'] instead of target_files directly
+    # Check inputs['target_files'] instead of target_files directly
     assert call_args.inputs is not None
     assert "target_files" in call_args.inputs
     assert call_args.inputs["target_files"] == target_list
 
-def test_execute_get_context_missing_query(system_executor_instance):
+@pytest.mark.asyncio
+async def test_execute_get_context_missing_query(system_executor_instance):
     """Test validation failure when query parameter is missing."""
     # Setup
     params = {"history": "Some history"}  # Missing required 'query'
 
     # Act
-    result = system_executor_instance.execute_get_context(params)
+    result = await system_executor_instance.execute_get_context(params)
 
     # Assert
     assert result["status"] == "FAILED"
@@ -223,43 +249,46 @@ def test_execute_get_context_missing_query(system_executor_instance):
     error_details = result["notes"]["error"]
     assert isinstance(error_details, dict) # Should be a dict representation of TaskFailureError
     assert error_details["type"] == "TASK_FAILURE"
-    # FIX: Use string literal for reason check
+    # Use string literal for reason check
     assert error_details["reason"] == "input_validation_failure"
-    system_executor_instance.memory_system.get_relevant_context_for.assert_not_called()
+    system_executor_instance.memory_system.get_relevant_context_for.assert_not_awaited()
 
-def test_execute_get_context_empty_query(system_executor_instance):
+@pytest.mark.asyncio
+async def test_execute_get_context_empty_query(system_executor_instance):
     """Test validation failure when query parameter is empty."""
     # Setup
     params = {"query": ""}  # Empty query
 
     # Act
-    result = system_executor_instance.execute_get_context(params)
+    result = await system_executor_instance.execute_get_context(params)
 
     # Assert
     assert result["status"] == "FAILED"
     assert "empty" in result["content"].lower() or "null" in result["content"].lower() # Error message mentions empty query
     assert "error" in result["notes"]
-    # FIX: Use string literal for reason check
+    # Use string literal for reason check
     assert result["notes"]["error"]["reason"] == "input_validation_failure"
-    system_executor_instance.memory_system.get_relevant_context_for.assert_not_called()
+    system_executor_instance.memory_system.get_relevant_context_for.assert_not_awaited()
 
-def test_execute_get_context_memory_system_error(system_executor_instance):
+@pytest.mark.asyncio
+async def test_execute_get_context_memory_system_error(system_executor_instance):
     """Test handling of errors from MemorySystem."""
     # Setup
     system_executor_instance.memory_system.get_relevant_context_for.side_effect = Exception("Memory error")
     params = {"query": "search term"}
 
     # Act
-    result = system_executor_instance.execute_get_context(params)
+    result = await system_executor_instance.execute_get_context(params)
 
     # Assert
     assert result["status"] == "FAILED"
     assert "context retrieval" in result["content"].lower() or "memory" in result["content"].lower()
     assert "error" in result["notes"]
-    # FIX: Use string literal for reason check
+    # Use string literal for reason check
     assert result["notes"]["error"]["reason"] == "context_retrieval_failure"
 
-def test_execute_get_context_memory_system_returns_error(system_executor_instance):
+@pytest.mark.asyncio
+async def test_execute_get_context_memory_system_returns_error(system_executor_instance):
     """Test handling when MemorySystem returns result with error."""
     # Setup
     error_result = AssociativeMatchResult(
@@ -271,7 +300,7 @@ def test_execute_get_context_memory_system_returns_error(system_executor_instanc
     params = {"query": "search term"}
 
     # Act
-    result = system_executor_instance.execute_get_context(params)
+    result = await system_executor_instance.execute_get_context(params)
 
     # Assert
     # Even though there's an error in the result, the function itself worked correctly
@@ -288,7 +317,8 @@ def test_execute_get_context_memory_system_returns_error(system_executor_instanc
 
 # --- Tests for execute_read_files ---
 
-def test_execute_read_files_success(system_executor_instance):
+@pytest.mark.asyncio
+async def test_execute_read_files_success(system_executor_instance):
     """Test successful reading of files."""
     # Setup
     # Use a more specific side effect for this test
@@ -307,7 +337,7 @@ def test_execute_read_files_success(system_executor_instance):
     params = {"file_paths": ["/path/file1.txt", "/path/file2.txt", "/path/nonexistent.txt"]}
 
     # Act
-    result = system_executor_instance.execute_read_files(params)
+    result = await system_executor_instance.execute_read_files(params)
 
     # Assert
     assert isinstance(result, dict)
@@ -328,13 +358,14 @@ def test_execute_read_files_success(system_executor_instance):
 
     # Verify read_file was called for each path
     assert system_executor_instance.file_manager.read_file.call_count == 3
-    # FIX: Assertions now match the expected call signature
+    # Assertions match the expected call signature
     system_executor_instance.file_manager.read_file.assert_any_call("/path/file1.txt", max_size=None)
     system_executor_instance.file_manager.read_file.assert_any_call("/path/file2.txt", max_size=None)
     system_executor_instance.file_manager.read_file.assert_any_call("/path/nonexistent.txt", max_size=None)
 
 
-def test_execute_read_files_all_files_missing(system_executor_instance):
+@pytest.mark.asyncio
+async def test_execute_read_files_all_files_missing(system_executor_instance):
     """Test behavior when all files are missing/unreadable."""
     # Setup
     system_executor_instance.file_manager.read_file.return_value = None  # All files fail to read
@@ -342,7 +373,7 @@ def test_execute_read_files_all_files_missing(system_executor_instance):
     params = {"file_paths": ["/path/nonexistent1.txt", "/path/nonexistent2.txt"]}
 
     # Act
-    result = system_executor_instance.execute_read_files(params)
+    result = await system_executor_instance.execute_read_files(params)
 
     # Assert
     assert result["status"] == "COMPLETE"  # Still COMPLETE as the function worked
@@ -354,13 +385,14 @@ def test_execute_read_files_all_files_missing(system_executor_instance):
     # Verify read_file was called for each path
     assert system_executor_instance.file_manager.read_file.call_count == 2
 
-def test_execute_read_files_empty_paths_list(system_executor_instance):
+@pytest.mark.asyncio
+async def test_execute_read_files_empty_paths_list(system_executor_instance):
     """Test behavior with empty file_paths list."""
     # Setup
     params = {"file_paths": []}
 
     # Act
-    result = system_executor_instance.execute_read_files(params)
+    result = await system_executor_instance.execute_read_files(params)
 
     # Assert
     assert result["status"] == "COMPLETE"  # Still COMPLETE as the function worked
@@ -372,39 +404,42 @@ def test_execute_read_files_empty_paths_list(system_executor_instance):
     # Verify read_file was not called
     system_executor_instance.file_manager.read_file.assert_not_called()
 
-def test_execute_read_files_missing_paths_param(system_executor_instance):
+@pytest.mark.asyncio
+async def test_execute_read_files_missing_paths_param(system_executor_instance):
     """Test validation failure when file_paths parameter is missing."""
     # Setup
     params = {}  # Missing required 'file_paths'
 
     # Act
-    result = system_executor_instance.execute_read_files(params)
+    result = await system_executor_instance.execute_read_files(params)
 
     # Assert
     assert result["status"] == "FAILED"
     assert "file_paths" in result["content"].lower()  # Error message mentions missing param
     assert "error" in result["notes"]
-    # FIX: Use string literal for reason check
+    # Use string literal for reason check
     assert result["notes"]["error"]["reason"] == "input_validation_failure"
     system_executor_instance.file_manager.read_file.assert_not_called()
 
-def test_execute_read_files_invalid_paths_type(system_executor_instance):
+@pytest.mark.asyncio
+async def test_execute_read_files_invalid_paths_type(system_executor_instance):
     """Test validation failure when file_paths is not a list."""
     # Setup
     params = {"file_paths": "not_a_list"}  # Wrong type
 
     # Act
-    result = system_executor_instance.execute_read_files(params)
+    result = await system_executor_instance.execute_read_files(params)
 
     # Assert
     assert result["status"] == "FAILED"
     assert "list" in result["content"].lower()  # Error message mentions expected list
     assert "error" in result["notes"]
-    # FIX: Use string literal for reason check
+    # Use string literal for reason check
     assert result["notes"]["error"]["reason"] == "input_validation_failure"
     system_executor_instance.file_manager.read_file.assert_not_called()
 
-def test_execute_read_files_with_unexpected_error(system_executor_instance):
+@pytest.mark.asyncio
+async def test_execute_read_files_with_unexpected_error(system_executor_instance):
     """Test handling of unexpected exceptions during file reading."""
     # Setup
     # Make read_file raise an exception for a specific path
@@ -423,7 +458,7 @@ def test_execute_read_files_with_unexpected_error(system_executor_instance):
     params = {"file_paths": ["/path/file1.txt", "/path/error.txt", "/path/file2.txt"]}
 
     # Act
-    result = system_executor_instance.execute_read_files(params)
+    result = await system_executor_instance.execute_read_files(params)
 
     # Assert
     assert result["status"] == "COMPLETE"  # Still COMPLETE as two files were read successfully
@@ -446,7 +481,8 @@ def test_execute_read_files_with_unexpected_error(system_executor_instance):
 
 # --- Tests for execute_shell_command ---
 
-def test_execute_shell_command_success(system_executor_instance):
+@pytest.mark.asyncio
+async def test_execute_shell_command_success(system_executor_instance):
     """Test successful shell command execution."""
     # Setup
     system_executor_instance.command_executor.execute_command_safely.return_value = {
@@ -458,7 +494,7 @@ def test_execute_shell_command_success(system_executor_instance):
     params = {"command": "echo 'test'"}
 
     # Act
-    result = system_executor_instance.execute_shell_command(params)
+    result = await system_executor_instance.execute_shell_command(params)
 
     # Assert
     assert isinstance(result, dict)
@@ -478,7 +514,8 @@ def test_execute_shell_command_success(system_executor_instance):
         timeout=None
     )
 
-def test_execute_shell_command_failure_exit_code(system_executor_instance):
+@pytest.mark.asyncio
+async def test_execute_shell_command_failure_exit_code(system_executor_instance):
     """Test handling of failed shell command execution (non-zero exit code)."""
     # Setup
     system_executor_instance.command_executor.execute_command_safely.return_value = {
@@ -491,7 +528,7 @@ def test_execute_shell_command_failure_exit_code(system_executor_instance):
     params = {"command": "cat /root/secret"}
 
     # Act
-    result = system_executor_instance.execute_shell_command(params)
+    result = await system_executor_instance.execute_shell_command(params)
 
     # Assert
     assert isinstance(result, dict)
@@ -508,7 +545,8 @@ def test_execute_shell_command_failure_exit_code(system_executor_instance):
     assert result["notes"]["error"]["reason"] == "tool_execution_error"
     assert result["notes"]["error"]["message"] == "Command failed: permission denied"
 
-def test_execute_shell_command_timeout(system_executor_instance):
+@pytest.mark.asyncio
+async def test_execute_shell_command_timeout(system_executor_instance):
     """Test handling of command timeout."""
     # Setup
     system_executor_instance.command_executor.execute_command_safely.return_value = {
@@ -521,7 +559,7 @@ def test_execute_shell_command_timeout(system_executor_instance):
     params = {"command": "sleep 10", "timeout": 5}
 
     # Act
-    result = system_executor_instance.execute_shell_command(params)
+    result = await system_executor_instance.execute_shell_command(params)
 
     # Assert
     assert result["status"] == "FAILED"
@@ -534,7 +572,8 @@ def test_execute_shell_command_timeout(system_executor_instance):
     assert result["notes"]["error"]["reason"] == "execution_timeout"
     assert "Command timed out" in result["notes"]["error"]["message"]
 
-def test_execute_shell_command_unsafe(system_executor_instance):
+@pytest.mark.asyncio
+async def test_execute_shell_command_unsafe(system_executor_instance):
     """Test handling of unsafe command detected by command_executor."""
     # Setup
     system_executor_instance.command_executor.execute_command_safely.return_value = {
@@ -547,7 +586,7 @@ def test_execute_shell_command_unsafe(system_executor_instance):
     params = {"command": "rm -rf /"}
 
     # Act
-    result = system_executor_instance.execute_shell_command(params)
+    result = await system_executor_instance.execute_shell_command(params)
 
     # Assert
     assert result["status"] == "FAILED"
@@ -558,13 +597,14 @@ def test_execute_shell_command_unsafe(system_executor_instance):
     assert result["notes"]["error"]["reason"] == "input_validation_failure" # Specific reason for unsafe
     assert "Unsafe command pattern detected" in result["notes"]["error"]["message"]
 
-def test_execute_shell_command_missing_command(system_executor_instance):
+@pytest.mark.asyncio
+async def test_execute_shell_command_missing_command(system_executor_instance):
     """Test validation failure when command parameter is missing."""
     # Setup
     params = {}  # Missing required 'command'
 
     # Act
-    result = system_executor_instance.execute_shell_command(params)
+    result = await system_executor_instance.execute_shell_command(params)
 
     # Assert
     assert result["status"] == "FAILED"
@@ -573,35 +613,39 @@ def test_execute_shell_command_missing_command(system_executor_instance):
     assert result["notes"]["error"]["reason"] == "input_validation_failure"
     system_executor_instance.command_executor.execute_command_safely.assert_not_called()
 
-def test_execute_shell_command_invalid_cwd_type(system_executor_instance):
+@pytest.mark.asyncio
+async def test_execute_shell_command_invalid_cwd_type(system_executor_instance):
     """Test validation failure when cwd parameter has wrong type."""
     params = {"command": "echo test", "cwd": 123} # cwd should be string
-    result = system_executor_instance.execute_shell_command(params)
+    result = await system_executor_instance.execute_shell_command(params)
     assert result["status"] == "FAILED"
     assert "Invalid parameter type: 'cwd'" in result["content"]
     assert result["notes"]["error"]["reason"] == "input_validation_failure"
     system_executor_instance.command_executor.execute_command_safely.assert_not_called()
 
-def test_execute_shell_command_invalid_timeout_type(system_executor_instance):
+@pytest.mark.asyncio
+async def test_execute_shell_command_invalid_timeout_type(system_executor_instance):
     """Test validation failure when timeout parameter has wrong type."""
     params = {"command": "echo test", "timeout": "fast"} # timeout should be int
-    result = system_executor_instance.execute_shell_command(params)
+    result = await system_executor_instance.execute_shell_command(params)
     assert result["status"] == "FAILED"
     assert "Invalid parameter type or value: 'timeout'" in result["content"]
     assert result["notes"]["error"]["reason"] == "input_validation_failure"
     system_executor_instance.command_executor.execute_command_safely.assert_not_called()
 
-def test_execute_shell_command_invalid_timeout_value(system_executor_instance):
+@pytest.mark.asyncio
+async def test_execute_shell_command_invalid_timeout_value(system_executor_instance):
     """Test validation failure when timeout parameter is not positive."""
     params = {"command": "echo test", "timeout": 0} # timeout should be positive
-    result = system_executor_instance.execute_shell_command(params)
+    result = await system_executor_instance.execute_shell_command(params)
     assert result["status"] == "FAILED"
     assert "Invalid parameter type or value: 'timeout'" in result["content"]
     assert result["notes"]["error"]["reason"] == "input_validation_failure"
     system_executor_instance.command_executor.execute_command_safely.assert_not_called()
 
 
-def test_execute_shell_command_with_optional_params(system_executor_instance):
+@pytest.mark.asyncio
+async def test_execute_shell_command_with_optional_params(system_executor_instance):
     """Test shell command execution with optional parameters."""
     # Setup
     system_executor_instance.command_executor.execute_command_safely.return_value = {
@@ -617,7 +661,7 @@ def test_execute_shell_command_with_optional_params(system_executor_instance):
     }
 
     # Act
-    result = system_executor_instance.execute_shell_command(params)
+    result = await system_executor_instance.execute_shell_command(params)
 
     # Assert
     assert result["status"] == "COMPLETE"
@@ -630,14 +674,15 @@ def test_execute_shell_command_with_optional_params(system_executor_instance):
         timeout=30
     )
 
-def test_execute_shell_command_unexpected_error(system_executor_instance):
+@pytest.mark.asyncio
+async def test_execute_shell_command_unexpected_error(system_executor_instance):
     """Test handling of unexpected exceptions during command execution."""
     # Setup
     system_executor_instance.command_executor.execute_command_safely.side_effect = Exception("Unexpected command error")
     params = {"command": "valid command"}
 
     # Act
-    result = system_executor_instance.execute_shell_command(params)
+    result = await system_executor_instance.execute_shell_command(params)
 
     # Assert
     assert result["status"] == "FAILED"
@@ -646,7 +691,8 @@ def test_execute_shell_command_unexpected_error(system_executor_instance):
     assert "error" in result["notes"]
     assert result["notes"]["error"]["reason"] == "unexpected_error"
 
-def test_execute_shell_command_failure_reporting(system_executor_instance):
+@pytest.mark.asyncio
+async def test_execute_shell_command_failure_reporting(system_executor_instance):
     """Test correct reporting for a failed shell command (e.g., pytest failure)."""
     # Setup
     command_to_test = "pytest tests/"
@@ -662,7 +708,7 @@ def test_execute_shell_command_failure_reporting(system_executor_instance):
     params = {"command": command_to_test}
 
     # Act
-    result = system_executor_instance.execute_shell_command(params)
+    result = await system_executor_instance.execute_shell_command(params)
 
     # Assert
     assert isinstance(result, dict)
@@ -700,26 +746,28 @@ def test_execute_shell_command_failure_reporting(system_executor_instance):
 
 # --- Tests for execute_clear_handler_data_context ---
 
-def test_execute_clear_handler_data_context_success(system_executor_instance, mock_handler_for_executors): # Use the correct fixture name
+@pytest.mark.asyncio
+async def test_execute_clear_handler_data_context_success(system_executor_instance, mock_handler_for_executors): # Use the correct fixture name
     """Test successful clearing of handler data context."""
     executor = system_executor_instance
     
-    result = executor.execute_clear_handler_data_context({})
+    result = await executor.execute_clear_handler_data_context({})
     
-    mock_handler_for_executors.clear_data_context.assert_called_once_with()
+    mock_handler_for_executors.clear_data_context.assert_awaited_once_with()
     assert result["status"] == "COMPLETE"
     assert result["content"] == "Handler data context cleared successfully."
     # Check that notes is empty or None as per TaskResult default
     assert "notes" not in result or result["notes"] == {} or result["notes"] is None
 
-def test_execute_clear_handler_data_context_handler_unavailable(system_executor_instance):
+@pytest.mark.asyncio
+async def test_execute_clear_handler_data_context_handler_unavailable(system_executor_instance):
     """Test clear_handler_data_context when handler_instance is None."""
     executor = system_executor_instance
     # Simulate handler_instance being None
     original_handler = executor.handler_instance
     executor.handler_instance = None
     
-    result = executor.execute_clear_handler_data_context({})
+    result = await executor.execute_clear_handler_data_context({})
     
     assert result["status"] == "FAILED"
     assert "Handler instance not configured" in result["content"]
@@ -728,12 +776,13 @@ def test_execute_clear_handler_data_context_handler_unavailable(system_executor_
     # Restore handler_instance for other tests
     executor.handler_instance = original_handler
 
-def test_execute_clear_handler_data_context_exception_in_handler(system_executor_instance, mock_handler_for_executors):
+@pytest.mark.asyncio
+async def test_execute_clear_handler_data_context_exception_in_handler(system_executor_instance, mock_handler_for_executors):
     """Test clear_handler_data_context when handler.clear_data_context raises an exception."""
     executor = system_executor_instance
     mock_handler_for_executors.clear_data_context.side_effect = Exception("Handler internal error")
     
-    result = executor.execute_clear_handler_data_context({})
+    result = await executor.execute_clear_handler_data_context({})
     
     assert result["status"] == "FAILED"
     assert "Error clearing handler data context: Handler internal error" in result["content"]
@@ -741,12 +790,14 @@ def test_execute_clear_handler_data_context_exception_in_handler(system_executor
 
 # --- Tests for execute_prime_handler_data_context ---
 
-def test_execute_prime_handler_data_context_success_with_query(system_executor_instance, mock_handler_for_executors):
+@pytest.mark.asyncio
+async def test_execute_prime_handler_data_context_success_with_query(system_executor_instance, mock_handler_for_executors):
     """Test successful priming with query only."""
     executor = system_executor_instance
     mock_handler = mock_handler_for_executors
 
-    mock_handler.prime_data_context.return_value = True
+    # When a coroutine function is mocked, you need to use AsyncMock
+    mock_handler.prime_data_context = AsyncMock(return_value=True)
     # Simulate DataContext structure after priming
     mock_data_context_instance = MagicMock(spec=DataContext)
     mock_data_context_instance.items = [MagicMock(spec=MatchItem)] * 2 # Simulate 2 items
@@ -754,125 +805,138 @@ def test_execute_prime_handler_data_context_success_with_query(system_executor_i
     mock_handler.data_context = mock_data_context_instance
     
     params = {"query": "test query"}
-    result = executor.execute_prime_handler_data_context(params)
+    result = await executor.execute_prime_handler_data_context(params)
     
-    mock_handler.prime_data_context.assert_called_once_with(query="test query", initial_files=None)
+    mock_handler.prime_data_context.assert_awaited_once_with(query="test query", initial_files=None)
     assert result["status"] == "COMPLETE"
     assert result["content"] == "Context primed with 2 item(s)."
     assert result["notes"] == {"items_primed": 2}
 
-def test_execute_prime_handler_data_context_success_with_initial_files(system_executor_instance, mock_handler_for_executors):
+@pytest.mark.asyncio
+async def test_execute_prime_handler_data_context_success_with_initial_files(system_executor_instance, mock_handler_for_executors):
     """Test successful priming with initial_files only."""
     executor = system_executor_instance
     mock_handler = mock_handler_for_executors
 
-    mock_handler.prime_data_context.return_value = True
+    # When a coroutine function is mocked, you need to use AsyncMock
+    mock_handler.prime_data_context = AsyncMock(return_value=True)
     mock_data_context_instance = MagicMock(spec=DataContext)
     mock_data_context_instance.items = [MagicMock(spec=MatchItem)] * 1
     mock_data_context_instance.overall_summary = "Files processed."
     mock_handler.data_context = mock_data_context_instance
 
     params = {"initial_files": ["/file1.py"]}
-    result = executor.execute_prime_handler_data_context(params)
+    result = await executor.execute_prime_handler_data_context(params)
     
-    mock_handler.prime_data_context.assert_called_once_with(query=None, initial_files=["/file1.py"])
+    mock_handler.prime_data_context.assert_awaited_once_with(query=None, initial_files=["/file1.py"])
     assert result["status"] == "COMPLETE"
     assert result["content"] == "Files processed."
     assert result["notes"] == {"items_primed": 1}
 
-def test_execute_prime_handler_data_context_success_with_query_and_files(system_executor_instance, mock_handler_for_executors):
+@pytest.mark.asyncio
+async def test_execute_prime_handler_data_context_success_with_query_and_files(system_executor_instance, mock_handler_for_executors):
     """Test successful priming with both query and initial_files."""
     executor = system_executor_instance
     mock_handler = mock_handler_for_executors
 
-    mock_handler.prime_data_context.return_value = True
+    # When a coroutine function is mocked, you need to use AsyncMock
+    mock_handler.prime_data_context = AsyncMock(return_value=True)
     mock_data_context_instance = MagicMock(spec=DataContext)
     mock_data_context_instance.items = [MagicMock(spec=MatchItem)] * 5
     mock_data_context_instance.overall_summary = "Query and files context."
     mock_handler.data_context = mock_data_context_instance
 
     params = {"query": "search this", "initial_files": ["/fileA.txt", "/fileB.txt"]}
-    result = executor.execute_prime_handler_data_context(params)
+    result = await executor.execute_prime_handler_data_context(params)
     
-    mock_handler.prime_data_context.assert_called_once_with(query="search this", initial_files=["/fileA.txt", "/fileB.txt"])
+    mock_handler.prime_data_context.assert_awaited_once_with(query="search this", initial_files=["/fileA.txt", "/fileB.txt"])
     assert result["status"] == "COMPLETE"
     assert result["content"] == "Query and files context."
     assert result["notes"] == {"items_primed": 5}
 
-def test_execute_prime_handler_data_context_success_no_items_found(system_executor_instance, mock_handler_for_executors):
+@pytest.mark.asyncio
+async def test_execute_prime_handler_data_context_success_no_items_found(system_executor_instance, mock_handler_for_executors):
     """Test successful priming operation but no items are actually found/primed."""
     executor = system_executor_instance
     mock_handler = mock_handler_for_executors
 
-    mock_handler.prime_data_context.return_value = True # Operation itself succeeded
+    # When a coroutine function is mocked, you need to use AsyncMock
+    mock_handler.prime_data_context = AsyncMock(return_value=True) # Operation itself succeeded
     mock_handler.data_context = None # Simulate no context object created or items found
     
     params = {"query": "empty result query"}
-    result = executor.execute_prime_handler_data_context(params)
+    result = await executor.execute_prime_handler_data_context(params)
     
-    mock_handler.prime_data_context.assert_called_once_with(query="empty result query", initial_files=None)
+    mock_handler.prime_data_context.assert_awaited_once_with(query="empty result query", initial_files=None)
     assert result["status"] == "COMPLETE"
     assert "Context priming reported success, but no data_context object found on handler." in result["content"]
     assert result["notes"] == {"items_primed": 0}
 
-def test_execute_prime_handler_data_context_failure_from_handler(system_executor_instance, mock_handler_for_executors):
+@pytest.mark.asyncio
+async def test_execute_prime_handler_data_context_failure_from_handler(system_executor_instance, mock_handler_for_executors):
     """Test when handler.prime_data_context returns False."""
     executor = system_executor_instance
     mock_handler = mock_handler_for_executors
 
-    mock_handler.prime_data_context.return_value = False # Simulate failure
+    # When a coroutine function is mocked, you need to use AsyncMock
+    mock_handler.prime_data_context = AsyncMock(return_value=False) # Simulate failure
     
     params = {"query": "failing query"}
-    result = executor.execute_prime_handler_data_context(params)
+    result = await executor.execute_prime_handler_data_context(params)
     
-    mock_handler.prime_data_context.assert_called_once_with(query="failing query", initial_files=None)
+    mock_handler.prime_data_context.assert_awaited_once_with(query="failing query", initial_files=None)
     assert result["status"] == "FAILED"
     assert "Failed to prime handler data context" in result["content"]
     assert result["notes"]["error"]["reason"] == "context_priming_failure"
 
-def test_execute_prime_handler_data_context_validation_no_params(system_executor_instance):
+@pytest.mark.asyncio
+async def test_execute_prime_handler_data_context_validation_no_params(system_executor_instance):
     """Test input validation when neither query nor initial_files is provided."""
     executor = system_executor_instance
-    result = executor.execute_prime_handler_data_context({})
+    result = await executor.execute_prime_handler_data_context({})
     assert result["status"] == "FAILED"
     assert "At least one of 'query' or 'initial_files' parameter keys must be provided" in result["content"]
     assert result["notes"]["error"]["reason"] == "input_validation_failure"
 
-def test_execute_prime_handler_data_context_validation_invalid_query_type(system_executor_instance):
+@pytest.mark.asyncio
+async def test_execute_prime_handler_data_context_validation_invalid_query_type(system_executor_instance):
     """Test input validation for invalid query type."""
     executor = system_executor_instance
     params = {"query": 123} # Query should be string or None
-    result = executor.execute_prime_handler_data_context(params)
+    result = await executor.execute_prime_handler_data_context(params)
     assert result["status"] == "FAILED"
     assert "Invalid type for 'query' parameter" in result["content"]
     assert result["notes"]["error"]["reason"] == "input_validation_failure"
 
-def test_execute_prime_handler_data_context_validation_invalid_initial_files_type(system_executor_instance):
+@pytest.mark.asyncio
+async def test_execute_prime_handler_data_context_validation_invalid_initial_files_type(system_executor_instance):
     """Test input validation for invalid initial_files type."""
     executor = system_executor_instance
     params = {"initial_files": "not_a_list"} # initial_files should be list or None
-    result = executor.execute_prime_handler_data_context(params)
+    result = await executor.execute_prime_handler_data_context(params)
     assert result["status"] == "FAILED"
     assert "Invalid type for 'initial_files' parameter" in result["content"]
     assert result["notes"]["error"]["reason"] == "input_validation_failure"
 
-def test_execute_prime_handler_data_context_validation_invalid_initial_files_item_type(system_executor_instance):
+@pytest.mark.asyncio
+async def test_execute_prime_handler_data_context_validation_invalid_initial_files_item_type(system_executor_instance):
     """Test input validation for invalid item type in initial_files list."""
     executor = system_executor_instance
     params = {"initial_files": ["/file1.py", 123]} # Items should be strings
-    result = executor.execute_prime_handler_data_context(params)
+    result = await executor.execute_prime_handler_data_context(params)
     assert result["status"] == "FAILED"
     assert "All items in 'initial_files' list must be strings" in result["content"]
     assert result["notes"]["error"]["reason"] == "input_validation_failure"
 
-def test_execute_prime_handler_data_context_handler_unavailable(system_executor_instance):
+@pytest.mark.asyncio
+async def test_execute_prime_handler_data_context_handler_unavailable(system_executor_instance):
     """Test prime_handler_data_context when handler_instance is None."""
     executor = system_executor_instance
     original_handler = executor.handler_instance
     executor.handler_instance = None
     
     params = {"query": "test"}
-    result = executor.execute_prime_handler_data_context(params)
+    result = await executor.execute_prime_handler_data_context(params)
     
     assert result["status"] == "FAILED"
     assert "Handler instance not configured" in result["content"]
@@ -880,13 +944,17 @@ def test_execute_prime_handler_data_context_handler_unavailable(system_executor_
     
     executor.handler_instance = original_handler
 
-def test_execute_prime_handler_data_context_exception_in_handler(system_executor_instance, mock_handler_for_executors):
+@pytest.mark.asyncio
+async def test_execute_prime_handler_data_context_exception_in_handler(system_executor_instance, mock_handler_for_executors):
     """Test prime_handler_data_context when handler.prime_data_context raises an exception."""
     executor = system_executor_instance
-    mock_handler_for_executors.prime_data_context.side_effect = Exception("Handler priming error")
+    mock_handler = mock_handler_for_executors
+    
+    # When a coroutine function is mocked, you need to use AsyncMock with side_effect
+    mock_handler.prime_data_context = AsyncMock(side_effect=Exception("Handler priming error"))
     
     params = {"query": "test"}
-    result = executor.execute_prime_handler_data_context(params)
+    result = await executor.execute_prime_handler_data_context(params)
     
     assert result["status"] == "FAILED"
     assert "Error priming handler data context: Handler priming error" in result["content"]

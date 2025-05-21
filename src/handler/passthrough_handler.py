@@ -164,7 +164,7 @@ class PassthroughHandler(BaseHandler):
         return result
 
 
-    def handle_query(self, query: str) -> TaskResult:
+    async def handle_query(self, query: str) -> TaskResult:
         """
         Handles a raw text query from the user in passthrough mode.
 
@@ -183,7 +183,7 @@ class PassthroughHandler(BaseHandler):
         try:
             # 1. Prime Data Context
             logging.debug(f"Priming data context for query: {query[:50]}...")
-            priming_successful = self.prime_data_context(query=query) # BaseHandler method
+            priming_successful = await self.prime_data_context(query=query) # BaseHandler method
 
             if not priming_successful:
                 logging.warning(f"Data context priming failed for query: {query[:50]}. Returning FAILED TaskResult.")
@@ -219,11 +219,11 @@ class PassthroughHandler(BaseHandler):
             
             if current_active_subtask_id is None:
                 logging.debug("No active subtask. Creating a new one.")
-                result = self._create_new_subtask(query=query)
+                result = await self._create_new_subtask(query=query)
             else:
                 # This branch is less likely to be hit with current single-turn design
                 logging.debug(f"Continuing active subtask: {current_active_subtask_id}")
-                result = self._continue_subtask(query=query) # Will reset active_subtask_id
+                result = await self._continue_subtask(query=query) # Will reset active_subtask_id
 
             logging.info(f"Passthrough query handled. Result status: {result.status}")
 
@@ -253,7 +253,7 @@ class PassthroughHandler(BaseHandler):
                 notes={"error": error_details.model_dump(exclude_none=True)}
             )
 
-    def _create_new_subtask(self, query: str) -> TaskResult:
+    async def _create_new_subtask(self, query: str) -> TaskResult:
         """
         Creates and executes a new subtask based on the user query.
 
@@ -298,7 +298,7 @@ class PassthroughHandler(BaseHandler):
 
         # 3. Execute LLM call
         logging.debug("Executing LLM call for new subtask...")
-        result = self._execute_llm_call( # BaseHandler method
+        result = await self._execute_llm_call( # BaseHandler method
             prompt=query,
             system_prompt_override=final_system_prompt
             # Tools are implicitly available via BaseHandler's registered tools
@@ -309,7 +309,7 @@ class PassthroughHandler(BaseHandler):
 
         return result
 
-    def _continue_subtask(self, query: str) -> TaskResult:
+    async def _continue_subtask(self, query: str) -> TaskResult:
         """
         Continues an existing active subtask with the new user query.
         For current single-turn PassthroughHandler, this behaves like creating a new task
@@ -350,7 +350,7 @@ class PassthroughHandler(BaseHandler):
         )
         logging.debug(f"System prompt for continuing subtask (length: {len(final_system_prompt)}). Preview: {final_system_prompt[:200]}...")
 
-        result = self._execute_llm_call( # BaseHandler method
+        result = await self._execute_llm_call( # BaseHandler method
             prompt=query,
             system_prompt_override=final_system_prompt
         )

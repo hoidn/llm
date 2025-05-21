@@ -162,18 +162,18 @@ class SpecialFormProcessor:
         logging.debug(f"SpecialFormProcessor.handle_progn_form END: -> {final_result}")
         return final_result # Return result of the last expression
 
-    def handle_quote_form(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> Any:
+    async def handle_quote_form(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> Any:
         """Handles the 'quote' special form: (quote expression)"""
         logger.debug(f"SpecialFormProcessor.handle_quote_form START: original_expr_str='{original_expr_str}'")
         if len(arg_exprs) != 1:
-            raise SexpEvaluationError("'quote' requires exactly one argument: (quote expression)", original_expr_str)
+            raise SexpEvaluationError("'quote' requires exactly 1 argument", original_expr_str)
         
         # Return the argument node *without* evaluating it
         quoted_expression = arg_exprs[0]
         logging.debug(f"SpecialFormProcessor.handle_quote_form END: -> {quoted_expression} (unevaluated)")
         return quoted_expression
 
-    def handle_defatom_form(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> Symbol:
+    async def handle_defatom_form(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> Symbol:
         """Handles the 'defatom' special form: (defatom name params instructions ...)"""
         logger.debug(f"SpecialFormProcessor.handle_defatom_form START: original_expr_str='{original_expr_str}'")
 
@@ -244,7 +244,76 @@ class SpecialFormProcessor:
                         original_expr_str
                     )
 
-        template_params = {name: {"description": f"Parameter {name}"} for name in param_name_strings_for_template}
+        # Create template_params with both type and description
+        template_params = {}
+        if params_node is not None:
+            for param_def_item in params_node[1:]: # Iterate over items within (params item1 item2 ...)
+                if isinstance(param_def_item, Symbol):
+                    # When param is just Symbol('param_name'), add default type and description
+                    param_name = param_def_item.value()
+                    template_params[param_name] = {
+                        "type": "any", 
+                        "description": f"Parameter {param_name}"
+                    }
+                    
+                elif isinstance(param_def_item, list) and len(param_def_item) >= 1 and isinstance(param_def_item[0], Symbol):
+                    # When param is (param_name "type_string"), extract both
+                    param_name = param_def_item[0].value()
+                    if len(param_def_item) >= 2 and isinstance(param_def_item[1], str):
+                        # If we have a type string specified
+                        template_params[param_name] = {
+                            "type": param_def_item[1],
+                            "description": f"Parameter {param_name}"
+                        }
+                    elif len(param_def_item) >= 2 and isinstance(param_def_item[1], Symbol):
+                        # If type is a Symbol (like 'string or 'object), convert it to a string
+                        type_symbol = param_def_item[1]
+                        type_str = type_symbol.value()
+                        template_params[param_name] = {
+                            "type": type_str,
+                            "description": f"Parameter {param_name}"
+                        }
+                    elif len(param_def_item) >= 2 and isinstance(param_def_item[1], list):
+                        # Handle complex type definitions like (param_name (object (field1 type1) ...))
+                        try:
+                            complex_type = param_def_item[1]
+                            # If it's a complex object type definition
+                            if (len(complex_type) >= 1 and isinstance(complex_type[0], Symbol) 
+                                and complex_type[0].value() == "object"):
+                                
+                                type_dict = {"type": "object", "properties": {}}
+                                # Process the fields
+                                for field_def in complex_type[1:]:
+                                    if isinstance(field_def, list) and len(field_def) >= 2:
+                                        field_name = field_def[0].value() if isinstance(field_def[0], Symbol) else str(field_def[0])
+                                        field_type = field_def[1]
+                                        if isinstance(field_type, Symbol):
+                                            type_dict["properties"][field_name] = {"type": field_type.value()}
+                                        elif isinstance(field_type, str):
+                                            type_dict["properties"][field_name] = {"type": field_type}
+                                        else:
+                                            logger.warning(f"Complex field type not understood: {field_type}. Using 'any'.")
+                                            type_dict["properties"][field_name] = {"type": "any"}
+                                    
+                                template_params[param_name] = type_dict
+                            else:
+                                # If complex type isn't following expected structure, fallback
+                                template_params[param_name] = {
+                                    "type": "any",
+                                    "description": f"Parameter {param_name} (complex type definition)"
+                                }
+                        except Exception as e:
+                            logger.error(f"Failed to parse complex type for param '{param_name}': {e}")
+                            template_params[param_name] = {
+                                "type": "any", 
+                                "description": f"Parameter {param_name} (complex type parsing failed)"
+                            }
+                    else:
+                        # If no type string or invalid type (should not happen given validation above)
+                        template_params[param_name] = {
+                            "type": "any",
+                            "description": f"Parameter {param_name}"
+                        }
 
         optional_args_map: Dict[str, Any] = {} # Allow Any for structured values
         # Keys that expect a simple string value
@@ -276,7 +345,32 @@ class SpecialFormProcessor:
             value_part_from_opt_node: Any = opt_node[1] # This is the S-expression value part
             key_str = key_node.value()
 
-            if key_str in simple_string_optionals:
+            if key_str == "depends":
+                # Handle dependencies - value_part_from_opt_node should be a list of Symbol objects
+                dependencies = []
+                # Handle both single value (depends dep1) and list values (depends dep1 dep2)
+                if isinstance(value_part_from_opt_node, Symbol):
+                    # Single dependency
+                    dependencies.append(value_part_from_opt_node.value())
+                elif isinstance(value_part_from_opt_node, list):
+                    # Multiple dependencies
+                    for dep_symbol in value_part_from_opt_node:
+                        if not isinstance(dep_symbol, Symbol):
+                            raise SexpEvaluationError(
+                                f"Invalid dependency in 'depends' clause. Expected symbol, got {type(dep_symbol)}: {dep_symbol!r}",
+                                original_expr_str
+                            )
+                        dependencies.append(dep_symbol.value())
+                else:
+                    raise SexpEvaluationError(
+                        f"Invalid 'depends' clause. Expected symbol(s), got {type(value_part_from_opt_node)}: {value_part_from_opt_node!r}",
+                        original_expr_str
+                    )
+                    
+                optional_args_map["dependencies"] = dependencies
+                logger.debug(f"Parsed dependencies for task '{task_name_str}': {dependencies}")
+                
+            elif key_str in simple_string_optionals:
                 if not isinstance(value_part_from_opt_node, str): # Check the S-expression value directly
                     raise SexpEvaluationError(f"Value for optional argument '{key_str}' must be a string, got {type(value_part_from_opt_node)}: {value_part_from_opt_node!r}", original_expr_str)
                 optional_args_map[key_str] = value_part_from_opt_node
@@ -387,41 +481,19 @@ class SpecialFormProcessor:
             logging.exception(f"Error registering template '{task_name_str}' with TaskSystem: {e}")
             raise SexpEvaluationError(f"Failed to register template '{task_name_str}' with TaskSystem: {e}", original_expr_str, error_details=str(e)) from e
 
-        # Lexical binding of the task name to a callable wrapper
-        evaluator_ref = self.evaluator # Capture self.evaluator for the closure
-        
-        def defatom_task_wrapper(*args):
-            logger.debug(f"defatom_task_wrapper for '{task_name_str}' called with {len(args)} args: {args}")
-            
-            if len(args) != len(param_name_strings_for_template):
-                raise SexpEvaluationError(
-                    f"Task '{task_name_str}' (defined by defatom) expects {len(param_name_strings_for_template)} arguments, got {len(args)}.",
-                    expression=f"call to {task_name_str}"
-                )
-            
-            inputs_dict = {name: val for name, val in zip(param_name_strings_for_template, args)}
-            
-            request = SubtaskRequest(
-                task_id=f"defatom_call_{task_name_str}_{id(args)}",
-                type="atomic",
-                name=task_name_str,
-                inputs=inputs_dict
-                # history_config can be added here if defatom supports it and it's passed
-            )
-            logging.debug(f"  defatom_task_wrapper: Invoking TaskSystem for '{task_name_str}' with request: {request.model_dump_json(indent=2)}")
-            
-            try:
-                # Ensure task_system is accessed via evaluator_ref
-                task_result: TaskResult = evaluator_ref.task_system.execute_atomic_template(request)
-                # The result from execute_atomic_template should already be a TaskResult Pydantic model instance.
-                # If it needs to be returned as a dictionary for S-expression processing, model_dump() it.
-                # For now, let's assume the S-expression layer can handle TaskResult objects or they are converted later.
-                return task_result 
-            except Exception as e_exec:
-                logging.exception(f"  Error executing defatom task '{task_name_str}' via wrapper: {e_exec}")
-                raise SexpEvaluationError(f"Error executing defatom task '{task_name_str}': {e_exec}", expression=f"call to {task_name_str}", error_details=str(e_exec)) from e_exec
+        # We will use the async wrapper function from defatom_wrapper.py instead
 
-        env.define(task_name_str, defatom_task_wrapper) # Bind the wrapper
+        # Import the async wrapper creator function
+        from src.sexp_evaluator.defatom_wrapper import create_async_defatom_task_wrapper
+        
+        # Create and bind the async wrapper function
+        async_wrapper = await create_async_defatom_task_wrapper(
+            task_name_str=task_name_str,
+            param_name_strings=param_name_strings_for_template,
+            evaluator_ref=self.evaluator
+        )
+        
+        env.define(task_name_str, async_wrapper) # Bind the async wrapper
         logging.info(f"Successfully registered and lexically bound dynamic task '{task_name_str}'.")
         return task_name_node
 

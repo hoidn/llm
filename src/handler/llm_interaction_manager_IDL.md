@@ -69,7 +69,8 @@ module src.handler.llm_interaction_manager {
             optional list<function> tools_override, // Keep for now, but usage might change
             optional type output_type_override,
             optional list<dict<string, Any>> active_tools, // Keep for now, but usage might change
-            optional string model_override // ADDED PARAMETER
+            optional string model_override, // ADDED PARAMETER
+            optional HistoryConfigSettings history_config // Add history_config parameter
         );
 
         // Enables or disables the internal debug logging flag.

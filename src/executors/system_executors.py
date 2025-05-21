@@ -171,7 +171,7 @@ class SystemExecutorFunctions:
             # Use local helper
             return _create_failed_result_dict("context_retrieval_failure", error_msg)
 
-    def execute_read_files(self, params: Dict[str, Any]) -> Dict[str, Any]:
+    async def execute_read_files(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """
         Executor logic for the 'system:read_files' Direct Tool.
         Reads the content of specified files using FileAccessManager.
@@ -280,7 +280,7 @@ class SystemExecutorFunctions:
             notes=notes
         ).model_dump(exclude_none=True)
 
-    def execute_list_directory(self, params: Dict[str, Any]) -> Dict[str, Any]:
+    async def execute_list_directory(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """
         Executor logic for the 'system:list_directory' Direct Tool.
         Lists the contents of a specified directory using FileAccessManager.
@@ -331,7 +331,7 @@ class SystemExecutorFunctions:
             logger.exception(f"execute_list_directory: {error_msg}")
             return _create_failed_result_dict("unexpected_error", error_msg)
             
-    def execute_shell_command(self, params: Dict[str, Any]) -> Dict[str, Any]:
+    async def execute_shell_command(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """
         Executor logic for the 'system:execute_shell_command' Direct Tool.
         Executes a shell command safely using CommandExecutorFunctions.
@@ -443,7 +443,7 @@ class SystemExecutorFunctions:
             logger.exception(f"execute_shell_command: {error_msg}")
             return _create_failed_result_dict("unexpected_error", error_msg)
 
-    def execute_write_file(self, params: Dict[str, Any]) -> Dict[str, Any]:
+    async def execute_write_file(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """
         Executor logic for the 'system:write_file' Direct Tool.
         Writes content to a specified file using FileAccessManager.
@@ -502,7 +502,7 @@ class SystemExecutorFunctions:
             logger.exception(f"execute_write_file: {error_msg}")
             return _create_failed_result_dict("unexpected_error", error_msg)
 
-    def execute_clear_handler_data_context(self, params: Dict[str, Any]) -> Dict[str, Any]:
+    async def execute_clear_handler_data_context(self, params: Dict[str, Any]) -> Dict[str, Any]:
         logger.info("Executing system_clear_handler_data_context. Params: %s", params)
         try:
             if not self.handler_instance:
@@ -512,7 +512,12 @@ class SystemExecutorFunctions:
                     message="Handler instance not configured for system executors."
                 )
             
-            self.handler_instance.clear_data_context() # BaseHandler.clear_data_context() should be robust
+            # This might be an async method, so check and await if needed
+            import inspect
+            if inspect.iscoroutinefunction(self.handler_instance.clear_data_context):
+                await self.handler_instance.clear_data_context()
+            else:
+                self.handler_instance.clear_data_context() # Handle both sync and async implementations
             logger.info("Handler data context cleared successfully.")
             return TaskResult(
                 status="COMPLETE",
@@ -525,7 +530,7 @@ class SystemExecutorFunctions:
                 message=f"Error clearing handler data context: {str(e)}"
             )
 
-    def execute_prime_handler_data_context(self, params: Dict[str, Any]) -> Dict[str, Any]:
+    async def execute_prime_handler_data_context(self, params: Dict[str, Any]) -> Dict[str, Any]:
         logger.info("Executing system_prime_handler_data_context. Params: %s", params)
         
         query = params.get("query")
@@ -566,7 +571,8 @@ class SystemExecutorFunctions:
                 )
 
             # BaseHandler.prime_data_context is expected to handle None/empty query/initial_files gracefully
-            success = self.handler_instance.prime_data_context(query=query, initial_files=initial_files)
+            # This is now an async method, so we need to await it
+            success = await self.handler_instance.prime_data_context(query=query, initial_files=initial_files)
             
             if success:
                 num_items = 0

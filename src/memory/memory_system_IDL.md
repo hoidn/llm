@@ -60,7 +60,7 @@ module src.memory.memory_system {
         // Deprecated or less common way to get context. `get_relevant_context_for` is preferred.
         // Behavior: Constructs a ContextGenerationInput with the description as the query and calls get_relevant_context_for.
         // Returns: AssociativeMatchResult object.
-        object get_relevant_context_with_description(string query, string context_description);
+        async object get_relevant_context_with_description(string query, string context_description);
 
         // Retrieves relevant context for a task, orchestrating content/metadata retrieval and LLM analysis.
         // This is the primary method for context retrieval.
@@ -89,7 +89,7 @@ module src.memory.memory_system {
         // @raises_error(condition="CONTEXT_RETRIEVAL_FAILURE", description="Handled internally, returns error result.")
         // Expected JSON format for input_data: ContextGenerationInput structure.
         // Returns: AssociativeMatchResult object (containing list<MatchItem>).
-        object get_relevant_context_for(object input_data); // Arg represents ContextGenerationInput
+        async object get_relevant_context_for(object input_data); // Arg represents ContextGenerationInput
 
         // Indexes a Git repository and updates the global index.
         // Preconditions:

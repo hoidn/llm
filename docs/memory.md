@@ -1,3 +1,11 @@
+## Conversation Summary (Claude Code)
+
+The user asked for an update to `memory.md`. I have analyzed the codebase to understand how `register_tool` is used and identified the various executor functions associated with it across different modules like `BaseHandler`, `PassthroughHandler`, and `Application`. Key findings include:
+- `BaseHandler.register_tool` is the central registration mechanism.
+- `PassthroughHandler` registers built-in tools for command execution and file listing.
+- `Application` registers system tools, Aider tools, and provider-specific (e.g., Anthropic) tools, often using wrappers around underlying executor functions or methods.
+- Executor functions reside in `command_executor`, `SystemExecutorFunctions`, `AiderExecutors`, and `anthropic_tools`.
+
 # Memory System
 
 ## Implementation Notes
