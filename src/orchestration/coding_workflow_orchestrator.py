@@ -30,7 +30,7 @@ class CodingWorkflowOrchestrator:
 
         self.logger.info(f"CodingWorkflowOrchestrator initialized for goal: '{initial_goal[:50]}...'")
 
-    def _generate_plan(self) -> bool:
+    async def _generate_plan(self) -> bool:
         self.logger.info(f"Executing Phase: _generate_plan for goal='{self.initial_goal[:50]}...'")
         params = {
             "goal": self.initial_goal,
@@ -38,7 +38,7 @@ class CodingWorkflowOrchestrator:
         }
 
         try:
-            result_dict = self.app.handle_task_command("user:generate-plan-from-goal", params=params)
+            result_dict = await self.app.handle_task_command("user:generate-plan-from-goal", params=params)
         except Exception as e:
             self.logger.exception(f"Exception calling app.handle_task_command for plan generation: {e}")
             self.final_loop_result = {"status": "FAILED", "reason": "Plan generation task call failed", "details": str(e)}
@@ -73,7 +73,7 @@ class CodingWorkflowOrchestrator:
             self.final_loop_result = {"status": "FAILED", "reason": "Plan parsing failed", "details": str(e)}
             return False
 
-    def _execute_code(self) -> Optional[TaskResult]:
+    async def _execute_code(self) -> Optional[TaskResult]:
         self.logger.info(f"Executing Phase: _execute_code (Iteration: {self.iteration})")
         if not self.current_plan:
             self.logger.error("_execute_code called without a valid self.current_plan.")
@@ -96,7 +96,7 @@ class CodingWorkflowOrchestrator:
         
         try:
             self.logger.debug(f"Calling app.handle_task_command for 'aider_automatic' with params: {aider_params}")
-            result_dict = self.app.handle_task_command("aider_automatic", params=aider_params)
+            result_dict = await self.app.handle_task_command("aider_automatic", params=aider_params)
             
             if not isinstance(result_dict, dict):
                 self.logger.error(f"'aider:automatic' task returned non-dict: {type(result_dict)}. Full response: {result_dict}")
@@ -113,7 +113,7 @@ class CodingWorkflowOrchestrator:
                 "error": {"type": "ORCHESTRATOR_EXCEPTION", "message": str(e)}
             })
 
-    def _validate_code(self) -> Optional[TaskResult]: # Return Optional[TaskResult] for consistency
+    async def _validate_code(self) -> Optional[TaskResult]: # Return Optional[TaskResult] for consistency
         self.logger.info(f"Executing Phase: _validate_code (Iteration: {self.iteration})")
         if not self.test_command:
             self.logger.warning("No test_command configured for validation. Skipping validation phase.")
@@ -126,7 +126,7 @@ class CodingWorkflowOrchestrator:
         
         try:
             self.logger.debug(f"Calling app.handle_task_command for 'system_execute_shell_command' with params: {test_params}")
-            result_dict = self.app.handle_task_command("system_execute_shell_command", params=test_params)
+            result_dict = await self.app.handle_task_command("system_execute_shell_command", params=test_params)
 
             if not isinstance(result_dict, dict):
                 self.logger.error(f"'system:execute_shell_command' task returned non-dict: {type(result_dict)}. Full response: {result_dict}")
@@ -143,7 +143,7 @@ class CodingWorkflowOrchestrator:
                 "error": {"type": "ORCHESTRATOR_EXCEPTION", "message": str(e)}
             })
 
-    def _analyze_iteration(self, aider_result: TaskResult, test_result: TaskResult) -> Optional[CombinedAnalysisResult]:
+    async def _analyze_iteration(self, aider_result: TaskResult, test_result: TaskResult) -> Optional[CombinedAnalysisResult]:
         self.logger.info(f"Executing Phase: _analyze_iteration (Iteration: {self.iteration})")
 
         if not self.current_plan: # Should ideally not happen if called within a valid iteration
@@ -168,7 +168,7 @@ class CodingWorkflowOrchestrator:
         
         try:
             self.logger.debug(f"Calling app.handle_task_command for 'user:evaluate-and-retry-analysis' with params: {analysis_params}")
-            result_dict = self.app.handle_task_command("user:evaluate-and-retry-analysis", params=analysis_params)
+            result_dict = await self.app.handle_task_command("user:evaluate-and-retry-analysis", params=analysis_params)
 
             if not isinstance(result_dict, dict):
                 self.logger.error(f"'user:evaluate-and-retry-analysis' task returned non-dict: {type(result_dict)}. Full response: {result_dict}")
@@ -198,13 +198,13 @@ class CodingWorkflowOrchestrator:
             self.final_loop_result = {"status": "FAILED", "reason": "Analysis task call/parsing failed", "details": str(e)}
             return None
 
-    def run(self) -> Dict[str, Any]:
+    async def run(self) -> Dict[str, Any]:
         self.logger.info(f"Starting coding workflow run for goal: '{self.initial_goal[:50]}...'")
         self.iteration = 0  # Reset iteration count for each run
         self.overall_success = False # Reset overall success for each run
         self.final_loop_result = None # Reset final loop result
 
-        if not self._generate_plan():  # Initial plan generation
+        if not await self._generate_plan():  # Initial plan generation
             self.logger.error("Initial plan generation failed. Workflow cannot proceed.")
             # Ensure final_loop_result is set if _generate_plan failed internally and set it
             if not self.final_loop_result:
@@ -220,7 +220,7 @@ class CodingWorkflowOrchestrator:
                 self.final_loop_result = {"status": "FAILED", "reason": "Missing plan in iteration"}
                 break
 
-            aider_result = self._execute_code()
+            aider_result = await self._execute_code()
             if not aider_result:  # Should not happen if current_plan is checked and _execute_code returns TaskResult
                 self.logger.error(f"Iteration {self.iteration}: Aider execution phase failed to return a result.")
                 self.final_loop_result = {"status": "FAILED", "reason": "Aider execution error (no result)"}
@@ -230,13 +230,13 @@ class CodingWorkflowOrchestrator:
                 self.logger.warning(f"Iteration {self.iteration}: Aider execution reported FAILED status: {aider_result.content}")
                 # Continue to analysis phase to let LLM decide if it's recoverable
 
-            test_result = self._validate_code()
+            test_result = await self._validate_code()
             if not test_result:  # Should not happen if _validate_code returns TaskResult
                 self.logger.error(f"Iteration {self.iteration}: Validation phase failed to return a result.")
                 self.final_loop_result = {"status": "FAILED", "reason": "Validation phase error (no result)"}
                 break
 
-            analysis_decision = self._analyze_iteration(aider_result, test_result)
+            analysis_decision = await self._analyze_iteration(aider_result, test_result)
 
             if not analysis_decision:
                 self.logger.error(f"Iteration {self.iteration}: Analysis phase failed or returned no decision.")

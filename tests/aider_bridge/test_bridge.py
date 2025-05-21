@@ -566,9 +566,11 @@ class TestAiderBridge:
         # Check internal state was updated
         assert aider_bridge_instance._file_context == set(mock_paths_abs)
         assert aider_bridge_instance._context_source == "associative_matching"
-        # Check os mocks were called by set_file_context
+        # Check os mocks were called - isfile is called twice per path:
+        # 1. Once in get_context_for_query to validate files
+        # 2. Once in set_file_context when adding the paths
         assert mock_os_exists.call_count == len(mock_paths_abs)
-        assert mock_os_isfile.call_count == len(mock_paths_abs) # Called because exists returned True
+        assert mock_os_isfile.call_count == 2 * len(mock_paths_abs) # Called twice per path
 
     @pytest.mark.asyncio
     async def test_get_context_for_query_failure(self, aider_bridge_instance, mock_memory_system_bridge):

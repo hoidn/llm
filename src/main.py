@@ -931,7 +931,7 @@ Select the best matching paths *from the provided metadata* and output the JSON.
             logger.exception(f"Unexpected error during repository indexing for {repo_path}: {e}")
             return False
 
-    def handle_query(self, query: str) -> TaskResult:
+    async def handle_query(self, query: str) -> TaskResult:
         """
         Handles a natural language query using the PassthroughHandler.
 
@@ -947,14 +947,14 @@ Select the best matching paths *from the provided metadata* and output the JSON.
 
         logger.debug(f"Handling query: '{query[:100]}...'") # Log truncated query
         try:
-            task_result_obj = self.passthrough_handler.handle_query(query)
+            task_result_obj = await self.passthrough_handler.handle_query(query)
             logger.debug(f"Query result status: {task_result_obj.status}")
             return task_result_obj
         except Exception as e:
             logger.exception(f"Error handling query: {e}")
             return _create_failed_result_dict("unexpected_error", f"Unexpected error during query handling: {e}")
 
-    def reset_conversation(self) -> None:
+    async def reset_conversation(self) -> None:
         """Resets the conversation history in the PassthroughHandler."""
         if not self.passthrough_handler:
             logger.error("Cannot reset conversation: PassthroughHandler not initialized.")
@@ -962,12 +962,12 @@ Select the best matching paths *from the provided metadata* and output the JSON.
 
         logger.info("Resetting conversation history.")
         try:
-            self.passthrough_handler.reset_conversation()
+            await self.passthrough_handler.reset_conversation()
         except Exception as e:
             logger.exception(f"Error resetting conversation: {e}")
 
 
-    def handle_task_command(
+    async def handle_task_command(
         self,
         identifier: str,
         params: Optional[Dict[str, Any]] = None,
@@ -991,7 +991,7 @@ Select the best matching paths *from the provided metadata* and output the JSON.
         logger.debug(f"Handling task command: Identifier='{identifier}', Params={params}, Flags={flags}")
         try:
             # Delegate to the dispatcher function
-            result_dict = dispatcher.execute_programmatic_task(
+            result_dict = await dispatcher.execute_programmatic_task(
                 identifier=identifier,
                 params=params or {},
                 flags=flags or {},
@@ -1008,11 +1008,11 @@ Select the best matching paths *from the provided metadata* and output the JSON.
 
 
 # Example Usage (Optional)
-if __name__ == "__main__":
+async def main_async():
     logger.info("Running basic Application example...")
     try:
         app = Application(config={"handler_config": {"default_model_identifier": "anthropic:claude-3-5-sonnet-latest"}})
-        query_result = app.handle_query("What is the capital of France?")
+        query_result = await app.handle_query("What is the capital of France?")
         print("\nQuery Result:")
         import json
         def json_serializable(obj):
@@ -1022,24 +1022,28 @@ if __name__ == "__main__":
                 return f"<PydanticTool name='{obj.name}'>"
             raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
         print(json.dumps(query_result, indent=2, default=json_serializable))
-        task_result = app.handle_task_command('(list "hello" "world")')
+        task_result = await app.handle_task_command('(list "hello" "world")')
         print("\nTask Command Result:")
         print(json.dumps(task_result, indent=2, default=json_serializable))
-        tool_result = app.handle_task_command("system:read_files", {"file_paths": ["src/main.py"]})
+        tool_result = await app.handle_task_command("system:read_files", {"file_paths": ["src/main.py"]})
         print("\nSystem Tool Result:")
         print(json.dumps(tool_result, indent=2, default=json_serializable))
         if app.passthrough_handler.get_provider_identifier().startswith("anthropic:"):
             dummy_file = "dummy_anthropic_test.txt"
             create_params = {"file_path": dummy_file, "content": "Hello Anthropic!"}
-            create_result = app.handle_task_command("anthropic:create", create_params)
+            create_result = await app.handle_task_command("anthropic:create", create_params)
             print("\nAnthropic Create Result:")
             print(json.dumps(create_result, indent=2, default=json_serializable))
-            if create_result.get("status") == "COMPLETE":
+            if create_result.status == "COMPLETE":
                 view_params = {"file_path": dummy_file}
-                view_result = app.handle_task_command("anthropic:view", view_params)
+                view_result = await app.handle_task_command("anthropic:view", view_params)
                 print("\nAnthropic View Result:")
                 print(json.dumps(view_result, indent=2, default=json_serializable))
                 if os.path.exists(dummy_file):
                     os.remove(dummy_file)
     except Exception as main_e:
         logger.exception(f"Error in main execution block: {main_e}")
+
+if __name__ == "__main__":
+    import asyncio
+    asyncio.run(main_async())

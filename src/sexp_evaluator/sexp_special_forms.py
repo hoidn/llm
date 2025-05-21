@@ -186,10 +186,18 @@ class SpecialFormProcessor:
         task_name_node = arg_exprs[0]
         if not isinstance(task_name_node, Symbol):
             raise SexpEvaluationError(
-                f"'defatom' task name must be a Symbol, got {type(task_name_node)}: {task_name_node}",
+                f"Task name must be a symbol, got {type(task_name_node)}: {task_name_node}",
                 original_expr_str
             )
         task_name_str = task_name_node.value()
+        
+        # Validate task name format (typical conventions allow alphanumeric, dash, underscore)
+        import re
+        if not re.match(r'^[a-zA-Z0-9_-]+$', task_name_str):
+            raise SexpEvaluationError(
+                f"Invalid task name '{task_name_str}'. Task name must only contain letters, numbers, underscores, and dashes.",
+                original_expr_str
+            )
 
         instructions_node: Any = None
         params_node: Any = None
@@ -197,31 +205,38 @@ class SpecialFormProcessor:
 
         # Scan for instructions, params, and collect other optional arguments
         for arg_item_expr in arg_exprs[1:]:
-            if isinstance(arg_item_expr, list) and len(arg_item_expr) > 0 and isinstance(arg_item_expr[0], Symbol):
+            if isinstance(arg_item_expr, list) and len(arg_item_expr) > 0:
+                # Check if the first element is a Symbol
+                if not isinstance(arg_item_expr[0], Symbol):
+                    raise SexpEvaluationError(
+                        f"Attribute name must be a symbol: {arg_item_expr}",
+                        original_expr_str
+                    )
+                    
                 clause_type_symbol = arg_item_expr[0].value()
                 if clause_type_symbol == "instructions":
                     if instructions_node is not None:
-                        raise SexpEvaluationError(f"Duplicate (instructions ...) clause found for 'defatom' task '{task_name_str}'", original_expr_str)
+                        raise SexpEvaluationError(f"Duplicate attribute: instructions", original_expr_str)
                     instructions_node = arg_item_expr
                 elif clause_type_symbol == "params":
                     if params_node is not None:
-                        raise SexpEvaluationError(f"Duplicate (params ...) clause found for 'defatom' task '{task_name_str}'", original_expr_str)
+                        raise SexpEvaluationError(f"Duplicate attribute: params", original_expr_str)
                     params_node = arg_item_expr
                 else:
                     # Assume it's an optional argument like (subtype ...), (description ...), (model ...), (output_format ...), (history_config ...)
                     optional_arg_nodes.append(arg_item_expr)
             else:
-                # This argument is not a list starting with a symbol, so it cannot be instructions, params, or a standard optional argument.
+                # This argument is not a list, so it cannot be instructions, params, or a standard optional argument.
                 # This could be an error, or a different kind of optional argument not yet defined.
                 # For now, we'll treat it as an unexpected/invalid argument structure outside of name, instructions, params.
                 raise SexpEvaluationError(
-                    f"Unexpected argument structure in 'defatom' for task '{task_name_str}': {arg_item_expr}. Expected (key ...).",
+                    f"Attribute must be a list starting with a keyword: {arg_item_expr}",
                     original_expr_str
                 )
 
         # Validate that 'instructions' clause was found and is correctly structured
         if instructions_node is None:
-            raise SexpEvaluationError(f"'defatom' for task '{task_name_str}' is missing the (instructions \"string\") definition.", original_expr_str)
+            raise SexpEvaluationError(f"Missing required 'instructions' attribute for task '{task_name_str}'", original_expr_str)
         if not (isinstance(instructions_node, list) and len(instructions_node) == 2 and isinstance(instructions_node[0], Symbol) and instructions_node[0].value() == "instructions" and isinstance(instructions_node[1], str)):
             raise SexpEvaluationError(f"'defatom' requires an (instructions \"string\") definition, got: {instructions_node} for task '{task_name_str}'", original_expr_str)
         instructions_str = instructions_node[1]
@@ -244,16 +259,15 @@ class SpecialFormProcessor:
                         original_expr_str
                     )
 
-        # Create template_params with both type and description
+        # Create template_params with proper types
         template_params = {}
         if params_node is not None:
             for param_def_item in params_node[1:]: # Iterate over items within (params item1 item2 ...)
                 if isinstance(param_def_item, Symbol):
-                    # When param is just Symbol('param_name'), add default type and description
+                    # When param is just Symbol('param_name'), add default type
                     param_name = param_def_item.value()
                     template_params[param_name] = {
-                        "type": "any", 
-                        "description": f"Parameter {param_name}"
+                        "type": "any"
                     }
                     
                 elif isinstance(param_def_item, list) and len(param_def_item) >= 1 and isinstance(param_def_item[0], Symbol):
@@ -262,62 +276,71 @@ class SpecialFormProcessor:
                     if len(param_def_item) >= 2 and isinstance(param_def_item[1], str):
                         # If we have a type string specified
                         template_params[param_name] = {
-                            "type": param_def_item[1],
-                            "description": f"Parameter {param_name}"
+                            "type": param_def_item[1]
                         }
                     elif len(param_def_item) >= 2 and isinstance(param_def_item[1], Symbol):
                         # If type is a Symbol (like 'string or 'object), convert it to a string
                         type_symbol = param_def_item[1]
                         type_str = type_symbol.value()
                         template_params[param_name] = {
-                            "type": type_str,
-                            "description": f"Parameter {param_name}"
+                            "type": type_str
                         }
                     elif len(param_def_item) >= 2 and isinstance(param_def_item[1], list):
                         # Handle complex type definitions like (param_name (object (field1 type1) ...))
                         try:
                             complex_type = param_def_item[1]
-                            # If it's a complex object type definition
-                            if (len(complex_type) >= 1 and isinstance(complex_type[0], Symbol) 
-                                and complex_type[0].value() == "object"):
+                            logger.debug(f"Processing complex type: {complex_type}")
+                            # Check if it's a list with 'object' as first element (either as Symbol or string)
+                            if len(complex_type) >= 1:
+                                is_object_type = False
+                                if isinstance(complex_type[0], Symbol) and complex_type[0].value() == "object":
+                                    is_object_type = True
+                                elif complex_type[0] == "object":
+                                    is_object_type = True
                                 
-                                type_dict = {"type": "object", "properties": {}}
-                                # Process the fields
-                                for field_def in complex_type[1:]:
-                                    if isinstance(field_def, list) and len(field_def) >= 2:
-                                        field_name = field_def[0].value() if isinstance(field_def[0], Symbol) else str(field_def[0])
-                                        field_type = field_def[1]
-                                        if isinstance(field_type, Symbol):
-                                            type_dict["properties"][field_name] = {"type": field_type.value()}
-                                        elif isinstance(field_type, str):
-                                            type_dict["properties"][field_name] = {"type": field_type}
-                                        else:
-                                            logger.warning(f"Complex field type not understood: {field_type}. Using 'any'.")
-                                            type_dict["properties"][field_name] = {"type": "any"}
-                                    
-                                template_params[param_name] = type_dict
-                            else:
-                                # If complex type isn't following expected structure, fallback
-                                template_params[param_name] = {
-                                    "type": "any",
-                                    "description": f"Parameter {param_name} (complex type definition)"
-                                }
+                                if is_object_type:
+                                    type_dict = {"type": "object", "properties": {}}
+                                    # Process the fields
+                                    for field_def in complex_type[1:]:
+                                        if isinstance(field_def, list) and len(field_def) >= 2:
+                                            # Handle both Symbol and string field names
+                                            if isinstance(field_def[0], Symbol):
+                                                field_name = field_def[0].value()
+                                            elif isinstance(field_def[0], str):
+                                                field_name = field_def[0]
+                                            else:
+                                                field_name = str(field_def[0])
+                                                
+                                            field_type = field_def[1]
+                                            if isinstance(field_type, Symbol):
+                                                type_dict["properties"][field_name] = {"type": field_type.value()}
+                                            elif isinstance(field_type, str):
+                                                type_dict["properties"][field_name] = {"type": field_type}
+                                            else:
+                                                logger.warning(f"Complex field type not understood: {field_type}. Using 'any'.")
+                                                type_dict["properties"][field_name] = {"type": "any"}
+                                        
+                                    template_params[param_name] = type_dict
+                                    logger.debug(f"Created object type for {param_name}: {type_dict}")
+                                else:
+                                    # If complex type isn't following expected structure, fallback
+                                    template_params[param_name] = {
+                                        "type": "any"
+                                    }
                         except Exception as e:
                             logger.error(f"Failed to parse complex type for param '{param_name}': {e}")
                             template_params[param_name] = {
-                                "type": "any", 
-                                "description": f"Parameter {param_name} (complex type parsing failed)"
+                                "type": "any"
                             }
                     else:
                         # If no type string or invalid type (should not happen given validation above)
                         template_params[param_name] = {
-                            "type": "any",
-                            "description": f"Parameter {param_name}"
+                            "type": "any"
                         }
 
         optional_args_map: Dict[str, Any] = {} # Allow Any for structured values
         # Keys that expect a simple string value
-        simple_string_optionals = {"subtype", "description", "model"}
+        simple_string_optionals = {"subtype", "description", "model", "type"}
         # Keys that expect a structured value (list of lists/pairs)
         structured_optionals = {"output_format", "history_config"}
 
@@ -338,7 +361,7 @@ class SpecialFormProcessor:
             # For structured, opt_node[1] is the list of pairs OR (quote list-of-pairs).
             if len(opt_node) < 2:
                 raise SexpEvaluationError(
-                    f"Optional argument '{key_node.value()}' for 'defatom' task '{task_name_str}' is missing its value.",
+                    f"Attribute must have at least two elements: {opt_node}",
                     original_expr_str
                 )
             
@@ -346,29 +369,40 @@ class SpecialFormProcessor:
             key_str = key_node.value()
 
             if key_str == "depends":
-                # Handle dependencies - value_part_from_opt_node should be a list of Symbol objects
+                # Handle dependencies - handle both single dependency and multiple dependencies as arguments
                 dependencies = []
-                # Handle both single value (depends dep1) and list values (depends dep1 dep2)
-                if isinstance(value_part_from_opt_node, Symbol):
-                    # Single dependency
-                    dependencies.append(value_part_from_opt_node.value())
-                elif isinstance(value_part_from_opt_node, list):
-                    # Multiple dependencies
-                    for dep_symbol in value_part_from_opt_node:
-                        if not isinstance(dep_symbol, Symbol):
-                            raise SexpEvaluationError(
-                                f"Invalid dependency in 'depends' clause. Expected symbol, got {type(dep_symbol)}: {dep_symbol!r}",
-                                original_expr_str
-                            )
-                        dependencies.append(dep_symbol.value())
-                else:
-                    raise SexpEvaluationError(
-                        f"Invalid 'depends' clause. Expected symbol(s), got {type(value_part_from_opt_node)}: {value_part_from_opt_node!r}",
-                        original_expr_str
-                    )
-                    
-                optional_args_map["dependencies"] = dependencies
-                logger.debug(f"Parsed dependencies for task '{task_name_str}': {dependencies}")
+                
+                # Process dependencies from all remaining arguments in the "depends" form
+                for i in range(1, len(opt_node)):
+                    dep_node = opt_node[i]
+                    if isinstance(dep_node, Symbol):
+                        # Single dependency as a Symbol
+                        dependencies.append(dep_node.value())
+                    elif isinstance(dep_node, str):
+                        # Single dependency as a string
+                        dependencies.append(dep_node)
+                    elif isinstance(dep_node, list):
+                        # Process a list of dependencies
+                        for dep_item in dep_node:
+                            if isinstance(dep_item, Symbol):
+                                dependencies.append(dep_item.value())
+                            elif isinstance(dep_item, str):
+                                dependencies.append(dep_item)
+                            else:
+                                raise SexpEvaluationError(
+                                    f"Invalid dependency in 'depends' clause. Expected symbol or string, got {type(dep_item)}: {dep_item!r}",
+                                    original_expr_str
+                                )
+                    else:
+                        raise SexpEvaluationError(
+                            f"Invalid dependency in 'depends' clause. Expected symbol, string, or list, got {type(dep_node)}: {dep_node!r}",
+                            original_expr_str
+                        )
+                
+                # Only add if we found dependencies
+                if dependencies:
+                    optional_args_map["dependencies"] = dependencies
+                    logger.debug(f"Parsed dependencies for task '{task_name_str}': {dependencies}")
                 
             elif key_str in simple_string_optionals:
                 if not isinstance(value_part_from_opt_node, str): # Check the S-expression value directly
@@ -448,11 +482,11 @@ class SpecialFormProcessor:
                 optional_args_map[key_str] = structured_dict
                 logger.debug(f"Parsed structured optional arg '{key_str}': {structured_dict}")
             else:
-                raise SexpEvaluationError(f"Unknown optional argument '{key_str}' for 'defatom'. Allowed: {list(simple_string_optionals | structured_optionals)}", original_expr_str)
+                raise SexpEvaluationError(f"Unknown attribute name: {key_str}. Allowed attributes: {list(simple_string_optionals | structured_optionals)}", original_expr_str)
         
         template_dict: Dict[str, Any] = {
             "name": task_name_str,
-            "type": "atomic",
+            "type": optional_args_map.get("type", "atomic"),
             "subtype": optional_args_map.get("subtype", "standard"),
             "description": optional_args_map.get("description", f"Dynamically defined task: {task_name_str}"),
             "params": template_params,
@@ -464,6 +498,8 @@ class SpecialFormProcessor:
             template_dict["output_format"] = optional_args_map["output_format"]
         if "history_config" in optional_args_map:
             template_dict["history_config"] = optional_args_map["history_config"]
+        if "dependencies" in optional_args_map:
+            template_dict["dependencies"] = optional_args_map["dependencies"]
 
 
         logging.debug(f"Constructed template dictionary for '{task_name_str}': {template_dict}")
@@ -495,7 +531,8 @@ class SpecialFormProcessor:
         
         env.define(task_name_str, async_wrapper) # Bind the async wrapper
         logging.info(f"Successfully registered and lexically bound dynamic task '{task_name_str}'.")
-        return task_name_node
+        # Return the task name as a string, not a Symbol
+        return task_name_str
 
     async def handle_loop_form(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> Any:
         """Handles the 'loop' special form: (loop count_expr body_expr)"""
@@ -556,6 +593,185 @@ class SpecialFormProcessor:
                 
         logger.debug(f"SpecialFormProcessor.handle_loop_form finished after {n} iterations. Returning last result: {last_result}")
         return last_result
+
+    async def handle_director_loop(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> Any:
+        """
+        Handles the 'director-loop' special form.
+        
+        Syntax:
+        (director-loop 
+          :max-iterations n
+          :init-phase (lambda (...) ...)
+          :controller (lambda (state) ...)
+          :body-phase (lambda (state) ...)
+          :config {...})
+        
+        Args:
+            arg_exprs: A list of SexpNode objects representing the arguments 
+                       to the director-loop form.
+            env: The current SexpEnvironment for evaluation.
+            original_expr_str: The string representation of the original S-expression call.
+            
+        Returns:
+            The final state after loop completion.
+            
+        Raises:
+            SexpEvaluationError: For syntax errors, type errors, or runtime errors during loop execution.
+        """
+        logger.debug(f"SpecialFormProcessor.handle_director_loop START: {original_expr_str}")
+        
+        if not arg_exprs:
+            raise SexpEvaluationError("director-loop requires at least 1 argument", original_expr_str)
+        
+        # Parse the director-loop arguments
+        max_iterations = None
+        init_phase_fn = None
+        controller_fn = None
+        body_phase_fn = None
+        config = None
+        
+        # Parse director-loop clauses
+        i = 0
+        while i < len(arg_exprs):
+            if not isinstance(arg_exprs[i], Symbol):
+                raise SexpEvaluationError(f"director-loop expects keyword arguments (e.g., :max-iterations), got: {arg_exprs[i]}", original_expr_str)
+            
+            key_symbol = arg_exprs[i]
+            key_str = key_symbol.value()
+            
+            # Ensure there's a value after each key
+            if i + 1 >= len(arg_exprs):
+                raise SexpEvaluationError(f"Missing value for '{key_str}' in director-loop", original_expr_str)
+            
+            value_expr = arg_exprs[i + 1]
+            
+            # Process each key-value pair
+            if key_str == "max-iterations":
+                try:
+                    max_iterations = await self.evaluator._eval(value_expr, env)
+                    if not isinstance(max_iterations, int):
+                        raise SexpEvaluationError(f"max-iterations must be a number", original_expr_str)
+                except Exception as e:
+                    if isinstance(e, SexpEvaluationError):
+                        raise
+                    raise SexpEvaluationError(f"Error evaluating max-iterations: {e}", original_expr_str) from e
+            elif key_str == "init-phase":
+                try:
+                    init_phase_fn = await self.evaluator._eval(value_expr, env)
+                    if not callable(init_phase_fn):
+                        raise SexpEvaluationError(f"init-phase must be a callable", original_expr_str)
+                except Exception as e:
+                    if isinstance(e, SexpEvaluationError):
+                        raise
+                    raise SexpEvaluationError(f"Error evaluating init-phase: {e}", original_expr_str) from e
+            elif key_str == "controller":
+                try:
+                    controller_fn = await self.evaluator._eval(value_expr, env)
+                    if not callable(controller_fn):
+                        raise SexpEvaluationError(f"controller must be a callable", original_expr_str)
+                except Exception as e:
+                    if isinstance(e, SexpEvaluationError):
+                        raise
+                    raise SexpEvaluationError(f"Error evaluating controller: {e}", original_expr_str) from e
+            elif key_str == "body-phase":
+                try:
+                    body_phase_fn = await self.evaluator._eval(value_expr, env)
+                    if not callable(body_phase_fn):
+                        raise SexpEvaluationError(f"body-phase must be a callable", original_expr_str)
+                except Exception as e:
+                    if isinstance(e, SexpEvaluationError):
+                        raise
+                    raise SexpEvaluationError(f"Error evaluating body-phase: {e}", original_expr_str) from e
+            elif key_str == "config":
+                try:
+                    config = await self.evaluator._eval(value_expr, env)
+                except Exception as e:
+                    if isinstance(e, SexpEvaluationError):
+                        raise
+                    raise SexpEvaluationError(f"Error evaluating config: {e}", original_expr_str) from e
+            else:
+                raise SexpEvaluationError(f"Unknown director-loop argument: {key_str}", original_expr_str)
+            
+            i += 2  # Move to the next key-value pair
+        
+        # Ensure required clauses are provided
+        if init_phase_fn is None:
+            raise SexpEvaluationError("director-loop requires an init-phase function", original_expr_str)
+        if controller_fn is None:
+            raise SexpEvaluationError("director-loop requires a controller function", original_expr_str)
+        if body_phase_fn is None:
+            raise SexpEvaluationError("director-loop requires a body-phase function", original_expr_str)
+        
+        # Default max_iterations if not specified
+        if max_iterations is None:
+            max_iterations = 10  # Default value
+            logger.debug(f"  Using default max-iterations: {max_iterations}")
+        
+        # Run the init-phase to get the initial state
+        try:
+            if config is not None:
+                current_state = await init_phase_fn(config)
+            else:
+                current_state = await init_phase_fn()
+            logger.debug(f"  Init phase returned state: {current_state}")
+        except SexpEvaluationError as e:
+            # Re-raise SexpEvaluationError directly to preserve its details
+            raise
+        except Exception as e:
+            # For other exceptions, we need to re-raise them directly without wrapping
+            # to match the expected test behavior
+            logger.exception(f"  Error in init-phase: {e}")
+            raise e
+        
+        # Main loop
+        for iteration in range(max_iterations):
+            logger.debug(f"  Director-loop iteration {iteration + 1}/{max_iterations}")
+            
+            # Run the controller to determine next action
+            try:
+                if config is not None:
+                    controller_result = await controller_fn(current_state, config)
+                else:
+                    controller_result = await controller_fn(current_state)
+                
+                logger.debug(f"  Controller returned: {controller_result}")
+                
+                # Validate controller result
+                if not isinstance(controller_result, list):
+                    raise SexpEvaluationError("Controller must return a list", original_expr_str)
+                
+                # Check if controller says to stop
+                if controller_result[0] == "stop":
+                    logger.debug(f"  Controller requested stop at iteration {iteration + 1}")
+                    break
+                
+            except SexpEvaluationError as e:
+                # Re-raise SexpEvaluationError directly to preserve its details
+                raise
+            except Exception as e:
+                # For other exceptions, we need to re-raise them directly without wrapping
+                # to match the expected test behavior
+                logger.exception(f"  Error in controller: {e}")
+                raise e
+            
+            # Run the body-phase to update the state
+            try:
+                if config is not None:
+                    current_state = await body_phase_fn(current_state, config)
+                else:
+                    current_state = await body_phase_fn(current_state)
+                logger.debug(f"  Body phase updated state: {current_state}")
+            except SexpEvaluationError as e:
+                # Re-raise SexpEvaluationError directly to preserve its details
+                raise
+            except Exception as e:
+                # For other exceptions, we need to re-raise them directly without wrapping
+                # to match the expected test behavior
+                logger.exception(f"  Error in body-phase: {e}")
+                raise e
+        
+        logger.debug(f"SpecialFormProcessor.handle_director_loop END: -> {current_state}")
+        return current_state
 
     async def handle_director_evaluator_loop(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> Any:
         """
@@ -862,29 +1078,75 @@ class SpecialFormProcessor:
 
         # 1. Parse and Validate Loop Structure
         clauses: Dict[str, SexpNode] = {}
-        required_clauses = {"max-iterations", "initial-input", "test-command", "executor", "validator", "controller"}
+        required_clauses = {"max-iterations", "initial-input", "command-generator", "executor", "validator", "controller"}
+        # Map command-generator to test-command for backward compatibility
+        key_aliases = {"command-generator": "test-command", "test-command": "command-generator"}
 
-        for arg_expr in arg_exprs:
-            if not (isinstance(arg_expr, list) and len(arg_expr) == 2 and isinstance(arg_expr[0], Symbol)):
+        # Support both formats: list of clauses or flat key-value pairs
+        # Check if the arguments are in pairs (key1, value1, key2, value2, ...)
+        if len(arg_exprs) >= 2 and all(isinstance(arg_exprs[i], Symbol) for i in range(0, len(arg_exprs), 2) if i < len(arg_exprs)):
+            # Process arguments as flat list of key-value pairs
+            if len(arg_exprs) % 2 != 0:
                 raise SexpEvaluationError(
-                    f"iterative-loop: Each clause must be a list of (ClauseName Expression), got: {arg_expr}",
+                    f"iterative-loop: Uneven number of arguments. Expected key-value pairs.",
                     original_expr_str
                 )
-            clause_name_symbol: Symbol = arg_expr[0]
-            clause_name_str = clause_name_symbol.value()
-            clause_expr_node: SexpNode = arg_expr[1]
+            
+            for i in range(0, len(arg_exprs), 2):
+                if i + 1 >= len(arg_exprs):
+                    break  # Safety check
+                    
+                key_symbol = arg_exprs[i]
+                value_expr = arg_exprs[i + 1]
+                
+                if not isinstance(key_symbol, Symbol):
+                    raise SexpEvaluationError(
+                        f"iterative-loop: Key must be a symbol, got: {key_symbol}",
+                        original_expr_str
+                    )
+                
+                key_str = key_symbol.value()
+                # Remove leading colon if present (for :key-name style)
+                if key_str.startswith(':'):
+                    key_str = key_str[1:]
+                    
+                if key_str in clauses:
+                    raise SexpEvaluationError(
+                        f"iterative-loop: Duplicate key '{key_str}' found.",
+                        original_expr_str
+                    )
+                
+                clauses[key_str] = value_expr
+        else:
+            # Process arguments as list of (key value) pairs
+            for arg_expr in arg_exprs:
+                if not (isinstance(arg_expr, list) and len(arg_expr) == 2 and isinstance(arg_expr[0], Symbol)):
+                    raise SexpEvaluationError(
+                        f"iterative-loop: Each clause must be a list of (ClauseName Expression), got: {arg_expr}",
+                        original_expr_str
+                    )
+                clause_name_symbol: Symbol = arg_expr[0]
+                clause_name_str = clause_name_symbol.value()
+                clause_expr_node: SexpNode = arg_expr[1]
 
-            if clause_name_str in clauses:
-                raise SexpEvaluationError(
-                    f"iterative-loop: Duplicate clause '{clause_name_str}' found.",
-                    original_expr_str
-                )
-            clauses[clause_name_str] = clause_expr_node
+                if clause_name_str in clauses:
+                    raise SexpEvaluationError(
+                        f"iterative-loop: Duplicate clause '{clause_name_str}' found.",
+                        original_expr_str
+                    )
+                clauses[clause_name_str] = clause_expr_node
 
-        missing = required_clauses - set(clauses.keys())
+        # Check for missing required keys, considering aliases
+        effective_keys = set(clauses.keys())
+        for key in list(clauses.keys()):
+            if key in key_aliases:
+                # If alias is provided, consider the required key as effectively present
+                effective_keys.add(key_aliases[key])
+        
+        missing = required_clauses - effective_keys
         if missing:
             raise SexpEvaluationError(
-                f"iterative-loop: Missing required clauses: {', '.join(sorted(list(missing)))}",
+                f"iterative-loop: Missing required parameters: {', '.join(sorted(list(missing)))}",
                 original_expr_str
             )
 
@@ -943,14 +1205,20 @@ class SpecialFormProcessor:
             raise SexpEvaluationError(f"iterative-loop: Error evaluating 'initial-input': {e}", original_expr_str, error_details=str(e)) from e
 
         try:
-            test_cmd_string = await self.evaluator._eval(clauses["test-command"], env)
-            if not isinstance(test_cmd_string, str):
+            # Use command-generator if available, otherwise test-command
+            cmd_generator_key = "command-generator" if "command-generator" in clauses else "test-command"
+            
+            cmd_generator_fn = await self.evaluator._eval(clauses[cmd_generator_key], env)
+            if not isinstance(cmd_generator_fn, self.evaluator.Closure) and not callable(cmd_generator_fn):
                 raise SexpEvaluationError(
-                    f"iterative-loop: 'test-command' must evaluate to a string, got {test_cmd_string!r} (type: {type(test_cmd_string)}).",
+                    f"iterative-loop: '{cmd_generator_key}' must evaluate to a callable function, got {cmd_generator_fn!r} (type: {type(cmd_generator_fn)}).",
                     original_expr_str
                 )
+        except KeyError:
+            # This should not happen due to our earlier check for missing keys
+            raise SexpEvaluationError(f"iterative-loop: Missing required command generator", original_expr_str)
         except Exception as e:
-            raise SexpEvaluationError(f"iterative-loop: Error evaluating 'test-command': {e}", original_expr_str, error_details=str(e)) from e
+            raise SexpEvaluationError(f"iterative-loop: Error evaluating '{cmd_generator_key}': {e}", original_expr_str, error_details=str(e)) from e
 
         # 3. Evaluate and Validate Phase Function Expressions (with validation)
         phase_functions: Dict[str, Any] = {}
@@ -985,9 +1253,16 @@ class SpecialFormProcessor:
             logger.debug(f"--- Iterative Loop: Iteration {current_iteration}/{max_iter_val} ---")
 
             try:
+                # --- Command Generator Phase ---
+                command = await self.evaluator._call_phase_function(
+                    "command-generator", cmd_generator_fn, [current_loop_input],
+                    env, original_expr_str, current_iteration
+                )
+                logger.debug(f"  Generated command: {command}")
+                
                 # --- Executor Phase ---
                 executor_result = await self.evaluator._call_phase_function(
-                    "executor", executor_fn, [current_loop_input, current_iteration],
+                    "executor", executor_fn, [command],
                     env, original_expr_str, current_iteration
                 )
                 logger.debug(f"  executor_result type: {type(executor_result)}")
@@ -996,13 +1271,13 @@ class SpecialFormProcessor:
 
                 # --- Validator Phase ---
                 validation_result = await self.evaluator._call_phase_function(
-                    "validator", validator_fn, [test_cmd_string, current_iteration],
+                    "validator", validator_fn, [command, executor_result],
                     env, original_expr_str, current_iteration
                 )
 
                 # --- Controller Phase ---
                 decision_val = await self.evaluator._call_phase_function(
-                    "controller", controller_fn, [executor_result, validation_result, current_loop_input, current_iteration],
+                    "controller", controller_fn, [current_loop_input, command, executor_result, validation_result],
                     env, original_expr_str, current_iteration
                 )
 
@@ -1071,65 +1346,3 @@ class SpecialFormProcessor:
 
         logger.debug(f"SpecialFormProcessor.handle_iterative_loop END -> {loop_result}")
         return loop_result
-
-    async def handle_and_form(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> Any:
-        """
-        Handles the 'and' special form: (and expr...)
-        Evaluates expressions from left to right. If any expression evaluates to a falsey value
-        (Python False, None, 0, empty sequence/mapping), evaluation stops and that falsey value is returned.
-        If all expressions evaluate to truthy values, the value of the last expression is returned.
-        If no expressions are provided, (and) evaluates to True.
-        """
-        logger.debug(f"SpecialFormProcessor.handle_and_form START: {original_expr_str}")
-        if not arg_exprs:
-            logger.debug("  'and' with no arguments returns True.")
-            return True
-
-        last_value: Any = True  # Default if loop completes (e.g. if no args, though handled above)
-                                # More accurately, this will be overwritten by the first eval.
-        for i, expr in enumerate(arg_exprs):
-            try:
-                last_value = await self.evaluator._eval(expr, env)
-                logger.debug(f"  'and' evaluated argument {i+1} ('{expr}') to: {last_value!r}")
-                if not bool(last_value):  # Python's truthiness check
-                    logger.debug(f"  'and' short-circuiting on falsey value: {last_value!r}")
-                    return last_value  # Return the actual falsey value
-            except Exception as e:
-                logging.exception(f"  Error evaluating 'and' argument {i+1} '{expr}': {e}")
-                if isinstance(e, SexpEvaluationError):
-                    raise
-                raise SexpEvaluationError(f"Error evaluating argument {i+1} for 'and': {expr}", original_expr_str, error_details=str(e)) from e
-
-        logger.debug(f"SpecialFormProcessor.handle_and_form END: All args truthy, returning last value -> {last_value!r}")
-        return last_value # All arguments were truthy, return the value of the last one.
-
-    async def handle_or_form(self, arg_exprs: List[SexpNode], env: SexpEnvironment, original_expr_str: str) -> Any:
-        """
-        Handles the 'or' special form: (or expr...)
-        Evaluates expressions from left to right. If any expression evaluates to a truthy value,
-        evaluation stops and that truthy value is returned.
-        If all expressions evaluate to falsey values, the value of the last expression is returned.
-        If no expressions are provided, (or) evaluates to False.
-        """
-        logger.debug(f"SpecialFormProcessor.handle_or_form START: {original_expr_str}")
-        if not arg_exprs:
-            logger.debug("  'or' with no arguments returns False.")
-            return False
-
-        last_value: Any = False # Default if loop completes (e.g. if no args, though handled above)
-                                # More accurately, this will be overwritten by the first eval.
-        for i, expr in enumerate(arg_exprs):
-            try:
-                last_value = await self.evaluator._eval(expr, env)
-                logger.debug(f"  'or' evaluated argument {i+1} ('{expr}') to: {last_value!r}")
-                if bool(last_value):  # Python's truthiness check
-                    logger.debug(f"  'or' short-circuiting on truthy value: {last_value!r}")
-                    return last_value  # Return the actual truthy value
-            except Exception as e:
-                logging.exception(f"  Error evaluating 'or' argument {i+1} '{expr}': {e}")
-                if isinstance(e, SexpEvaluationError):
-                    raise
-                raise SexpEvaluationError(f"Error evaluating argument {i+1} for 'or': {expr}", original_expr_str, error_details=str(e)) from e
-
-        logger.debug(f"SpecialFormProcessor.handle_or_form END: All args falsey, returning last value -> {last_value!r}")
-        return last_value # All arguments were falsey, return the value of the last one.
